@@ -13,8 +13,11 @@
 
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { config } from './config';
+import { errorHandler } from './middleware/errorHandler';
+import authRoutes from './routes/auth.routes';
 
 const app = express();
 
@@ -42,6 +45,9 @@ app.use(express.json({ limit: '10mb' }));
 // Parse URL-encoded form data (for HTML form submissions)
 app.use(express.urlencoded({ extended: true }));
 
+// Parse cookies (needed to read httpOnly refresh token cookie)
+app.use(cookieParser());
+
 // Serve uploaded files as static assets
 // Example: /uploads/listings/abc123.webp → server/uploads/listings/abc123.webp
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -62,10 +68,22 @@ app.get('/api/health', (_req, res) => {
 });
 
 // =============================================================================
-// Routes will be added here in later phases
+// Routes
 // =============================================================================
-// app.use('/api/auth', authRoutes);
-// app.use('/api/listings', listingRoutes);
-// etc.
+app.use('/api/auth', authRoutes);
+// app.use('/api/listings', listingRoutes);   // Phase 4
+// app.use('/api/bids', bidRoutes);           // Phase 6
+// app.use('/api/agent', agentRoutes);        // Phase 7
+// app.use('/api/negotiations', negoRoutes);  // Phase 9
+// app.use('/api/transactions', txRoutes);    // Phase 11
+// app.use('/api/notifications', notifRoutes);// Phase 12
+// app.use('/api/admin', adminRoutes);        // Phase 13
+
+// =============================================================================
+// Global Error Handler — MUST be last middleware
+// =============================================================================
+// Express only routes errors to middleware with 4 parameters (err, req, res, next).
+// This catches all errors thrown in routes/controllers/services above.
+app.use(errorHandler);
 
 export default app;

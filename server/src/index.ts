@@ -1,18 +1,25 @@
 // =============================================================================
 // Server Entry Point
 // =============================================================================
-// This file has ONE job: start the HTTP server.
-// All app configuration lives in app.ts.
-// Later, we'll create the HTTP server manually (http.createServer) to attach
-// Socket.io for real-time features like live bidding and notifications.
+// WHY http.createServer INSTEAD OF app.listen?
+// Express 5's app.listen creates a server internally, but we need direct access
+// to the HTTP server object for two reasons:
+//   1. Socket.io needs to attach to the raw HTTP server (Phase 10)
+//   2. Express 5 route handling works more reliably with createServer
+//
+// This pattern is standard for any Express app that uses WebSockets.
 // =============================================================================
 
+import http from 'http';
 import app from './app';
 import { config } from './config';
 
 const PORT = config.port;
 
-app.listen(PORT, () => {
+// Create HTTP server with Express as the request handler
+const server = http.createServer(app);
+
+server.listen(PORT, () => {
   console.log(`
   🌾 CropBid Server is running!
 
@@ -21,3 +28,6 @@ app.listen(PORT, () => {
   → Environment:  ${config.nodeEnv}
   `);
 });
+
+// Export server for Socket.io attachment later
+export { server };
