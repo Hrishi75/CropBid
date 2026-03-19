@@ -1,0 +1,459 @@
+// =============================================================================
+// CropBid Database Schema — Prisma ORM
+// =============================================================================
+//
+// This file defines ALL database tables, their columns, relationships, and
+// constraints. It is the single source of truth for your data model.
+//
+// KEY CONCEPTS:
+// - Each `model` becomes a PostgreSQL table
+// - `@id` marks the primary key
+// - `@unique` adds a unique constraint
+// - `@default(uuid())` auto-generates UUIDs (safer than auto-increment IDs)
+// - `@relation` defines foreign key relationships
+// - `enum` creates PostgreSQL enum types (fixed set of valid values)
+// - `String[]` uses PostgreSQL's native array type
+// - `Json` stores flexible JSON data
+//
+// After changing this file, run:
+//   npx prisma migrate dev --name describe_your_change
+//   npx prisma generate
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// Enums — Fixed sets of valid values
+// =============================================================================
+// WHY ENUMS INSTEAD OF STRINGS?
+// Enums are enforced at the database level. If you try to insert role="HACKER",
+// PostgreSQL will reject it. With plain strings, any typo would be silently accepted.
+
+enum Role {
+  FARMER
+  BUYER
+  ADMIN
+}
+
+enum Currency {
+  INR // Indian Rupee (₹) — default
+  USD // US Dollar ($)
+  EUR // Euro (€)
+  GBP // British Pound (£)
+}
+
+enum Language {
+  EN // English
+  HI // Hindi
+}
+
+enum Unit {
+  KG      // Kilogram — universal
+  QUINTAL // 100 kg — common in Indian mandis
+  TONNE   // 1000 kg — for bulk/export
+}
+
+enum QualityGrade {
+  A // Premium quality
+  B // Standard quality
+  C // Economy quality
+}
+
+enum ListingStatus {
+  ACTIVE     // Open for bids
+  IN_AUCTION // Multiple buyers bidding live
+  SOLD       // Deal closed
+  EXPIRED    // Past expiry date, no deal
+}
+
+enum CompanyType {
+  PROCESSOR  // Food processing companies
+  FMCG       // Fast-moving consumer goods
+  RESTAURANT // Restaurant chains
+  EXPORTER   // Export companies
+  RETAILER   // Retail chains
+}
+
+enum AgentType {
+  FARMER_AGENT
+  BUYER_AGENT
+}
+
+enum NegotiationStyle {
+  AGGRESSIVE   // Push hard, small concessions
+  BALANCED     // Fair market rate, reasonable concessions
+  CONSERVATIVE // Close deals fast, near asking price
+}
+
+enum BidStatus {
+  PENDING   // Waiting for response
+  ACCEPTED  // Farmer accepted
+  REJECTED  // Farmer rejected
+  COUNTERED // Farmer counter-offered
+  EXPIRED   // Timed out
+}
+
+enum PaymentStatus {
+  ESCROW   // Money held by platform
+  RELEASED // Paid to farmer
+  REFUNDED // Returned to buyer
+}
+
+enum DeliveryStatus {
+  PENDING    // Not yet shipped
+  IN_TRANSIT // On the way
+  DELIVERED  // Reached buyer
+  CONFIRMED  // Buyer confirmed receipt
+}
+
+enum NegotiationOutcome {
+  DEAL        // Agreement reached
+  NO_DEAL     // Could not agree
+  IN_PROGRESS // Still negotiating
+}
+
+// =============================================================================
+// Model 1: User — The core identity
+// =============================================================================
+// Every person on the platform is a User. Their role determines what they can do.
+// A User has either a FarmerProfile or BuyerProfile (or neither if Admin).
+
+model User {
+  id          String   @id @default(uuid())
+  name        String
+  email       String   @unique
+  password    String   // Hashed with bcrypt — NEVER store plain text
+  role        Role
+  phone       String?  // Optional — ? means nullable
+  location    String?
+  country     String   @default("India")
+  currency    Currency @default(INR)
+  language    Language @default(EN)
+  avatar      String?  // URL to uploaded avatar image
+  trustScore  Float    @default(50) // 0-100, builds with successful transactions
+
+  // Refresh token for JWT auth — stored hashed, null when logged out
+  // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
+  refreshToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations — these don't create columns, they define how models connect
+  farmerProfile FarmerProfile?
+  buyerProfile  BuyerProfile?
+  agentConfig   AgentConfig?
+  bids          Bid[]          // A buyer's bids
+  farmerTransactions Transaction[] @relation("FarmerTransactions")
+  buyerTransactions  Transaction[] @relation("BuyerTransactions")
+  notifications Notification[]
+}
+
+// =============================================================================
+// Model 2: FarmerProfile — Farm-specific details
+// =============================================================================
+// WHY SEPARATE FROM USER?
+// Farmers have farm-specific fields (size, crops, organic cert, APMC license).
+// Buyers have company-specific fields (company name, GST, volume).
+// Putting both in User would create a table full of nullable columns.
+// Separate tables enforce that a FARMER always has farm data.
+
+model FarmerProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique // One user = one profile
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  farmSizeAcres  Float    // Farm size in acres
+  cropsGrown     String[] // PostgreSQL native array: ["rice", "wheat", "cotton"]
+
+  // Location
+  country        String   @default("India")
+  state          String   // e.g., "Maharashtra", "Punjab", "California"
+
+  // India-specific fields (shown conditionally when country is India)
+  fpoName        String?  // Farmer Producer Organization name
+  apmcLicense    String?  // Agricultural Produce Market Committee license
+
+  // Certification
+  organicCertified  Boolean @default(false)
+  certificationBody String? // "NPOP" (India), "USDA Organic" (US), "EU Organic" (Europe)
+
+  bankDetails    Json?    // Flexible JSON for bank info (varies by country)
+  verified       Boolean  @default(false) // Admin-verified
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A farmer can have many listings
+  listings Listing[]
+}
+
+// =============================================================================
+// Model 3: BuyerProfile — Company/procurement details
+// =============================================================================
+
+model BuyerProfile {
+  id                       String      @id @default(uuid())
+  userId                   String      @unique
+  user                     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyName              String
+  companyType              CompanyType
+  country                  String      @default("India")
+
+  // Tax ID label changes by country:
+  //   India = GST Number, US = EIN, EU = VAT Number
+  taxId                    String?
+
+  annualProcurementVolume  String?     // e.g., "500-1000 tonnes"
+  verified                 Boolean     @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// Model 4: Listing — A crop for sale
+// =============================================================================
+// This is what farmers create to sell their produce.
+// Buyers browse listings and place bids on them.
+
+model Listing {
+  id             String        @id @default(uuid())
+
+  // Which farmer owns this listing
+  farmerId       String
+  farmer         FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  // Crop details
+  cropName       String        // e.g., "Rice", "Wheat", "Cotton"
+  cropVariety    String?       // e.g., "Basmati", "Sharbati", "Shankar-6"
+  quantity       Float         // How much is available
+  unit           Unit          @default(KG)
+  qualityGrade   QualityGrade
+
+  // Pricing — farmer sets a range
+  // pricePerUnitMin = floor price (won't sell below this)
+  // pricePerUnitMax = ideal price (what farmer hopes to get)
+  pricePerUnitMin Float
+  pricePerUnitMax Float
+  currency       Currency      @default(INR)
+
+  // Dates
+  harvestDate    DateTime?     // When the crop was/will be harvested
+  expiryDate     DateTime?     // When this listing expires
+
+  // Description & media
+  description    String?
+  images         String[]      // Array of uploaded image URLs
+  labReportUrl   String?       // Lab quality report
+
+  // Classification
+  organic        Boolean       @default(false)
+  location       String        // City/town
+  country        String        @default("India")
+  state          String        // State/province
+
+  status         ListingStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  bids          Bid[]
+  transactions  Transaction[]
+  negotiations  Negotiation[]
+}
+
+// =============================================================================
+// Model 5: AgentConfig — AI agent settings
+// =============================================================================
+// Each user gets ONE AI agent. This table stores how the agent should behave.
+// The agent uses these settings when making automated decisions.
+
+model AgentConfig {
+  id               String           @id @default(uuid())
+  userId           String           @unique
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  agentType        AgentType
+
+  // Master toggle — is the agent active?
+  autoNegotiate    Boolean          @default(true)
+  active           Boolean          @default(true)
+
+  // Price boundaries — the agent NEVER crosses these
+  minPrice         Float?           // Farmer: won't sell below this
+  maxPrice         Float?           // Buyer: won't pay above this
+
+  // Buyer-specific: what crops to look for
+  preferredCrops   String[]
+
+  // Buyer-specific: quality requirements
+  // Example JSON: { "minGrade": "B", "maxMoisture": 14, "pesticidesAllowed": false }
+  qualityRequirements Json?
+
+  // Max distance to consider (for logistics)
+  maxDistanceKm    Int?
+
+  // If bid price >= this threshold, auto-accept immediately
+  autoAcceptThreshold Float?
+
+  // How aggressive is the agent in negotiations?
+  negotiationStyle NegotiationStyle @default(BALANCED)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations — an agent can participate in many negotiations
+  farmerNegotiations Negotiation[] @relation("FarmerAgent")
+  buyerNegotiations  Negotiation[] @relation("BuyerAgent")
+}
+
+// =============================================================================
+// Model 6: Bid — A buyer's offer on a listing
+// =============================================================================
+// When a buyer wants to purchase from a listing, they place a bid.
+// The bid can be manual (buyer typed it) or automatic (AI agent placed it).
+
+model Bid {
+  id              String    @id @default(uuid())
+
+  listingId       String
+  listing         Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  buyerId         String
+  buyer           User      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  bidPricePerUnit Float     // Price per unit offered
+  totalAmount     Float     // bidPricePerUnit × quantity
+  quantity        Float     // How much the buyer wants
+
+  currency        Currency  @default(INR)
+  message         String?   // Optional message from buyer
+
+  // Was this bid placed by the AI agent or manually by the user?
+  isAgentBid      Boolean   @default(false)
+
+  status          BidStatus @default(PENDING)
+  counterPrice    Float?    // If farmer counters, this is their price
+
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime? // Bids can have a deadline
+
+  // Relations
+  transaction  Transaction?
+  negotiation  Negotiation?
+}
+
+// =============================================================================
+// Model 7: Transaction — A completed deal
+// =============================================================================
+// When a bid is accepted, a Transaction is created to track payment and delivery.
+// This is the financial record of every deal on the platform.
+
+model Transaction {
+  id                String        @id @default(uuid())
+
+  listingId         String
+  listing           Listing       @relation(fields: [listingId], references: [id])
+
+  bidId             String        @unique // One transaction per bid
+  bid               Bid           @relation(fields: [bidId], references: [id])
+
+  farmerId          String
+  farmer            User          @relation("FarmerTransactions", fields: [farmerId], references: [id])
+
+  buyerId           String
+  buyer             User          @relation("BuyerTransactions", fields: [buyerId], references: [id])
+
+  // Financial details
+  finalPricePerUnit Float
+  totalAmount       Float
+  currency          Currency      @default(INR)
+
+  // Platform fee — how CropBid makes money
+  platformFeePercent Float        @default(2.0)  // 2% fee
+  platformFeeAmount  Float                        // Calculated: totalAmount × 2%
+
+  paymentStatus     PaymentStatus @default(ESCROW)
+  deliveryStatus    DeliveryStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+}
+
+// =============================================================================
+// Model 8: Negotiation — AI agent conversation record
+// =============================================================================
+// When agents negotiate, every round is recorded here as JSON.
+// The `rounds` field stores an array of objects like:
+// [
+//   { round: 1, from: "farmer_agent", action: "counter", price: 2400, reasoning: "..." },
+//   { round: 1, from: "buyer_agent",  action: "counter", price: 2350, reasoning: "..." },
+//   { round: 2, from: "farmer_agent", action: "accept",  price: 2350, reasoning: "..." }
+// ]
+//
+// WHY JSON INSTEAD OF A SEPARATE TABLE?
+// Negotiation rounds are an append-only log always read as a whole.
+// A separate NegotiationRound table would require JOINs and sorting.
+// JSON array is simpler and faster for this use case.
+
+model Negotiation {
+  id             String             @id @default(uuid())
+
+  listingId      String
+  listing        Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  bidId          String             @unique
+  bid            Bid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
+
+  farmerAgentId  String
+  farmerAgent    AgentConfig        @relation("FarmerAgent", fields: [farmerAgentId], references: [id])
+
+  buyerAgentId   String
+  buyerAgent     AgentConfig        @relation("BuyerAgent", fields: [buyerAgentId], references: [id])
+
+  // The negotiation log — see comment above for structure
+  rounds         Json               @default("[]")
+
+  finalOutcome   NegotiationOutcome @default(IN_PROGRESS)
+
+  startedAt      DateTime           @default(now())
+  endedAt        DateTime?          // Null while in progress
+}
+
+// =============================================================================
+// Model 9: Notification — Real-time alerts
+// =============================================================================
+// Every important event creates a notification: new bid, bid accepted,
+// agent action, transaction update, etc.
+//
+// Notifications are BOTH:
+//   1. Saved to this table (so they persist if user is offline)
+//   2. Sent via Socket.io in real-time (instant if user is online)
+
+model Notification {
+  id        String   @id @default(uuid())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      String   // e.g., "NEW_BID", "BID_ACCEPTED", "AGENT_ACTION"
+  title     String   // e.g., "New bid on your Rice listing"
+  message   String   // e.g., "Buyer X offered ₹2,400/quintal for 50 quintals"
+
+  read      Boolean  @default(false)
+
+  // Flexible payload for linking to relevant entities
+  // Example: { "listingId": "abc", "bidId": "xyz" }
+  data      Json?
+
+  createdAt DateTime @default(now())
+}
