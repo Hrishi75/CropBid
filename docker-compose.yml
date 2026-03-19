@@ -1,0 +1,36 @@
+# Docker Compose for CropBid development infrastructure
+#
+# WHY DOCKER FOR POSTGRES?
+# Instead of installing PostgreSQL natively on your machine (which varies by OS
+# and can conflict with other projects), Docker gives you an isolated, reproducible
+# database that starts with one command and doesn't pollute your system.
+#
+# USAGE:
+#   docker compose up -d      → Start PostgreSQL in background
+#   docker compose down        → Stop it
+#   docker compose down -v     → Stop AND delete all data (fresh start)
+
+version: '3.8'
+
+services:
+  postgres:
+    # Alpine variant is ~70MB vs ~400MB for the full image
+    # PostgreSQL 16 has the best JSON and full-text search performance
+    image: postgres:16-alpine
+    container_name: cropbid-db
+    restart: unless-stopped
+    ports:
+      # Maps container port 5432 to your machine's port 5432
+      # So you can connect with: postgresql://localhost:5432/cropbid
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: cropbid
+      POSTGRES_PASSWORD: cropbid_dev
+      POSTGRES_DB: cropbid
+    volumes:
+      # Named volume persists data across container restarts
+      # Without this, stopping the container would delete all your data
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

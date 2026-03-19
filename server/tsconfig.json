@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    // Node 24 supports ES2022 natively — no need to compile down further
+    "target": "ES2022",
+
+    // CommonJS because Express middleware ecosystem still expects require()
+    "module": "commonjs",
+
+    // Build output goes to dist/ — keeps src/ clean
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    // Strict mode catches null/undefined bugs at compile time
+    // Critical for a marketplace where prices must never be undefined
+    "strict": true,
+
+    // Allows: import express from 'express' (instead of: import * as express)
+    "esModuleInterop": true,
+
+    // Allows importing JSON files (useful for seed data, configs)
+    "resolveJsonModule": true,
+
+    // Speeds up compilation by not type-checking node_modules
+    "skipLibCheck": true,
+
+    // Helps VS Code find types
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    // Allows using paths like @/ for imports
+    "baseUrl": "./src",
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
