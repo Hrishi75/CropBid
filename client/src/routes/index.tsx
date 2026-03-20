@@ -20,6 +20,9 @@ import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
 import { AdminListings } from '../pages/admin/AdminListings';
 import { AdminTransactions } from '../pages/admin/AdminTransactions';
+import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
+import { FarmerAnalytics } from '../pages/farmer/FarmerAnalytics';
+import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
 
 // Shared pages
 import { ListingDetail } from '../pages/shared/ListingDetail';
@@ -104,6 +107,14 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/farmer/analytics"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <FarmerAnalytics />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Buyer routes */}
       <Route
@@ -129,6 +140,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <MyBids />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/analytics"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <BuyerAnalytics />
           </ProtectedRoute>
         }
       />
@@ -238,6 +257,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminTransactions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/analytics"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminAnalytics />
           </ProtectedRoute>
         }
       />

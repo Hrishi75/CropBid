@@ -27,6 +27,7 @@ import auctionRoutes from './routes/auction.routes';
 import transactionRoutes from './routes/transaction.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
+import analyticsRoutes from './routes/analytics.routes';
 
 const app = express();
 
@@ -89,6 +90,7 @@ app.use('/api/auctions', auctionRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // =============================================================================
 // Global Error Handler — MUST be last middleware
