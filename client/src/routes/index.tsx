@@ -21,6 +21,8 @@ import { AdminDashboard } from '../pages/admin/AdminDashboard';
 // Shared pages
 import { ListingDetail } from '../pages/shared/ListingDetail';
 import { AgentConfigPage } from '../pages/shared/AgentConfigPage';
+import { NegotiationList } from '../pages/shared/NegotiationList';
+import { NegotiationChat } from '../pages/shared/NegotiationChat';
 
 /**
  * WHY a separate RootRedirect component?
@@ -138,6 +140,22 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
             <AgentConfigPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/negotiations"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+            <NegotiationList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/negotiations/:id"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+            <NegotiationChat />
           </ProtectedRoute>
         }
       />
