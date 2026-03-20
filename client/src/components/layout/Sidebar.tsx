@@ -11,7 +11,12 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  mobile?: boolean;
+  onNavigate?: () => void;
+}
+
+export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
   const { user } = useAuth();
   const location = useLocation();
 
@@ -50,7 +55,7 @@ export function Sidebar() {
     : buyerNav;
 
   return (
-    <aside className="w-64 bg-surface border-r border-border-light min-h-[calc(100vh-4rem)] hidden lg:block">
+    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-4rem)] hidden lg:block'}>
       <nav className="p-4 space-y-1">
         {/* Trust score badge */}
         {user && user.role !== 'ADMIN' && (
@@ -77,6 +82,7 @@ export function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
+              onClick={onNavigate}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
                 ${isActive
                   ? 'bg-primary text-white'

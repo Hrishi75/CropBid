@@ -33,6 +33,7 @@ import { AuctionList } from '../pages/shared/AuctionList';
 import { AuctionRoom } from '../pages/shared/AuctionRoom';
 import { TransactionList } from '../pages/shared/TransactionList';
 import { TransactionDetail } from '../pages/shared/TransactionDetail';
+import { LandingPage } from '../pages/LandingPage';
 
 /**
  * WHY a separate RootRedirect component?
@@ -51,7 +52,7 @@ function RootRedirect() {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <LandingPage />;
 
   switch (user.role) {
     case 'FARMER': return <Navigate to="/farmer" replace />;

@@ -1,10 +1,19 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut } from 'lucide-react';
+import { LogOut, Moon, Sun } from 'lucide-react';
 import { NotificationDropdown } from './NotificationDropdown';
 
 export function Navbar() {
   const { user, logout } = useAuth();
+  const [dark, setDark] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark);
+    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  }, [dark]);
 
   return (
     <nav className="bg-primary text-white shadow-lg sticky top-0 z-50">
@@ -17,10 +26,18 @@ export function Navbar() {
           </Link>
 
           {/* Right side */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Dark mode toggle */}
+            <button
+              onClick={() => setDark(!dark)}
+              className="p-2 rounded-lg hover:bg-primary-light transition-colors"
+              title={dark ? 'Light mode' : 'Dark mode'}
+            >
+              {dark ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
             {user ? (
               <>
-                {/* Real-time notification dropdown */}
                 <NotificationDropdown />
 
                 {/* User info */}
@@ -34,7 +51,6 @@ export function Navbar() {
                   </div>
                 </div>
 
-                {/* Logout */}
                 <button
                   onClick={logout}
                   className="p-2 rounded-lg hover:bg-primary-light transition-colors"
