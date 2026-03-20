@@ -17,6 +17,9 @@ import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { MyBids } from '../pages/buyer/MyBids';
 import { PlaceBid } from '../pages/buyer/PlaceBid';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
+import { AdminUsers } from '../pages/admin/AdminUsers';
+import { AdminListings } from '../pages/admin/AdminListings';
+import { AdminTransactions } from '../pages/admin/AdminTransactions';
 
 // Shared pages
 import { ListingDetail } from '../pages/shared/ListingDetail';
@@ -211,6 +214,30 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminUsers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/listings"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminListings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/transactions"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminTransactions />
           </ProtectedRoute>
         }
       />

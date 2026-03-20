@@ -26,6 +26,7 @@ import negotiationRoutes from './routes/negotiation.routes';
 import auctionRoutes from './routes/auction.routes';
 import transactionRoutes from './routes/transaction.routes';
 import notificationRoutes from './routes/notification.routes';
+import adminRoutes from './routes/admin.routes';
 
 const app = express();
 
@@ -87,7 +88,7 @@ app.use('/api/negotiations', negotiationRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/transactions', transactionRoutes);
 app.use('/api/notifications', notificationRoutes);
-// app.use('/api/admin', adminRoutes);        // Phase 13
+app.use('/api/admin', adminRoutes);
 
 // =============================================================================
 // Global Error Handler — MUST be last middleware
