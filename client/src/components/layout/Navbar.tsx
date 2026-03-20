@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { LogOut, Bell } from 'lucide-react';
+import { LogOut } from 'lucide-react';
+import { NotificationDropdown } from './NotificationDropdown';
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -19,10 +20,8 @@ export function Navbar() {
           <div className="flex items-center gap-4">
             {user ? (
               <>
-                {/* Notification bell (placeholder for Phase 12) */}
-                <button className="p-2 rounded-lg hover:bg-primary-light transition-colors">
-                  <Bell size={20} />
-                </button>
+                {/* Real-time notification dropdown */}
+                <NotificationDropdown />
 
                 {/* User info */}
                 <div className="flex items-center gap-2">

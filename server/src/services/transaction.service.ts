@@ -21,6 +21,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
 
 const PLATFORM_FEE_PERCENT = 2.0;
 
@@ -177,9 +178,18 @@ export async function updateDeliveryStatus(
     },
   });
 
+  // Notify the other party about the delivery update
+  const notifyUserId = rule.by === 'farmer' ? transaction.buyerId : transaction.farmerId;
+  const cropName = updated.listing?.cropName || 'Crop';
+  notifyDeliveryUpdate(notifyUserId, cropName, status, transactionId).catch(() => {});
+
   // If buyer confirmed delivery, release payment and update trust scores
   if (status === 'CONFIRMED') {
     await releasePayment(transactionId);
+    notifyPaymentReleased(
+      transaction.farmerId, transaction.totalAmount - transaction.platformFeeAmount,
+      transaction.currency, transactionId
+    ).catch(() => {});
   }
 
   return updated;

@@ -25,6 +25,7 @@ import agentRoutes from './routes/agent.routes';
 import negotiationRoutes from './routes/negotiation.routes';
 import auctionRoutes from './routes/auction.routes';
 import transactionRoutes from './routes/transaction.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
@@ -85,7 +86,7 @@ app.use('/api/agent', agentRoutes);
 app.use('/api/negotiations', negotiationRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/transactions', transactionRoutes);
-// app.use('/api/notifications', notifRoutes);// Phase 12
+app.use('/api/notifications', notificationRoutes);
 // app.use('/api/admin', adminRoutes);        // Phase 13
 
 // =============================================================================

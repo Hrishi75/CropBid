@@ -114,6 +114,10 @@ export function initializeSocket(httpServer: HttpServer) {
     const userName = (socket as any).userName;
     console.log(`Socket connected: ${userId} (${userName})`);
 
+    // Auto-join user's personal notification room
+    // This enables targeted push notifications via io.to(`user:${userId}`)
+    socket.join(`user:${userId}`);
+
     // --- JOIN AUCTION ---
     socket.on('auction:join', async (listingId: string) => {
       const roomName = `auction:${listingId}`;

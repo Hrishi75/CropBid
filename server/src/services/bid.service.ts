@@ -19,6 +19,8 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered } from './notification.helpers';
+import { createTransaction } from './transaction.service';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -101,6 +103,13 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
       buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
     },
   });
+
+  // Notify the farmer
+  notifyNewBid(
+    listing.farmer.userId, bid.buyer!.name, listing.cropName,
+    input.bidPricePerUnit, listing.currency, listing.unit,
+    listing.id, bid.id
+  ).catch(() => {}); // Fire and forget
 
   return bid;
 }
@@ -227,6 +236,13 @@ export async function acceptBid(bidId: string, farmerId: string) {
     }),
   ]);
 
+  // Create transaction and notify buyer
+  createTransaction(bidId).catch(() => {});
+  notifyBidAccepted(
+    bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
+    bid.currency, bid.listing.unit, bid.listingId, bidId
+  ).catch(() => {});
+
   return accepted;
 }
 
@@ -254,6 +270,8 @@ export async function rejectBid(bidId: string, farmerId: string) {
       buyer: { select: { id: true, name: true } },
     },
   });
+
+  notifyBidRejected(bid.buyerId, bid.listing.cropName, bid.listingId, bidId).catch(() => {});
 
   return rejected;
 }
@@ -290,6 +308,11 @@ export async function counterBid(bidId: string, farmerId: string, counterPrice: 
       listing: true,
     },
   });
+
+  notifyBidCountered(
+    bid.buyerId, bid.listing.cropName, counterPrice,
+    bid.listing.currency, bid.listing.unit, bid.listingId, bidId
+  ).catch(() => {});
 
   return countered;
 }
