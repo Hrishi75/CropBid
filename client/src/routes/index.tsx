@@ -25,6 +25,8 @@ import { NegotiationList } from '../pages/shared/NegotiationList';
 import { NegotiationChat } from '../pages/shared/NegotiationChat';
 import { AuctionList } from '../pages/shared/AuctionList';
 import { AuctionRoom } from '../pages/shared/AuctionRoom';
+import { TransactionList } from '../pages/shared/TransactionList';
+import { TransactionDetail } from '../pages/shared/TransactionDetail';
 
 /**
  * WHY a separate RootRedirect component?
@@ -183,6 +185,22 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
             <AuctionRoom />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transactions"
+        element={
+          <ProtectedRoute>
+            <TransactionList />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/transactions/:id"
+        element={
+          <ProtectedRoute>
+            <TransactionDetail />
           </ProtectedRoute>
         }
       />

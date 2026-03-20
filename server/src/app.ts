@@ -24,6 +24,7 @@ import bidRoutes from './routes/bid.routes';
 import agentRoutes from './routes/agent.routes';
 import negotiationRoutes from './routes/negotiation.routes';
 import auctionRoutes from './routes/auction.routes';
+import transactionRoutes from './routes/transaction.routes';
 
 const app = express();
 
@@ -83,7 +84,7 @@ app.use('/api/bids', bidRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/negotiations', negotiationRoutes);
 app.use('/api/auctions', auctionRoutes);
-// app.use('/api/transactions', txRoutes);    // Phase 11
+app.use('/api/transactions', transactionRoutes);
 // app.use('/api/notifications', notifRoutes);// Phase 12
 // app.use('/api/admin', adminRoutes);        // Phase 13
 
