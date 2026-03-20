@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard, Package, ShoppingCart, Bot, HandshakeIcon,
-  BarChart3, Users, Receipt
+  BarChart3, Users, Receipt, Gavel
 } from 'lucide-react';
 
 interface NavItem {
@@ -21,6 +21,7 @@ export function Sidebar() {
     { label: 'Incoming Bids', path: '/farmer/bids', icon: <ShoppingCart size={20} /> },
     { label: 'AI Agent', path: '/agent', icon: <Bot size={20} /> },
     { label: 'Negotiations', path: '/negotiations', icon: <HandshakeIcon size={20} /> },
+    { label: 'Live Auctions', path: '/auctions', icon: <Gavel size={20} /> },
     { label: 'Transactions', path: '/transactions', icon: <Receipt size={20} /> },
     { label: 'Analytics', path: '/farmer/analytics', icon: <BarChart3 size={20} /> },
   ];
@@ -31,6 +32,7 @@ export function Sidebar() {
     { label: 'My Bids', path: '/buyer/bids', icon: <ShoppingCart size={20} /> },
     { label: 'AI Agent', path: '/agent', icon: <Bot size={20} /> },
     { label: 'Negotiations', path: '/negotiations', icon: <HandshakeIcon size={20} /> },
+    { label: 'Live Auctions', path: '/auctions', icon: <Gavel size={20} /> },
     { label: 'Transactions', path: '/transactions', icon: <Receipt size={20} /> },
     { label: 'Analytics', path: '/buyer/analytics', icon: <BarChart3 size={20} /> },
   ];
