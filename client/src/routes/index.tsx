@@ -11,8 +11,11 @@ import { OnboardingPage } from '../pages/auth/OnboardingPage';
 import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
 import { MyListings } from '../pages/farmer/MyListings';
 import { CreateListing } from '../pages/farmer/CreateListing';
+import { IncomingBids } from '../pages/farmer/IncomingBids';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
+import { MyBids } from '../pages/buyer/MyBids';
+import { PlaceBid } from '../pages/buyer/PlaceBid';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 
 // Shared pages
@@ -83,6 +86,15 @@ export function AppRoutes() {
         }
       />
 
+      <Route
+        path="/farmer/bids"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <IncomingBids />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Buyer routes */}
       <Route
         path="/buyer"
@@ -102,12 +114,29 @@ export function AppRoutes() {
         }
       />
 
+      <Route
+        path="/buyer/bids"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <MyBids />
+          </ProtectedRoute>
+        }
+      />
+
       {/* Shared routes */}
       <Route
         path="/listings/:id"
         element={
           <ProtectedRoute>
             <ListingDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/listings/:id/bid"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <PlaceBid />
           </ProtectedRoute>
         }
       />
