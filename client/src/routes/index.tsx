@@ -9,6 +9,8 @@ import { OnboardingPage } from '../pages/auth/OnboardingPage';
 
 // Dashboard pages (protected)
 import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
+import { MyListings } from '../pages/farmer/MyListings';
+import { CreateListing } from '../pages/farmer/CreateListing';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 
@@ -56,6 +58,23 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['FARMER']}>
             <FarmerDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/farmer/listings"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <MyListings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/farmer/listings/new"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <CreateListing />
           </ProtectedRoute>
         }
       />
