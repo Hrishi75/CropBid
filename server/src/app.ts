@@ -19,6 +19,7 @@ import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth.routes';
 import listingRoutes from './routes/listing.routes';
+import browseRoutes from './routes/browse.routes';
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.get('/api/health', (_req, res) => {
 // =============================================================================
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingRoutes);
+app.use('/api/browse', browseRoutes);
 // app.use('/api/bids', bidRoutes);           // Phase 6
 // app.use('/api/agent', agentRoutes);        // Phase 7
 // app.use('/api/negotiations', negoRoutes);  // Phase 9

@@ -12,7 +12,11 @@ import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
 import { MyListings } from '../pages/farmer/MyListings';
 import { CreateListing } from '../pages/farmer/CreateListing';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
+import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
+
+// Shared pages
+import { ListingDetail } from '../pages/shared/ListingDetail';
 
 /**
  * WHY a separate RootRedirect component?
@@ -85,6 +89,25 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <BuyerDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/buyer/browse"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <BrowseListings />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Shared routes */}
+      <Route
+        path="/listings/:id"
+        element={
+          <ProtectedRoute>
+            <ListingDetail />
           </ProtectedRoute>
         }
       />
