@@ -10,8 +10,6 @@
 #   docker compose down        → Stop it
 #   docker compose down -v     → Stop AND delete all data (fresh start)
 
-version: '3.8'
-
 services:
   postgres:
     # Alpine variant is ~70MB vs ~400MB for the full image

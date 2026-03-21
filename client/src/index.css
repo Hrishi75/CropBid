@@ -1,0 +1,123 @@
+/* =============================================================================
+   CropBid Global Styles — Tailwind CSS v4
+   =============================================================================
+
+   HOW TAILWIND v4 WORKS:
+   Unlike v3 (which needed @tailwind base/components/utilities directives),
+   v4 uses a single @import. The @theme block defines CSS custom properties
+   that Tailwind utilities reference automatically.
+
+   WHY CSS CUSTOM PROPERTIES FOR THEME?
+   When we add dark mode later, we just change the variable values under
+   a .dark class. Every component using bg-surface, text-primary, etc.
+   automatically switches colors. Zero component changes needed.
+   ============================================================================= */
+
+@import "tailwindcss";
+
+/* =============================================================================
+   Custom Theme — Green agricultural palette
+   ============================================================================= */
+@theme {
+  /* Primary green — used for headers, buttons, important UI */
+  --color-primary: #1B5E20;
+  --color-primary-light: #2E7D32;
+  --color-primary-dark: #0D3B12;
+
+  /* Accent green — used for highlights, success states, badges */
+  --color-accent: #4CAF50;
+  --color-accent-light: #81C784;
+  --color-accent-dark: #388E3C;
+
+  /* Surface colors — backgrounds for cards, modals, etc. */
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F5F5F5;
+  --color-surface-hover: #EEEEEE;
+
+  /* Text colors */
+  --color-text: #212121;
+  --color-text-secondary: #616161;
+  --color-text-muted: #9E9E9E;
+  --color-text-inverse: #FFFFFF;
+
+  /* Status colors */
+  --color-success: #4CAF50;
+  --color-warning: #FF9800;
+  --color-error: #F44336;
+  --color-info: #2196F3;
+
+  /* Border */
+  --color-border: #E0E0E0;
+  --color-border-light: #F0F0F0;
+}
+
+/* =============================================================================
+   Base Styles
+   ============================================================================= */
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-surface-alt);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Remove default focus outline, add custom one for accessibility */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Animation for negotiation chat rounds */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Slide-in animation for mobile sidebar */
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-slideIn {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* =============================================================================
+   Dark Mode — Override CSS custom properties under .dark class
+   ============================================================================= */
+.dark {
+  --color-primary: #2E7D32;
+  --color-primary-light: #4CAF50;
+  --color-primary-dark: #1B5E20;
+
+  --color-accent: #66BB6A;
+  --color-accent-light: #81C784;
+  --color-accent-dark: #4CAF50;
+
+  --color-surface: #1E1E1E;
+  --color-surface-alt: #121212;
+  --color-surface-hover: #2C2C2C;
+
+  --color-text: #E0E0E0;
+  --color-text-secondary: #BDBDBD;
+  --color-text-muted: #757575;
+  --color-text-inverse: #121212;
+
+  --color-border: #333333;
+  --color-border-light: #2A2A2A;
+}
