@@ -18,11 +18,10 @@ export function Navbar() {
   return (
     <nav className="bg-primary text-white shadow-lg sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-28">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <span className="text-2xl">🌾</span>
-            <span className="text-xl font-bold">CropBid</span>
+          <Link to="/" className="flex items-center">
+            <img src="/CropBidlogo.png" alt="CropBid" className="h-[100px] object-contain" />
           </Link>
 
           {/* Right side */}
