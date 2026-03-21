@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard, Package, ShoppingCart, Bot, HandshakeIcon,
-  BarChart3, Users, Receipt, Gavel
+  BarChart3, Users, Receipt, Gavel, Truck,
 } from 'lucide-react';
 
 interface NavItem {
@@ -47,6 +47,7 @@ export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
     { label: 'Users', path: '/admin/users', icon: <Users size={20} /> },
     { label: 'Listings', path: '/admin/listings', icon: <Package size={20} /> },
     { label: 'Transactions', path: '/admin/transactions', icon: <Receipt size={20} /> },
+    { label: 'Logistics', path: '/admin/logistics', icon: <Truck size={20} /> },
     { label: 'Analytics', path: '/admin/analytics', icon: <BarChart3 size={20} /> },
   ];
 
@@ -55,7 +56,7 @@ export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
     : buyerNav;
 
   return (
-    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-4rem)] hidden lg:block'}>
+    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-7rem)] hidden lg:block'}>
       <nav className="p-4 space-y-1">
         {/* Trust score badge */}
         {user && user.role !== 'ADMIN' && (
