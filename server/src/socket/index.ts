@@ -32,6 +32,7 @@ import { Server, Socket } from 'socket.io';
 import { config } from '../config';
 import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../lib/prisma';
+import { createTransaction } from '../services/transaction.service';
 
 // =============================================================================
 // Types
@@ -300,14 +301,21 @@ async function endAuction(listingId: string) {
   const roomName = `auction:${listingId}`;
 
   if (auction.currentWinner && auction.bids.length > 0) {
+    // Fetch listing once for quantity
+    const listing = await prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) {
+      activeAuctions.delete(listingId);
+      return;
+    }
+
     // Create a bid record for the winner
     const winningBid = await prisma.bid.create({
       data: {
         listingId,
         buyerId: auction.currentWinner,
         bidPricePerUnit: auction.currentPrice,
-        quantity: (await prisma.listing.findUnique({ where: { id: listingId } }))!.quantity,
-        totalAmount: auction.currentPrice * (await prisma.listing.findUnique({ where: { id: listingId } }))!.quantity,
+        quantity: listing.quantity,
+        totalAmount: auction.currentPrice * listing.quantity,
         currency: auction.currency as any,
         message: `Won via live auction (${auction.bids.length} bids)`,
         isAgentBid: false,
@@ -319,6 +327,11 @@ async function endAuction(listingId: string) {
     await prisma.listing.update({
       where: { id: listingId },
       data: { status: 'SOLD' },
+    });
+
+    // Auto-create transaction for the winning bid
+    createTransaction(winningBid.id).catch((err) => {
+      console.error(`Failed to auto-create transaction for auction bid ${winningBid.id}:`, err);
     });
 
     // Broadcast auction end with winner

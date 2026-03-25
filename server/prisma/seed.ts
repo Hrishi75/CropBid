@@ -202,6 +202,9 @@ async function main() {
 
   // Clean existing data (order matters due to foreign keys)
   console.log('  Cleaning existing data...');
+  await prisma.shipment.deleteMany();
+  await prisma.logisticsPartner.deleteMany();
+  await prisma.waitlist.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.negotiation.deleteMany();
   await prisma.transaction.deleteMany();
@@ -650,6 +653,118 @@ async function main() {
   }
 
   // =========================================================================
+  // 12. Logistics Partners (8)
+  // =========================================================================
+  const logisticsPartners = await Promise.all([
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'SpeedHaul Logistics',
+        type: 'TRUCKING',
+        coverageRegions: ['Maharashtra', 'Gujarat', 'Karnataka', 'Rajasthan', 'Madhya Pradesh'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['10-ton truck', '20-ton truck'],
+        minQuantityKg: 500, maxQuantityKg: 50000,
+        costPerKmPerKg: 0.003, avgDeliveryDays: 3, rating: 4.2,
+        contactEmail: 'ops@speedhaul.in', contactPhone: '+91-9000000001',
+        commissionPercent: 7.5,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'ColdChain Express',
+        type: 'COLD_CHAIN',
+        coverageRegions: ['Maharashtra', 'Delhi', 'Tamil Nadu', 'Karnataka', 'Kerala'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['Reefer Van', 'Cold Truck'],
+        minQuantityKg: 200, maxQuantityKg: 20000,
+        costPerKmPerKg: 0.008, avgDeliveryDays: 2, rating: 4.5,
+        contactEmail: 'dispatch@coldchain.in', contactPhone: '+91-9000000002',
+        commissionPercent: 8.0,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'Kisan Transport Co',
+        type: 'LOCAL',
+        coverageRegions: ['Punjab', 'Haryana', 'Uttar Pradesh', 'Delhi'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['Tractor Trolley', 'Mini Truck'],
+        minQuantityKg: 100, maxQuantityKg: 10000,
+        costPerKmPerKg: 0.002, avgDeliveryDays: 1, rating: 3.8,
+        contactEmail: 'book@kisantransport.in', contactPhone: '+91-9000000003',
+        commissionPercent: 6.0,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'BharatFreight',
+        type: 'FREIGHT',
+        coverageRegions: ['Maharashtra', 'Gujarat', 'Karnataka', 'Tamil Nadu', 'Delhi', 'Punjab', 'Uttar Pradesh', 'Andhra Pradesh', 'Telangana', 'West Bengal'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['Container', 'Flatbed', '40ft Trailer'],
+        minQuantityKg: 5000, maxQuantityKg: 100000,
+        costPerKmPerKg: 0.0015, avgDeliveryDays: 5, rating: 4.0,
+        contactEmail: 'logistics@bharatfreight.in', contactPhone: '+91-9000000004',
+        commissionPercent: 5.0,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'Global Agri Shipping',
+        type: 'EXPORT',
+        coverageRegions: [],
+        coverageCountries: ['India', 'USA', 'Kenya', 'Brazil', 'Australia', 'UK', 'UAE'],
+        vehicleTypes: ['Container Ship', 'Air Cargo'],
+        minQuantityKg: 10000, maxQuantityKg: 500000,
+        costPerKmPerKg: 0.01, avgDeliveryDays: 21, rating: 4.3,
+        contactEmail: 'trade@globalagrishipping.com', contactPhone: '+91-9000000005',
+        commissionPercent: 10.0,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'MidWest Haulers',
+        type: 'TRUCKING',
+        coverageRegions: ['Iowa', 'Illinois', 'Indiana', 'Ohio'],
+        coverageCountries: ['USA'],
+        vehicleTypes: ['Semi Truck', 'Grain Hopper'],
+        minQuantityKg: 5000, maxQuantityKg: 100000,
+        costPerKmPerKg: 0.001, avgDeliveryDays: 2, rating: 4.1,
+        contactEmail: 'dispatch@midwesthaulers.com', contactPhone: '+1-5551234567',
+        commissionPercent: 7.0,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'FreshMove India',
+        type: 'COLD_CHAIN',
+        coverageRegions: ['Tamil Nadu', 'Kerala', 'Karnataka', 'Andhra Pradesh', 'Telangana'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['Reefer 14ft', 'Reefer 24ft'],
+        minQuantityKg: 100, maxQuantityKg: 15000,
+        costPerKmPerKg: 0.007, avgDeliveryDays: 2, rating: 4.4,
+        contactEmail: 'ops@freshmove.in', contactPhone: '+91-9000000007',
+        commissionPercent: 8.5,
+      },
+    }),
+    prisma.logisticsPartner.create({
+      data: {
+        name: 'RuralConnect',
+        type: 'LOCAL',
+        coverageRegions: ['Rajasthan', 'Madhya Pradesh', 'Gujarat'],
+        coverageCountries: ['India'],
+        vehicleTypes: ['Pickup Van', 'Mini Truck'],
+        minQuantityKg: 50, maxQuantityKg: 5000,
+        costPerKmPerKg: 0.0025, avgDeliveryDays: 1, rating: 3.9,
+        contactEmail: 'connect@ruralconnect.in', contactPhone: '+91-9000000008',
+        commissionPercent: 6.5,
+      },
+    }),
+  ]);
+
+  console.log(`  ✅ Created ${logisticsPartners.length} logistics partners`);
+
+  // =========================================================================
   // Summary
   // =========================================================================
   const counts = {
@@ -662,18 +777,20 @@ async function main() {
     negotiations: await prisma.negotiation.count(),
     transactions: await prisma.transaction.count(),
     notifications: await prisma.notification.count(),
+    logisticsPartners: await prisma.logisticsPartner.count(),
   };
 
   console.log('\n🌾 Seed completed! Database populated with:\n');
-  console.log(`  👤 Users:           ${counts.users} (1 admin, 20 farmers, 10 buyers)`);
-  console.log(`  🧑‍🌾 Farmer Profiles:  ${counts.farmerProfiles}`);
-  console.log(`  🏢 Buyer Profiles:   ${counts.buyerProfiles}`);
-  console.log(`  📦 Listings:         ${counts.listings} (40 Indian + 10 global)`);
-  console.log(`  🤖 Agent Configs:    ${counts.agentConfigs}`);
-  console.log(`  💰 Bids:             ${counts.bids}`);
-  console.log(`  🤝 Negotiations:     ${counts.negotiations}`);
-  console.log(`  📋 Transactions:     ${counts.transactions}`);
-  console.log(`  🔔 Notifications:    ${counts.notifications}`);
+  console.log(`  👤 Users:              ${counts.users} (1 admin, 20 farmers, 10 buyers)`);
+  console.log(`  🧑‍🌾 Farmer Profiles:     ${counts.farmerProfiles}`);
+  console.log(`  🏢 Buyer Profiles:      ${counts.buyerProfiles}`);
+  console.log(`  📦 Listings:            ${counts.listings} (40 Indian + 10 global)`);
+  console.log(`  🤖 Agent Configs:       ${counts.agentConfigs}`);
+  console.log(`  💰 Bids:                ${counts.bids}`);
+  console.log(`  🤝 Negotiations:        ${counts.negotiations}`);
+  console.log(`  📋 Transactions:        ${counts.transactions}`);
+  console.log(`  🔔 Notifications:       ${counts.notifications}`);
+  console.log(`  🚚 Logistics Partners:  ${counts.logisticsPartners}`);
   console.log('\n  All test users password: password123');
   console.log('  Admin login: admin@cropbid.test / password123');
   console.log('  Sample farmer: rajesh@cropbid.test / password123');

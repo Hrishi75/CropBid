@@ -214,24 +214,10 @@ async function releasePayment(transactionId: string) {
     }),
 
     // Boost farmer trust score (successful delivery = +2, capped at 100)
-    prisma.user.update({
-      where: { id: transaction.farmerId },
-      data: {
-        trustScore: {
-          increment: 2,
-        },
-      },
-    }),
+    prisma.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.farmerId}`,
 
     // Boost buyer trust score (confirmed receipt = +2, capped at 100)
-    prisma.user.update({
-      where: { id: transaction.buyerId },
-      data: {
-        trustScore: {
-          increment: 2,
-        },
-      },
-    }),
+    prisma.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.buyerId}`,
   ]);
 }
 

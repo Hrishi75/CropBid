@@ -173,6 +173,30 @@ export function TransactionDetail() {
           )}
         </Card>
 
+        {/* Logistics section */}
+        <Card className="mb-6">
+          <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
+            <Truck className="w-4 h-4" />
+            Logistics & Transport
+          </h3>
+          <div className="flex gap-3">
+            <Link to={`/logistics/shipment/transaction/${id}`}>
+              <Button variant="outline" size="sm">
+                <Truck className="w-4 h-4 mr-1" />
+                Track Shipment
+              </Button>
+            </Link>
+            {transaction.deliveryStatus === 'PENDING' && (
+              <Link to={`/logistics/book/${id}`}>
+                <Button size="sm">
+                  <Truck className="w-4 h-4 mr-1" />
+                  Book Transport
+                </Button>
+              </Link>
+            )}
+          </div>
+        </Card>
+
         {/* Transaction details grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Financial details */}

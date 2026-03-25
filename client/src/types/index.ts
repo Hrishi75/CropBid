@@ -184,6 +184,76 @@ export interface Notification {
   createdAt: string;
 }
 
+// --- Logistics ---
+export type LogisticsType = 'TRUCKING' | 'COLD_CHAIN' | 'LOCAL' | 'FREIGHT' | 'EXPORT';
+export type ShipmentStatus = 'PENDING_PICKUP' | 'PICKED_UP' | 'IN_TRANSIT' | 'OUT_FOR_DELIVERY' | 'DELIVERED' | 'FAILED';
+export type PaidBy = 'BUYER' | 'FARMER' | 'SPLIT';
+
+export interface LogisticsPartner {
+  id: string;
+  name: string;
+  type: LogisticsType;
+  coverageRegions: string[];
+  coverageCountries: string[];
+  vehicleTypes: string[];
+  minQuantityKg: number;
+  maxQuantityKg: number;
+  costPerKmPerKg: number;
+  avgDeliveryDays: number;
+  rating: number;
+  contactEmail: string;
+  contactPhone: string;
+  apiEndpoint: string | null;
+  commissionPercent: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TrackingUpdate {
+  timestamp: string;
+  location: string;
+  status: string;
+  note: string;
+}
+
+export interface Shipment {
+  id: string;
+  transactionId: string;
+  transaction?: Transaction;
+  logisticsPartnerId: string;
+  logisticsPartner?: LogisticsPartner;
+  pickupLocation: string;
+  pickupDate: string;
+  deliveryLocation: string;
+  estimatedDeliveryDate: string;
+  actualDeliveryDate: string | null;
+  vehicleType: string;
+  vehicleNumber: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  distanceKm: number;
+  totalWeightKg: number;
+  transportCost: number;
+  platformCommission: number;
+  currency: Currency;
+  paidBy: PaidBy;
+  splitPercentBuyer: number | null;
+  status: ShipmentStatus;
+  trackingUpdates: TrackingUpdate[];
+  proofOfDelivery: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TransportQuote {
+  partner: LogisticsPartner;
+  transportCost: number;
+  platformCommission: number;
+  totalCost: number;
+  estimatedDays: number;
+}
+
 // --- API Response types ---
 export interface AuthResponse {
   user: User;

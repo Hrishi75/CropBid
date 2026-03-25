@@ -387,6 +387,9 @@ model Transaction {
   deliveryStatus    DeliveryStatus @default(PENDING)
 
   createdAt DateTime @default(now())
+
+  // Logistics
+  shipment Shipment?
 }
 
 // =============================================================================
@@ -456,4 +459,110 @@ model Notification {
   data      Json?
 
   createdAt DateTime @default(now())
+}
+
+// =============================================================================
+// Model 10: Waitlist — Early access signups
+// =============================================================================
+
+model Waitlist {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+// =============================================================================
+// Logistics Enums
+// =============================================================================
+
+enum LogisticsType {
+  TRUCKING
+  COLD_CHAIN
+  LOCAL
+  FREIGHT
+  EXPORT
+}
+
+enum ShipmentStatus {
+  PENDING_PICKUP
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+}
+
+enum PaidBy {
+  BUYER
+  FARMER
+  SPLIT
+}
+
+// =============================================================================
+// Model 11: LogisticsPartner — Third-party transport providers
+// =============================================================================
+
+model LogisticsPartner {
+  id                String         @id @default(uuid())
+  name              String
+  type              LogisticsType
+  coverageRegions   String[]       // States/provinces covered
+  coverageCountries String[]       // Countries covered
+  vehicleTypes      String[]       // e.g., ["10-ton truck", "Reefer Van"]
+  minQuantityKg     Float
+  maxQuantityKg     Float
+  costPerKmPerKg    Float          // Rate calculation base
+  avgDeliveryDays   Int
+  rating            Float          @default(4.0)
+  contactEmail      String
+  contactPhone      String
+  apiEndpoint       String?        // For future API integration
+  commissionPercent Float          @default(7.5) // CropBid earns 5-10%
+  active            Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shipments Shipment[]
+}
+
+// =============================================================================
+// Model 12: Shipment — Tracks a delivery from farmer to buyer
+// =============================================================================
+
+model Shipment {
+  id                    String           @id @default(uuid())
+
+  transactionId         String           @unique
+  transaction           Transaction      @relation(fields: [transactionId], references: [id])
+
+  logisticsPartnerId    String
+  logisticsPartner      LogisticsPartner @relation(fields: [logisticsPartnerId], references: [id])
+
+  pickupLocation        String
+  pickupDate            DateTime
+  deliveryLocation      String
+  estimatedDeliveryDate DateTime
+  actualDeliveryDate    DateTime?
+
+  vehicleType           String
+  vehicleNumber         String?
+  driverName            String?
+  driverPhone           String?
+
+  distanceKm            Float
+  totalWeightKg         Float
+  transportCost         Float
+  platformCommission    Float            // CropBid's cut from logistics
+  currency              Currency         @default(INR)
+
+  paidBy                PaidBy
+  splitPercentBuyer     Float?           // Only used when paidBy = SPLIT
+
+  status                ShipmentStatus   @default(PENDING_PICKUP)
+  trackingUpdates       Json             @default("[]")
+  proofOfDelivery       String?          // Photo URL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

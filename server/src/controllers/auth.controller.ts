@@ -115,8 +115,13 @@ export async function logoutHandler(req: Request, res: Response) {
   res.clearCookie('refreshToken', { path: '/api/auth' });
 
   // If user is authenticated, also clear from database
-  if (req.user) {
-    await authService.logout(req.user.userId);
+  try {
+    if (req.user) {
+      await authService.logout(req.user.userId);
+    }
+  } catch (err) {
+    // Don't crash if token is already invalid — logout should always succeed
+    console.error('Logout cleanup error (non-fatal):', err);
   }
 
   res.json({ message: 'Logged out successfully' });

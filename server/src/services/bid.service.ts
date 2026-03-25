@@ -237,7 +237,9 @@ export async function acceptBid(bidId: string, farmerId: string) {
   ]);
 
   // Create transaction and notify buyer
-  createTransaction(bidId).catch(() => {});
+  createTransaction(bidId).catch((err) => {
+    console.error(`Failed to create transaction for accepted bid ${bidId}:`, err);
+  });
   notifyBidAccepted(
     bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
     bid.currency, bid.listing.unit, bid.listingId, bidId
