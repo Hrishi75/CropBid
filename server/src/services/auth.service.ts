@@ -57,6 +57,10 @@ export async function signup(input: SignupInput) {
       currency: input.currency || 'INR',
       language: input.language || 'EN',
     },
+    include: {
+      farmerProfile: true,
+      buyerProfile: true,
+    },
   });
 
   // 4. Generate JWT tokens
@@ -88,9 +92,13 @@ interface LoginInput {
 }
 
 export async function login(input: LoginInput) {
-  // 1. Find user by email
+  // 1. Find user by email (include profiles so client knows onboarding status)
   const user = await prisma.user.findUnique({
     where: { email: input.email },
+    include: {
+      farmerProfile: true,
+      buyerProfile: true,
+    },
   });
 
   if (!user) {
@@ -141,6 +149,10 @@ export async function refresh(refreshToken: string) {
   // we need to ensure it hasn't been invalidated (by logout)
   const user = await prisma.user.findUnique({
     where: { id: payload.userId },
+    include: {
+      farmerProfile: true,
+      buyerProfile: true,
+    },
   });
 
   if (!user || user.refreshToken !== refreshToken) {

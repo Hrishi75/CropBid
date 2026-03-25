@@ -91,3 +91,33 @@ export async function notifyPaymentReleased(farmerId: string, amount: number, cu
     data: { transactionId },
   });
 }
+
+// --- Shipment Events ---
+
+export async function notifyShipmentBooked(userId: string, cropName: string, partnerName: string, pickupDate: string, transactionId: string, shipmentId: string) {
+  await createNotification({
+    userId,
+    type: 'SHIPMENT_BOOKED',
+    title: `Shipment booked for ${cropName}`,
+    message: `${partnerName} will pick up on ${new Date(pickupDate).toLocaleDateString('en-IN')}`,
+    data: { transactionId, shipmentId },
+  });
+}
+
+export async function notifyShipmentUpdate(userId: string, cropName: string, status: string, location: string, shipmentId: string) {
+  const labels: Record<string, string> = {
+    PICKED_UP: 'picked up',
+    IN_TRANSIT: 'in transit',
+    OUT_FOR_DELIVERY: 'out for delivery',
+    DELIVERED: 'delivered',
+    FAILED: 'delivery failed',
+  };
+
+  await createNotification({
+    userId,
+    type: 'SHIPMENT_UPDATE',
+    title: `${cropName} — ${labels[status] || status}`,
+    message: `Shipment ${labels[status] || status} at ${location}`,
+    data: { shipmentId, status },
+  });
+}

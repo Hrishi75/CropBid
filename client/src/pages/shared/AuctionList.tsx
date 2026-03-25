@@ -69,7 +69,8 @@ export function AuctionList() {
   async function fetchMyListings() {
     try {
       const res = await api.get('/listings/my');
-      setMyListings(res.data.filter((l: Listing) => l.status === 'ACTIVE'));
+      const listings = res.data.listings ?? res.data;
+      setMyListings(Array.isArray(listings) ? listings.filter((l: Listing) => l.status === 'ACTIVE') : []);
     } catch (err) {
       console.error('Failed to load listings:', err);
     }

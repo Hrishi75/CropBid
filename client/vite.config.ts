@@ -23,15 +23,15 @@ export default defineConfig({
     // In production, both would be served from the same origin, so no proxy needed.
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
         ws: true, // WebSocket support for Socket.io
         changeOrigin: true,
       },

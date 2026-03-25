@@ -7,20 +7,289 @@ import { Card } from '../../components/ui/Card';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
-const INDIAN_STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
-  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
-  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
+// ---------------------------------------------------------------------------
+// Region / state data by country
+// ---------------------------------------------------------------------------
+const REGIONS_BY_COUNTRY: Record<string, string[]> = {
+  'India': [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+    'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+    'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+    'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
+  ],
+  'United States': [
+    'Alabama', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Florida',
+    'Georgia', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+    'Louisiana', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana',
+    'Nebraska', 'New York', 'North Carolina', 'North Dakota', 'Ohio', 'Oklahoma',
+    'Oregon', 'Pennsylvania', 'South Carolina', 'South Dakota', 'Tennessee',
+    'Texas', 'Virginia', 'Washington', 'Wisconsin',
+  ],
+  'United Kingdom': ['England', 'Scotland', 'Wales', 'Northern Ireland'],
+  'Germany': [
+    'Baden-Württemberg', 'Bavaria', 'Brandenburg', 'Hesse', 'Lower Saxony',
+    'Mecklenburg-Vorpommern', 'North Rhine-Westphalia', 'Rhineland-Palatinate',
+    'Saxony', 'Saxony-Anhalt', 'Schleswig-Holstein', 'Thuringia',
+  ],
+  'France': [
+    'Île-de-France', 'Auvergne-Rhône-Alpes', 'Nouvelle-Aquitaine', 'Occitanie',
+    'Hauts-de-France', 'Grand Est', 'Provence-Alpes-Côte d\'Azur', 'Pays de la Loire',
+    'Bretagne', 'Normandie', 'Bourgogne-Franche-Comté', 'Centre-Val de Loire',
+  ],
+  'Netherlands': [
+    'Drenthe', 'Flevoland', 'Friesland', 'Gelderland', 'Groningen',
+    'Limburg', 'North Brabant', 'North Holland', 'Overijssel',
+    'South Holland', 'Utrecht', 'Zeeland',
+  ],
+  'Brazil': [
+    'Bahia', 'Goiás', 'Mato Grosso', 'Mato Grosso do Sul', 'Minas Gerais',
+    'Paraná', 'Rio Grande do Sul', 'Santa Catarina', 'São Paulo',
+  ],
+  'Kenya': ['Central', 'Coast', 'Eastern', 'Nairobi', 'Nyanza', 'Rift Valley', 'Western'],
+  'Nigeria': ['Benue', 'Cross River', 'Kaduna', 'Kano', 'Lagos', 'Niger', 'Ogun', 'Oyo'],
+  'Australia': ['New South Wales', 'Queensland', 'South Australia', 'Victoria', 'Western Australia'],
+  'UAE': ['Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Fujairah', 'Ras Al Khaimah', 'Umm Al Quwain'],
+  'Thailand': [
+    'Bangkok', 'Chiang Mai', 'Chiang Rai', 'Khon Kaen', 'Nakhon Ratchasima',
+    'Nonthaburi', 'Pathum Thani', 'Phuket', 'Songkhla', 'Udon Thani',
+  ],
+  'Vietnam': [
+    'Hanoi', 'Ho Chi Minh City', 'Da Nang', 'Hai Phong', 'Can Tho',
+    'Lam Dong', 'Dak Lak', 'Gia Lai', 'Binh Duong', 'Dong Nai',
+  ],
+  'Indonesia': [
+    'Bali', 'Banten', 'Central Java', 'East Java', 'Jakarta',
+    'North Sumatra', 'South Sulawesi', 'West Java', 'West Kalimantan', 'Yogyakarta',
+  ],
+  'Ethiopia': [
+    'Addis Ababa', 'Amhara', 'Oromia', 'Sidama', 'Somali',
+    'South Ethiopia', 'South West Ethiopia', 'Tigray',
+  ],
+};
+
+// ---------------------------------------------------------------------------
+// Comprehensive crop catalogue — organised by category with emoji icons
+// ---------------------------------------------------------------------------
+interface CropCategory {
+  name: string;
+  icon: string;
+  crops: string[];
+}
+
+const ALL_CROP_CATEGORIES: CropCategory[] = [
+  {
+    name: 'Cereals & Grains',
+    icon: '🌾',
+    crops: [
+      'Rice', 'Wheat', 'Corn (Maize)', 'Barley', 'Oats', 'Ragi (Finger Millet)',
+      'Sorghum (Jowar)', 'Pearl Millet (Bajra)', 'Foxtail Millet', 'Buckwheat', 'Quinoa',
+    ],
+  },
+  {
+    name: 'Pulses & Legumes',
+    icon: '🫘',
+    crops: [
+      'Chana Dal (Chickpea)', 'Toor Dal (Pigeon Pea)', 'Moong Dal (Green Gram)',
+      'Urad Dal (Black Gram)', 'Masoor Dal (Red Lentil)', 'Kidney Bean (Rajma)',
+      'Soybean', 'Groundnut (Peanut)', 'Black-Eyed Pea (Lobia)', 'Horse Gram',
+    ],
+  },
+  {
+    name: 'Cash Crops',
+    icon: '💰',
+    crops: [
+      'Cotton', 'Sugarcane', 'Jute', 'Tobacco', 'Rubber', 'Coffee', 'Tea',
+      'Cocoa', 'Vanilla', 'Saffron',
+    ],
+  },
+  {
+    name: 'Oilseeds',
+    icon: '🫒',
+    crops: [
+      'Mustard', 'Sunflower', 'Sesame (Til)', 'Castor', 'Linseed (Flax)',
+      'Safflower', 'Niger Seed', 'Palm Oil', 'Rapeseed (Canola)', 'Olive',
+    ],
+  },
+  {
+    name: 'Spices & Condiments',
+    icon: '🌶️',
+    crops: [
+      'Turmeric', 'Black Pepper', 'Chili', 'Cardamom', 'Cumin (Jeera)',
+      'Coriander', 'Ginger', 'Garlic', 'Cinnamon', 'Clove',
+      'Nutmeg', 'Fenugreek (Methi)', 'Fennel (Saunf)', 'Star Anise',
+    ],
+  },
+  {
+    name: 'Vegetables',
+    icon: '🥬',
+    crops: [
+      'Tomato', 'Potato', 'Onion', 'Cauliflower', 'Cabbage', 'Broccoli',
+      'Spinach', 'Okra (Bhindi)', 'Eggplant (Brinjal)', 'Bitter Gourd (Karela)',
+      'Bottle Gourd (Lauki)', 'Pumpkin', 'Carrot', 'Radish', 'Beetroot',
+      'Green Peas', 'Sweet Potato', 'Cassava (Tapioca)', 'Lettuce', 'Bell Pepper',
+      'Cucumber', 'Drumstick (Moringa)', 'Yam', 'Taro (Arbi)',
+    ],
+  },
+  {
+    name: 'Fruits',
+    icon: '🍎',
+    crops: [
+      'Mango', 'Banana', 'Apple', 'Orange', 'Grapes', 'Papaya', 'Guava',
+      'Pomegranate', 'Watermelon', 'Pineapple', 'Lychee', 'Coconut',
+      'Strawberry', 'Blueberry', 'Avocado', 'Dragon Fruit', 'Kiwi',
+      'Citrus (Lemon/Lime)', 'Jackfruit', 'Sapota (Chikoo)', 'Fig', 'Date',
+      'Passion Fruit', 'Custard Apple', 'Peach', 'Plum', 'Cherry',
+    ],
+  },
+  {
+    name: 'Nuts & Dry Fruits',
+    icon: '🥜',
+    crops: [
+      'Cashew', 'Almond', 'Walnut', 'Pistachio', 'Macadamia', 'Pecan',
+      'Hazelnut', 'Arecanut (Betel Nut)', 'Pine Nut',
+    ],
+  },
+  {
+    name: 'Flowers & Aromatics',
+    icon: '🌸',
+    crops: [
+      'Marigold', 'Rose', 'Jasmine', 'Tuberose', 'Chrysanthemum',
+      'Lavender', 'Lemongrass', 'Mint', 'Basil (Tulsi)',
+    ],
+  },
+  {
+    name: 'Fibre & Fodder',
+    icon: '🧵',
+    crops: [
+      'Hay', 'Alfalfa', 'Napier Grass', 'Hemp', 'Kenaf', 'Sisal', 'Coir (Coconut Fibre)',
+    ],
+  },
 ];
 
-const COMMON_CROPS = [
-  'Rice', 'Wheat', 'Cotton', 'Soybean', 'Sugarcane', 'Turmeric', 'Onion',
-  'Tomato', 'Potato', 'Chana Dal', 'Mustard', 'Coffee', 'Tea', 'Pepper',
-  'Groundnut', 'Coconut', 'Banana', 'Corn', 'Barley', 'Ragi',
-];
+// ---------------------------------------------------------------------------
+// Two-step crop picker: Category dropdown -> Crop selector
+// ---------------------------------------------------------------------------
+function CropPicker({
+  selected,
+  onToggle,
+}: {
+  selected: string[];
+  onToggle: (crop: string) => void;
+}) {
+  const [activeCategory, setActiveCategory] = useState('');
 
+  const currentCat = ALL_CROP_CATEGORIES.find(c => c.name === activeCategory);
+
+  // Count selected per category for badges
+  function countSelected(cat: CropCategory) {
+    return cat.crops.filter(c => selected.includes(c)).length;
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm font-medium text-text">
+        Crops Grown
+        {selected.length > 0 && (
+          <span className="ml-2 text-xs font-normal text-accent">
+            {selected.length} selected
+          </span>
+        )}
+      </label>
+
+      {/* Selected crop chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 p-2.5 rounded-lg bg-surface-alt border border-border/60 max-h-28 overflow-y-auto">
+          {selected.map(crop => (
+            <span
+              key={crop}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-accent/15 text-accent border border-accent/30 animate-in"
+            >
+              {crop}
+              <button
+                type="button"
+                onClick={() => onToggle(crop)}
+                className="ml-0.5 hover:text-error transition-colors text-base leading-none"
+                aria-label={`Remove ${crop}`}
+              >
+                &times;
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Step 1: Category dropdown */}
+      <div>
+        <label className="block text-xs font-medium text-text-secondary mb-1">Category</label>
+        <select
+          value={activeCategory}
+          onChange={(e) => setActiveCategory(e.target.value)}
+          className="w-full px-3 py-2.5 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent text-sm"
+        >
+          <option value="">Select a crop category</option>
+          {ALL_CROP_CATEGORIES.map(cat => {
+            const n = countSelected(cat);
+            return (
+              <option key={cat.name} value={cat.name}>
+                {cat.icon} {cat.name} ({cat.crops.length} crops){n > 0 ? ` — ${n} selected` : ''}
+              </option>
+            );
+          })}
+        </select>
+      </div>
+
+      {/* Step 2: Crop grid for selected category */}
+      {currentCat && (
+        <div className="rounded-lg border border-border bg-surface overflow-hidden">
+          <div className="px-3 py-2 bg-surface-alt border-b border-border flex items-center justify-between">
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+              {currentCat.icon} {currentCat.name}
+            </span>
+            <span className="text-xs text-text-muted">
+              {countSelected(currentCat)}/{currentCat.crops.length} selected
+            </span>
+          </div>
+          <div className="p-2.5 flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+            {currentCat.crops.map(crop => {
+              const isSelected = selected.includes(crop);
+              return (
+                <button
+                  key={crop}
+                  type="button"
+                  onClick={() => onToggle(crop)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-200 border
+                    ${isSelected
+                      ? 'bg-accent text-white border-accent shadow-sm scale-[1.02]'
+                      : 'bg-surface text-text-secondary border-border hover:border-accent hover:text-accent hover:bg-accent/5'
+                    }`}
+                >
+                  {isSelected && (
+                    <svg className="inline w-3.5 h-3.5 mr-1 -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {crop}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Hint when nothing selected */}
+      {!activeCategory && selected.length === 0 && (
+        <p className="text-xs text-text-muted text-center py-1">
+          Pick a category above to start selecting your crops
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding page
+// ---------------------------------------------------------------------------
 export function OnboardingPage() {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
@@ -82,6 +351,13 @@ export function OnboardingPage() {
     }
   }
 
+  const userCountry = user?.country || 'India';
+  const regions = REGIONS_BY_COUNTRY[userCountry] || [];
+  const regionLabel = userCountry === 'United States' ? 'State' :
+    userCountry === 'United Kingdom' ? 'Region' :
+    userCountry === 'Brazil' ? 'State' :
+    userCountry === 'India' ? 'State' : 'Region';
+
   if (!user) return null;
 
   return (
@@ -97,6 +373,38 @@ export function OnboardingPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Country badge */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-alt border border-border">
+            <span className="text-sm text-text-secondary">Country:</span>
+            <span className="text-sm font-medium text-text">{userCountry}</span>
+            <span className="ml-auto text-xs text-text-muted">Selected during signup</span>
+          </div>
+
+          {/* Region/State — shared by both farmer and buyer */}
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">{regionLabel}</label>
+            {regions.length > 0 ? (
+              <select
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                required
+              >
+                <option value="">Select {regionLabel.toLowerCase()}</option>
+                {regions.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                placeholder={`Enter your ${regionLabel.toLowerCase()}`}
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+                required
+              />
+            )}
+          </div>
+
           {user.role === 'FARMER' ? (
             <>
               <Input
@@ -108,40 +416,8 @@ export function OnboardingPage() {
                 required
               />
 
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">State</label>
-                <select
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                  required
-                >
-                  <option value="">Select state</option>
-                  {INDIAN_STATES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text mb-2">Crops Grown</label>
-                <div className="flex flex-wrap gap-2">
-                  {COMMON_CROPS.map(crop => (
-                    <button
-                      key={crop}
-                      type="button"
-                      onClick={() => toggleCrop(crop)}
-                      className={`px-3 py-1 rounded-full text-sm transition-colors
-                        ${selectedCrops.includes(crop)
-                          ? 'bg-accent text-white'
-                          : 'bg-surface-alt text-text-secondary hover:bg-surface-hover'
-                        }`}
-                    >
-                      {crop}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Searchable crop picker */}
+              <CropPicker selected={selectedCrops} onToggle={toggleCrop} />
 
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -154,7 +430,7 @@ export function OnboardingPage() {
               </label>
 
               {/* India-specific fields */}
-              {user.country === 'India' && (
+              {userCountry === 'India' && (
                 <>
                   <Input
                     label="FPO Affiliation (optional)"
@@ -198,8 +474,17 @@ export function OnboardingPage() {
               </div>
 
               <Input
-                label={user.country === 'India' ? 'GST Number (optional)' : 'Tax ID (optional)'}
-                placeholder={user.country === 'India' ? 'e.g., 27AABCA1234A1ZA' : 'Tax identification number'}
+                label={
+                  userCountry === 'India' ? 'GST Number (optional)' :
+                  userCountry === 'United States' ? 'EIN (optional)' :
+                  ['Germany', 'France', 'Netherlands', 'United Kingdom'].includes(userCountry) ? 'VAT Number (optional)' :
+                  'Tax ID (optional)'
+                }
+                placeholder={
+                  userCountry === 'India' ? 'e.g., 27AABCA1234A1ZA' :
+                  userCountry === 'United States' ? 'e.g., 12-3456789' :
+                  'Tax identification number'
+                }
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
               />

@@ -34,7 +34,7 @@ export function LoginPage() {
       <Card className="w-full max-w-md" padding="lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">🌾 CropBid</h1>
+          <img src="/CropBidlogo.png" alt="CropBid" className="h-[100px] mx-auto mb-3" />
           <p className="text-text-secondary">Sign in to your account</p>
         </div>
 

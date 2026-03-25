@@ -28,6 +28,8 @@ import transactionRoutes from './routes/transaction.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import waitlistRoutes from './routes/waitlist.routes';
+import logisticsRoutes from './routes/logistics.routes';
 
 const app = express();
 
@@ -91,6 +93,8 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/logistics', logisticsRoutes);
 
 // =============================================================================
 // Global Error Handler — MUST be last middleware

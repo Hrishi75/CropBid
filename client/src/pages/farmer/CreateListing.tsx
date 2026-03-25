@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
@@ -35,7 +35,10 @@ const INDIAN_STATES = [
 export function CreateListing() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { id: editId } = useParams<{ id: string }>();
+  const isEditMode = Boolean(editId);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [images, setImages] = useState<File[]>([]);
 
   // Form fields
@@ -51,6 +54,33 @@ export function CreateListing() {
   const [organic, setOrganic] = useState(false);
   const [location, setLocation] = useState('');
   const [state, setState] = useState('');
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (!editId) return;
+    setFetching(true);
+    api.get(`/listings/${editId}`)
+      .then((res) => {
+        const l = res.data;
+        setCropName(l.cropName || '');
+        setCropVariety(l.cropVariety || '');
+        setQuantity(String(l.quantity || ''));
+        setUnit(l.unit || 'QUINTAL');
+        setQualityGrade(l.qualityGrade || 'A');
+        setPriceMin(String(l.pricePerUnitMin || ''));
+        setPriceMax(String(l.pricePerUnitMax || ''));
+        setHarvestDate(l.harvestDate ? l.harvestDate.split('T')[0] : '');
+        setDescription(l.description || '');
+        setOrganic(l.organic || false);
+        setLocation(l.location || '');
+        setState(l.state || '');
+      })
+      .catch(() => {
+        toast.error('Failed to load listing');
+        navigate('/farmer/listings');
+      })
+      .finally(() => setFetching(false));
+  }, [editId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -85,11 +115,31 @@ export function CreateListing() {
         formData.append('images', file);
       });
 
-      await api.post('/listings', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      if (isEditMode) {
+        // Edit mode sends JSON (no image re-upload)
+        await api.put(`/listings/${editId}`, {
+          cropName,
+          cropVariety: cropVariety || undefined,
+          quantity: parseFloat(quantity),
+          unit,
+          qualityGrade,
+          pricePerUnitMin: parseFloat(priceMin),
+          pricePerUnitMax: parseFloat(priceMax),
+          currency: user?.currency || 'INR',
+          harvestDate: harvestDate || undefined,
+          description: description || undefined,
+          organic,
+          location,
+          country: user?.country || 'India',
+          state,
+        });
+      } else {
+        await api.post('/listings', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
 
-      toast.success('Listing created successfully!');
+      toast.success(isEditMode ? 'Listing updated!' : 'Listing created successfully!');
       navigate('/farmer/listings');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create listing');
@@ -101,7 +151,9 @@ export function CreateListing() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl">
-        <h1 className="text-2xl font-bold text-text mb-6">Create New Listing</h1>
+        <h1 className="text-2xl font-bold text-text mb-6">
+          {isEditMode ? 'Edit Listing' : 'Create New Listing'}
+        </h1>
 
         <Card padding="lg">
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -273,8 +325,8 @@ export function CreateListing() {
 
             {/* Submit */}
             <div className="flex gap-3 pt-2">
-              <Button type="submit" size="lg" className="flex-1" loading={loading}>
-                Create Listing
+              <Button type="submit" size="lg" className="flex-1" loading={loading || fetching}>
+                {isEditMode ? 'Update Listing' : 'Create Listing'}
               </Button>
               <Button
                 type="button"

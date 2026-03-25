@@ -33,7 +33,10 @@ import { AuctionList } from '../pages/shared/AuctionList';
 import { AuctionRoom } from '../pages/shared/AuctionRoom';
 import { TransactionList } from '../pages/shared/TransactionList';
 import { TransactionDetail } from '../pages/shared/TransactionDetail';
+import { BookTransport } from '../pages/shared/BookTransport';
+import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
 import { LandingPage } from '../pages/LandingPage';
+import { AdminLogistics } from '../pages/admin/AdminLogistics';
 
 /**
  * WHY a separate RootRedirect component?
@@ -93,6 +96,15 @@ export function AppRoutes() {
       />
       <Route
         path="/farmer/listings/new"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <CreateListing />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/farmer/listings/:id/edit"
         element={
           <ProtectedRoute allowedRoles={['FARMER']}>
             <CreateListing />
@@ -227,6 +239,22 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/logistics/book/:transactionId"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+            <BookTransport />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/shipment/transaction/:transactionId"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+            <ShipmentTracking />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Admin routes */}
       <Route
@@ -266,6 +294,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminAnalytics />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/logistics"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminLogistics />
           </ProtectedRoute>
         }
       />
