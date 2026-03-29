@@ -13,15 +13,28 @@ export function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  async function handleSubmit(e: React.FormEvent) {
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const formValid = emailValid && password.length > 0;
+
+  function getFieldError(field: string): string | undefined {
+    if (!touched[field]) return undefined;
+    if (field === 'email' && email && !emailValid) return 'Invalid email address';
+    return undefined;
+  }
+
+  async function handleSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
+    setTouched({ email: true, password: true });
+
+    if (!formValid) return;
     setLoading(true);
 
     try {
       await login(email, password);
       toast.success('Welcome back!');
-      navigate('/'); // Router will redirect based on role
+      navigate('/');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Login failed');
     } finally {
@@ -34,19 +47,22 @@ export function LoginPage() {
       <Card className="w-full max-w-md" padding="lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <img src="/CropBidlogo.png" alt="CropBid" className="h-[100px] mx-auto mb-3" />
+          <img src="/CropBidlogo.png" alt="CropBid" className="h-16 sm:h-20 mx-auto mb-3" />
           <p className="text-text-secondary">Sign in to your account</p>
         </div>
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <Input
             label="Email"
             type="email"
-            placeholder="rajesh@cropbid.test"
+            placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, email: true }))}
+            error={getFieldError('email')}
             required
+            aria-required="true"
           />
 
           <Input
@@ -56,9 +72,16 @@ export function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            aria-required="true"
           />
 
-          <Button type="submit" className="w-full" size="lg" loading={loading}>
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            loading={loading}
+            disabled={!formValid && touched.email === true}
+          >
             Sign In
           </Button>
         </form>
@@ -80,6 +103,7 @@ export function LoginPage() {
                   setPassword('password123');
                 }}
                 className="px-3 py-1.5 text-xs rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+                aria-label={`Fill ${account.label} test credentials`}
               >
                 {account.label}
               </button>
