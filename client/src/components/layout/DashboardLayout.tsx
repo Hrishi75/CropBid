@@ -20,7 +20,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Mobile menu button — shown only on small screens */}
         <button
           onClick={() => setMobileMenuOpen(true)}
-          className="lg:hidden fixed bottom-4 right-4 z-40 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center"
+          className="lg:hidden fixed bottom-4 right-4 z-40 w-12 h-12 bg-primary text-white rounded-full shadow-lg flex items-center justify-center hover:bg-primary-light transition-colors"
+          aria-label="Open navigation menu"
         >
           <Menu className="w-6 h-6" />
         </button>
@@ -37,7 +38,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <div className="fixed inset-y-0 left-0 z-50 w-64 bg-surface shadow-xl lg:hidden animate-slideIn">
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <span className="font-bold text-primary">Menu</span>
-                <button onClick={() => setMobileMenuOpen(false)}>
+                <button onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation menu">
                   <X className="w-5 h-5 text-text-muted" />
                 </button>
               </div>

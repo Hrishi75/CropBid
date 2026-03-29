@@ -71,6 +71,16 @@ body {
 
 html {
   scroll-behavior: smooth;
+  /* Smooth dark/light mode transitions on all color properties */
+  color-scheme: light dark;
+}
+
+/* Smooth theme transition for core elements */
+body,
+body * {
+  transition-property: background-color, border-color, color;
+  transition-duration: 0.15s;
+  transition-timing-function: ease-out;
 }
 
 #root {
