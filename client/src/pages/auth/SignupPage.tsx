@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
+import { Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Currency } from '../../types';
 
@@ -27,6 +28,15 @@ const COUNTRIES = [
   { code: 'Ethiopia', label: 'Ethiopia', currency: 'USD' as Currency, phonePlaceholder: '+251-91-123-4567' },
 ];
 
+function PasswordRule({ met, label }: { met: boolean; label: string }) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${met ? 'text-accent' : 'text-text-muted'}`}>
+      {met ? <Check size={12} /> : <X size={12} />}
+      {label}
+    </div>
+  );
+}
+
 export function SignupPage() {
   const { signup } = useAuth();
   const navigate = useNavigate();
@@ -38,14 +48,36 @@ export function SignupPage() {
   const [country, setCountry] = useState('India');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const selectedCountry = COUNTRIES.find(c => c.code === country) || COUNTRIES[0];
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const passwordRules = useMemo(() => ({
+    length: password.length >= 8,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+  }), [password]);
 
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters');
+  const passwordValid = passwordRules.length && passwordRules.upper && passwordRules.lower && passwordRules.number;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const nameValid = name.trim().length >= 2;
+  const formValid = nameValid && emailValid && passwordValid;
+
+  function getFieldError(field: string): string | undefined {
+    if (!touched[field]) return undefined;
+    if (field === 'name' && !nameValid) return 'Name must be at least 2 characters';
+    if (field === 'email' && email && !emailValid) return 'Invalid email address';
+    if (field === 'password' && password && !passwordValid) return 'Password does not meet requirements';
+    return undefined;
+  }
+
+  async function handleSubmit(e: { preventDefault: () => void }) {
+    e.preventDefault();
+    setTouched({ name: true, email: true, password: true });
+
+    if (!formValid) {
+      toast.error('Please fix the errors above');
       return;
     }
 
@@ -72,16 +104,18 @@ export function SignupPage() {
       <Card className="w-full max-w-md" padding="lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <img src="/CropBidlogo.png" alt="CropBid" className="h-[100px] mx-auto mb-3" />
+          <img src="/CropBidlogo.png" alt="CropBid" className="h-16 sm:h-20 mx-auto mb-3" />
           <p className="text-text-secondary">Where AI Agents Negotiate, So Farmers Prosper</p>
         </div>
 
         {/* Role selector */}
-        <div className="flex gap-3 mb-6">
+        <div className="flex gap-3 mb-6" role="radiogroup" aria-label="Account type">
           {(['FARMER', 'BUYER'] as const).map((r) => (
             <button
               key={r}
               type="button"
+              role="radio"
+              aria-checked={role === r}
               onClick={() => setRole(r)}
               className={`flex-1 py-3 rounded-lg border-2 text-sm font-medium transition-all
                 ${role === r
@@ -89,19 +123,22 @@ export function SignupPage() {
                   : 'border-border text-text-secondary hover:border-accent'
                 }`}
             >
-              {r === 'FARMER' ? '🧑‍🌾 I\'m a Farmer' : '🏢 I\'m a Buyer'}
+              {r === 'FARMER' ? "I'm a Farmer" : "I'm a Buyer"}
             </button>
           ))}
         </div>
 
         {/* Signup Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <Input
             label="Full Name"
             placeholder="Enter your full name"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, name: true }))}
+            error={getFieldError('name')}
             required
+            aria-required="true"
           />
 
           <Input
@@ -110,15 +147,19 @@ export function SignupPage() {
             placeholder="your@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onBlur={() => setTouched(t => ({ ...t, email: true }))}
+            error={getFieldError('email')}
             required
+            aria-required="true"
           />
 
           <div>
-            <label className="block text-sm font-medium text-text mb-1">Country</label>
+            <label htmlFor="country-select" className="block text-sm font-medium text-text mb-1">Country</label>
             <select
+              id="country-select"
               value={country}
               onChange={(e) => setCountry(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
               required
             >
               {COUNTRIES.map(c => (
@@ -138,17 +179,37 @@ export function SignupPage() {
             onChange={(e) => setPhone(e.target.value)}
           />
 
-          <Input
-            label="Password"
-            type="password"
-            placeholder="At least 6 characters"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={6}
-          />
+          <div>
+            <Input
+              label="Password"
+              type="password"
+              placeholder="At least 8 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onBlur={() => setTouched(t => ({ ...t, password: true }))}
+              error={getFieldError('password')}
+              required
+              aria-required="true"
+              aria-describedby="password-rules"
+            />
+            {/* Password strength indicators */}
+            {password.length > 0 && (
+              <div id="password-rules" className="grid grid-cols-2 gap-1 mt-2">
+                <PasswordRule met={passwordRules.length} label="8+ characters" />
+                <PasswordRule met={passwordRules.upper} label="Uppercase letter" />
+                <PasswordRule met={passwordRules.lower} label="Lowercase letter" />
+                <PasswordRule met={passwordRules.number} label="Number" />
+              </div>
+            )}
+          </div>
 
-          <Button type="submit" className="w-full" size="lg" loading={loading}>
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            loading={loading}
+            disabled={!formValid && Object.keys(touched).length > 0}
+          >
             Create Account
           </Button>
         </form>
