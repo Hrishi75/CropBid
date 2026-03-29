@@ -10,14 +10,6 @@ interface ListingCardProps {
   onDelete?: (id: string) => void;
 }
 
-/**
- * WHY A REUSABLE CARD?
- * Listings appear in multiple contexts:
- *   - Farmer's "My Listings" page (with edit/delete buttons)
- *   - Buyer's "Browse" page (with bid button)
- *   - Admin's moderation page
- * One component, styled consistently, used everywhere.
- */
 export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingCardProps) {
   const statusColors: Record<string, string> = {
     ACTIVE: 'bg-accent text-white',
@@ -33,29 +25,30 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
   };
 
   return (
-    <div className="bg-surface rounded-xl border border-border-light overflow-hidden hover:shadow-md transition-shadow">
+    <article className="bg-surface rounded-xl border border-border-light overflow-hidden hover:shadow-md transition-all group">
       {/* Image */}
-      <div className="relative h-48 bg-surface-alt">
+      <div className="relative h-48 bg-surface-alt overflow-hidden">
         {listing.images.length > 0 ? (
           <img
             src={listing.images[0]}
-            alt={listing.cropName}
-            className="w-full h-full object-cover"
+            alt={`${listing.cropName} listing`}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl">
-            🌾
+          <div className="w-full h-full flex items-center justify-center text-4xl bg-linear-to-br from-surface-alt to-surface">
+            <span aria-hidden="true">🌾</span>
           </div>
         )}
 
         {/* Status badge */}
-        <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[listing.status] || 'bg-border text-text'}`}>
+        <span className={`absolute top-2 right-2 px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[listing.status] || 'bg-border text-text'}`}>
           {listing.status}
         </span>
 
         {/* Organic badge */}
         {listing.organic && (
-          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full text-xs font-medium bg-primary text-white">
+          <span className="absolute top-2 left-2 px-2.5 py-1 rounded-full text-xs font-medium bg-primary text-white">
             Organic
           </span>
         )}
@@ -72,7 +65,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
               )}
             </h3>
             <p className="text-sm text-text-secondary">
-              {listing.quantity} {listing.unit} &middot; Grade {listing.qualityGrade} ({qualityLabels[listing.qualityGrade]})
+              {listing.quantity} {listing.unit} · Grade {listing.qualityGrade} ({qualityLabels[listing.qualityGrade]})
             </p>
           </div>
         </div>
@@ -90,18 +83,18 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
         {/* Meta info */}
         <div className="flex flex-wrap gap-3 text-xs text-text-secondary mb-3">
           <span className="flex items-center gap-1">
-            <MapPin size={12} />
+            <MapPin size={12} aria-hidden="true" />
             {listing.location}, {listing.state}
           </span>
           {listing.harvestDate && (
             <span className="flex items-center gap-1">
-              <Calendar size={12} />
+              <Calendar size={12} aria-hidden="true" />
               {new Date(listing.harvestDate).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })}
             </span>
           )}
           {listing.farmer?.user && (
             <span className="flex items-center gap-1">
-              <Star size={12} />
+              <Star size={12} aria-hidden="true" />
               {Math.round(listing.farmer.user.trustScore)}/100
             </span>
           )}
@@ -118,7 +111,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
         <div className="flex gap-2">
           <Link
             to={`/listings/${listing.id}`}
-            className="flex-1 text-center px-3 py-1.5 text-sm rounded-lg bg-primary text-white hover:bg-primary-light transition-colors"
+            className="flex-1 text-center px-3 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-light transition-colors"
           >
             View Details
           </Link>
@@ -127,7 +120,8 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
               {onEdit && listing.status === 'ACTIVE' && (
                 <button
                   onClick={() => onEdit(listing.id)}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+                  className="px-3 py-2 text-sm font-medium rounded-lg border border-border text-text-secondary hover:bg-surface-hover transition-colors"
+                  aria-label={`Edit ${listing.cropName} listing`}
                 >
                   Edit
                 </button>
@@ -135,7 +129,8 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
               {onDelete && listing.status === 'ACTIVE' && (
                 <button
                   onClick={() => onDelete(listing.id)}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-error text-error hover:bg-error hover:text-white transition-colors"
+                  className="px-3 py-2 text-sm font-medium rounded-lg border border-error text-error hover:bg-error hover:text-white transition-colors"
+                  aria-label={`Delete ${listing.cropName} listing`}
                 >
                   Delete
                 </button>
@@ -144,6 +139,6 @@ export function ListingCard({ listing, showActions, onEdit, onDelete }: ListingC
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 }
