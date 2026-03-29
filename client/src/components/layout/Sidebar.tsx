@@ -56,7 +56,7 @@ export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
     : buyerNav;
 
   return (
-    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-7rem)] hidden lg:block'}>
+    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-6rem)] hidden lg:block'} role="navigation" aria-label="Sidebar navigation">
       <nav className="p-4 space-y-1">
         {/* Trust score badge */}
         {user && user.role !== 'ADMIN' && (
@@ -84,6 +84,7 @@ export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
               key={item.path}
               to={item.path}
               onClick={onNavigate}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
                 ${isActive
                   ? 'bg-primary text-white'
