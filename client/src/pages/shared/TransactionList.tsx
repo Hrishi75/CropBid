@@ -1,7 +1,3 @@
-// =============================================================================
-// Transaction List — View all transactions with status tracking
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -10,6 +6,8 @@ import {
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SkeletonStats, SkeletonCard } from '../../components/ui/Skeleton';
 import api from '../../lib/axios';
 import type { Transaction } from '../../types';
 
@@ -45,9 +43,9 @@ export function TransactionList() {
   }, []);
 
   const paymentConfig = {
-    ESCROW: { label: 'In Escrow', icon: Shield, color: 'text-status-warning', bg: 'bg-yellow-50' },
-    RELEASED: { label: 'Released', icon: CheckCircle, color: 'text-status-success', bg: 'bg-green-50' },
-    REFUNDED: { label: 'Refunded', icon: AlertTriangle, color: 'text-status-error', bg: 'bg-red-50' },
+    ESCROW: { label: 'In Escrow', icon: Shield, color: 'text-status-warning', bg: 'bg-yellow-50 dark:bg-yellow-900/20' },
+    RELEASED: { label: 'Released', icon: CheckCircle, color: 'text-status-success', bg: 'bg-green-50 dark:bg-green-900/20' },
+    REFUNDED: { label: 'Refunded', icon: AlertTriangle, color: 'text-status-error', bg: 'bg-red-50 dark:bg-red-900/20' },
   };
 
   const deliveryConfig = {
@@ -61,41 +59,43 @@ export function TransactionList() {
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Receipt className="w-7 h-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">Transactions</h1>
+          <Receipt className="w-7 h-7 text-primary" aria-hidden="true" />
+          <h1 className="text-2xl font-bold text-text">Transactions</h1>
         </div>
 
         {/* Stats cards */}
-        {stats && (
+        {loading ? (
+          <div className="mb-6"><SkeletonStats /></div>
+        ) : stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card>
               <div className="text-center">
-                <Package className="w-5 h-5 mx-auto mb-1 text-primary" />
-                <p className="text-2xl font-bold text-text-primary">{stats.total}</p>
+                <Package className="w-5 h-5 mx-auto mb-1 text-primary" aria-hidden="true" />
+                <p className="text-2xl font-bold text-text">{stats.total}</p>
                 <p className="text-xs text-text-muted">Total</p>
               </div>
             </Card>
             <Card>
               <div className="text-center">
-                <Shield className="w-5 h-5 mx-auto mb-1 text-status-warning" />
-                <p className="text-2xl font-bold text-text-primary">{stats.inEscrow}</p>
+                <Shield className="w-5 h-5 mx-auto mb-1 text-status-warning" aria-hidden="true" />
+                <p className="text-2xl font-bold text-text">{stats.inEscrow}</p>
                 <p className="text-xs text-text-muted">In Escrow</p>
               </div>
             </Card>
             <Card>
               <div className="text-center">
-                <CheckCircle className="w-5 h-5 mx-auto mb-1 text-status-success" />
-                <p className="text-2xl font-bold text-text-primary">{stats.released}</p>
+                <CheckCircle className="w-5 h-5 mx-auto mb-1 text-status-success" aria-hidden="true" />
+                <p className="text-2xl font-bold text-text">{stats.released}</p>
                 <p className="text-xs text-text-muted">Completed</p>
               </div>
             </Card>
             <Card>
               <div className="text-center">
-                <DollarSign className="w-5 h-5 mx-auto mb-1 text-accent" />
-                <p className="text-2xl font-bold text-text-primary">
-                  {stats.totalRevenue.toLocaleString('en-IN')}
+                <DollarSign className="w-5 h-5 mx-auto mb-1 text-accent" aria-hidden="true" />
+                <p className="text-2xl font-bold text-text">
+                  {stats.totalRevenue.toLocaleString()}
                 </p>
-                <p className="text-xs text-text-muted">Revenue (INR)</p>
+                <p className="text-xs text-text-muted">Revenue</p>
               </div>
             </Card>
           </div>
@@ -103,19 +103,17 @@ export function TransactionList() {
 
         {/* Transaction list */}
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
           </div>
         ) : transactions.length === 0 ? (
-          <Card>
-            <div className="text-center py-12">
-              <Receipt className="w-12 h-12 text-text-muted mx-auto mb-3" />
-              <p className="text-text-muted">No transactions yet.</p>
-              <p className="text-sm text-text-muted mt-1">
-                Transactions are created when bids are accepted.
-              </p>
-            </div>
-          </Card>
+          <EmptyState
+            icon={<Receipt className="w-8 h-8" />}
+            title="No transactions yet"
+            description="Transactions are created when bids are accepted."
+          />
         ) : (
           <div className="space-y-3">
             {transactions.map((tx) => {
@@ -124,36 +122,36 @@ export function TransactionList() {
               const PaymentIcon = payment.icon;
 
               return (
-                <Link key={tx.id} to={`/transactions/${tx.id}`} className="block">
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <Link key={tx.id} to={`/transactions/${tx.id}`} className="block group">
+                  <Card className="group-hover:shadow-md transition-shadow">
                     <div className="flex items-center justify-between">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-text-primary">
+                          <h3 className="font-semibold text-text truncate">
                             {tx.listing?.cropName || 'Crop'}
                             {tx.listing?.cropVariety ? ` (${tx.listing.cropVariety})` : ''}
                           </h3>
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${payment.bg} ${payment.color}`}>
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium shrink-0 ${payment.bg} ${payment.color}`}>
                             <PaymentIcon className="w-3 h-3" />
                             {payment.label}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-4 text-sm text-text-muted">
+                        <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
                           <span>
-                            {tx.currency} {tx.totalAmount.toLocaleString('en-IN')}
+                            {tx.currency} {tx.totalAmount.toLocaleString()}
                           </span>
-                          <span>•</span>
-                          <span>
+                          <span className="hidden sm:inline">·</span>
+                          <span className="hidden sm:inline">
                             {tx.finalPricePerUnit}/{tx.listing?.unit || 'unit'}
                           </span>
-                          <span>•</span>
+                          <span>·</span>
                           <span className="flex items-center gap-1">
-                            <Truck className="w-3 h-3" />
+                            <Truck className="w-3 h-3" aria-hidden="true" />
                             <span className={delivery.color}>{delivery.label}</span>
                           </span>
-                          <span>•</span>
-                          <span>{new Date(tx.createdAt).toLocaleDateString('en-IN')}</span>
+                          <span>·</span>
+                          <span>{new Date(tx.createdAt).toLocaleDateString()}</span>
                         </div>
 
                         <div className="flex items-center gap-4 text-xs text-text-muted mt-1">
@@ -162,7 +160,7 @@ export function TransactionList() {
                         </div>
                       </div>
 
-                      <ArrowRight className="w-5 h-5 text-text-muted" />
+                      <ArrowRight className="w-5 h-5 text-text-muted shrink-0 ml-3 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </Card>
                 </Link>
