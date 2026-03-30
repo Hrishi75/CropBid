@@ -14,9 +14,11 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
+import { apiLimiter, authLimiter } from './middleware/rateLimiter';
 import authRoutes from './routes/auth.routes';
 import listingRoutes from './routes/listing.routes';
 import browseRoutes from './routes/browse.routes';
@@ -37,21 +39,22 @@ const app = express();
 // Middleware Stack (order matters!)
 // =============================================================================
 
+// Security headers — sets X-Frame-Options, X-Content-Type-Options, HSTS, etc.
+app.use(helmet({
+  contentSecurityPolicy: false,       // CSP handled separately or by frontend
+  crossOriginEmbedderPolicy: false,   // allow image loading from uploads
+}));
+
 // CORS — Cross-Origin Resource Sharing
-// WHY credentials: true?
-// Later, we'll send JWT refresh tokens as httpOnly cookies.
-// Browsers strip cookies from cross-origin requests unless both:
-//   1. Server sets Access-Control-Allow-Credentials: true
-//   2. Client sets withCredentials: true on requests
 app.use(cors({
   origin: config.clientUrl,
   credentials: true,
 }));
 
+// Global API rate limiter — 100 req/min per IP
+app.use('/api', apiLimiter);
+
 // Parse JSON request bodies
-// WHY limit: '10mb'?
-// Default is 100kb which is too small for image upload metadata.
-// Actual images go through Multer (disk), not JSON body.
 app.use(express.json({ limit: '10mb' }));
 
 // Parse URL-encoded form data (for HTML form submissions)
@@ -61,7 +64,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // Serve uploaded files as static assets
-// Example: /uploads/listings/abc123.webp → server/uploads/listings/abc123.webp
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // =============================================================================
@@ -82,6 +84,8 @@ app.get('/api/health', (_req, res) => {
 // =============================================================================
 // Routes
 // =============================================================================
+// Strict rate limit on auth — 10 req/15min per IP
+app.use('/api/auth', authLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/listings', listingRoutes);
 app.use('/api/browse', browseRoutes);

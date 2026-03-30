@@ -1,19 +1,30 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import * as bidService from '../services/bid.service';
 
 function paramId(req: Request): string {
   return req.params.id as string;
 }
 
+const placeBidSchema = z.object({
+  listingId: z.string().min(1),
+  bidPricePerUnit: z.number().positive('Bid price must be positive'),
+  quantity: z.number().positive('Quantity must be positive'),
+  message: z.string().max(500).optional(),
+});
+
 // POST /api/bids — Place a bid
 export async function placeBid(req: Request, res: Response, next: NextFunction) {
   try {
-    const bid = await bidService.placeBid(req.user!.userId, {
-      listingId: req.body.listingId,
+    const parsed = placeBidSchema.safeParse({
+      ...req.body,
       bidPricePerUnit: Number(req.body.bidPricePerUnit),
       quantity: Number(req.body.quantity),
-      message: req.body.message,
     });
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
+    const bid = await bidService.placeBid(req.user!.userId, parsed.data);
     res.status(201).json(bid);
   } catch (error) {
     next(error);
