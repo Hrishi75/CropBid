@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { BidCard } from '../../components/bids/BidCard';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SkeletonCard } from '../../components/ui/Skeleton';
+import { ShoppingCart } from 'lucide-react';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Bid } from '../../types';
@@ -14,6 +18,7 @@ const STATUS_TABS = [
 ];
 
 export function MyBids() {
+  const navigate = useNavigate();
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
@@ -63,17 +68,17 @@ export function MyBids() {
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-40 bg-surface rounded-xl animate-pulse" />
+              <SkeletonCard key={i} />
             ))}
           </div>
         ) : bids.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-4">📋</p>
-            <h2 className="text-xl font-semibold text-text mb-2">No bids yet</h2>
-            <p className="text-text-secondary">
-              Browse listings and place your first bid to get started.
-            </p>
-          </div>
+          <EmptyState
+            icon={<ShoppingCart className="w-8 h-8" />}
+            title="No bids yet"
+            description="Browse listings and place your first bid to get started."
+            actionLabel="Browse Listings"
+            onAction={() => navigate('/buyer/browse')}
+          />
         ) : (
           <div className="space-y-3">
             {bids.map((bid) => (

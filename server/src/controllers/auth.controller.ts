@@ -9,7 +9,29 @@
 // =============================================================================
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import * as authService from '../services/auth.service';
+
+// --- Zod Schemas for input validation ---
+const signupSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.string().email('Invalid email address'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+  role: z.enum(['FARMER', 'BUYER']),
+  phone: z.string().max(20).optional(),
+  country: z.string().max(60).optional(),
+  currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
+  language: z.enum(['EN', 'HI']).optional(),
+});
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(1, 'Password is required'),
+});
 
 // Cookie options for the refresh token
 // WHY THESE OPTIONS?
@@ -30,23 +52,14 @@ const REFRESH_COOKIE_OPTIONS = {
 // POST /api/auth/signup
 // ---------------------------------------------------------------------------
 export async function signupHandler(req: Request, res: Response) {
-  const { name, email, password, role, phone, country, currency, language } = req.body;
-
-  // Basic validation (we'll add Zod validation middleware later)
-  if (!name || !email || !password || !role) {
-    res.status(400).json({ error: true, message: 'Name, email, password, and role are required' });
+  const parsed = signupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
     return;
   }
 
-  if (!['FARMER', 'BUYER'].includes(role)) {
-    res.status(400).json({ error: true, message: 'Role must be FARMER or BUYER' });
-    return;
-  }
-
-  if (password.length < 6) {
-    res.status(400).json({ error: true, message: 'Password must be at least 6 characters' });
-    return;
-  }
+  const { name, email, password, role, phone, country, currency, language } = parsed.data;
 
   const result = await authService.signup({
     name, email, password, role, phone, country, currency, language,
@@ -66,12 +79,14 @@ export async function signupHandler(req: Request, res: Response) {
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 export async function loginHandler(req: Request, res: Response) {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    res.status(400).json({ error: true, message: 'Email and password are required' });
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
     return;
   }
+
+  const { email, password } = parsed.data;
 
   const result = await authService.login({ email, password });
 

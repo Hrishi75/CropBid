@@ -3,14 +3,40 @@
 // =============================================================================
 
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma';
 import * as transactionService from '../services/transaction.service';
+
+const createTxSchema = z.object({
+  bidId: z.string().min(1, 'bidId is required'),
+});
 
 // POST /api/transactions — Create transaction from accepted bid
 export async function createTransaction(req: Request, res: Response, next: NextFunction) {
   try {
-    const { bidId } = req.body;
-    if (!bidId) {
-      return res.status(400).json({ message: 'bidId is required' });
+    const parsed = createTxSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
+
+    const { bidId } = parsed.data;
+
+    // Authorization: verify the requesting user is involved in this bid
+    const bid = await prisma.bid.findUnique({
+      where: { id: bidId },
+      include: { listing: { include: { farmer: true } } },
+    });
+
+    if (!bid) {
+      return res.status(404).json({ message: 'Bid not found' });
+    }
+
+    const userId = req.user!.userId;
+    const isBuyer = bid.buyerId === userId;
+    const isFarmer = bid.listing.farmer.userId === userId;
+
+    if (!isBuyer && !isFarmer) {
+      return res.status(403).json({ message: 'You are not authorized to create this transaction' });
     }
 
     const transaction = await transactionService.createTransaction(bidId);
@@ -59,18 +85,24 @@ export async function getTransaction(req: Request, res: Response, next: NextFunc
   }
 }
 
+const deliveryStatusSchema = z.object({
+  status: z.enum(['PENDING', 'IN_TRANSIT', 'DELIVERED', 'CONFIRMED'], {
+    error: 'Invalid delivery status',
+  }),
+});
+
 // PATCH /api/transactions/:id/delivery — Update delivery status
 export async function updateDeliveryStatus(req: Request, res: Response, next: NextFunction) {
   try {
-    const { status } = req.body;
-    if (!status) {
-      return res.status(400).json({ message: 'status is required' });
+    const parsed = deliveryStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
 
     const transaction = await transactionService.updateDeliveryStatus(
       req.params.id as string,
       req.user!.userId,
-      status
+      parsed.data.status
     );
     res.json(transaction);
   } catch (error) {

@@ -16,17 +16,32 @@ import dotenv from 'dotenv';
 // This must happen BEFORE we read any env vars
 dotenv.config();
 
+const nodeEnv = process.env.NODE_ENV || 'development';
+
+// In production, JWT secrets MUST be set via environment — never use defaults
+const jwtSecret = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-in-production';
+
+if (nodeEnv === 'production') {
+  if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+    throw new Error('FATAL: JWT_SECRET and JWT_REFRESH_SECRET must be set in production');
+  }
+  if (jwtSecret.length < 32 || jwtRefreshSecret.length < 32) {
+    throw new Error('FATAL: JWT secrets must be at least 32 characters in production');
+  }
+}
+
 export const config = {
   // Server
   port: parseInt(process.env.PORT || '5000', 10),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
 
   // Database
   databaseUrl: process.env.DATABASE_URL || 'postgresql://cropbid:cropbid_dev@localhost:5432/cropbid',
 
   // Authentication
-  jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-in-production',
+  jwtSecret,
+  jwtRefreshSecret,
 
   // Google Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
