@@ -12,7 +12,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import api from '../../lib/axios';
 
-const COLORS = ['#2196F3', '#1B5E20', '#4CAF50', '#FF9800', '#F44336', '#9C27B0', '#607D8B', '#81C784'];
+const COLORS = ['#4a6580', '#1f2d18', '#6b8e4e', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869'];
 
 interface BuyerData {
   summary: {
@@ -96,7 +96,7 @@ export function BuyerAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Spent']} />
-                <Bar dataKey="value" fill="#2196F3" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#4a6580" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -135,7 +135,7 @@ export function BuyerAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#2196F3" strokeWidth={2} dot={{ r: 4 }} name="Bids" />
+                <Line type="monotone" dataKey="value" stroke="#4a6580" strokeWidth={2} dot={{ r: 4 }} name="Bids" />
               </LineChart>
             </ResponsiveContainer>
           </Card>
