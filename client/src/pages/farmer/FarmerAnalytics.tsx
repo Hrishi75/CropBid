@@ -12,7 +12,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import api from '../../lib/axios';
 
-const COLORS = ['#1B5E20', '#4CAF50', '#81C784', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#607D8B'];
+const COLORS = ['#1f2d18', '#6b8e4e', '#8ba869', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f'];
 
 interface FarmerData {
   summary: {
@@ -98,7 +98,7 @@ export function FarmerAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
-                <Bar dataKey="value" fill="#1B5E20" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#1f2d18" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -138,7 +138,7 @@ export function FarmerAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#4CAF50" strokeWidth={2} dot={{ r: 4 }} name="Bids" />
+                <Line type="monotone" dataKey="value" stroke="#6b8e4e" strokeWidth={2} dot={{ r: 4 }} name="Bids" />
               </LineChart>
             </ResponsiveContainer>
           </Card>

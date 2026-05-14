@@ -12,7 +12,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
 import api from '../../lib/axios';
 
-const COLORS = ['#1B5E20', '#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0', '#607D8B', '#81C784', '#00BCD4', '#795548'];
+const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869', '#5b8a8a', '#7a5b3f'];
 
 interface AdminData {
   charts: {
@@ -82,7 +82,7 @@ export function AdminAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'GMV']} />
-                <Area type="monotone" dataKey="value" stroke="#1B5E20" fill="#1B5E20" fillOpacity={0.15} strokeWidth={2} />
+                <Area type="monotone" dataKey="value" stroke="#1f2d18" fill="#1f2d18" fillOpacity={0.15} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </Card>
@@ -95,7 +95,7 @@ export function AdminAnalytics() {
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
-                <Bar dataKey="value" fill="#4CAF50" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="#6b8e4e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -111,7 +111,7 @@ export function AdminAnalytics() {
                 <XAxis dataKey="name" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#2196F3" strokeWidth={2} dot={{ r: 3 }} name="Signups" />
+                <Line type="monotone" dataKey="value" stroke="#4a6580" strokeWidth={2} dot={{ r: 3 }} name="Signups" />
               </LineChart>
             </ResponsiveContainer>
           </Card>
@@ -124,7 +124,7 @@ export function AdminAnalytics() {
                 <XAxis dataKey="name" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#4CAF50" strokeWidth={2} dot={{ r: 3 }} name="Listings" />
+                <Line type="monotone" dataKey="value" stroke="#6b8e4e" strokeWidth={2} dot={{ r: 3 }} name="Listings" />
               </LineChart>
             </ResponsiveContainer>
           </Card>
@@ -137,7 +137,7 @@ export function AdminAnalytics() {
                 <XAxis dataKey="name" fontSize={11} />
                 <YAxis fontSize={11} />
                 <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#FF9800" strokeWidth={2} dot={{ r: 3 }} name="Bids" />
+                <Line type="monotone" dataKey="value" stroke="#c9b27a" strokeWidth={2} dot={{ r: 3 }} name="Bids" />
               </LineChart>
             </ResponsiveContainer>
           </Card>
@@ -153,7 +153,7 @@ export function AdminAnalytics() {
                 <XAxis type="number" fontSize={12} />
                 <YAxis type="category" dataKey="name" fontSize={11} width={80} />
                 <Tooltip />
-                <Bar dataKey="value" fill="#1B5E20" radius={[0, 4, 4, 0]} name="Listings" />
+                <Bar dataKey="value" fill="#1f2d18" radius={[0, 4, 4, 0]} name="Listings" />
               </BarChart>
             </ResponsiveContainer>
           </Card>
