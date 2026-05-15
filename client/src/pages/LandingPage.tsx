@@ -877,7 +877,12 @@ export function LandingPage() {
     api
       .get<LandingStats>('/stats/landing')
       .then(({ data }) => {
-        if (!cancelled) setStats(data);
+        // Defensive: when no backend is wired (e.g. Vercel without
+        // VITE_API_URL), a misrouted /api/* request can return HTML.
+        // Only swap in the response if it actually looks like LandingStats.
+        if (!cancelled && data && typeof data === 'object' && 'totals' in data) {
+          setStats(data);
+        }
       })
       .catch(() => {
         // API down — fallback stays. Page still renders.
