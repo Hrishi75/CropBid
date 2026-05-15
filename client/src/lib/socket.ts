@@ -25,7 +25,11 @@ export function getSocket(userName?: string): Socket {
   if (!socket) {
     const token = getAccessToken();
 
-    socket = io('/', {
+    // Dev: '/' lets Vite proxy /socket.io to the local Express server.
+    // Prod (Vercel): VITE_SOCKET_URL points at the deployed backend.
+    const socketUrl = import.meta.env.VITE_SOCKET_URL ?? '/';
+
+    socket = io(socketUrl, {
       // WHY auth object?
       // Socket.io passes this to the server during the initial handshake.
       // The server's middleware extracts the token and verifies it.
