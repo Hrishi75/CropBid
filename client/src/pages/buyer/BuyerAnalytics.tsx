@@ -95,7 +95,7 @@ export function BuyerAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Spent']} />
+                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Spent']} />
                 <Bar dataKey="value" fill="#4a6580" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -113,13 +113,13 @@ export function BuyerAnalytics() {
                   innerRadius={60}
                   outerRadius={100}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 >
                   {charts.procurementMix.map((_, idx) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Spend']} />
+                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Spend']} />
               </PieChart>
             </ResponsiveContainer>
           </Card>
