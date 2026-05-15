@@ -1,18 +1,40 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 
 // =============================================================================
-// Landing Page — wired to live platform stats (/api/stats/landing)
+// Landing Page — global, currency-aware
 // =============================================================================
-// Hero stats + marketplace strip pull from the public stats endpoint. GMV is
-// summed across currencies via FX_TO_USD and displayed in USD. Marketplace
-// rows render in each listing's native currency. Falls back to canned global
-// data so a cold backend doesn't blank the page.
+// Live stats come from GET /api/stats/landing. A country dropdown in the nav
+// drives display currency: prices/GMV/example deals are converted from each
+// listing's native currency to the viewer's currency via FX_TO_USD. Selection
+// persists in localStorage. Page renders against fallback data if the API is
+// unreachable so a cold backend doesn't blank the marketing page.
 
 type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
 type UnitCode = 'KG' | 'QUINTAL' | 'TONNE';
 
+interface Country {
+  code: string;
+  name: string;
+  flag: string;
+  currency: CurrencyCode;
+}
+
+const COUNTRIES: Country[] = [
+  { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD' },
+  { code: 'IN', name: 'India',         flag: '🇮🇳', currency: 'INR' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP' },
+  { code: 'EU', name: 'European Union', flag: '🇪🇺', currency: 'EUR' },
+  { code: 'BR', name: 'Brazil',        flag: '🇧🇷', currency: 'USD' },
+  { code: 'AU', name: 'Australia',     flag: '🇦🇺', currency: 'USD' },
+  { code: 'KE', name: 'Kenya',         flag: '🇰🇪', currency: 'USD' },
+  { code: 'AE', name: 'UAE',           flag: '🇦🇪', currency: 'USD' },
+];
+
+// USD-anchored FX. Used both to combine multi-currency GMV and to convert
+// per-listing prices to the viewer's currency. Replace with a daily feed once
+// treasury wires one in.
 const FX_TO_USD: Record<CurrencyCode, number> = {
   INR: 0.012,
   USD: 1,
@@ -27,6 +49,16 @@ const CURRENCY_SYMBOL: Record<CurrencyCode, string> = {
 const UNIT_LABEL: Record<UnitCode, string> = {
   KG: 'kg', QUINTAL: 'qtl', TONNE: 'MT',
 };
+
+function convert(amount: number, from: CurrencyCode, to: CurrencyCode): number {
+  if (from === to) return amount;
+  const usd = amount * FX_TO_USD[from];
+  return usd / FX_TO_USD[to];
+}
+
+// =============================================================================
+// Static copy — global agri trade
+// =============================================================================
 
 const NAV_LINKS = [
   ['How it works', '#how'],
@@ -51,25 +83,44 @@ const GUARDRAILS = [
   ['Auditability', 'Replayable bid logs. Every counter, every accept, every walk-away — exportable for compliance.'],
 ] as const;
 
-const DIAGRAM_ROWS = [
-  { label: 'PRICE FLOOR',   val: '$275.00 / MT',          bar: 55, hot: false },
-  { label: 'PRICE CEILING', val: '$292.00 / MT',          bar: 92, hot: true  },
-  { label: 'VOLUME RANGE',  val: '4,500 – 5,500 MT',      bar: 75, hot: false },
-  { label: 'PROTEIN MIN',   val: '12.0%',                 bar: 62, hot: false },
-  { label: 'DELIVERY',      val: 'Oct 15 – Oct 30 · FOB origin', bar: 45, hot: false },
-  { label: 'WALK-AWAY',     val: '$294.00 / MT',          bar: 98, hot: true  },
-];
+// Example deal — values stored in USD/MT; rendered in the viewer's currency.
+const DIAGRAM_BASE = {
+  currency: 'USD' as CurrencyCode,
+  unit: 'MT' as const,
+  floor: 275,
+  ceiling: 292,
+  walkAway: 294,
+  qtyLow: 4500,
+  qtyHigh: 5500,
+  protein: '12.0%',
+  delivery: 'Oct 15 – Oct 30 · FOB hub',
+};
 
 const SPARK_POS = [3, 5, 4, 6, 5, 8, 7, 9, 11, 10, 12];
 const SPARK_NEG = [10, 9, 11, 8, 9, 7, 8, 6, 5, 7, 5];
 
-const HOW_ROWS: Array<[string, string, string, string, string, string, string]> = [
-  ['+00:00', 'Brief accepted',         '—',                 '—',          '—',           '—',     '✓'],
-  ['+00:12', 'Invite sent',            '14 sellers',        '—',          '5,000',       '—',     '✓'],
-  ['+01:03', 'Bids opened',            '11 received',       '$281–$294',  '5,000–5,500', '$13.00','✓'],
-  ['+01:24', 'Round 2 counter',        'Hartmann Farms',    '$291.50',    '5,000',       '$9.40', '✓'],
-  ['+01:38', 'Round 3 counter',        'Hartmann Farms',    '$288.00',    '5,000',       '$1.20', '✓'],
-  ['+01:41', 'Match · contract drafted','Hartmann Farms',   '$288.00',    '5,000',       '—',     '●'],
+// Negotiation panel base values — USD/MT, converted at render.
+const NEG_BASE = {
+  currency: 'USD' as CurrencyCode,
+  unit: 'MT' as const,
+  spotRef: 287.4,
+  open: 282.1,
+  counter1: 291.5,
+  counter2: 286.8,
+  final: 288.0,
+  competing: 287.2,
+  qty: 5000,
+  savings: 17400,
+};
+
+// How-it-works trace — USD/MT base values per row.
+const HOW_BASE = [
+  { t: '+00:00', evt: 'Brief accepted',       counter: '—',                  price: null, spread: null, qty: null,  mark: '✓' as const },
+  { t: '+00:12', evt: 'Invite sent',          counter: '14 sellers',         price: null, spread: null, qty: 5000,  mark: '✓' as const },
+  { t: '+01:03', evt: 'Bids opened',          counter: '11 received',        price: [281, 294] as [number, number], spread: 13, qty: 5000, mark: '✓' as const },
+  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Hartmann Farms',     price: 291.5, spread: 9.4, qty: 5000,  mark: '✓' as const },
+  { t: '+01:38', evt: 'Round 3 counter',      counter: 'Hartmann Farms',     price: 288.0, spread: 1.2, qty: 5000,  mark: '✓' as const },
+  { t: '+01:41', evt: 'Match · contract drafted', counter: 'Hartmann Farms', price: 288.0, spread: null, qty: 5000, mark: '●' as const },
 ];
 
 const FOOTER_COLS = [
@@ -78,6 +129,10 @@ const FOOTER_COLS = [
   { title: 'Company',     items: ['About', 'Customers', 'Careers', 'Press', 'Blog', 'Contact'] },
   { title: 'Resources',   items: ['Documentation', 'Trust center', 'Status', 'Reports', 'Glossary', 'API'] },
 ];
+
+// =============================================================================
+// Live data types + fallbacks
+// =============================================================================
 
 type MarketRow = {
   id: string;
@@ -128,17 +183,37 @@ const FALLBACK_STATS: LandingStats = {
 };
 
 const FALLBACK_MARKET: MarketRow[] = [
-  { id: 'f1', crop: 'HRW Wheat',   variety: '12.5% protein', grade: 'A', organic: false, location: 'Kansas City', state: 'Kansas',     country: 'USA',    unit: 'TONNE', currency: 'USD', pricePerUnitMin: 285, pricePerUnitMax: 292, quantity: 5000, bidCount: 8, trustScore: 86, farmerName: 'Hartmann Farms', tone: 'pos', deltaPct: 0.8,  spark: SPARK_POS },
-  { id: 'f2', crop: 'Yellow Corn', variety: 'US #2',         grade: 'B', organic: false, location: 'Des Moines',  state: 'Iowa',       country: 'USA',    unit: 'TONNE', currency: 'USD', pricePerUnitMin: 172, pricePerUnitMax: 180, quantity: 12000, bidCount: 11, trustScore: 92, farmerName: 'John Miller',     tone: 'neg', deltaPct: -0.4, spark: SPARK_NEG },
-  { id: 'f3', crop: 'Soybeans',    variety: 'GMO-free',      grade: 'A', organic: false, location: 'São Paulo',   state: 'São Paulo',  country: 'Brazil', unit: 'TONNE', currency: 'USD', pricePerUnitMin: 408, pricePerUnitMax: 418, quantity: 3500,  bidCount: 6,  trustScore: 78, farmerName: 'Carlos Silva',    tone: 'pos', deltaPct: 1.2,  spark: SPARK_POS },
-  { id: 'f4', crop: 'Arabica',     variety: 'Specialty 85+', grade: 'A', organic: true,  location: 'Nairobi',     state: 'Central',    country: 'Kenya',  unit: 'TONNE', currency: 'USD', pricePerUnitMin: 5750, pricePerUnitMax: 5890, quantity: 240,  bidCount: 9,  trustScore: 88, farmerName: 'James Mwangi',    tone: 'pos', deltaPct: 2.1,  spark: SPARK_POS },
+  { id: 'f1', crop: 'HRW Wheat',   variety: '12.5% protein', grade: 'A', organic: false, location: 'Kansas City', state: 'Kansas',     country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 285, pricePerUnitMax: 292, quantity: 5000, bidCount: 8,  trustScore: 86, farmerName: 'Hartmann Farms',  tone: 'pos', deltaPct: 0.8,  spark: SPARK_POS },
+  { id: 'f2', crop: 'Yellow Corn', variety: 'US #2',         grade: 'B', organic: false, location: 'Des Moines',  state: 'Iowa',       country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 172, pricePerUnitMax: 180, quantity: 12000, bidCount: 11, trustScore: 92, farmerName: 'John Miller',     tone: 'neg', deltaPct: -0.4, spark: SPARK_NEG },
+  { id: 'f3', crop: 'Soybeans',    variety: 'GMO-free',      grade: 'A', organic: false, location: 'São Paulo',   state: 'São Paulo',  country: 'Brazil', unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 408, pricePerUnitMax: 418, quantity: 3500,  bidCount: 6,  trustScore: 78, farmerName: 'Carlos Silva',    tone: 'pos', deltaPct: 1.2,  spark: SPARK_POS },
+  { id: 'f4', crop: 'Arabica',     variety: 'Specialty 85+', grade: 'A', organic: true,  location: 'Nairobi',     state: 'Central',    country: 'Kenya',  unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 5750, pricePerUnitMax: 5890, quantity: 240,  bidCount: 9,  trustScore: 88, farmerName: 'James Mwangi',    tone: 'pos', deltaPct: 2.1,  spark: SPARK_POS },
 ];
 
-function formatUsdCompact(n: number): string {
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
+// =============================================================================
+// Currency formatting
+// =============================================================================
+
+function formatMoney(amount: number, currency: CurrencyCode, opts: { compact?: boolean; decimals?: number } = {}): string {
+  const { compact = false, decimals = 0 } = opts;
+  const sym = CURRENCY_SYMBOL[currency];
+  const abs = Math.abs(amount);
+
+  if (compact) {
+    // INR groups by lakh/crore; others use K/M/B.
+    if (currency === 'INR') {
+      if (abs >= 1e7) return `${sym}${(amount / 1e7).toFixed(amount >= 1e8 ? 0 : 1)} Cr`;
+      if (abs >= 1e5) return `${sym}${(amount / 1e5).toFixed(amount >= 1e6 ? 0 : 1)} L`;
+      if (abs >= 1e3) return `${sym}${(amount / 1e3).toFixed(0)}K`;
+      return `${sym}${amount.toFixed(0)}`;
+    }
+    if (abs >= 1e9) return `${sym}${(amount / 1e9).toFixed(1)}B`;
+    if (abs >= 1e6) return `${sym}${(amount / 1e6).toFixed(1)}M`;
+    if (abs >= 1e3) return `${sym}${(amount / 1e3).toFixed(0)}K`;
+    return `${sym}${amount.toFixed(0)}`;
+  }
+
+  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
+  return `${sym}${amount.toLocaleString(locale, { maximumFractionDigits: decimals, minimumFractionDigits: decimals })}`;
 }
 
 function formatCount(n: number): string {
@@ -147,18 +222,18 @@ function formatCount(n: number): string {
   return `${n}`;
 }
 
-function gmvInUsd(byCurrency: Record<CurrencyCode, number>): number {
+function totalGmvInDisplay(byCurrency: Record<CurrencyCode, number>, display: CurrencyCode): number {
   return (Object.keys(byCurrency) as CurrencyCode[]).reduce(
-    (acc, c) => acc + (byCurrency[c] ?? 0) * FX_TO_USD[c],
+    (acc, c) => acc + convert(byCurrency[c] ?? 0, c, display),
     0,
   );
 }
 
-function formatMarketPrice(row: MarketRow): string {
-  const sym = CURRENCY_SYMBOL[row.currency];
+function formatMarketPrice(row: MarketRow, display: CurrencyCode): string {
   const mid = (row.pricePerUnitMin + row.pricePerUnitMax) / 2;
-  const locale = row.currency === 'INR' ? 'en-IN' : 'en-US';
-  return `${sym}${mid.toLocaleString(locale, { maximumFractionDigits: mid >= 1000 ? 0 : 2 })}`;
+  const converted = convert(mid, row.currency, display);
+  // Per-unit prices: never use K/M compaction — exact figures matter.
+  return formatMoney(converted, display, { decimals: converted >= 1000 ? 0 : 2 });
 }
 
 function formatQuantity(row: MarketRow): string {
@@ -166,6 +241,10 @@ function formatQuantity(row: MarketRow): string {
   if (row.quantity >= 1000) return `${(row.quantity / 1000).toFixed(1)}K ${unit}`;
   return `${Math.round(row.quantity)} ${unit}`;
 }
+
+// =============================================================================
+// SVG icons + chart
+// =============================================================================
 
 function ArrowIcon({ size = 14 }: { size?: number }) {
   return (
@@ -185,6 +264,13 @@ function PlayIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
       <path d="M3 1l8 5-8 5z" />
+    </svg>
+  );
+}
+function ChevronIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+      <path d="M2.5 4l2.5 2.5L7.5 4" />
     </svg>
   );
 }
@@ -217,7 +303,82 @@ function MiniChart({ data, color }: { data: number[]; color: string }) {
   );
 }
 
-function Nav() {
+// =============================================================================
+// Country selector
+// =============================================================================
+
+function CountrySelector({ country, onChange }: { country: Country; onChange: (c: Country) => void }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        className="nav-signin"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          background: 'transparent', border: 'none', cursor: 'pointer',
+          padding: '4px 8px', borderRadius: 6,
+        }}
+      >
+        <span style={{ fontSize: 16, lineHeight: 1 }}>{country.flag}</span>
+        <span>{country.currency}</span>
+        <ChevronIcon />
+      </button>
+      {open && (
+        <ul
+          role="listbox"
+          style={{
+            position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30,
+            minWidth: 220, listStyle: 'none', margin: 0, padding: 6,
+            background: 'var(--cb-paper, #fff)', color: 'var(--cb-ink)',
+            border: '1px solid var(--cb-line)', borderRadius: 10,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.08)',
+            maxHeight: 320, overflowY: 'auto',
+          }}
+        >
+          {COUNTRIES.map((c) => {
+            const selected = c.code === country.code;
+            return (
+              <li key={c.code}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onChange(c);
+                    setOpen(false);
+                  }}
+                  style={{
+                    width: '100%', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 10px', borderRadius: 6,
+                    background: selected ? 'rgba(20,20,15,0.06)' : 'transparent',
+                    border: 'none', cursor: 'pointer', font: 'inherit',
+                    color: 'inherit',
+                  }}
+                >
+                  <span style={{ fontSize: 18, lineHeight: 1 }}>{c.flag}</span>
+                  <span style={{ flex: 1 }}>{c.name}</span>
+                  <span className="cb-mono" style={{ fontSize: 12, opacity: 0.7 }}>{c.currency}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// Sections
+// =============================================================================
+
+function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: (c: Country) => void }) {
   return (
     <header className="nav">
       <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
@@ -230,6 +391,7 @@ function Nav() {
         ))}
       </nav>
       <div className="nav-actions">
+        <CountrySelector country={country} onChange={onChangeCountry} />
         <Link to="/login" className="nav-signin">Sign in</Link>
         <Link to="/signup" className="cb-btn cb-btn-primary">
           Request a buyer agent
@@ -240,10 +402,10 @@ function Nav() {
   );
 }
 
-function Hero({ stats }: { stats: LandingStats }) {
-  const gmv = gmvInUsd(stats.totals.gmvByCurrency);
+function Hero({ stats, currency }: { stats: LandingStats; currency: CurrencyCode }) {
+  const gmv = totalGmvInDisplay(stats.totals.gmvByCurrency, currency);
   const heroStats: ReadonlyArray<readonly [string, string]> = [
-    [gmv > 0 ? formatUsdCompact(gmv) : '—', 'GMV settled on-platform'],
+    [gmv > 0 ? formatMoney(gmv, currency, { compact: true }) : '—', 'GMV settled on-platform'],
     [formatCount(stats.totals.farmers), 'verified growers & FPOs'],
     [`${stats.totals.activeAuctions}`, 'auctions clearing now'],
   ];
@@ -284,13 +446,18 @@ function Hero({ stats }: { stats: LandingStats }) {
             ))}
           </div>
         </div>
-        <NegotiationPanel />
+        <NegotiationPanel currency={currency} />
       </div>
     </section>
   );
 }
 
-function NegotiationPanel() {
+function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
+  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
+  const total = NEG_BASE.final * NEG_BASE.qty;
+  const totalDisplay = formatMoney(convert(total, NEG_BASE.currency, currency), currency, { compact: true });
+  const savingsDisplay = formatMoney(convert(NEG_BASE.savings, NEG_BASE.currency, currency), currency, { compact: true });
+
   return (
     <div className="neg-wrap">
       <div className="cb-card neg-card">
@@ -311,23 +478,23 @@ function NegotiationPanel() {
             </div>
             <div className="neg-lot-ref">
               <div className="cb-tiny">Spot ref</div>
-              <div className="cb-mono neg-lot-ref-val">$287.40/MT</div>
+              <div className="cb-mono neg-lot-ref-val">{fmt(NEG_BASE.spotRef)}/MT</div>
             </div>
           </div>
         </div>
 
         <div className="neg-msgs">
           <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:01">
-            Opening at <b>$282.10/MT</b>. Looking for 5,000 MT HRW 12.5% protein, FOB origin, Oct 15–30 delivery, std contract.
+            Opening at <b>{fmt(NEG_BASE.open)}/MT</b>. Looking for 5,000 MT HRW 12.5% protein, FOB origin, Oct 15–30 delivery, std contract.
           </Msg>
           <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:04">
-            Counter <b>$291.50/MT</b>. Can do 5,000 MT clean — 13.1% protein, falling number 320+. Need 50% L/C on signing.
+            Counter <b>{fmt(NEG_BASE.counter1)}/MT</b>. Can do 5,000 MT clean — 13.1% protein, falling number 320+. Need 50% L/C on signing.
           </Msg>
           <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:11">
-            Premium acknowledged for protein. <b>$286.80/MT</b>, 30% L/C, balance NET-15 post-discharge. Confirm origin certs.
+            Premium acknowledged for protein. <b>{fmt(NEG_BASE.counter2)}/MT</b>, 30% L/C, balance NET-15 post-discharge. Confirm origin certs.
           </Msg>
           <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:15">
-            <b>$288.00/MT</b> — final. USDA-FGIS certs attached, EU-RED traceable. Will release lot on signature.
+            <b>{fmt(NEG_BASE.final)}/MT</b> — final. USDA-FGIS certs attached, EU-RED traceable. Will release lot on signature.
           </Msg>
           <Msg side="system" name="Settlement engine" time="14:22:19">
             Match found. Drafting contract — ETA 11s.
@@ -337,7 +504,7 @@ function NegotiationPanel() {
         <div className="neg-settle">
           <div>
             <div className="cb-mono neg-settle-label">SETTLEMENT</div>
-            <div className="neg-settle-val">$288.00/MT · $1.44M total</div>
+            <div className="neg-settle-val">{fmt(NEG_BASE.final)}/MT · {totalDisplay} total</div>
           </div>
           <button type="button" className="cb-btn">
             Review contract
@@ -348,13 +515,13 @@ function NegotiationPanel() {
 
       <div className="cb-card neg-float bid">
         <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Competing bid</div>
-        <div className="cb-mono neg-float-bid-val">ADM-12 · $287.20/MT</div>
+        <div className="cb-mono neg-float-bid-val">ADM-12 · {fmt(NEG_BASE.competing)}/MT</div>
         <div className="cb-tiny" style={{ marginTop: 4 }}>Outbid 1.4s ago</div>
       </div>
 
       <div className="cb-card neg-float savings">
         <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Savings vs. broker</div>
-        <div className="neg-float-sv-n">+$17,400</div>
+        <div className="neg-float-sv-n">+{savingsDisplay}</div>
         <div className="cb-tiny" style={{ marginTop: 2 }}>1.2% over benchmark</div>
       </div>
     </div>
@@ -416,7 +583,23 @@ function Pillars() {
   );
 }
 
-function AgentAnatomy() {
+function AgentAnatomy({ currency }: { currency: CurrencyCode }) {
+  const fmt = (v: number) => formatMoney(convert(v, DIAGRAM_BASE.currency, currency), currency, { decimals: 2 });
+
+  const rows = [
+    { label: 'PRICE FLOOR',   val: `${fmt(DIAGRAM_BASE.floor)} / MT`,   bar: 55, hot: false },
+    { label: 'PRICE CEILING', val: `${fmt(DIAGRAM_BASE.ceiling)} / MT`, bar: 92, hot: true  },
+    { label: 'VOLUME RANGE',  val: `${DIAGRAM_BASE.qtyLow.toLocaleString('en-US')} – ${DIAGRAM_BASE.qtyHigh.toLocaleString('en-US')} MT`, bar: 75, hot: false },
+    { label: 'PROTEIN MIN',   val: DIAGRAM_BASE.protein,                bar: 62, hot: false },
+    { label: 'DELIVERY',      val: DIAGRAM_BASE.delivery,                bar: 45, hot: false },
+    { label: 'WALK-AWAY',     val: `${fmt(DIAGRAM_BASE.walkAway)} / MT`, bar: 98, hot: true  },
+  ];
+
+  const openDelta = DIAGRAM_BASE.floor + 7;
+  const closeDelta = DIAGRAM_BASE.ceiling - 4;
+  const strategy = `Open at floor + ${fmt(7)}, accept at ceiling − ${fmt(4)}. Match competing bids within 0.5%.`;
+  void openDelta; void closeDelta;
+
   return (
     <section id="buyers" className="anatomy">
       <div className="anatomy-inner">
@@ -444,7 +627,7 @@ function AgentAnatomy() {
             <span className="diagram-active">● ACTIVE · 12 lots</span>
           </div>
           <div className="diagram-rows">
-            {DIAGRAM_ROWS.map((r) => (
+            {rows.map((r) => (
               <div key={r.label} className="diagram-row">
                 <span className="lbl">{r.label}</span>
                 <div className={`diagram-bar${r.hot ? ' hot' : ''}`}>
@@ -456,7 +639,7 @@ function AgentAnatomy() {
           </div>
           <div className="diagram-strategy">
             <div className="head">STRATEGY</div>
-            <div className="body">Open at floor + $7, accept at ceiling − $4. Match competing bids within 0.5%.</div>
+            <div className="body">{strategy}</div>
           </div>
         </div>
       </div>
@@ -464,7 +647,7 @@ function AgentAnatomy() {
   );
 }
 
-function MarketSnapshot({ rows, activeCount }: { rows: MarketRow[]; activeCount: number }) {
+function MarketSnapshot({ rows, activeCount, currency }: { rows: MarketRow[]; activeCount: number; currency: CurrencyCode }) {
   const display = rows.length > 0 ? rows : FALLBACK_MARKET;
   const headline = activeCount > 0 ? `${activeCount} auctions clearing right now.` : 'Live marketplace.';
 
@@ -494,7 +677,7 @@ function MarketSnapshot({ rows, activeCount }: { rows: MarketRow[]; activeCount:
                 <div className="cb-tiny market-grade">
                   {row.variety ? `${row.variety} · ` : ''}Grade {row.grade}{row.organic ? ' · Organic' : ''} · {row.state}, {row.country}
                 </div>
-                <div className="market-price">{formatMarketPrice(row)}<span className="cb-tiny" style={{ marginLeft: 6, opacity: 0.6 }}>/{UNIT_LABEL[row.unit]}</span></div>
+                <div className="market-price">{formatMarketPrice(row, currency)}<span className="cb-tiny" style={{ marginLeft: 6, opacity: 0.6 }}>/{UNIT_LABEL[row.unit]}</span></div>
                 <MiniChart data={row.spark} color={color} />
                 <div className="market-foot">
                   <span className="cb-tiny market-vol">{formatQuantity(row)}</span>
@@ -509,7 +692,9 @@ function MarketSnapshot({ rows, activeCount }: { rows: MarketRow[]; activeCount:
   );
 }
 
-function HowItWorks() {
+function HowItWorks({ currency }: { currency: CurrencyCode }) {
+  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
+
   return (
     <section id="farmers" className="how">
       <div className="how-inner">
@@ -529,17 +714,23 @@ function HowItWorks() {
           <div className="how-row head">
             <span>T+</span><span>Event</span><span>Counter</span><span>Price</span><span>Vol (MT)</span><span>Spread</span><span>—</span>
           </div>
-          {HOW_ROWS.map((row, i) => {
-            const isMatch = i === HOW_ROWS.length - 1;
+          {HOW_BASE.map((row, i) => {
+            const isMatch = i === HOW_BASE.length - 1;
+            const priceCell = row.price === null
+              ? '—'
+              : Array.isArray(row.price)
+                ? `${fmt(row.price[0])} – ${fmt(row.price[1])}`
+                : fmt(row.price);
+            const spreadCell = row.spread === null ? '—' : fmt(row.spread);
             return (
-              <div key={row[0]} className={`how-row${isMatch ? ' match' : ''}`}>
-                <span className="t">{row[0]}</span>
-                <span>{row[1]}</span>
-                <span className="counter">{row[2]}</span>
-                <span className="price">{row[3]}</span>
-                <span className="vol">{row[4]}</span>
-                <span className="spread">{row[5]}</span>
-                <span className={isMatch ? 'match-mark' : 'ok'}>{row[6]}</span>
+              <div key={row.t} className={`how-row${isMatch ? ' match' : ''}`}>
+                <span className="t">{row.t}</span>
+                <span>{row.evt}</span>
+                <span className="counter">{row.counter}</span>
+                <span className="price">{priceCell}</span>
+                <span className="vol">{row.qty === null ? '—' : row.qty.toLocaleString('en-US')}</span>
+                <span className="spread">{spreadCell}</span>
+                <span className={isMatch ? 'match-mark' : 'ok'}>{row.mark}</span>
               </div>
             );
           })}
@@ -665,7 +856,20 @@ function CBFooter() {
   );
 }
 
+// =============================================================================
+// Page
+// =============================================================================
+
+const LS_KEY = 'cb-landing-country';
+
+function loadCountry(): Country {
+  if (typeof window === 'undefined') return COUNTRIES[0];
+  const code = window.localStorage.getItem(LS_KEY);
+  return COUNTRIES.find((c) => c.code === code) ?? COUNTRIES[0];
+}
+
 export function LandingPage() {
+  const [country, setCountry] = useState<Country>(loadCountry);
   const [stats, setStats] = useState<LandingStats>(FALLBACK_STATS);
 
   useEffect(() => {
@@ -683,15 +887,29 @@ export function LandingPage() {
     };
   }, []);
 
+  const currency = country.currency;
+
+  const handleChangeCountry = useMemo(
+    () => (next: Country) => {
+      setCountry(next);
+      try {
+        window.localStorage.setItem(LS_KEY, next.code);
+      } catch {
+        // ignore storage errors (private mode, quota)
+      }
+    },
+    [],
+  );
+
   return (
     <div className="cb-landing">
-      <Nav />
-      <Hero stats={stats} />
+      <Nav country={country} onChangeCountry={handleChangeCountry} />
+      <Hero stats={stats} currency={currency} />
       <LogoStrip />
       <Pillars />
-      <AgentAnatomy />
-      <MarketSnapshot rows={stats.marketplace} activeCount={stats.totals.activeAuctions} />
-      <HowItWorks />
+      <AgentAnatomy currency={currency} />
+      <MarketSnapshot rows={stats.marketplace} activeCount={stats.totals.activeAuctions} currency={currency} />
+      <HowItWorks currency={currency} />
       <Proof stats={stats} />
       <Testimonial />
       <CTA />
