@@ -97,7 +97,7 @@ export function FarmerAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
+                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Revenue']} />
                 <Bar dataKey="value" fill="#1f2d18" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -115,7 +115,7 @@ export function FarmerAnalytics() {
                   innerRadius={60}
                   outerRadius={100}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 >
                   {charts.cropDistribution.map((_, idx) => (
                     <Cell key={idx} fill={COLORS[idx % COLORS.length]} />

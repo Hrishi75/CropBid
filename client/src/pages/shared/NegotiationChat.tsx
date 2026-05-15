@@ -16,7 +16,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Bot, ArrowLeft, CheckCircle, XCircle,
-  TrendingUp, TrendingDown, Minus, Handshake, Ban,
+  TrendingUp, TrendingDown, Handshake, Ban,
 } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';

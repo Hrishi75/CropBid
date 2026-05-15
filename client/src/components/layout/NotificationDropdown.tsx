@@ -17,7 +17,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getSocket, disconnectSocket } from '../../lib/socket';
+import { getSocket } from '../../lib/socket';
 import api from '../../lib/axios';
 import type { Notification } from '../../types';
 

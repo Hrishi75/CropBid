@@ -81,7 +81,7 @@ export function AdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'GMV']} />
+                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'GMV']} />
                 <Area type="monotone" dataKey="value" stroke="#1f2d18" fill="#1f2d18" fillOpacity={0.15} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
@@ -94,7 +94,7 @@ export function AdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
                 <XAxis dataKey="name" fontSize={12} />
                 <YAxis fontSize={12} />
-                <Tooltip formatter={(v: number) => [`₹${v.toLocaleString('en-IN')}`, 'Revenue']} />
+                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Revenue']} />
                 <Bar dataKey="value" fill="#6b8e4e" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

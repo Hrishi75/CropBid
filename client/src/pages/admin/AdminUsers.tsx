@@ -6,7 +6,6 @@ import { useState, useEffect } from 'react';
 import { Users, Search, Edit2, Check, X } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
