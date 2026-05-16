@@ -1,0 +1,14 @@
+# CODEOWNERS — every PR auto-requests review from the listed owners.
+# Syntax: <path-or-glob> <github-username>
+#
+# Replace @Hrishi75 with additional reviewers (or a team handle like
+# @your-org/maintainers) as the team grows.
+
+# Default owner — applies to anything not matched by a more specific rule.
+*                          @Hrishi75
+
+# Sensitive areas — extra scrutiny welcome.
+/server/prisma/            @Hrishi75
+/server/src/middleware/    @Hrishi75
+/server/src/services/auth* @Hrishi75
+/.github/                  @Hrishi75
