@@ -243,6 +243,7 @@ body * {
   text-decoration: none;
 }
 .cb-landing .cb-btn-primary { background: var(--cb-forest); color: #f4f1ea; }
+.cb-landing .cb-btn-label-short { display: none; }
 .cb-landing .cb-btn-primary:hover { background: #14140f; }
 .cb-landing .cb-btn-ghost { background: transparent; color: var(--cb-ink); border-color: var(--cb-line); }
 .cb-landing .cb-btn-ghost:hover { background: rgba(20,20,15,0.04); }
@@ -610,6 +611,9 @@ body * {
 .cb-landing .cb-footer-bottom-links { display: flex; gap: 18px; }
 .cb-landing .cb-footer-bottom-links a { color: inherit; text-decoration: none; }
 
+/* =============================================================================
+   Responsive — tablet ≤ 960px
+   ============================================================================= */
 @media (max-width: 960px) {
   .cb-landing .nav { padding: 16px 24px; }
   .cb-landing .nav-links { display: none; }
@@ -625,6 +629,13 @@ body * {
   .cb-landing .proof,
   .cb-landing .testimonial,
   .cb-landing .cta { padding-left: 24px; padding-right: 24px; }
+  .cb-landing .pillars { padding-top: 80px; padding-bottom: 80px; }
+  .cb-landing .anatomy,
+  .cb-landing .how,
+  .cb-landing .proof,
+  .cb-landing .testimonial { padding-top: 80px; padding-bottom: 80px; }
+  .cb-landing .market { padding-top: 80px; padding-bottom: 80px; }
+  .cb-landing .cta { padding: 80px 24px 100px; }
   .cb-landing .pillars-grid { grid-template-columns: 1fr; }
   .cb-landing .anatomy-inner,
   .cb-landing .how-head,
@@ -638,6 +649,126 @@ body * {
   .cb-landing .cb-footer-cols { grid-template-columns: 1fr 1fr; gap: 32px; }
   .cb-landing .cb-footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
   .cb-landing .neg-float { display: none; }
+  .cb-landing .logo-strip { padding: 28px 24px; }
+  .cb-landing .logo-strip-inner { flex-wrap: wrap; gap: 16px; }
+  .cb-landing .logo-strip-names { flex-wrap: wrap; gap: 16px 24px; justify-content: flex-start; }
+  .cb-landing .cta-card { padding: 48px 32px; }
+  .cb-landing .cta-actions { flex-direction: row; flex-wrap: wrap; }
+  .cb-landing .anatomy-list li { grid-template-columns: 96px 1fr; gap: 12px; }
+  .cb-landing .diagram { padding: 20px; }
+}
+
+/* =============================================================================
+   Responsive — phone ≤ 640px
+   ============================================================================= */
+@media (max-width: 640px) {
+  .cb-landing .nav { padding: 14px 16px; gap: 10px; }
+  .cb-landing .nav-actions { gap: 8px; }
+  .cb-landing .nav-actions .cb-btn-primary { padding: 10px 14px; font-size: 13.5px; }
+  .cb-landing .cb-btn-label { display: none; }
+  .cb-landing .cb-btn-label-short { display: inline; }
+  .cb-landing .wordmark-text { font-size: 17px; }
+
+  .cb-landing .hero { padding: 40px 16px 56px; }
+  .cb-landing .hero-inner { gap: 40px; }
+  .cb-landing .cb-h0 { font-size: 40px; line-height: 1; }
+  .cb-landing .cb-h1 { font-size: 32px; }
+  .cb-landing .cb-h2 { font-size: 26px; }
+  .cb-landing .cb-h3 { font-size: 22px; }
+  .cb-landing .cb-body { font-size: 15.5px; }
+  .cb-landing .hero-lede { font-size: 16px; margin: 0 0 24px; }
+  .cb-landing .hero-actions { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cb-landing .hero-actions .cb-btn { justify-content: center; }
+  .cb-landing .hero-stats { gap: 20px; margin-top: 36px; padding-top: 20px; flex-wrap: wrap; }
+  .cb-landing .hero-stat-n { font-size: 22px; }
+
+  /* Negotiation card */
+  .cb-landing .neg-header { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
+  .cb-landing .neg-lot { padding: 16px; }
+  .cb-landing .neg-lot-row { flex-direction: column; gap: 10px; align-items: flex-start; }
+  .cb-landing .neg-lot-ref { text-align: left; }
+  .cb-landing .neg-lot-title { font-size: 18px; }
+  .cb-landing .neg-msgs { padding: 16px; gap: 10px; }
+  .cb-landing .msg { max-width: 100%; font-size: 13px; padding: 9px 12px; }
+  .cb-landing .neg-settle { padding: 14px 16px; flex-direction: column; align-items: flex-start; gap: 10px; }
+  .cb-landing .neg-settle .cb-btn { width: 100%; justify-content: center; }
+  .cb-landing .neg-settle-val { font-size: 16px; }
+
+  /* Section padding */
+  .cb-landing .pillars,
+  .cb-landing .anatomy,
+  .cb-landing .market,
+  .cb-landing .how,
+  .cb-landing .proof,
+  .cb-landing .testimonial { padding: 64px 16px; }
+  .cb-landing .cta { padding: 64px 16px 80px; }
+  .cb-landing .pillars-head { margin-bottom: 36px; }
+
+  .cb-landing .pillar { padding: 28px 22px; min-height: 0; }
+
+  .cb-landing .anatomy-list li { grid-template-columns: 1fr; gap: 4px; }
+  .cb-landing .anatomy-list .t { padding-top: 0; }
+
+  /* Agent diagram — stack label + bar + val into rows */
+  .cb-landing .diagram-row {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 6px 12px;
+    padding: 10px 12px;
+  }
+  .cb-landing .diagram-row .lbl { grid-column: 1 / -1; }
+  .cb-landing .diagram-bar { grid-column: 1; align-self: center; }
+  .cb-landing .diagram-row .val { grid-column: 2; }
+  .cb-landing .diagram-strategy .body { font-size: 13px; }
+
+  /* Marketplace cards: single column for legibility */
+  .cb-landing .market-grid { grid-template-columns: 1fr; }
+  .cb-landing .market-cell { padding: 18px; gap: 10px; }
+  .cb-landing .market-price { font-size: 20px; }
+  .cb-landing .market-head { flex-direction: column; align-items: flex-start; gap: 16px; margin-bottom: 28px; }
+
+  /* How-it-works table: 3-column even tighter */
+  .cb-landing .how-row { grid-template-columns: 48px 1fr 64px; padding: 10px 14px; }
+  .cb-landing .how-row.head { padding: 12px 14px; }
+  .cb-landing .how-head { margin-bottom: 32px; gap: 24px; }
+
+  /* Proof: 2 → 1 column */
+  .cb-landing .proof-grid { grid-template-columns: 1fr; gap: 24px; }
+  .cb-landing .proof-n { font-size: 44px; }
+
+  /* Testimonial */
+  .cb-landing .testimonial-inner { gap: 32px; }
+  .cb-landing .testimonial-quote { font-size: 26px; }
+  .cb-landing .img-slot { height: 220px; }
+
+  /* CTA */
+  .cb-landing .cta-card { padding: 36px 22px; }
+  .cb-landing .cta-actions { flex-direction: column; }
+  .cb-landing .cta-actions .cb-btn { width: 100%; }
+
+  /* Footer */
+  .cb-landing .cb-footer { padding: 40px 16px 24px; }
+  .cb-landing .cb-footer-cols { grid-template-columns: 1fr; gap: 28px; margin-bottom: 32px; }
+  .cb-landing .cb-footer-blurb { max-width: 100%; }
+  .cb-landing .cb-footer-bottom { font-size: 11.5px; }
+
+  /* Logo strip */
+  .cb-landing .logo-strip { padding: 24px 16px; }
+  .cb-landing .logo-strip-names { gap: 12px 18px; }
+  .cb-landing .logo-strip-names span { font-size: 11.5px; }
+}
+
+/* =============================================================================
+   Responsive — extra small ≤ 380px
+   ============================================================================= */
+@media (max-width: 380px) {
+  .cb-landing .cb-h0 { font-size: 34px; }
+  .cb-landing .cb-h1 { font-size: 28px; }
+  .cb-landing .cb-h2 { font-size: 24px; }
+  .cb-landing .nav-actions .cb-btn-primary { padding: 9px 12px; }
+  .cb-landing .nav-actions .nav-signin { display: none; }
+  .cb-landing .hero-stats { flex-direction: column; gap: 14px; }
+  .cb-landing .hero-stat-n { font-size: 20px; }
 }
 
 /* =============================================================================

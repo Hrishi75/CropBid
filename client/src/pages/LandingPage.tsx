@@ -394,7 +394,8 @@ function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: 
         <CountrySelector country={country} onChange={onChangeCountry} />
         <Link to="/login" className="nav-signin">Sign in</Link>
         <Link to="/signup" className="cb-btn cb-btn-primary">
-          Request a buyer agent
+          <span className="cb-btn-label">Request a buyer agent</span>
+          <span className="cb-btn-label-short">Get agent</span>
           <ArrowIcon />
         </Link>
       </div>
