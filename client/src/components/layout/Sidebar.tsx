@@ -1,102 +1,151 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import {
-  LayoutDashboard, Package, ShoppingCart, Bot, HandshakeIcon,
-  BarChart3, Users, Receipt, Gavel, Truck,
-} from 'lucide-react';
 
 interface NavItem {
   label: string;
   path: string;
-  icon: React.ReactNode;
+  badge?: number;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
 }
 
 interface SidebarProps {
   mobile?: boolean;
   onNavigate?: () => void;
+  pendingCounts?: { bids?: number; negotiations?: number };
 }
 
-export function Sidebar({ mobile, onNavigate }: SidebarProps = {}) {
-  const { user } = useAuth();
+export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}) {
+  const { user, logout } = useAuth();
   const location = useLocation();
 
-  const farmerNav: NavItem[] = [
-    { label: 'Dashboard', path: '/farmer', icon: <LayoutDashboard size={20} /> },
-    { label: 'My Listings', path: '/farmer/listings', icon: <Package size={20} /> },
-    { label: 'Incoming Bids', path: '/farmer/bids', icon: <ShoppingCart size={20} /> },
-    { label: 'AI Agent', path: '/agent', icon: <Bot size={20} /> },
-    { label: 'Negotiations', path: '/negotiations', icon: <HandshakeIcon size={20} /> },
-    { label: 'Live Auctions', path: '/auctions', icon: <Gavel size={20} /> },
-    { label: 'Transactions', path: '/transactions', icon: <Receipt size={20} /> },
-    { label: 'Analytics', path: '/farmer/analytics', icon: <BarChart3 size={20} /> },
+  const farmerSections: NavSection[] = [
+    {
+      title: 'Dashboard',
+      items: [
+        { label: 'Overview', path: '/farmer' },
+        { label: 'Listings', path: '/farmer/listings' },
+        { label: 'Bids', path: '/farmer/bids', badge: pendingCounts?.bids },
+        { label: 'Auctions', path: '/auctions' },
+        { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
+        { label: 'Transactions', path: '/transactions' },
+        { label: 'Analytics', path: '/farmer/analytics' },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        { label: 'Agent', path: '/agent' },
+      ],
+    },
   ];
 
-  const buyerNav: NavItem[] = [
-    { label: 'Dashboard', path: '/buyer', icon: <LayoutDashboard size={20} /> },
-    { label: 'Browse Listings', path: '/buyer/browse', icon: <Package size={20} /> },
-    { label: 'My Bids', path: '/buyer/bids', icon: <ShoppingCart size={20} /> },
-    { label: 'AI Agent', path: '/agent', icon: <Bot size={20} /> },
-    { label: 'Negotiations', path: '/negotiations', icon: <HandshakeIcon size={20} /> },
-    { label: 'Live Auctions', path: '/auctions', icon: <Gavel size={20} /> },
-    { label: 'Transactions', path: '/transactions', icon: <Receipt size={20} /> },
-    { label: 'Analytics', path: '/buyer/analytics', icon: <BarChart3 size={20} /> },
+  const buyerSections: NavSection[] = [
+    {
+      title: 'Dashboard',
+      items: [
+        { label: 'Overview', path: '/buyer' },
+        { label: 'Browse', path: '/buyer/browse' },
+        { label: 'Bids', path: '/buyer/bids', badge: pendingCounts?.bids },
+        { label: 'Auctions', path: '/auctions' },
+        { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
+        { label: 'Transactions', path: '/transactions' },
+        { label: 'Analytics', path: '/buyer/analytics' },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        { label: 'Agent', path: '/agent' },
+      ],
+    },
   ];
 
-  const adminNav: NavItem[] = [
-    { label: 'Dashboard', path: '/admin', icon: <LayoutDashboard size={20} /> },
-    { label: 'Users', path: '/admin/users', icon: <Users size={20} /> },
-    { label: 'Listings', path: '/admin/listings', icon: <Package size={20} /> },
-    { label: 'Transactions', path: '/admin/transactions', icon: <Receipt size={20} /> },
-    { label: 'Logistics', path: '/admin/logistics', icon: <Truck size={20} /> },
-    { label: 'Analytics', path: '/admin/analytics', icon: <BarChart3 size={20} /> },
+  const adminSections: NavSection[] = [
+    {
+      title: 'Admin',
+      items: [
+        { label: 'Overview', path: '/admin' },
+        { label: 'Users', path: '/admin/users' },
+        { label: 'Listings', path: '/admin/listings' },
+        { label: 'Transactions', path: '/admin/transactions' },
+        { label: 'Logistics', path: '/admin/logistics' },
+        { label: 'Analytics', path: '/admin/analytics' },
+      ],
+    },
   ];
 
-  const navItems = user?.role === 'ADMIN' ? adminNav
-    : user?.role === 'FARMER' ? farmerNav
-    : buyerNav;
+  const sections = user?.role === 'ADMIN' ? adminSections
+    : user?.role === 'FARMER' ? farmerSections
+    : buyerSections;
 
   return (
-    <aside className={mobile ? 'w-full' : 'w-64 bg-surface border-r border-border-light min-h-[calc(100vh-6rem)] hidden lg:block'} role="navigation" aria-label="Sidebar navigation">
-      <nav className="p-4 space-y-1">
-        {/* Trust score badge */}
-        {user && user.role !== 'ADMIN' && (
-          <div className="mb-4 p-3 rounded-lg bg-surface-alt">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-text-secondary">Trust Score</span>
-              <span className="text-sm font-bold text-primary">
-                {Math.round(user.trustScore)}/100
-              </span>
-            </div>
-            <div className="w-full bg-border rounded-full h-2">
-              <div
-                className="bg-accent rounded-full h-2 transition-all"
-                style={{ width: `${user.trustScore}%` }}
-              />
-            </div>
+    <aside
+      className={`cb-sidebar ${mobile ? 'open' : ''}`}
+      role="navigation"
+      aria-label="Sidebar"
+    >
+      <Link to="/" className="wordmark" style={{ padding: '4px 10px 8px' }} onClick={onNavigate}>
+        <span style={{ display: 'inline-flex', width: 22, height: 22 }}>
+          <ArcMark size={22} />
+        </span>
+        <span className="wordmark-text">CropBid</span>
+      </Link>
+
+      {sections.map((section) => (
+        <div key={section.title} className="cb-sidebar-section">
+          <div className="cb-sidebar-section-title">{section.title}</div>
+          {section.items.map((item) => {
+            const isActive = location.pathname === item.path
+              || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={onNavigate}
+                aria-current={isActive ? 'page' : undefined}
+                className={`cb-sidebar-link ${isActive ? 'active' : ''}`}
+              >
+                <span>{item.label}</span>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="cb-count">{item.badge}</span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
+
+      <div className="cb-sidebar-footer">
+        {user && (
+          <div style={{ padding: '8px 10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--cb-ink)' }}>{user.name}</span>
+            <span className="cb-tiny" style={{ textTransform: 'lowercase' }}>{user.role.toLowerCase()}</span>
           </div>
         )}
-
-        {/* Navigation items */}
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={onNavigate}
-              aria-current={isActive ? 'page' : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors
-                ${isActive
-                  ? 'bg-primary text-white'
-                  : 'text-text-secondary hover:bg-surface-hover hover:text-text'
-                }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
+        <button
+          type="button"
+          onClick={logout}
+          className="cb-sidebar-link"
+          style={{ width: '100%', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer' }}
+        >
+          Sign out
+        </button>
+      </div>
     </aside>
+  );
+}
+
+function ArcMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+      <path d="M5 30C5 17 10 8 20 8s15 9 15 22" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
+      <circle cx="5" cy="30" r="3.6" fill="currentColor" />
+      <circle cx="35" cy="30" r="3.6" fill="currentColor" />
+      <circle cx="20" cy="8" r="2.6" fill="#c8602b" />
+    </svg>
   );
 }
