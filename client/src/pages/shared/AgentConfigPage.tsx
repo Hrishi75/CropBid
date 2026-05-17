@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { NegotiationStylePicker } from '../../components/agent/NegotiationStylePicker';
-import { AgentStatusBadge } from '../../components/agent/AgentStatusBadge';
+import { ArrowIcon } from '../../components/ui/Brand';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { AgentConfig, NegotiationStyle } from '../../types';
@@ -16,6 +15,24 @@ const COMMON_CROPS = [
   'Groundnut', 'Coconut', 'Banana', 'Corn', 'Barley', 'Ragi',
 ];
 
+const STYLE_META: { value: NegotiationStyle; label: string; arrow: string; desc: string; winRate: string }[] = [
+  { value: 'AGGRESSIVE', label: 'Aggressive', arrow: '↑', desc: 'open low, chase up to ceiling', winRate: 'wins 78%' },
+  { value: 'BALANCED', label: 'Balanced', arrow: '↔', desc: 'meet 60% of delta', winRate: 'wins 84%' },
+  { value: 'CONSERVATIVE', label: 'Cautious', arrow: '↓', desc: 'open mid, small increments', winRate: 'wins 67%' },
+];
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div className="cb-card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div>
+        <div className="cb-eyebrow">{title}</div>
+        {hint && <div className="cb-tiny" style={{ marginTop: 4 }}>{hint}</div>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function AgentConfigPage() {
   const { user } = useAuth();
   const [config, setConfig] = useState<AgentConfig | null>(null);
@@ -23,7 +40,6 @@ export function AgentConfigPage() {
   const [saving, setSaving] = useState(false);
   const [toggling, setToggling] = useState(false);
 
-  // Form state
   const [style, setStyle] = useState<NegotiationStyle>('BALANCED');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
@@ -31,6 +47,9 @@ export function AgentConfigPage() {
   const [autoNegotiate, setAutoNegotiate] = useState(true);
   const [preferredCrops, setPreferredCrops] = useState<string[]>([]);
   const [maxDistanceKm, setMaxDistanceKm] = useState('');
+
+  const isFarmer = user?.role === 'FARMER';
+  const currency = user?.currency || 'INR';
 
   useEffect(() => {
     fetchConfig();
@@ -68,7 +87,7 @@ export function AgentConfigPage() {
         maxDistanceKm: maxDistanceKm ? Number(maxDistanceKm) : null,
       });
       setConfig(data);
-      toast.success('Agent settings saved!');
+      toast.success('Agent restarted with new config');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save');
     } finally {
@@ -81,7 +100,7 @@ export function AgentConfigPage() {
     try {
       const { data } = await api.post('/agent/toggle');
       setConfig(data);
-      toast.success(data.active ? 'Agent activated!' : 'Agent deactivated');
+      toast.success(data.active ? 'Agent activated' : 'Agent paused');
     } catch {
       toast.error('Failed to toggle agent');
     } finally {
@@ -90,175 +109,183 @@ export function AgentConfigPage() {
   }
 
   function toggleCrop(crop: string) {
-    setPreferredCrops(prev =>
-      prev.includes(crop) ? prev.filter(c => c !== crop) : [...prev, crop]
-    );
+    setPreferredCrops((prev) => prev.includes(crop) ? prev.filter((c) => c !== crop) : [...prev, crop]);
   }
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="max-w-2xl animate-pulse space-y-4">
-          <div className="h-8 bg-surface rounded w-48" />
-          <div className="h-96 bg-surface rounded-xl" />
-        </div>
+        <div className="cb-page-eyebrow">Loading agent config…</div>
       </DashboardLayout>
     );
   }
 
-  const isFarmer = user?.role === 'FARMER';
+  const floorVal = parseFloat(minPrice) || 0;
+  const ceilVal = parseFloat(maxPrice) || 0;
+  const acceptVal = parseFloat(autoAcceptThreshold) || 0;
 
   return (
     <DashboardLayout>
-      <div className="max-w-2xl">
-        {/* Header with toggle */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-text">AI Agent Settings</h1>
-            <p className="text-text-secondary text-sm mt-1">
-              Configure how your AI agent negotiates on your behalf
-            </p>
+      <div className="cb-page-eyebrow">Agent · {isFarmer ? 'farmer' : 'buyer'}</div>
+      <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+        Calibrate your<br />
+        <span className="cb-italic">{isFarmer ? 'farmer agent.' : 'buyer agent.'}</span>
+      </h1>
+
+      <div className="cb-card cb-card-forest" style={{ marginTop: 28, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="cb-live-dot" />
+            <span className="cb-mono" style={{ color: '#e6efd9', fontWeight: 500 }}>
+              {config?.active ? 'ACTIVE' : 'PAUSED'} · style {style}
+            </span>
           </div>
-          <AgentStatusBadge
-            active={config?.active || false}
-            onToggle={handleToggle}
+          <Button
+            variant="ghost"
+            onClick={handleToggle}
             loading={toggling}
-          />
+            style={{ background: 'rgba(255,255,255,0.08)', color: '#e6efd9', borderColor: 'rgba(255,255,255,0.2)' }}
+          >
+            {config?.active ? '⏸ Pause agent' : '▶ Resume agent'}
+          </Button>
         </div>
+      </div>
 
-        <form onSubmit={handleSave} className="space-y-6">
-          {/* Negotiation Style */}
-          <Card>
-            <NegotiationStylePicker value={style} onChange={setStyle} />
-          </Card>
+      <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Section title="Style · drives negotiation cadence">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {STYLE_META.map((s) => (
+              <button
+                key={s.value}
+                type="button"
+                onClick={() => setStyle(s.value)}
+                style={{
+                  padding: 14, borderRadius: 10, textAlign: 'left',
+                  background: style === s.value ? 'rgba(31,45,24,0.05)' : 'transparent',
+                  border: `1px solid ${style === s.value ? 'var(--cb-forest)' : 'var(--cb-line)'}`,
+                  cursor: 'pointer', color: 'inherit', font: 'inherit',
+                }}
+              >
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>{s.label} <span style={{ color: 'var(--cb-ember)' }}>{s.arrow}</span></div>
+                <div className="cb-tiny" style={{ marginBottom: 6 }}>{s.desc}</div>
+                <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>{s.winRate}</div>
+              </button>
+            ))}
+          </div>
+        </Section>
 
-          {/* Price Boundaries */}
-          <Card>
-            <h3 className="font-semibold text-text mb-1">Price Boundaries</h3>
-            <p className="text-xs text-text-muted mb-4">
-              The agent will NEVER cross these boundaries during negotiations.
-              {isFarmer
-                ? ' Set the minimum price you\'re willing to accept.'
-                : ' Set the maximum price you\'re willing to pay.'}
-            </p>
-
-            <div className="grid grid-cols-2 gap-4">
-              {isFarmer ? (
-                <>
-                  <Input
-                    label="Minimum Sell Price (per unit)"
-                    type="number"
-                    placeholder="e.g., 2000"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                  />
-                  <Input
-                    label="Auto-Accept Above (optional)"
-                    type="number"
-                    placeholder="e.g., 3000"
-                    value={autoAcceptThreshold}
-                    onChange={(e) => setAutoAcceptThreshold(e.target.value)}
-                  />
-                </>
-              ) : (
-                <>
-                  <Input
-                    label="Maximum Buy Price (per unit)"
-                    type="number"
-                    placeholder="e.g., 5000"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                  />
-                  <Input
-                    label="Auto-Accept Below (optional)"
-                    type="number"
-                    placeholder="e.g., 1500"
-                    value={autoAcceptThreshold}
-                    onChange={(e) => setAutoAcceptThreshold(e.target.value)}
-                  />
-                </>
-              )}
-            </div>
-
-            {autoAcceptThreshold && (
-              <p className="text-xs text-accent mt-2">
-                Bids {isFarmer ? 'above' : 'below'} {autoAcceptThreshold} will be instantly accepted.
-              </p>
-            )}
-          </Card>
-
-          {/* Auto-Negotiate Toggle */}
-          <Card>
-            <label className="flex items-center justify-between cursor-pointer">
-              <div>
-                <p className="font-semibold text-text">Auto-Negotiate</p>
-                <p className="text-xs text-text-secondary mt-0.5">
-                  When enabled, the agent will automatically respond to bids and counter-offers
-                  without waiting for your approval.
-                </p>
-              </div>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  checked={autoNegotiate}
-                  onChange={(e) => setAutoNegotiate(e.target.checked)}
-                  className="sr-only"
+        <Section title="Guardrails · hard stops" hint="Agent will never cross these.">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {isFarmer ? (
+              <>
+                <Input
+                  label="Min sell price (per unit)"
+                  type="number"
+                  placeholder="e.g., 2000"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
                 />
-                <div className={`w-11 h-6 rounded-full transition-colors ${autoNegotiate ? 'bg-accent' : 'bg-border'}`}>
-                  <div className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform mt-0.5 ${autoNegotiate ? 'translate-x-5.5 ml-0.5' : 'translate-x-0.5'}`} />
-                </div>
+                <Input
+                  label="Auto-accept above (optional)"
+                  type="number"
+                  placeholder="e.g., 3000"
+                  value={autoAcceptThreshold}
+                  onChange={(e) => setAutoAcceptThreshold(e.target.value)}
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  label="Max buy price (per unit)"
+                  type="number"
+                  placeholder="e.g., 5000"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                />
+                <Input
+                  label="Auto-accept below (optional)"
+                  type="number"
+                  placeholder="e.g., 1500"
+                  value={autoAcceptThreshold}
+                  onChange={(e) => setAutoAcceptThreshold(e.target.value)}
+                />
+              </>
+            )}
+          </div>
+          {(floorVal > 0 || ceilVal > 0) && (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }} className="cb-mono cb-tiny">
+                <span>Floor {formatCurrency(floorVal, currency)}</span>
+                <span>Ceil {formatCurrency(ceilVal, currency)}</span>
               </div>
-            </label>
-          </Card>
+              <div className="cb-range-track">
+                <div className="cb-range-fill" style={{ left: 0, right: 0 }} />
+                <div className="cb-range-marker" style={{ left: '0%' }} />
+                <div className="cb-range-marker" style={{ left: '100%' }} />
+                {acceptVal > 0 && ceilVal > 0 && floorVal > 0 && (
+                  <div className="cb-range-marker" style={{ left: `${Math.min(100, Math.max(0, ((acceptVal - floorVal) / (ceilVal - floorVal)) * 100))}%`, background: 'var(--cb-sage)' }} />
+                )}
+              </div>
+            </div>
+          )}
 
-          {/* Buyer-specific: Crop Preferences */}
-          {!isFarmer && (
-            <Card>
-              <h3 className="font-semibold text-text mb-1">Preferred Crops</h3>
-              <p className="text-xs text-text-muted mb-3">
-                The agent will prioritize listings for these crops.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {COMMON_CROPS.map(crop => (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginTop: 8 }}>
+            <input type="checkbox" checked={autoNegotiate} onChange={(e) => setAutoNegotiate(e.target.checked)} style={{ accentColor: 'var(--cb-forest)' }} />
+            Auto-negotiate (else hand to me each round)
+          </label>
+        </Section>
+
+        {!isFarmer && (
+          <>
+            <Section title={`Preferred crops · ${preferredCrops.length} selected`} hint="Agent acts only on these.">
+              <div className="cb-pill-group">
+                {COMMON_CROPS.map((crop) => (
                   <button
                     key={crop}
                     type="button"
                     onClick={() => toggleCrop(crop)}
-                    className={`px-3 py-1 rounded-full text-sm transition-colors
-                      ${preferredCrops.includes(crop)
-                        ? 'bg-accent text-white'
-                        : 'bg-surface-alt text-text-secondary hover:bg-surface-hover'
-                      }`}
+                    className={`cb-pill ${preferredCrops.includes(crop) ? 'active' : ''}`}
                   >
-                    {crop}
+                    {preferredCrops.includes(crop) && '✓ '}{crop}
                   </button>
                 ))}
               </div>
-            </Card>
-          )}
+            </Section>
 
-          {/* Buyer-specific: Max Distance */}
-          {!isFarmer && (
-            <Card>
+            <Section title="Max distance · origin radius">
               <Input
-                label="Max Distance (km, optional)"
+                label="Distance (km)"
                 type="number"
                 placeholder="e.g., 500"
                 value={maxDistanceKm}
                 onChange={(e) => setMaxDistanceKm(e.target.value)}
+                hint="Only consider listings within this distance."
               />
-              <p className="text-xs text-text-muted mt-1">
-                Only consider listings within this distance for logistics efficiency.
-              </p>
-            </Card>
-          )}
+            </Section>
+          </>
+        )}
 
-          {/* Save */}
-          <Button type="submit" size="lg" className="w-full" loading={saving}>
-            Save Agent Settings
+        <Section title="Strategy preview · what agent will do">
+          <div className="cb-card" style={{ background: 'var(--cb-forest)', color: '#e6efd9', fontFamily: 'var(--cb-font-mono)', fontSize: 12.5, lineHeight: 1.7 }}>
+            {!isFarmer && preferredCrops.length > 0 && <>IF crop ∈ [{preferredCrops.slice(0, 3).join(', ')}{preferredCrops.length > 3 ? ', …' : ''}]<br /></>}
+            {!isFarmer && maxDistanceKm && <>  AND origin within {maxDistanceKm} km<br /></>}
+            {!isFarmer && ceilVal > 0 && <>  AND ask ≤ {formatCurrency(ceilVal, currency)}<br /></>}
+            {isFarmer && floorVal > 0 && <>IF buyer ask ≥ {formatCurrency(floorVal, currency)}<br /></>}
+            THEN open at {style.toLowerCase()} pace<br />
+            {acceptVal > 0 && <>  IF counter {isFarmer ? '≥' : '≤'} {formatCurrency(acceptVal, currency)} → auto-accept<br /></>}
+            {(isFarmer ? floorVal : ceilVal) > 0 && <>  IF counter {isFarmer ? '<' : '>'} {formatCurrency(isFarmer ? floorVal : ceilVal, currency)} → walk away<br /></>}
+              ELSE counter at floor + 60% of delta<br />
+            Match competing bids within 0.5%
+          </div>
+        </Section>
+
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+          <Button type="submit" size="lg" loading={saving}>
+            Save & restart agent
+            <ArrowIcon />
           </Button>
-        </form>
-      </div>
+        </div>
+      </form>
     </DashboardLayout>
   );
 }
