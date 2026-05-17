@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Card } from '../../components/ui/Card';
+import { ArrowIcon } from '../../components/ui/Brand';
 import { ImageUploader } from '../../components/listings/ImageUploader';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -23,15 +24,15 @@ const INDIAN_STATES = [
   'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
 ];
 
-/**
- * WHY FormData INSTEAD OF JSON?
- * When uploading files, you can't send them as JSON. The browser uses
- * multipart/form-data encoding which supports binary file data.
- * FormData automatically sets the correct Content-Type header.
- *
- * The server's Multer middleware parses the files from the FormData,
- * and the text fields are available in req.body as usual.
- */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '20px 0', borderBottom: '1px solid var(--cb-line)' }}>
+      <div className="cb-eyebrow">{title}</div>
+      {children}
+    </div>
+  );
+}
+
 export function CreateListing() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -41,7 +42,6 @@ export function CreateListing() {
   const [fetching, setFetching] = useState(false);
   const [images, setImages] = useState<File[]>([]);
 
-  // Form fields
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -55,7 +55,6 @@ export function CreateListing() {
   const [location, setLocation] = useState('');
   const [state, setState] = useState('');
 
-  // Pre-fill form when editing
   useEffect(() => {
     if (!editId) return;
     setFetching(true);
@@ -84,16 +83,12 @@ export function CreateListing() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (parseFloat(priceMin) > parseFloat(priceMax)) {
       toast.error('Minimum price cannot exceed maximum price');
       return;
     }
-
     setLoading(true);
-
     try {
-      // Build FormData for multipart upload
       const formData = new FormData();
       formData.append('cropName', cropName);
       if (cropVariety) formData.append('cropVariety', cropVariety);
@@ -109,14 +104,9 @@ export function CreateListing() {
       formData.append('location', location);
       formData.append('country', user?.country || 'India');
       formData.append('state', state);
-
-      // Append each image file
-      images.forEach((file) => {
-        formData.append('images', file);
-      });
+      images.forEach((file) => formData.append('images', file));
 
       if (isEditMode) {
-        // Edit mode sends JSON (no image re-upload)
         await api.put(`/listings/${editId}`, {
           cropName,
           cropVariety: cropVariety || undefined,
@@ -134,12 +124,9 @@ export function CreateListing() {
           state,
         });
       } else {
-        await api.post('/listings', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        await api.post('/listings', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
-
-      toast.success(isEditMode ? 'Listing updated!' : 'Listing created successfully!');
+      toast.success(isEditMode ? 'Listing updated' : 'Lot published');
       navigate('/farmer/listings');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to create listing');
@@ -148,99 +135,90 @@ export function CreateListing() {
     }
   }
 
+  const currency = user?.currency || 'INR';
+  const priceMinNum = parseFloat(priceMin) || 0;
+  const priceMaxNum = parseFloat(priceMax) || 0;
+  const previewPriceLabel = priceMinNum && priceMaxNum
+    ? `${formatCurrency(priceMinNum, currency)} – ${formatCurrency(priceMaxNum, currency)}`
+    : '—';
+
   return (
     <DashboardLayout>
-      <div className="max-w-2xl">
-        <h1 className="text-2xl font-bold text-text mb-6">
-          {isEditMode ? 'Edit Listing' : 'Create New Listing'}
-        </h1>
+      <div className="cb-page-eyebrow">
+        <Link to="/farmer/listings" style={{ color: 'inherit', textDecoration: 'none' }}>Listings</Link>
+        {' / '}{isEditMode ? 'Edit' : 'New'}
+      </div>
+      <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+        Brief your <span className="cb-italic">agent.</span>
+      </h1>
+      <p className="cb-page-lede">Set crop, grade, price floor, walk-away. Your agent takes it from there.</p>
 
-        <Card padding="lg">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Crop selection */}
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Crop Name</label>
-              <select
-                value={cropName}
-                onChange={(e) => setCropName(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                required
-              >
-                <option value="">Select crop</option>
-                {CROPS.map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </div>
-
-            <Input
-              label="Variety (optional)"
-              placeholder="e.g., Basmati, Sharbati, Shankar-6"
-              value={cropVariety}
-              onChange={(e) => setCropVariety(e.target.value)}
-            />
-
-            {/* Quantity & Unit */}
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Quantity"
-                type="number"
-                placeholder="e.g., 50"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                required
-              />
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
+        <form onSubmit={handleSubmit} className="cb-card" style={{ padding: 0 }}>
+          <div style={{ padding: '4px 24px' }}>
+            <Section title="Crop">
               <div>
-                <label className="block text-sm font-medium text-text mb-1">Unit</label>
-                <select
-                  value={unit}
-                  onChange={(e) => setUnit(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="KG">Kilogram (KG)</option>
-                  <option value="QUINTAL">Quintal (100 KG)</option>
-                  <option value="TONNE">Metric Tonne</option>
+                <label className="cb-label">Crop</label>
+                <select value={cropName} onChange={(e) => setCropName(e.target.value)} className="cb-input" required>
+                  <option value="">Select crop</option>
+                  {CROPS.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-            </div>
+              <Input
+                label="Variety (optional)"
+                placeholder="e.g., Basmati, Sharbati, 12.5% protein"
+                value={cropVariety}
+                onChange={(e) => setCropVariety(e.target.value)}
+              />
+            </Section>
 
-            {/* Quality Grade */}
-            <div>
-              <label className="block text-sm font-medium text-text mb-2">Quality Grade</label>
-              <div className="flex gap-3">
-                {[
-                  { value: 'A', label: 'Grade A (Premium)', desc: 'Best quality, minimal defects' },
-                  { value: 'B', label: 'Grade B (Standard)', desc: 'Good quality, minor defects' },
-                  { value: 'C', label: 'Grade C (Economy)', desc: 'Acceptable, some defects' },
-                ].map((grade) => (
-                  <button
-                    key={grade.value}
-                    type="button"
-                    onClick={() => setQualityGrade(grade.value)}
-                    className={`flex-1 p-3 rounded-lg border-2 text-left transition-all
-                      ${qualityGrade === grade.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-accent'
-                      }`}
-                  >
-                    <p className="text-sm font-medium text-text">{grade.label}</p>
-                    <p className="text-xs text-text-secondary mt-0.5">{grade.desc}</p>
-                  </button>
-                ))}
+            <Section title="Volume & grade">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <Input
+                  label="Quantity"
+                  type="number"
+                  placeholder="e.g., 50"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  required
+                />
+                <div>
+                  <label className="cb-label">Unit</label>
+                  <select value={unit} onChange={(e) => setUnit(e.target.value)} className="cb-input">
+                    <option value="KG">Kilogram (KG)</option>
+                    <option value="QUINTAL">Quintal (100 KG)</option>
+                    <option value="TONNE">Metric Tonne</option>
+                  </select>
+                </div>
               </div>
-            </div>
+              <div>
+                <label className="cb-label">Quality grade</label>
+                <div className="cb-pill-group">
+                  {[
+                    { v: 'A', label: 'A · Premium' },
+                    { v: 'B', label: 'B · Standard' },
+                    { v: 'C', label: 'C · Economy' },
+                  ].map((g) => (
+                    <button
+                      key={g.v}
+                      type="button"
+                      className={`cb-pill ${qualityGrade === g.v ? 'active' : ''}`}
+                      onClick={() => setQualityGrade(g.v)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </Section>
 
-            {/* Price Range */}
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Price Range (per {unit})
-              </label>
-              <p className="text-xs text-text-muted mb-2">
+            <Section title="Price · per unit">
+              <p className="cb-field-hint" style={{ marginTop: 0 }}>
                 Min = your floor price (won't sell below). Max = your ideal price.
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <Input
-                  label="Min Price"
+                  label="Floor"
                   type="number"
                   placeholder="e.g., 2000"
                   value={priceMin}
@@ -248,7 +226,7 @@ export function CreateListing() {
                   required
                 />
                 <Input
-                  label="Max Price"
+                  label="Ideal"
                   type="number"
                   placeholder="e.g., 2800"
                   value={priceMax}
@@ -256,89 +234,122 @@ export function CreateListing() {
                   required
                 />
               </div>
-            </div>
+              {priceMinNum > 0 && priceMaxNum > 0 && (
+                <div className="cb-range-track">
+                  <div className="cb-range-fill" style={{ left: 0, right: 0 }} />
+                  <div className="cb-range-marker" style={{ left: '0%' }} />
+                  <div className="cb-range-marker" style={{ left: '100%' }} />
+                </div>
+              )}
+            </Section>
 
-            {/* Harvest Date */}
-            <Input
-              label="Harvest Date (optional)"
-              type="date"
-              value={harvestDate}
-              onChange={(e) => setHarvestDate(e.target.value)}
-            />
-
-            {/* Location */}
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Location (City/Town)"
-                placeholder="e.g., Nashik"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                required
-              />
-              <div>
-                <label className="block text-sm font-medium text-text mb-1">State</label>
-                <select
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            <Section title="Logistics">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <Input
+                  label="Location (city)"
+                  placeholder="e.g., Nashik"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
                   required
-                >
-                  <option value="">Select state</option>
-                  {INDIAN_STATES.map(s => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
+                />
+                <div>
+                  <label className="cb-label">State</label>
+                  <select value={state} onChange={(e) => setState(e.target.value)} className="cb-input" required>
+                    <option value="">Select state</option>
+                    {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
               </div>
-            </div>
+              <Input
+                label="Harvest date (optional)"
+                type="date"
+                value={harvestDate}
+                onChange={(e) => setHarvestDate(e.target.value)}
+              />
+            </Section>
 
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">
-                Description (optional)
+            <Section title="Notes">
+              <div>
+                <label className="cb-label">Description (optional)</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Describe quality, storage conditions, certifications..."
+                  className="cb-input"
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={organic}
+                  onChange={(e) => setOrganic(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--cb-forest)' }}
+                />
+                <span style={{ fontSize: 14 }}>Organic certified</span>
               </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                rows={3}
-                placeholder="Describe your crop — quality, storage conditions, certifications..."
-                className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent resize-none"
-              />
-            </div>
+            </Section>
 
-            {/* Organic */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={organic}
-                onChange={(e) => setOrganic(e.target.checked)}
-                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-              />
-              <span className="text-sm text-text">This crop is organic certified</span>
-            </label>
+            <Section title="Images">
+              <ImageUploader images={images} onChange={setImages} maxImages={5} />
+            </Section>
 
-            {/* Image Upload */}
-            <ImageUploader
-              images={images}
-              onChange={setImages}
-              maxImages={5}
-            />
-
-            {/* Submit */}
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" size="lg" className="flex-1" loading={loading || fetching}>
-                {isEditMode ? 'Update Listing' : 'Create Listing'}
+            <div style={{ display: 'flex', gap: 12, padding: '20px 0' }}>
+              <Button type="submit" size="lg" loading={loading || fetching}>
+                {isEditMode ? 'Update listing' : 'Publish lot'}
+                <ArrowIcon />
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="lg"
-                onClick={() => navigate('/farmer/listings')}
-              >
+              <Button type="button" variant="ghost" size="lg" onClick={() => navigate('/farmer/listings')}>
                 Cancel
               </Button>
             </div>
-          </form>
-        </Card>
+          </div>
+        </form>
+
+        <aside style={{ position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
+          <div className="cb-card">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span className="cb-live-dot sm" />
+              <span className="cb-eyebrow">Live preview · will be public</span>
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 500, color: 'var(--cb-ink)' }}>
+              {cropName || 'Crop name'}
+            </div>
+            {cropVariety && (
+              <div className="cb-small" style={{ marginTop: 2 }}>{cropVariety}</div>
+            )}
+            <div className="cb-tiny" style={{ marginTop: 6 }}>
+              Grade {qualityGrade}{organic && ' · Organic'}
+            </div>
+            <div className="cb-mono" style={{ marginTop: 14, fontSize: 18, fontWeight: 500 }}>
+              {previewPriceLabel}
+            </div>
+            <div className="cb-tiny" style={{ marginTop: 2 }}>per {unit.toLowerCase()}</div>
+
+            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--cb-line)' }}>
+              <div className="cb-tiny">
+                {quantity ? `${quantity} ${unit.toLowerCase()} available` : 'Quantity —'}
+              </div>
+              <div className="cb-tiny" style={{ marginTop: 2 }}>
+                {location && state ? `${location}, ${state}` : 'Location —'}
+              </div>
+              {harvestDate && (
+                <div className="cb-tiny" style={{ marginTop: 2 }}>
+                  Harvest {new Date(harvestDate).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: 16, padding: 12, background: 'var(--cb-paper-2)', borderRadius: 8 }}>
+              <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Agent strategy</div>
+              <div className="cb-small" style={{ fontSize: 12.5 }}>
+                {priceMinNum > 0 && priceMaxNum > 0
+                  ? `Open at ${formatCurrency(priceMinNum + (priceMaxNum - priceMinNum) * 0.1, currency)}, accept at ${formatCurrency(priceMaxNum - (priceMaxNum - priceMinNum) * 0.05, currency)}. Walk-away ${formatCurrency(priceMinNum, currency)}.`
+                  : 'Set floor & ideal to preview agent strategy.'}
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     </DashboardLayout>
   );
