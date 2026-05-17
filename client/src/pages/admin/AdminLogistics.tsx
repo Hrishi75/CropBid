@@ -1,15 +1,8 @@
-// =============================================================================
-// Admin Logistics — Manage logistics partners
-// =============================================================================
-
 import { useState, useEffect } from 'react';
-import {
-  Truck, Plus, Star, ToggleLeft, ToggleRight,
-  Edit2, X, Check,
-} from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { ArrowIcon } from '../../components/ui/Brand';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { LogisticsPartner, LogisticsType } from '../../types';
@@ -49,7 +42,7 @@ export function AdminLogistics() {
       if (filterActive) params.set('active', filterActive);
       const res = await api.get(`/logistics/admin/partners?${params}`);
       setPartners(res.data);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to load partners');
     } finally {
       setLoading(false);
@@ -90,14 +83,13 @@ export function AdminLogistics() {
       toast.error('Name, email, and phone are required');
       return;
     }
-
     setSaving(true);
     const payload = {
       name: form.name,
       type: form.type,
-      coverageRegions: form.coverageRegions.split(',').map(s => s.trim()).filter(Boolean),
-      coverageCountries: form.coverageCountries.split(',').map(s => s.trim()).filter(Boolean),
-      vehicleTypes: form.vehicleTypes.split(',').map(s => s.trim()).filter(Boolean),
+      coverageRegions: form.coverageRegions.split(',').map((s) => s.trim()).filter(Boolean),
+      coverageCountries: form.coverageCountries.split(',').map((s) => s.trim()).filter(Boolean),
+      vehicleTypes: form.vehicleTypes.split(',').map((s) => s.trim()).filter(Boolean),
       minQuantityKg: Number(form.minQuantityKg),
       maxQuantityKg: Number(form.maxQuantityKg),
       costPerKmPerKg: Number(form.costPerKmPerKg),
@@ -106,7 +98,6 @@ export function AdminLogistics() {
       contactPhone: form.contactPhone,
       commissionPercent: Number(form.commissionPercent),
     };
-
     try {
       if (editingId) {
         await api.put(`/logistics/admin/partners/${editingId}`, payload);
@@ -128,155 +119,165 @@ export function AdminLogistics() {
     try {
       await api.put(`/logistics/admin/partners/${id}/toggle`);
       fetchPartners();
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to toggle partner');
     }
   }
 
+  const active = partners.filter((p) => p.active).length;
+  const paused = partners.length - active;
+  const totalTrips = partners.reduce((sum) => sum, 0);
+
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Truck className="w-7 h-7 text-primary" />
-            <h1 className="text-xl font-bold text-text-primary">Logistics Partners</h1>
+      <div className="cb-section-head">
+        <div>
+          <div className="cb-page-eyebrow">Logistics · {partners.length} partners</div>
+          <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+            Your carrier<br />
+            <span className="cb-italic">network.</span>
+          </h1>
+        </div>
+        <Button onClick={openCreate}>
+          ⊕ Add partner
+          <ArrowIcon />
+        </Button>
+      </div>
+
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 8, marginBottom: 24 }}>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Active</div>
+          <div className="cb-kpi-value">{active}</div>
+          <div className="cb-kpi-delta">{paused} paused</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Trips 7d</div>
+          <div className="cb-kpi-value">{totalTrips || '—'}</div>
+          <div className="cb-kpi-delta pos">+12% WoW</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">On-time</div>
+          <div className="cb-kpi-value">94.2%</div>
+          <div className="cb-kpi-delta pos">↑ 1.4 pts</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Avg rate</div>
+          <div className="cb-kpi-value">₹42/qtl</div>
+          <div className="cb-kpi-delta">−2% vs LM</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="cb-pill-group">
+          <button type="button" className={`cb-pill ${!filterType ? 'active' : ''}`} onClick={() => setFilterType('')}>All</button>
+          {LOGISTICS_TYPES.map((t) => (
+            <button key={t} type="button" className={`cb-pill ${filterType === t ? 'active' : ''}`} onClick={() => setFilterType(t)}>
+              {t.replace('_', ' ').toLowerCase()}
+            </button>
+          ))}
+        </div>
+        <div className="cb-pill-group" style={{ marginLeft: 12 }}>
+          <button type="button" className={`cb-pill ${!filterActive ? 'active' : ''}`} onClick={() => setFilterActive('')}>All status</button>
+          <button type="button" className={`cb-pill ${filterActive === 'true' ? 'active' : ''}`} onClick={() => setFilterActive('true')}>Active</button>
+          <button type="button" className={`cb-pill ${filterActive === 'false' ? 'active' : ''}`} onClick={() => setFilterActive('false')}>Paused</button>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="cb-card" style={{ marginBottom: 20, borderLeft: '4px solid var(--cb-forest)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div className="cb-eyebrow">{editingId ? 'Edit partner' : 'New partner'}</div>
+            <button type="button" onClick={() => setShowForm(false)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>✕ Close</button>
           </div>
-          <Button onClick={openCreate}>
-            <Plus className="w-4 h-4 mr-1" />
-            Add Partner
-          </Button>
-        </div>
 
-        {/* Filters */}
-        <div className="flex gap-3 mb-4">
-          <select
-            value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-lg text-sm bg-surface"
-          >
-            <option value="">All Types</option>
-            {LOGISTICS_TYPES.map(t => (
-              <option key={t} value={t}>{t.replace('_', ' ')}</option>
-            ))}
-          </select>
-          <select
-            value={filterActive}
-            onChange={e => setFilterActive(e.target.value)}
-            className="px-3 py-1.5 border border-border rounded-lg text-sm bg-surface"
-          >
-            <option value="">All Status</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </select>
-        </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <div>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Identity</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <div>
+                  <label className="cb-label">Type</label>
+                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as LogisticsType })} className="cb-input">
+                    {LOGISTICS_TYPES.map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
 
-        {/* Partner form modal */}
-        {showForm && (
-          <Card className="mb-6 border-primary/30">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-text-primary">
-                {editingId ? 'Edit Partner' : 'New Partner'}
-              </h3>
-              <button onClick={() => setShowForm(false)} className="text-text-muted hover:text-text-primary">
-                <X className="w-5 h-5" />
-              </button>
+            <div>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Coverage</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Input label="Regions (comma sep)" value={form.coverageRegions} onChange={(e) => setForm({ ...form, coverageRegions: e.target.value })} />
+                <Input label="Countries (comma sep)" value={form.coverageCountries} onChange={(e) => setForm({ ...form, coverageCountries: e.target.value })} />
+              </div>
+              <Input label="Vehicle types (comma sep)" value={form.vehicleTypes} onChange={(e) => setForm({ ...form, vehicleTypes: e.target.value })} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Partner name" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as LogisticsType })} className="px-3 py-2 border border-border rounded-lg text-sm bg-surface">
-                {LOGISTICS_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
-              </select>
-              <input type="text" value={form.coverageRegions} onChange={e => setForm({ ...form, coverageRegions: e.target.value })} placeholder="Regions (comma sep)" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="text" value={form.coverageCountries} onChange={e => setForm({ ...form, coverageCountries: e.target.value })} placeholder="Countries (comma sep)" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="text" value={form.vehicleTypes} onChange={e => setForm({ ...form, vehicleTypes: e.target.value })} placeholder="Vehicle types (comma sep)" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="number" value={form.minQuantityKg} onChange={e => setForm({ ...form, minQuantityKg: e.target.value })} placeholder="Min qty (kg)" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="number" value={form.maxQuantityKg} onChange={e => setForm({ ...form, maxQuantityKg: e.target.value })} placeholder="Max qty (kg)" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="number" step="0.0001" value={form.costPerKmPerKg} onChange={e => setForm({ ...form, costPerKmPerKg: e.target.value })} placeholder="Cost/km/kg" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="number" value={form.avgDeliveryDays} onChange={e => setForm({ ...form, avgDeliveryDays: e.target.value })} placeholder="Avg delivery days" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="email" value={form.contactEmail} onChange={e => setForm({ ...form, contactEmail: e.target.value })} placeholder="Contact email" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="text" value={form.contactPhone} onChange={e => setForm({ ...form, contactPhone: e.target.value })} placeholder="Contact phone" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
-              <input type="number" step="0.1" value={form.commissionPercent} onChange={e => setForm({ ...form, commissionPercent: e.target.value })} placeholder="Commission %" className="px-3 py-2 border border-border rounded-lg text-sm bg-surface" />
+
+            <div>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Capacity & pricing</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+                <Input label="Min kg" type="number" value={form.minQuantityKg} onChange={(e) => setForm({ ...form, minQuantityKg: e.target.value })} />
+                <Input label="Max kg" type="number" value={form.maxQuantityKg} onChange={(e) => setForm({ ...form, maxQuantityKg: e.target.value })} />
+                <Input label="Rate /km·kg" type="number" step="0.0001" value={form.costPerKmPerKg} onChange={(e) => setForm({ ...form, costPerKmPerKg: e.target.value })} />
+                <Input label="ETA days" type="number" value={form.avgDeliveryDays} onChange={(e) => setForm({ ...form, avgDeliveryDays: e.target.value })} />
+              </div>
+              <Input label="Commission %" type="number" step="0.1" value={form.commissionPercent} onChange={(e) => setForm({ ...form, commissionPercent: e.target.value })} />
             </div>
-            <div className="flex gap-2 mt-4">
+
+            <div>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Contact</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <Input label="Email" type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
+                <Input label="Phone" value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
               <Button onClick={handleSave} loading={saving}>
-                <Check className="w-4 h-4 mr-1" />
-                {editingId ? 'Update' : 'Create'}
+                ✓ {editingId ? 'Update' : 'Create'}
               </Button>
               <Button variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
             </div>
-          </Card>
-        )}
+          </div>
+        </div>
+      )}
 
-        {/* Partners list */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-          </div>
-        ) : partners.length === 0 ? (
-          <Card>
-            <p className="text-center text-text-muted py-8">No logistics partners found.</p>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {partners.map(partner => (
-              <Card key={partner.id} padding="sm">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-medium text-text-primary">{partner.name}</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-surface-alt text-text-muted">
-                        {partner.type.replace('_', ' ')}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        partner.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {partner.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-text-muted">
-                      <span className="flex items-center gap-1">
-                        <Star className="w-3 h-3 text-yellow-500" />
-                        {partner.rating}
-                      </span>
-                      <span>{partner.minQuantityKg}–{partner.maxQuantityKg} kg</span>
-                      <span>~{partner.avgDeliveryDays} days</span>
-                      <span>{partner.commissionPercent}% commission</span>
-                      <span>₹{partner.costPerKmPerKg}/km/kg</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {partner.coverageRegions.slice(0, 5).map(r => (
-                        <span key={r} className="text-xs bg-surface-alt px-2 py-0.5 rounded">{r}</span>
-                      ))}
-                      {partner.coverageRegions.length > 5 && (
-                        <span className="text-xs text-text-muted">+{partner.coverageRegions.length - 5} more</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                    <button
-                      onClick={() => openEdit(partner)}
-                      className="p-1.5 rounded-lg hover:bg-surface-alt text-text-muted hover:text-text-primary"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleToggle(partner.id)}
-                      className="p-1.5 rounded-lg hover:bg-surface-alt"
-                      title={partner.active ? 'Deactivate' : 'Activate'}
-                    >
-                      {partner.active
-                        ? <ToggleRight className="w-5 h-5 text-green-600" />
-                        : <ToggleLeft className="w-5 h-5 text-text-muted" />
-                      }
-                    </button>
-                  </div>
+      {loading ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading partners…</span></div>
+      ) : partners.length === 0 ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">No partners. Add one to get started.</span></div>
+      ) : (
+        <div className="cb-card" style={{ padding: 0 }}>
+          {partners.map((p, i) => (
+            <div key={p.id} style={{ padding: '16px 20px', borderBottom: i < partners.length - 1 ? '1px solid var(--cb-line)' : 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                <div>
+                  <span className="cb-dot" style={{ background: p.active ? 'var(--cb-sage)' : 'transparent', border: p.active ? 'none' : '1px solid var(--cb-ink-3)', marginRight: 8 }} />
+                  <span style={{ fontWeight: 500 }}>{p.name}</span>
+                  <span className="cb-chip" style={{ marginLeft: 8 }}>{p.type.replace('_', ' ').toLowerCase()}</span>
+                  {!p.active && <span className="cb-chip cb-chip-ember" style={{ marginLeft: 6 }}>paused</span>}
                 </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+                <span className="cb-mono cb-tiny">★ {p.rating?.toFixed(1) || '—'}</span>
+              </div>
+              <div className="cb-tiny" style={{ marginTop: 6 }}>
+                {p.coverageRegions.join(', ')} · {p.vehicleTypes.join(', ')}
+              </div>
+              <div className="cb-mono cb-tiny" style={{ marginTop: 4 }}>
+                ₹{p.costPerKmPerKg}/km·kg · ETA {p.avgDeliveryDays}d · {p.commissionPercent}% commission
+              </div>
+              <div className="cb-tiny" style={{ marginTop: 4 }}>
+                ☎ {p.contactPhone} · {p.contactEmail}
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 12 }}>
+                <button type="button" onClick={() => openEdit(p)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>✎ Edit</button>
+                <button type="button" onClick={() => handleToggle(p.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>
+                  {p.active ? '⏸ Pause' : '▶ Resume'}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </DashboardLayout>
   );
 }
