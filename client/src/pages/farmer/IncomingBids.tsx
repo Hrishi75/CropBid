@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { BidCard } from '../../components/bids/BidCard';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Skeleton } from '../../components/ui/Skeleton';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Bid } from '../../types';
@@ -35,53 +37,56 @@ export function IncomingBids() {
     }
   }
 
+  const counts = useMemo(() => {
+    const c = { PENDING: 0, COUNTERED: 0, ACCEPTED: 0, REJECTED: 0 } as Record<string, number>;
+    for (const b of bids) {
+      c[b.status] = (c[b.status] || 0) + 1;
+    }
+    return c;
+  }, [bids]);
+
   return (
     <DashboardLayout>
-      <div>
-        <h1 className="text-2xl font-bold text-text mb-2">Incoming Bids</h1>
-        <p className="text-text-secondary text-sm mb-6">
-          Review and respond to bids from buyers
-        </p>
+      <div className="cb-page-eyebrow">Bids · incoming</div>
+      <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+        {counts.PENDING || 0} buyers want<br />
+        <span className="cb-italic">your call.</span>
+      </h1>
 
-        {/* Status tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setStatusFilter(tab.value)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap
-                ${statusFilter === tab.value
-                  ? 'bg-primary text-white'
-                  : 'bg-surface text-text-secondary hover:bg-surface-hover'
-                }`}
-            >
-              {tab.label}
-            </button>
+      <div className="cb-pill-group" style={{ marginTop: 28, marginBottom: 20 }}>
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={`cb-pill ${statusFilter === tab.value ? 'active' : ''}`}
+            onClick={() => setStatusFilter(tab.value)}
+          >
+            {tab.label}
+            {tab.value && counts[tab.value] !== undefined && (
+              <span className="cb-count">{counts[tab.value]}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="cb-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} height={120} />
           ))}
         </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-40 bg-surface rounded-xl animate-pulse" />
-            ))}
-          </div>
-        ) : bids.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-4">📬</p>
-            <h2 className="text-xl font-semibold text-text mb-2">No bids yet</h2>
-            <p className="text-text-secondary">
-              Once buyers start bidding on your listings, they'll appear here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {bids.map((bid) => (
-              <BidCard key={bid.id} bid={bid} viewAs="farmer" onUpdate={fetchBids} />
-            ))}
-          </div>
-        )}
-      </div>
+      ) : bids.length === 0 ? (
+        <EmptyState
+          title="No bids yet"
+          description="Once buyers start bidding on your listings, they'll appear here. Your agent will route them by priority."
+        />
+      ) : (
+        <div className="cb-card" style={{ padding: 0 }}>
+          {bids.map((bid) => (
+            <BidCard key={bid.id} bid={bid} viewAs="farmer" onUpdate={fetchBids} />
+          ))}
+        </div>
+      )}
     </DashboardLayout>
   );
 }
