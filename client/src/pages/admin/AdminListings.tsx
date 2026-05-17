@@ -1,13 +1,7 @@
-// =============================================================================
-// Admin Listings — View all listings across the platform
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, ArrowRight } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 
 interface AdminListing {
@@ -16,6 +10,7 @@ interface AdminListing {
   cropVariety: string | null;
   quantity: number;
   unit: string;
+  qualityGrade?: string;
   pricePerUnitMin: number;
   pricePerUnitMax: number;
   currency: string;
@@ -24,9 +19,24 @@ interface AdminListing {
   state: string;
   organic: boolean;
   createdAt: string;
-  farmer: { user: { id: string; name: string } };
+  farmer: { user: { id: string; name: string; trustScore?: number; country?: string } };
   _count: { bids: number };
 }
+
+const STATUS_TABS = [
+  { value: '', label: 'All' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'IN_AUCTION', label: 'Auction' },
+  { value: 'SOLD', label: 'Matched' },
+  { value: 'EXPIRED', label: 'Expired' },
+];
+
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  ACTIVE: { label: 'ACTV', color: 'var(--cb-sage)' },
+  IN_AUCTION: { label: 'AUCT', color: 'var(--cb-ember)' },
+  SOLD: { label: 'MTCH', color: 'var(--cb-forest)' },
+  EXPIRED: { label: 'EXPR', color: 'var(--cb-ink-3)' },
+};
 
 export function AdminListings() {
   const [listings, setListings] = useState<AdminListing[]>([]);
@@ -47,7 +57,6 @@ export function AdminListings() {
       if (statusFilter) params.set('status', statusFilter);
       params.set('limit', String(LIMIT));
       params.set('offset', String(page * LIMIT));
-
       const res = await api.get(`/admin/listings?${params}`);
       setListings(res.data.listings);
       setTotal(res.data.total);
@@ -58,118 +67,87 @@ export function AdminListings() {
     }
   }
 
-  const statusColors: Record<string, string> = {
-    ACTIVE: 'bg-green-50 text-green-700',
-    IN_AUCTION: 'bg-red-50 text-red-700',
-    SOLD: 'bg-blue-50 text-blue-700',
-    EXPIRED: 'bg-gray-50 text-gray-600',
-  };
-
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Package className="w-7 h-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">All Listings</h1>
-          <span className="text-sm text-text-muted ml-auto">{total} listings</span>
+      <div className="cb-section-head">
+        <div>
+          <div className="cb-page-eyebrow">Listings · {total.toLocaleString()} total</div>
+          <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+            Marketplace lots,<br />
+            <span className="cb-italic">every one.</span>
+          </h1>
         </div>
-
-        {/* Filter */}
-        <div className="flex gap-4 mb-4">
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-            className="px-3 py-2 border border-border rounded-lg bg-surface text-text-primary text-sm"
-          >
-            <option value="">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="IN_AUCTION">In Auction</option>
-            <option value="SOLD">Sold</option>
-            <option value="EXPIRED">Expired</option>
-          </select>
-        </div>
-
-        <Card>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 font-medium text-text-muted">Crop</th>
-                    <th className="pb-3 font-medium text-text-muted">Farmer</th>
-                    <th className="pb-3 font-medium text-text-muted">Price Range</th>
-                    <th className="pb-3 font-medium text-text-muted">Qty</th>
-                    <th className="pb-3 font-medium text-text-muted">Location</th>
-                    <th className="pb-3 font-medium text-text-muted">Bids</th>
-                    <th className="pb-3 font-medium text-text-muted">Status</th>
-                    <th className="pb-3 font-medium text-text-muted"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {listings.map((listing) => (
-                    <tr key={listing.id} className="border-b border-border-light hover:bg-surface-alt">
-                      <td className="py-3">
-                        <p className="font-medium text-text-primary">
-                          {listing.cropName}
-                          {listing.cropVariety ? ` (${listing.cropVariety})` : ''}
-                        </p>
-                        {listing.organic && (
-                          <span className="text-xs text-accent">Organic</span>
-                        )}
-                      </td>
-                      <td className="py-3 text-text-secondary">
-                        {listing.farmer.user.name}
-                      </td>
-                      <td className="py-3 text-text-secondary">
-                        {listing.currency} {listing.pricePerUnitMin}–{listing.pricePerUnitMax}/{listing.unit}
-                      </td>
-                      <td className="py-3 text-text-secondary">
-                        {listing.quantity} {listing.unit}
-                      </td>
-                      <td className="py-3 text-text-muted text-xs">
-                        {listing.location}, {listing.state}
-                      </td>
-                      <td className="py-3 font-medium">{listing._count.bids}</td>
-                      <td className="py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[listing.status] || ''}`}>
-                          {listing.status}
-                        </span>
-                      </td>
-                      <td className="py-3">
-                        <Link to={`/listings/${listing.id}`} className="text-primary hover:underline">
-                          <ArrowRight className="w-4 h-4" />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-              <p className="text-sm text-text-muted">
-                Showing {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
+        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
+
+      <div className="cb-pill-group" style={{ marginTop: 8, marginBottom: 24 }}>
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={`cb-pill ${statusFilter === tab.value ? 'active' : ''}`}
+            onClick={() => { setStatusFilter(tab.value); setPage(0); }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading…</span></div>
+      ) : listings.length === 0 ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">No listings match.</span></div>
+      ) : (
+        <div className="cb-card" style={{ padding: 0 }}>
+          {listings.map((l, i) => {
+            const meta = STATUS_META[l.status] || { label: l.status.slice(0, 4), color: 'var(--cb-ink-3)' };
+            const priceMid = (l.pricePerUnitMin + l.pricePerUnitMax) / 2;
+            return (
+              <div key={l.id} style={{ padding: '16px 20px', borderBottom: i < listings.length - 1 ? '1px solid var(--cb-line)' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+                  <div>
+                    <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 8 }}>
+                      #L-{l.id.slice(-6).toUpperCase()}
+                    </span>
+                    <Link to={`/listings/${l.id}`} style={{ color: 'var(--cb-ink)', textDecoration: 'none', fontWeight: 500 }}>
+                      {l.cropName}
+                    </Link>
+                    {l.cropVariety && <span className="cb-small" style={{ marginLeft: 6 }}>· {l.cropVariety}</span>}
+                    {l.organic && <span className="cb-chip cb-chip-sage" style={{ marginLeft: 8 }}>organic</span>}
+                  </div>
+                  <span className="cb-mono cb-tiny" style={{ color: meta.color }}>● {meta.label}</span>
+                </div>
+                <div className="cb-small" style={{ marginBottom: 6 }}>
+                  Grade {l.qualityGrade ?? '—'} · {l.location}, {l.state} · {new Date(l.createdAt).toLocaleDateString()} · {l._count.bids} bids
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                  <div className="cb-mono" style={{ fontSize: 14 }}>
+                    {formatCurrency(priceMid, l.currency)}
+                    <span className="cb-tiny" style={{ marginLeft: 4 }}>/{l.unit.toLowerCase()}</span>
+                  </div>
+                  <div className="cb-mono cb-tiny">{l.quantity} {l.unit.toLowerCase()}</div>
+                  <div className="cb-tiny">{l.farmer.user.name} · trust {Math.round(l.farmer.user.trustScore || 0)}</div>
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
+                  <Link to={`/listings/${l.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
+                  <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-wheat)' }}>⚠ Flag</button>
+                  <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>✕ Take down</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+          <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
+          <span>page {page + 1} of {totalPages}</span>
+          <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

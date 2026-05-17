@@ -1,13 +1,7 @@
-// =============================================================================
-// Admin Transactions — View and manage all platform transactions
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Receipt, ArrowRight, Shield, CheckCircle, AlertTriangle } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -24,6 +18,26 @@ interface AdminTransaction {
   deliveryStatus: string;
   createdAt: string;
 }
+
+const STATUS_TABS = [
+  { value: '', label: 'All' },
+  { value: 'ESCROW', label: 'Escrow' },
+  { value: 'RELEASED', label: 'Released' },
+  { value: 'REFUNDED', label: 'Refunded' },
+];
+
+const PMT_META: Record<string, { label: string; color: string }> = {
+  ESCROW: { label: 'ESCR', color: 'var(--cb-wheat)' },
+  RELEASED: { label: 'RELS', color: 'var(--cb-sage)' },
+  REFUNDED: { label: 'RFND', color: 'var(--cb-ember)' },
+};
+
+const DLV_META: Record<string, string> = {
+  PENDING: '—',
+  IN_TRANSIT: 'IN',
+  DELIVERED: 'DLV',
+  CONFIRMED: '✓',
+};
 
 export function AdminTransactions() {
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
@@ -44,7 +58,6 @@ export function AdminTransactions() {
       if (statusFilter) params.set('paymentStatus', statusFilter);
       params.set('limit', String(LIMIT));
       params.set('offset', String(page * LIMIT));
-
       const res = await api.get(`/admin/transactions?${params}`);
       setTransactions(res.data.transactions);
       setTotal(res.data.total);
@@ -56,7 +69,7 @@ export function AdminTransactions() {
   }
 
   async function handleRefund(txId: string) {
-    if (!confirm('Are you sure you want to refund this transaction?')) return;
+    if (!confirm('Refund this transaction?')) return;
     try {
       await api.post(`/transactions/${txId}/refund`);
       toast.success('Transaction refunded');
@@ -66,128 +79,117 @@ export function AdminTransactions() {
     }
   }
 
-  const paymentIcons: Record<string, { icon: typeof Shield; color: string; bg: string }> = {
-    ESCROW: { icon: Shield, color: 'text-status-warning', bg: 'bg-yellow-50' },
-    RELEASED: { icon: CheckCircle, color: 'text-status-success', bg: 'bg-green-50' },
-    REFUNDED: { icon: AlertTriangle, color: 'text-status-error', bg: 'bg-red-50' },
-  };
-
   const totalPages = Math.ceil(total / LIMIT);
+  const inEscrow = transactions.filter((t) => t.paymentStatus === 'ESCROW').length;
+  const released = transactions.filter((t) => t.paymentStatus === 'RELEASED').length;
+  const refunded = transactions.filter((t) => t.paymentStatus === 'REFUNDED').length;
+  const totalFees = transactions.reduce((sum, t) => sum + t.platformFeeAmount, 0);
 
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Receipt className="w-7 h-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">All Transactions</h1>
-          <span className="text-sm text-text-muted ml-auto">{total} transactions</span>
+      <div className="cb-section-head">
+        <div>
+          <div className="cb-page-eyebrow">Transactions · {total.toLocaleString()} total</div>
+          <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+            Settlement,<br />
+            <span className="cb-italic">end to end.</span>
+          </h1>
         </div>
-
-        {/* Filter */}
-        <div className="flex gap-4 mb-4">
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
-            className="px-3 py-2 border border-border rounded-lg bg-surface text-text-primary text-sm"
-          >
-            <option value="">All Payment Status</option>
-            <option value="ESCROW">In Escrow</option>
-            <option value="RELEASED">Released</option>
-            <option value="REFUNDED">Refunded</option>
-          </select>
-        </div>
-
-        <Card>
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 font-medium text-text-muted">Crop</th>
-                    <th className="pb-3 font-medium text-text-muted">Farmer → Buyer</th>
-                    <th className="pb-3 font-medium text-text-muted">Amount</th>
-                    <th className="pb-3 font-medium text-text-muted">Fee</th>
-                    <th className="pb-3 font-medium text-text-muted">Payment</th>
-                    <th className="pb-3 font-medium text-text-muted">Delivery</th>
-                    <th className="pb-3 font-medium text-text-muted">Date</th>
-                    <th className="pb-3 font-medium text-text-muted">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((tx) => {
-                    const payment = paymentIcons[tx.paymentStatus] || paymentIcons.ESCROW;
-                    const PayIcon = payment.icon;
-
-                    return (
-                      <tr key={tx.id} className="border-b border-border-light hover:bg-surface-alt">
-                        <td className="py-3 font-medium text-text-primary">
-                          {tx.listing.cropName}
-                        </td>
-                        <td className="py-3 text-text-secondary text-xs">
-                          {tx.farmer.name} → {tx.buyer.name}
-                        </td>
-                        <td className="py-3 font-medium">
-                          {tx.currency} {tx.totalAmount.toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3 text-text-muted">
-                          {tx.currency} {tx.platformFeeAmount.toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-3">
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${payment.bg} ${payment.color}`}>
-                            <PayIcon className="w-3 h-3" />
-                            {tx.paymentStatus}
-                          </span>
-                        </td>
-                        <td className="py-3 text-xs text-text-muted">
-                          {tx.deliveryStatus.replace('_', ' ')}
-                        </td>
-                        <td className="py-3 text-xs text-text-muted">
-                          {new Date(tx.createdAt).toLocaleDateString('en-IN')}
-                        </td>
-                        <td className="py-3">
-                          <div className="flex items-center gap-2">
-                            <Link to={`/transactions/${tx.id}`} className="text-primary hover:underline">
-                              <ArrowRight className="w-4 h-4" />
-                            </Link>
-                            {tx.paymentStatus === 'ESCROW' && (
-                              <button
-                                onClick={() => handleRefund(tx.id)}
-                                className="text-xs text-status-error hover:underline"
-                              >
-                                Refund
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-              <p className="text-sm text-text-muted">
-                Showing {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-                  Previous
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1}>
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
+        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
+
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginTop: 8, marginBottom: 24 }}>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">In escrow</div>
+          <div className="cb-kpi-value">{inEscrow}</div>
+          <div className="cb-kpi-delta">awaiting</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Released</div>
+          <div className="cb-kpi-value">{released}</div>
+          <div className="cb-kpi-delta pos">settled</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Refunded</div>
+          <div className="cb-kpi-value">{refunded}</div>
+          <div className="cb-kpi-delta">{transactions.length > 0 ? ((refunded / transactions.length) * 100).toFixed(1) : 0}% rate</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Disputed</div>
+          <div className="cb-kpi-value">0</div>
+          <div className="cb-kpi-delta">no SLA breach</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Fees</div>
+          <div className="cb-kpi-value">{formatCurrency(totalFees, 'INR')}</div>
+          <div className="cb-kpi-delta">1% take</div>
+        </div>
+      </div>
+
+      <div className="cb-pill-group" style={{ marginBottom: 20 }}>
+        {STATUS_TABS.map((tab) => (
+          <button
+            key={tab.value}
+            type="button"
+            className={`cb-pill ${statusFilter === tab.value ? 'active' : ''}`}
+            onClick={() => { setStatusFilter(tab.value); setPage(0); }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading…</span></div>
+      ) : transactions.length === 0 ? (
+        <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">No transactions match.</span></div>
+      ) : (
+        <div className="cb-card" style={{ padding: 0 }}>
+          {transactions.map((tx, i) => {
+            const pmt = PMT_META[tx.paymentStatus] || { label: tx.paymentStatus.slice(0, 4), color: 'var(--cb-ink-3)' };
+            return (
+              <div key={tx.id} style={{ padding: '16px 20px', borderBottom: i < transactions.length - 1 ? '1px solid var(--cb-line)' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 4 }}>
+                  <div>
+                    <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 8 }}>
+                      #T-{tx.id.slice(-6).toUpperCase()}
+                    </span>
+                    <Link to={`/transactions/${tx.id}`} style={{ color: 'var(--cb-ink)', textDecoration: 'none', fontWeight: 500 }}>
+                      {tx.listing?.cropName || 'Crop'}
+                    </Link>
+                  </div>
+                  <span className="cb-mono cb-tiny" style={{ color: pmt.color }}>● {pmt.label} · {DLV_META[tx.deliveryStatus] || '?'}</span>
+                </div>
+                <div className="cb-small" style={{ marginBottom: 8 }}>
+                  {tx.farmer?.name} → {tx.buyer?.name} · {new Date(tx.createdAt).toLocaleDateString()}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div className="cb-mono" style={{ fontSize: 14 }}>{formatCurrency(tx.totalAmount, tx.currency)}</div>
+                  <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>
+                    fee +{formatCurrency(tx.platformFeeAmount, tx.currency)}
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
+                  <Link to={`/transactions/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
+                  {tx.paymentStatus === 'ESCROW' && (
+                    <button type="button" onClick={() => handleRefund(tx.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>
+                      ↺ Force refund
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+          <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
+          <span>page {page + 1} of {totalPages}</span>
+          <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
