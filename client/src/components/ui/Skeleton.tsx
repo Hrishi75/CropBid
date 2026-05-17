@@ -1,43 +1,53 @@
+import { useEffect } from 'react';
+
 interface SkeletonProps {
   className?: string;
+  width?: number | string;
+  height?: number | string;
 }
 
-export function Skeleton({ className = '' }: SkeletonProps) {
+export function Skeleton({ className = '', width, height }: SkeletonProps) {
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const id = 'cb-skeleton-style';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `@keyframes cb-skeleton-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.85; } }`;
+    document.head.appendChild(style);
+  }, []);
   return (
     <div
-      className={`animate-pulse rounded-lg bg-border-light ${className}`}
+      className={className}
       aria-hidden="true"
+      style={{
+        background: 'var(--cb-paper-2, #efece3)',
+        borderRadius: 6,
+        animation: 'cb-skeleton-pulse 1.4s ease-in-out infinite',
+        width, height,
+      }}
     />
   );
 }
 
 export function SkeletonCard() {
   return (
-    <div className="bg-surface rounded-xl border border-border-light p-6 space-y-4">
-      <div className="flex items-center gap-3">
-        <Skeleton className="w-10 h-10 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-1/2" />
-        </div>
-      </div>
-      <Skeleton className="h-4 w-full" />
-      <Skeleton className="h-4 w-5/6" />
-      <div className="flex gap-2 pt-2">
-        <Skeleton className="h-8 w-20 rounded-lg" />
-        <Skeleton className="h-8 w-20 rounded-lg" />
-      </div>
+    <div className="cb-card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Skeleton height={20} width="40%" />
+      <Skeleton height={16} width="100%" />
+      <Skeleton height={16} width="80%" />
+      <Skeleton height={48} width="100%" />
     </div>
   );
 }
 
 export function SkeletonStats() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="bg-surface rounded-xl border border-border-light p-4 space-y-2">
-          <Skeleton className="h-3 w-1/2" />
-          <Skeleton className="h-8 w-2/3" />
+        <div key={i} className="cb-kpi-cell">
+          <Skeleton height={12} width="50%" />
+          <div style={{ marginTop: 10 }}><Skeleton height={28} width="60%" /></div>
         </div>
       ))}
     </div>
