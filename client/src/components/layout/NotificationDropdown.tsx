@@ -146,45 +146,56 @@ export function NotificationDropdown() {
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {/* Bell button */}
+    <div style={{ position: 'relative' }} ref={dropdownRef}>
       <button
+        type="button"
         onClick={handleOpen}
-        className="relative p-2 rounded-lg hover:bg-primary-light transition-colors"
+        className="cb-nav-iconbtn"
+        aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
-        <Bell className="w-5 h-5 text-white" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-status-error text-white text-xs rounded-full flex items-center justify-center font-bold">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
+        <Bell size={18} />
+        {unreadCount > 0 && <span className="cb-notif-dot" />}
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 bg-surface rounded-lg shadow-lg border border-border z-50 overflow-hidden">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="font-semibold text-text-primary text-sm">Notifications</h3>
+        <div
+          className="cb-card"
+          style={{
+            position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+            width: 340, padding: 0, overflow: 'hidden', zIndex: 50,
+            boxShadow: '0 16px 40px -10px rgba(20,30,15,0.18)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '12px 16px', borderBottom: '1px solid var(--cb-line)',
+              background: 'var(--cb-paper-2)',
+            }}
+          >
+            <span className="cb-eyebrow">Notifications {unreadCount > 0 ? `· ${unreadCount}` : ''}</span>
             {unreadCount > 0 && (
               <button
+                type="button"
                 onClick={handleMarkAllRead}
-                className="text-xs text-primary hover:underline flex items-center gap-1"
+                className="cb-btn cb-btn-link"
+                style={{ fontSize: 12, gap: 4 }}
               >
-                <CheckCheck className="w-3 h-3" />
-                Mark all read
+                <CheckCheck size={12} /> Mark all read
               </button>
             )}
           </div>
 
-          {/* List */}
-          <div className="max-h-96 overflow-y-auto">
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
             {loading ? (
-              <div className="flex justify-center py-6">
-                <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 28 }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'cb-spin 0.8s linear infinite' }}>
+                  <circle cx="12" cy="12" r="10" stroke="var(--cb-ink-3)" strokeWidth="3" opacity="0.25" />
+                  <path d="M4 12a8 8 0 018-8" stroke="var(--cb-forest)" strokeWidth="3" strokeLinecap="round" />
+                </svg>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="text-center py-8 text-text-muted text-sm">
+              <div style={{ padding: 28, textAlign: 'center' }} className="cb-tiny">
                 No notifications yet
               </div>
             ) : (
@@ -193,30 +204,40 @@ export function NotificationDropdown() {
                 return (
                   <button
                     key={notif.id}
+                    type="button"
                     onClick={() => handleClickNotification(notif)}
-                    className={`w-full text-left px-4 py-3 hover:bg-surface-hover transition-colors border-b border-border-light
-                      ${!notif.read ? 'bg-blue-50' : ''}`}
+                    style={{
+                      width: '100%', textAlign: 'left',
+                      padding: '12px 16px', display: 'flex', gap: 12,
+                      background: !notif.read ? 'rgba(31,45,24,0.04)' : 'transparent',
+                      border: 'none', borderBottom: '1px solid var(--cb-line)',
+                      cursor: 'pointer', font: 'inherit', color: 'inherit',
+                    }}
                   >
-                    <div className="flex gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
-                        ${!notif.read ? 'bg-primary text-white' : 'bg-surface-alt text-text-muted'}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${!notif.read ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
-                          {notif.title}
-                        </p>
-                        <p className="text-xs text-text-muted truncate mt-0.5">
-                          {notif.message}
-                        </p>
-                        <p className="text-xs text-text-muted mt-1">
-                          {timeAgo(notif.createdAt)}
-                        </p>
-                      </div>
-                      {!notif.read && (
-                        <div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
-                      )}
+                    <div
+                      style={{
+                        width: 28, height: 28, borderRadius: 999, flexShrink: 0,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        background: !notif.read ? 'var(--cb-forest)' : 'var(--cb-paper-2)',
+                        color: !notif.read ? '#f4f1ea' : 'var(--cb-ink-3)',
+                      }}
+                    >
+                      <Icon size={14} />
                     </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: !notif.read ? 500 : 400, color: 'var(--cb-ink)' }}>
+                        {notif.title}
+                      </div>
+                      <div className="cb-small" style={{ marginTop: 2, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {notif.message}
+                      </div>
+                      <div className="cb-mono cb-tiny" style={{ marginTop: 4 }}>
+                        {timeAgo(notif.createdAt)}
+                      </div>
+                    </div>
+                    {!notif.read && (
+                      <span className="cb-dot cb-dot-ember" style={{ marginTop: 6, flexShrink: 0 }} />
+                    )}
                   </button>
                 );
               })
