@@ -1,24 +1,35 @@
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { ListingCard } from '../../components/listings/ListingCard';
-import { Button } from '../../components/ui/Button';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/Skeleton';
-import { Plus, Package } from 'lucide-react';
+import { ArrowIcon } from '../../components/ui/Brand';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
 
+type ListingExt = Listing & { _count?: { bids: number } };
+
+const STATUS_FILTERS = [
+  { value: '', label: 'All' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'IN_AUCTION', label: 'Auction' },
+  { value: 'SOLD', label: 'Matched' },
+  { value: 'EXPIRED', label: 'Closed' },
+];
+
 export function MyListings() {
   const navigate = useNavigate();
-  const [listings, setListings] = useState<(Listing & { _count?: { bids: number } })[]>([]);
+  const [listings, setListings] = useState<ListingExt[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
 
   useEffect(() => {
     fetchListings();
@@ -42,7 +53,7 @@ export function MyListings() {
     try {
       await api.delete(`/listings/${deleteTarget}`);
       toast.success('Listing deleted');
-      setListings(prev => prev.filter(l => l.id !== deleteTarget));
+      setListings((prev) => prev.filter((l) => l.id !== deleteTarget));
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete');
     } finally {
@@ -51,43 +62,99 @@ export function MyListings() {
     }
   }
 
+  const summary = useMemo(() => {
+    const byStatus = {
+      ACTIVE: { count: 0, value: 0 },
+      DRAFT: { count: 0, value: 0 },
+      SOLD: { count: 0, value: 0 },
+      EXPIRED: { count: 0, value: 0 },
+    } as Record<string, { count: number; value: number }>;
+    for (const l of listings) {
+      const k = byStatus[l.status] ? l.status : 'DRAFT';
+      byStatus[k].count++;
+      byStatus[k].value += ((l.pricePerUnitMin + l.pricePerUnitMax) / 2) * l.quantity;
+    }
+    return byStatus;
+  }, [listings]);
+
+  const filtered = statusFilter
+    ? listings.filter((l) => l.status === statusFilter)
+    : listings;
+
+  const currency = listings[0]?.currency || 'INR';
+
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-text">My Listings</h1>
-          <p className="text-text-secondary text-sm mt-1">
-            Manage your crop listings
-          </p>
+      <div className="cb-page-eyebrow">Listings</div>
+      <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+        Your lots,<br />
+        <span className="cb-italic">on the market.</span>
+      </h1>
+
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 28, marginBottom: 24 }}>
+        {[
+          ['Active', 'ACTIVE'],
+          ['Draft', 'DRAFT'],
+          ['Matched', 'SOLD'],
+          ['Closed', 'EXPIRED'],
+        ].map(([label, key]) => (
+          <div key={key} className="cb-kpi-cell">
+            <div className="cb-kpi-label">{label}</div>
+            <div className="cb-kpi-value">{summary[key].count}</div>
+            <div className="cb-kpi-delta">
+              {summary[key].value > 0 ? formatCurrency(summary[key].value, currency) : '—'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div className="cb-pill-group">
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              className={`cb-pill ${statusFilter === s.value ? 'active' : ''}`}
+              onClick={() => setStatusFilter(s.value)}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
-        <Link to="/farmer/listings/new">
-          <Button size="md">
-            <Plus size={18} className="mr-1" /> New Listing
-          </Button>
-        </Link>
+        <button
+          type="button"
+          onClick={() => navigate('/farmer/listings/new')}
+          className="cb-btn cb-btn-primary"
+          style={{ marginLeft: 'auto' }}
+        >
+          New lot
+          <ArrowIcon />
+        </button>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SkeletonCard key={i} />
+        <div className="cb-card" style={{ padding: 0 }}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} style={{ padding: 20, borderBottom: i < 3 ? '1px solid var(--cb-line)' : 'none' }}>
+              <SkeletonCard />
+            </div>
           ))}
         </div>
-      ) : listings.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <EmptyState
-          icon={<Package className="w-8 h-8" />}
           title="No listings yet"
-          description="Create your first crop listing to start receiving bids from buyers."
-          actionLabel="Create Your First Listing"
+          description="Create your first crop lot to start receiving bids from verified buyers."
+          actionLabel="Create your first lot"
           onAction={() => navigate('/farmer/listings/new')}
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {listings.map((listing) => (
+          <div className="cb-card" style={{ padding: 0 }}>
+            {filtered.map((listing) => (
               <ListingCard
                 key={listing.id}
                 listing={listing}
+                variant="row"
                 showActions
                 onEdit={(id) => navigate(`/farmer/listings/${id}/edit`)}
                 onDelete={(id) => setDeleteTarget(id)}
@@ -95,28 +162,27 @@ export function MyListings() {
             ))}
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex justify-center gap-2 mt-8">
-              <Button
-                variant="outline"
-                size="sm"
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+              <button
+                type="button"
                 disabled={page <= 1}
-                onClick={() => setPage(p => p - 1)}
+                onClick={() => setPage((p) => p - 1)}
+                className="cb-btn cb-btn-link"
+                style={{ fontSize: 12 }}
               >
-                Previous
-              </Button>
-              <span className="flex items-center px-3 text-sm text-text-secondary">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
+                ← prev
+              </button>
+              <span>page {page} of {totalPages}</span>
+              <button
+                type="button"
                 disabled={page >= totalPages}
-                onClick={() => setPage(p => p + 1)}
+                onClick={() => setPage((p) => p + 1)}
+                className="cb-btn cb-btn-link"
+                style={{ fontSize: 12 }}
               >
-                Next
-              </Button>
+                next →
+              </button>
             </div>
           )}
         </>
@@ -124,9 +190,9 @@ export function MyListings() {
 
       <ConfirmModal
         open={deleteTarget !== null}
-        title="Delete Listing"
+        title="Delete lot"
         message="This will permanently remove the listing and all associated bids. This action cannot be undone."
-        confirmLabel="Delete"
+        confirmLabel="Delete lot"
         variant="danger"
         loading={deleting}
         onConfirm={handleDelete}
