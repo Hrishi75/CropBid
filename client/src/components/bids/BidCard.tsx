@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { formatCurrency } from '../../utils/currency';
-import { Star, MessageSquare } from 'lucide-react';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Bid, Listing, User } from '../../types';
@@ -16,6 +14,15 @@ interface BidCardProps {
   onUpdate?: () => void;
 }
 
+const STATUS_META: Record<string, { label: string; color: string }> = {
+  PENDING: { label: 'PEND', color: 'var(--cb-ember)' },
+  ACCEPTED: { label: 'ACPT', color: 'var(--cb-sage)' },
+  REJECTED: { label: 'REJD', color: 'var(--cb-ink-3)' },
+  COUNTERED: { label: 'CNTR', color: 'var(--cb-wheat)' },
+  EXPIRED: { label: 'EXPR', color: 'var(--cb-ink-3)' },
+  OUTBID: { label: 'OUTB', color: 'var(--cb-ember)' },
+};
+
 export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
   const [showCounter, setShowCounter] = useState(false);
   const [counterPrice, setCounterPrice] = useState('');
@@ -25,21 +32,14 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
 
   const currency = bid.currency || bid.listing?.currency || 'INR';
-
-  const statusStyles: Record<string, string> = {
-    PENDING: 'bg-warning/10 text-warning',
-    ACCEPTED: 'bg-accent/10 text-accent',
-    REJECTED: 'bg-error/10 text-error',
-    COUNTERED: 'bg-primary/10 text-primary',
-    EXPIRED: 'bg-text-muted/10 text-text-muted',
-  };
+  const status = STATUS_META[bid.status] || { label: bid.status.slice(0, 4).toUpperCase(), color: 'var(--cb-ink-3)' };
 
   async function handleAction(action: string) {
     setLoading(action);
     try {
       if (action === 'accept') {
         await api.put(`/bids/${bid.id}/accept`);
-        toast.success('Bid accepted!');
+        toast.success('Bid accepted');
       } else if (action === 'reject') {
         await api.put(`/bids/${bid.id}/reject`);
         toast.success('Bid rejected');
@@ -50,7 +50,7 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           return;
         }
         await api.put(`/bids/${bid.id}/counter`, { counterPrice: Number(counterPrice) });
-        toast.success('Counter-offer sent');
+        toast.success('Counter sent');
         setShowCounter(false);
       } else if (action === 'update') {
         if (!newPrice || Number(newPrice) <= 0) {
@@ -76,114 +76,88 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
 
   return (
     <>
-      <Card>
-        <div className="flex items-start justify-between mb-3">
-          {/* Left — listing or buyer info */}
+      <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--cb-line)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
           <div>
+            <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 8 }}>
+              #{bid.id.slice(-6).toUpperCase()}
+            </span>
             {viewAs === 'buyer' && bid.listing && (
-              <Link to={`/listings/${bid.listing.id}`} className="font-semibold text-text hover:text-primary transition-colors">
-                {bid.listing.cropName}
-                {bid.listing.cropVariety && ` (${bid.listing.cropVariety})`}
+              <Link to={`/listings/${bid.listing.id}`} style={{ color: 'var(--cb-ink)', textDecoration: 'none', fontWeight: 500 }}>
+                {bid.listing.cropName}{bid.listing.cropVariety ? ` · ${bid.listing.cropVariety}` : ''}
               </Link>
             )}
             {viewAs === 'farmer' && bid.buyer && (
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center text-white text-sm font-bold" aria-hidden="true">
-                  {bid.buyer.name?.charAt(0)}
-                </div>
-                <div>
-                  <p className="font-medium text-text text-sm">{bid.buyer.name}</p>
-                  {bid.buyer.trustScore !== undefined && (
-                    <p className="text-xs text-text-secondary flex items-center gap-1">
-                      <Star size={10} aria-hidden="true" /> {Math.round(bid.buyer.trustScore)}/100
-                    </p>
-                  )}
-                </div>
-              </div>
+              <span style={{ fontWeight: 500 }}>{bid.buyer.name}</span>
             )}
           </div>
-
-          {/* Status badge */}
-          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusStyles[bid.status] || ''}`}>
-            {bid.status}
-          </span>
+          <span className="cb-mono cb-tiny" style={{ color: status.color }}>● {status.label}</span>
         </div>
 
-        {/* Price info */}
-        <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+        <div className="cb-small" style={{ marginBottom: 12 }}>
+          {viewAs === 'farmer' && bid.buyer?.trustScore !== undefined && (
+            <span>Trust {Math.round(bid.buyer.trustScore)} · </span>
+          )}
+          {bid.quantity} {bid.listing?.unit?.toLowerCase() || ''} · {new Date(bid.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          {bid.isAgentBid && ' · agent'}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 12 }}>
           <div>
-            <p className="text-text-muted text-xs">Bid Price</p>
-            <p className="font-semibold text-text">
+            <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>BID</div>
+            <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>
               {formatCurrency(bid.bidPricePerUnit, currency)}
-            </p>
+            </div>
           </div>
+          {bid.counterPrice && (
+            <div>
+              <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>COUNTER</div>
+              <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500, color: 'var(--cb-ember)' }}>
+                {formatCurrency(bid.counterPrice, currency)}
+              </div>
+            </div>
+          )}
           <div>
-            <p className="text-text-muted text-xs">Quantity</p>
-            <p className="font-semibold text-text">{bid.quantity} {bid.listing?.unit || ''}</p>
-          </div>
-          <div>
-            <p className="text-text-muted text-xs">Total</p>
-            <p className="font-semibold text-primary">
+            <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>TOTAL</div>
+            <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>
               {formatCurrency(bid.totalAmount, currency)}
-            </p>
+            </div>
           </div>
         </div>
 
-        {/* Counter-offer display */}
-        {bid.status === 'COUNTERED' && bid.counterPrice && (
-          <div className="bg-primary/5 rounded-lg p-2.5 mb-3 text-sm">
-            <p className="text-primary font-medium">
-              Counter-offer: {formatCurrency(bid.counterPrice, currency)} per unit
-            </p>
-          </div>
-        )}
-
-        {/* Message */}
         {bid.message && (
-          <div className="flex items-start gap-2 text-sm text-text-secondary mb-3">
-            <MessageSquare size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            <p>{bid.message}</p>
+          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, fontStyle: 'italic' }}>
+            "{bid.message}"
           </div>
         )}
 
-        {/* Timestamp */}
-        <p className="text-xs text-text-muted mb-3">
-          {new Date(bid.createdAt).toLocaleDateString('en-IN', {
-            day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-          })}
-          {bid.isAgentBid && ' · AI Agent bid'}
-        </p>
-
-        {/* Farmer actions */}
         {viewAs === 'farmer' && bid.status === 'PENDING' && (
-          <div className="flex gap-2">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button size="sm" onClick={() => handleAction('accept')} loading={loading === 'accept'}>
-              Accept
+              Accept {formatCurrency(bid.bidPricePerUnit, currency)}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowCounter(!showCounter)}>
+            <Button size="sm" variant="ghost" onClick={() => setShowCounter(!showCounter)}>
               Counter
             </Button>
-            <Button size="sm" variant="danger" onClick={() => handleAction('reject')} loading={loading === 'reject'}>
-              Reject
+            <Button size="sm" variant="link" onClick={() => handleAction('reject')} loading={loading === 'reject'}>
+              ✕ Reject
             </Button>
           </div>
         )}
 
-        {/* Counter form */}
         {showCounter && (
-          <div className="mt-3 flex gap-2 items-end">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginTop: 12 }}>
             <Input
-              label="Your counter price"
+              label="Counter price"
               type="number"
               min={0}
               step="0.01"
               placeholder="Enter price"
               value={counterPrice}
               onChange={(e) => setCounterPrice(e.target.value)}
-              aria-label="Counter price per unit"
             />
             <Button
-              size="sm"
+              size="md"
               onClick={() => handleAction('counter')}
               loading={loading === 'counter'}
               disabled={!counterPrice || Number(counterPrice) <= 0}
@@ -193,21 +167,19 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           </div>
         )}
 
-        {/* Buyer actions */}
         {viewAs === 'buyer' && (bid.status === 'PENDING' || bid.status === 'COUNTERED') && (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setShowUpdate(!showUpdate)}>
-              {bid.status === 'COUNTERED' ? 'Revise Bid' : 'Update Price'}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <Button size="sm" variant="ghost" onClick={() => setShowUpdate(!showUpdate)}>
+              {bid.status === 'COUNTERED' ? 'Revise bid' : 'Update price'}
             </Button>
-            <Button size="sm" variant="danger" onClick={() => setConfirmWithdraw(true)}>
+            <Button size="sm" variant="link" onClick={() => setConfirmWithdraw(true)}>
               Withdraw
             </Button>
           </div>
         )}
 
-        {/* Update form */}
         {showUpdate && (
-          <div className="mt-3 flex gap-2 items-end">
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', marginTop: 12 }}>
             <Input
               label="New bid price"
               type="number"
@@ -216,10 +188,9 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
               placeholder="Enter new price"
               value={newPrice}
               onChange={(e) => setNewPrice(e.target.value)}
-              aria-label="New bid price per unit"
             />
             <Button
-              size="sm"
+              size="md"
               onClick={() => handleAction('update')}
               loading={loading === 'update'}
               disabled={!newPrice || Number(newPrice) <= 0}
@@ -228,11 +199,11 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
             </Button>
           </div>
         )}
-      </Card>
+      </div>
 
       <ConfirmModal
         open={confirmWithdraw}
-        title="Withdraw Bid"
+        title="Withdraw bid"
         message="Are you sure you want to withdraw this bid? This action cannot be undone."
         confirmLabel="Withdraw"
         variant="warning"
