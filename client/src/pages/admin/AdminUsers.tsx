@@ -118,8 +118,8 @@ export function AdminUsers() {
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">New 7d</div>
-          <div className="cb-kpi-value">+{Math.round(users.length * 0.08)}</div>
-          <div className="cb-kpi-delta pos">+312/d</div>
+          <div className="cb-kpi-value">+{Math.round(total * 0.08)}</div>
+          <div className="cb-kpi-delta">est. from total</div>
         </div>
       </div>
 
