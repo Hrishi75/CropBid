@@ -29,6 +29,10 @@ interface AuctionState {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
+  // Some servers include the lot quantity in the auction snapshot. Others
+  // omit it (it's only on the listing). We fetch the listing as a fallback
+  // when this is missing so the bid-total preview reflects real volume.
+  quantity?: number;
 }
 
 interface AuctionEndResult {
@@ -51,6 +55,7 @@ export function AuctionRoom() {
   const [ended, setEnded] = useState<AuctionEndResult | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [lotQuantity, setLotQuantity] = useState<number | null>(null);
   const endsAtRef = useRef<Date | null>(null);
 
   const formatTime = useCallback((ms: number) => {
@@ -72,8 +77,19 @@ export function AuctionRoom() {
       setParticipants(state.participantCount);
       endsAtRef.current = new Date(state.endsAt);
       setBidPrice(String(Math.ceil(state.currentPrice * 1.05)));
+      if (state.quantity) setLotQuantity(state.quantity);
       setLoading(false);
     });
+
+    // Always fetch the listing to learn the lot quantity. Auction snapshots
+    // may omit it, and without it the bid-total preview would be wrong.
+    api.get(`/listings/${listingId}`)
+      .then(({ data }) => {
+        if (data?.quantity) setLotQuantity(data.quantity);
+      })
+      .catch(() => {
+        // Non-fatal: the bid total preview will hide itself when quantity is null.
+      });
 
     socket.on('auction:new_bid', (data: AuctionBid & { currentPrice: number; currentWinner: string; bidCount: number }) => {
       setBids((prev) => [...prev, { userId: data.userId, userName: data.userName, price: data.price, timestamp: data.timestamp }]);
@@ -251,8 +267,8 @@ export function AuctionRoom() {
               step="0.5"
             />
             <div className="cb-mono" style={{ fontSize: 14, color: 'var(--cb-ink-3)', paddingBottom: 12 }}>
-              {auction && parseFloat(bidPrice) > 0
-                ? `Total: ${formatCurrency(parseFloat(bidPrice) * 50, auction.currency)}`
+              {auction && lotQuantity && parseFloat(bidPrice) > 0
+                ? `Total: ${formatCurrency(parseFloat(bidPrice) * lotQuantity, auction.currency)} (${lotQuantity} ${auction.unit.toLowerCase()})`
                 : ''}
             </div>
           </div>
