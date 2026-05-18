@@ -13,23 +13,11 @@ interface PlatformStats {
   financial: { gmv: number; platformRevenue: number };
 }
 
-const EVENT_FALLBACK = [
-  { t: '09:42:11', evt: 'Match · #L-4421 Wheat HRW', val: '₹1.21L', warn: false },
-  { t: '09:41:58', evt: 'Bid sent · #L-4419', val: '₹2,420', warn: false },
-  { t: '09:41:42', evt: 'Listing created · Punjab', val: 'Soy', warn: false },
-  { t: '09:41:33', evt: 'Shipment delivered · #S-871', val: '50q', warn: false },
-  { t: '09:41:18', evt: 'User signup · Maharashtra', val: 'FARMER', warn: false },
-  { t: '09:41:02', evt: 'Escrow released · #T-865', val: '₹2.06L', warn: false },
-  { t: '09:40:51', evt: '⚠ Auction stuck · #A-0408', val: '12m', warn: true },
-  { t: '09:40:33', evt: '⚠ Dispute opened · #T-862', val: 'quality', warn: true },
-];
-
-const ATTENTION_FALLBACK = [
-  { type: 'Dispute', id: '#T-862', desc: 'Mustard 35q · quality', sla: '2h SLA', cta: 'Open case' },
-  { type: 'Stuck', id: '#A-0408', desc: 'Soy 100q · no bids 12m', sla: 'active', cta: 'Investigate' },
-  { type: 'KYC fail', id: '#U-2871', desc: 'Buyer · India · GST mismatch', sla: 'review', cta: 'Review' },
-  { type: 'Refund', id: '#T-855', desc: 'Cotton 20q · buyer requested', sla: 'pending', cta: 'Approve / Deny' },
-];
+// Event stream + triage queue render from server data. No fallback fake
+// rows — admins should see "no events yet" instead of fabricated dispute
+// IDs that lead nowhere when clicked.
+type EventRow = { t: string; evt: string; val: string; warn?: boolean };
+type AttentionRow = { type: string; id: string; desc: string; sla: string; cta: string; href?: string };
 
 const COUNTRIES = [
   { name: 'India', flag: '🇮🇳', gmv: 142, pct: 57 },
@@ -41,6 +29,9 @@ const COUNTRIES = [
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
+  const [events] = useState<EventRow[]>([]);
+  const [attention] = useState<AttentionRow[]>([]);
+  const [streamPaused, setStreamPaused] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,6 +39,9 @@ export function AdminDashboard() {
       try {
         const res = await api.get('/admin/stats');
         setStats(res.data);
+        // TODO: wire /admin/events and /admin/attention endpoints when
+        // the backend exposes them; until then the lists render empty
+        // rather than ship fabricated triage items.
       } catch (err) {
         console.error('Failed to load stats:', err);
       } finally {
@@ -133,42 +127,67 @@ export function AdminDashboard() {
         <div className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-eyebrow">Live event stream</div>
-            <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>Pause ⏸</button>
+            <button
+              type="button"
+              onClick={() => setStreamPaused((v) => !v)}
+              className="cb-btn cb-btn-link"
+              style={{ fontSize: 12 }}
+              disabled={events.length === 0}
+            >
+              {streamPaused ? 'Resume ▶' : 'Pause ⏸'}
+            </button>
           </div>
           <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-            {EVENT_FALLBACK.map((event, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'grid', gridTemplateColumns: '90px 1fr auto',
-                  gap: 12, padding: '10px 18px',
-                  borderBottom: i < EVENT_FALLBACK.length - 1 ? '1px solid var(--cb-line)' : 'none',
-                  background: event.warn ? 'rgba(200,96,43,0.04)' : 'transparent',
-                }}
-                className="cb-mono"
-              >
-                <span style={{ color: 'var(--cb-ink-3)', fontSize: 11 }}>{event.t}</span>
-                <span style={{ color: event.warn ? 'var(--cb-ember)' : 'var(--cb-ink-2)', fontSize: 12 }}>{event.evt}</span>
-                <span style={{ color: 'var(--cb-ink-3)', fontSize: 11 }}>{event.val}</span>
+            {events.length === 0 ? (
+              <div style={{ padding: '28px 18px', textAlign: 'center' }} className="cb-tiny">
+                No platform events yet. Stream wires up once the
+                <span className="cb-mono"> /admin/events</span> endpoint ships.
               </div>
-            ))}
+            ) : (
+              events.map((event, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '90px 1fr auto',
+                    gap: 12, padding: '10px 18px',
+                    borderBottom: i < events.length - 1 ? '1px solid var(--cb-line)' : 'none',
+                    background: event.warn ? 'rgba(200,96,43,0.04)' : 'transparent',
+                  }}
+                  className="cb-mono"
+                >
+                  <span style={{ color: 'var(--cb-ink-3)', fontSize: 11 }}>{event.t}</span>
+                  <span style={{ color: event.warn ? 'var(--cb-ember)' : 'var(--cb-ink-2)', fontSize: 12 }}>{event.evt}</span>
+                  <span style={{ color: 'var(--cb-ink-3)', fontSize: 11 }}>{event.val}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         <div className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--cb-line)' }}>
-            <div className="cb-eyebrow">Needs attention · {ATTENTION_FALLBACK.length} items</div>
+            <div className="cb-eyebrow">Needs attention · {attention.length} items</div>
           </div>
-          {ATTENTION_FALLBACK.map((item, i) => (
-            <div key={i} style={{ padding: '12px 18px', borderBottom: i < ATTENTION_FALLBACK.length - 1 ? '1px solid var(--cb-line)' : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>⚠ {item.type}</span>
-                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{item.sla}</span>
-              </div>
-              <div style={{ fontSize: 13 }}>{item.id} · {item.desc}</div>
-              <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 6 }}>{item.cta} →</div>
+          {attention.length === 0 ? (
+            <div style={{ padding: '28px 18px', textAlign: 'center' }} className="cb-tiny">
+              All clear. No open disputes, stuck auctions, or KYC failures.
             </div>
-          ))}
+          ) : (
+            attention.map((item, i) => (
+              <div key={i} style={{ padding: '12px 18px', borderBottom: i < attention.length - 1 ? '1px solid var(--cb-line)' : 'none' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>⚠ {item.type}</span>
+                  <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{item.sla}</span>
+                </div>
+                <div style={{ fontSize: 13 }}>{item.id} · {item.desc}</div>
+                {item.href ? (
+                  <Link to={item.href} className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 6, display: 'inline-block' }}>{item.cta} →</Link>
+                ) : (
+                  <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 6 }}>{item.cta} →</div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
 
