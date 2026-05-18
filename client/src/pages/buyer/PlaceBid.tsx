@@ -9,7 +9,24 @@ import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
 
-const SPARK = [4, 6, 5, 8, 7, 9, 11, 10, 12, 11, 13];
+// Synthetic per-listing series (deterministic from id) so the preview chart
+// renders motion without claiming to be live market data. Replace with the
+// real price history when the analytics endpoint exposes it.
+function pseudoSpark(id: string, points = 11): number[] {
+  let seed = 0;
+  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) >>> 0;
+  const next = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return (seed & 0xffff) / 0xffff;
+  };
+  const out: number[] = [];
+  let v = 8;
+  for (let i = 0; i < points; i++) {
+    v = Math.max(2, Math.min(14, v + (next() - 0.5) * 3));
+    out.push(v);
+  }
+  return out;
+}
 
 export function PlaceBid() {
   const { id } = useParams();
@@ -39,6 +56,7 @@ export function PlaceBid() {
   if (!listing) return null;
 
   const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
+  const spark = pseudoSpark(listing.id);
 
   return (
     <DashboardLayout>
@@ -82,21 +100,17 @@ export function PlaceBid() {
           </div>
 
           <div className="cb-card">
-            <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Agent intel</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div className="cb-eyebrow">Lot reference</div>
+              <span className="cb-chip" style={{ fontSize: 9.5 }}>preview</span>
+            </div>
             <div className="cb-small" style={{ marginBottom: 8 }}>
-              Spot ref <span className="cb-mono" style={{ color: 'var(--cb-ink)' }}>{formatCurrency(priceMid, listing.currency)}/{listing.unit.toLowerCase()}</span>
+              Listing mid-range <span className="cb-mono" style={{ color: 'var(--cb-ink)' }}>{formatCurrency(priceMid, listing.currency)}/{listing.unit.toLowerCase()}</span>
             </div>
-            <MiniChart data={SPARK} color="#6b8e4e" width={220} height={32} />
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--cb-line)' }}>
-              <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Win likelihood</div>
-              <div style={{ height: 6, background: 'var(--cb-paper-2)', borderRadius: 3 }}>
-                <div style={{ width: '64%', height: '100%', background: 'var(--cb-sage)', borderRadius: 3 }} />
-              </div>
-              <div className="cb-tiny" style={{ marginTop: 4 }}>64% if bid ≥ {formatCurrency(priceMid, listing.currency)}</div>
-            </div>
-            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--cb-line)' }}>
-              <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Suggested</div>
-              <div className="cb-mono" style={{ fontSize: 16 }}>Counter at {formatCurrency(priceMid * 1.02, listing.currency)} to clear field</div>
+            <MiniChart data={spark} color="#6b8e4e" width={220} height={32} />
+            <div className="cb-tiny" style={{ marginTop: 6 }}>
+              Synthetic series for layout only. Live agent intel (win likelihood,
+              counter suggestions) ships with the next backend update.
             </div>
           </div>
         </aside>
