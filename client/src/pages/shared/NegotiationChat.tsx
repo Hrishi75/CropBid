@@ -4,6 +4,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
+import toast from 'react-hot-toast';
 import type { Negotiation, NegotiationRound } from '../../types';
 
 const OUTCOME_META: Record<string, { label: string; color: string }> = {
@@ -18,7 +19,52 @@ export function NegotiationChat() {
   const [negotiation, setNegotiation] = useState<Negotiation | null>(null);
   const [loading, setLoading] = useState(true);
   const [visibleRounds, setVisibleRounds] = useState(0);
+  const [actionLoading, setActionLoading] = useState<'walk-away' | 'take-manual' | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  async function handleWalkAway() {
+    if (!id) return;
+    if (!confirm('Walk away from this negotiation? Your agent will stop countering and the buyer/seller will be notified.')) return;
+    setActionLoading('walk-away');
+    try {
+      // Endpoint not yet implemented on the server; surface a clear error
+      // rather than silently no-op. The toast catches the 404 and the
+      // user is informed instead of being left wondering.
+      await api.post(`/negotiations/${id}/walk-away`);
+      toast.success('Walked away. Agent stopped.');
+      const res = await api.get(`/negotiations/${id}`);
+      setNegotiation(res.data);
+    } catch (err: any) {
+      const status = err.response?.status;
+      if (status === 404) {
+        toast.error('Walk-away endpoint not yet available. Adjust strategy from Agent settings as a workaround.');
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to walk away');
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleTakeManual() {
+    if (!id) return;
+    setActionLoading('take-manual');
+    try {
+      await api.post(`/negotiations/${id}/take-manual`);
+      toast.success('Agent paused. Next round is yours.');
+      const res = await api.get(`/negotiations/${id}`);
+      setNegotiation(res.data);
+    } catch (err: any) {
+      const status = err.response?.status;
+      if (status === 404) {
+        toast.error('Manual takeover endpoint not yet available. Pause the agent from Agent settings instead.');
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to take manual control');
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   useEffect(() => {
     async function fetch() {
@@ -208,8 +254,24 @@ export function NegotiationChat() {
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <Link to="/agent" className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5 }}>⚙ Adjust strategy</Link>
-          <button type="button" className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5 }}>✋ Take manual</button>
-          <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12.5, color: 'var(--cb-ember)' }}>⛔ Walk away</button>
+          <button
+            type="button"
+            className="cb-btn cb-btn-ghost"
+            style={{ fontSize: 12.5 }}
+            onClick={handleTakeManual}
+            disabled={actionLoading !== null || negotiation.finalOutcome !== 'IN_PROGRESS'}
+          >
+            ✋ {actionLoading === 'take-manual' ? 'Pausing…' : 'Take manual'}
+          </button>
+          <button
+            type="button"
+            className="cb-btn cb-btn-link"
+            style={{ fontSize: 12.5, color: 'var(--cb-ember)' }}
+            onClick={handleWalkAway}
+            disabled={actionLoading !== null || negotiation.finalOutcome !== 'IN_PROGRESS'}
+          >
+            ⛔ {actionLoading === 'walk-away' ? 'Walking…' : 'Walk away'}
+          </button>
         </div>
       </div>
     </DashboardLayout>
