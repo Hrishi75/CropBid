@@ -23,7 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const variantClass = {
       primary: 'cb-btn cb-btn-primary',
-      secondary: 'cb-btn cb-btn-primary',
+      secondary: 'cb-btn cb-btn-ghost',
       outline: 'cb-btn cb-btn-ghost',
       ghost: 'cb-btn cb-btn-ghost',
       danger: 'cb-btn cb-btn-danger',
