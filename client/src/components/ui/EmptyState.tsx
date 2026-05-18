@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Button } from './Button';
 
 interface EmptyStateProps {
-  icon: ReactNode;
+  icon?: ReactNode;
   title: string;
   description?: string;
   actionLabel?: string;
@@ -19,24 +19,32 @@ export function EmptyState({
   actionHref,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="w-16 h-16 rounded-full bg-surface-alt flex items-center justify-center text-text-muted mb-4">
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold text-text mb-1">{title}</h3>
+    <div
+      className="cb-card"
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '48px 24px', gap: 8 }}
+    >
+      {icon && (
+        <div
+          style={{
+            width: 56, height: 56, borderRadius: 999, background: 'var(--cb-paper-2)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--cb-ember)', marginBottom: 8,
+          }}
+        >
+          {icon}
+        </div>
+      )}
+      <h3 className="cb-h3" style={{ fontSize: 20 }}>{title}</h3>
       {description && (
-        <p className="text-sm text-text-secondary max-w-sm mb-4">{description}</p>
+        <p className="cb-body" style={{ maxWidth: 400, fontSize: 14 }}>{description}</p>
       )}
       {actionLabel && onAction && (
-        <Button variant="secondary" size="sm" onClick={onAction}>
-          {actionLabel}
-        </Button>
+        <div style={{ marginTop: 12 }}>
+          <Button onClick={onAction}>{actionLabel}</Button>
+        </div>
       )}
       {actionLabel && actionHref && (
-        <a
-          href={actionHref}
-          className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-dark transition-colors"
-        >
+        <a href={actionHref} className="cb-btn cb-btn-primary" style={{ marginTop: 12 }}>
           {actionLabel}
         </a>
       )}

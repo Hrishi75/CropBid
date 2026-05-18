@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '../ui/Card';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
+import { ArrowIcon } from '../ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -12,36 +12,35 @@ interface BidFormProps {
   listing: Listing;
 }
 
-/**
- * WHY SHOW THE FLOOR PRICE?
- * Transparency builds trust. The farmer's minimum price is public so
- * buyers know the lowest acceptable bid. This reduces wasted bids
- * (rejected for being too low) and speeds up deal-making.
- */
 export function BidForm({ listing }: BidFormProps) {
   const navigate = useNavigate();
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState(String(listing.quantity));
   const [message, setMessage] = useState('');
+  const [payment, setPayment] = useState<'LC' | 'NET7' | 'NET15'>('LC');
+  const [delivery, setDelivery] = useState<'FOB' | 'CIF'>('CIF');
+  const [agentMode, setAgentMode] = useState(true);
+  const [walkAway, setWalkAway] = useState('');
   const [loading, setLoading] = useState(false);
 
   const bidPrice = parseFloat(price) || 0;
   const bidQty = parseFloat(quantity) || 0;
   const totalAmount = bidPrice * bidQty;
+  const priceRange = listing.pricePerUnitMax - listing.pricePerUnitMin;
+  const positionPct = bidPrice > 0 && priceRange > 0
+    ? Math.min(100, Math.max(0, ((bidPrice - listing.pricePerUnitMin) / priceRange) * 100))
+    : bidPrice > 0 ? 50 : 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-
     if (bidPrice < listing.pricePerUnitMin) {
-      toast.error(`Bid must be at least ${formatCurrency(listing.pricePerUnitMin, listing.currency)} (floor price)`);
+      toast.error(`Bid must be at least ${formatCurrency(listing.pricePerUnitMin, listing.currency)}`);
       return;
     }
-
     if (bidQty > listing.quantity) {
-      toast.error(`Only ${listing.quantity} ${listing.unit} available`);
+      toast.error(`Only ${listing.quantity} ${listing.unit.toLowerCase()} available`);
       return;
     }
-
     setLoading(true);
     try {
       await api.post('/bids', {
@@ -49,9 +48,12 @@ export function BidForm({ listing }: BidFormProps) {
         bidPricePerUnit: bidPrice,
         quantity: bidQty,
         message: message || undefined,
+        paymentTerms: payment,
+        deliveryTerms: delivery,
+        agentMode,
+        walkAwayPrice: agentMode && walkAway ? parseFloat(walkAway) : undefined,
       });
-
-      toast.success('Bid placed successfully!');
+      toast.success('Bid sent');
       navigate('/buyer/bids');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to place bid');
@@ -60,72 +62,125 @@ export function BidForm({ listing }: BidFormProps) {
     }
   }
 
-  return (
-    <Card padding="lg">
-      <h2 className="text-lg font-semibold text-text mb-4">Place Your Bid</h2>
-
-      {/* Price guide */}
-      <div className="bg-surface-alt rounded-lg p-3 mb-4 text-sm">
-        <div className="flex justify-between mb-1">
-          <span className="text-text-secondary">Floor Price (min)</span>
-          <span className="font-medium text-text">
-            {formatCurrency(listing.pricePerUnitMin, listing.currency)}/{listing.unit}
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-text-secondary">Asking Price (ideal)</span>
-          <span className="font-medium text-primary">
-            {formatCurrency(listing.pricePerUnitMax, listing.currency)}/{listing.unit}
-          </span>
-        </div>
+  function Section({ title, children }: { title: string; children: React.ReactNode }) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '18px 0', borderBottom: '1px solid var(--cb-line)' }}>
+        <div className="cb-eyebrow">{title}</div>
+        {children}
       </div>
+    );
+  }
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <Input
-          label={`Your Bid Price (per ${listing.unit})`}
-          type="number"
-          placeholder={`Min ${listing.pricePerUnitMin}`}
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          required
-        />
-
-        <Input
-          label={`Quantity (${listing.unit})`}
-          type="number"
-          placeholder={`Max ${listing.quantity}`}
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          required
-        />
-
-        {/* Live total */}
-        {bidPrice > 0 && bidQty > 0 && (
-          <div className="bg-primary/5 rounded-lg p-3 text-center">
-            <p className="text-xs text-text-muted">Total Bid Amount</p>
-            <p className="text-xl font-bold text-primary">
-              {formatCurrency(totalAmount, listing.currency)}
-            </p>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-text mb-1">
-            Message to Farmer (optional)
-          </label>
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            rows={2}
-            placeholder="e.g., We need delivery by next week..."
-            className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+  return (
+    <div className="cb-card" style={{ padding: '4px 20px' }}>
+      <form onSubmit={handleSubmit}>
+        <Section title="Price">
+          <Input
+            label={`Per unit · min ${formatCurrency(listing.pricePerUnitMin, listing.currency)}`}
+            type="number"
+            placeholder="Enter your bid"
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            required
+            min={listing.pricePerUnitMin}
           />
-        </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }} className="cb-tiny">
+              <span>Floor {formatCurrency(listing.pricePerUnitMin, listing.currency)}</span>
+              <span>Ideal {formatCurrency(listing.pricePerUnitMax, listing.currency)}</span>
+            </div>
+            <div className="cb-range-track">
+              <div className="cb-range-fill" style={{ left: 0, right: 0 }} />
+              {bidPrice > 0 && <div className="cb-range-marker" style={{ left: `${positionPct}%` }} />}
+            </div>
+          </div>
+          <Input
+            label={`Quantity · max ${listing.quantity} ${listing.unit.toLowerCase()}`}
+            type="number"
+            placeholder={`Max ${listing.quantity}`}
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            required
+          />
+          {bidPrice > 0 && bidQty > 0 && (
+            <div style={{ padding: 12, background: 'var(--cb-paper-2)', borderRadius: 8 }}>
+              <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 4 }}>TOTAL</div>
+              <div className="cb-mono" style={{ fontSize: 22, fontWeight: 500 }}>
+                {formatCurrency(totalAmount, listing.currency)}
+              </div>
+            </div>
+          )}
+        </Section>
 
-        <Button type="submit" size="lg" className="w-full" loading={loading}>
-          Place Bid
-        </Button>
+        <Section title="Terms">
+          <div>
+            <label className="cb-label">Payment</label>
+            <div className="cb-pill-group">
+              {[['LC', 'L/C'], ['NET7', 'NET-7'], ['NET15', 'NET-15']].map(([v, label]) => (
+                <button key={v} type="button" className={`cb-pill ${payment === v ? 'active' : ''}`} onClick={() => setPayment(v as any)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="cb-label">Delivery</label>
+            <div className="cb-pill-group">
+              {[['FOB', 'FOB origin'], ['CIF', 'CIF dest']].map(([v, label]) => (
+                <button key={v} type="button" className={`cb-pill ${delivery === v ? 'active' : ''}`} onClick={() => setDelivery(v as any)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Message">
+          <div>
+            <label htmlFor="bid-message" className="cb-label">To seller (optional)</label>
+            <textarea
+              id="bid-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={2}
+              placeholder="e.g., need protein cert attached on signing"
+              className="cb-input"
+            />
+          </div>
+        </Section>
+
+        <Section title="Agent mode">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" checked={!agentMode} onChange={() => setAgentMode(false)} style={{ accentColor: 'var(--cb-forest)' }} />
+              <span><strong>Manual</strong> · I send this bid as-is</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+              <input type="radio" checked={agentMode} onChange={() => setAgentMode(true)} style={{ accentColor: 'var(--cb-forest)' }} />
+              <span><strong>Agent</strong> · auto-counter on your behalf</span>
+            </label>
+            {agentMode && (
+              <Input
+                label="Walk-away price"
+                type="number"
+                placeholder="Max you'll go"
+                value={walkAway}
+                onChange={(e) => setWalkAway(e.target.value)}
+              />
+            )}
+          </div>
+        </Section>
+
+        <div style={{ display: 'flex', gap: 12, padding: '18px 0' }}>
+          <Button type="submit" size="lg" loading={loading}>
+            Send bid
+            <ArrowIcon />
+          </Button>
+          <Button type="button" variant="ghost" size="lg" onClick={() => navigate(-1)}>
+            Cancel
+          </Button>
+        </div>
       </form>
-    </Card>
+    </div>
   );
 }

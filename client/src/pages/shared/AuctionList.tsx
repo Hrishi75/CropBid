@@ -1,15 +1,12 @@
-// =============================================================================
-// Auction List — Browse active and start new live auctions
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Gavel, Clock, Users, TrendingUp, Plus, ArrowRight } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -27,7 +24,7 @@ interface ActiveAuction {
   farmerId: string;
 }
 
-interface Listing {
+interface ListingLite {
   id: string;
   cropName: string;
   cropVariety?: string;
@@ -41,7 +38,7 @@ interface Listing {
 export function AuctionList() {
   const { user } = useAuth();
   const [auctions, setAuctions] = useState<ActiveAuction[]>([]);
-  const [myListings, setMyListings] = useState<Listing[]>([]);
+  const [myListings, setMyListings] = useState<ListingLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [showStartForm, setShowStartForm] = useState(false);
   const [selectedListing, setSelectedListing] = useState('');
@@ -70,7 +67,7 @@ export function AuctionList() {
     try {
       const res = await api.get('/listings/my');
       const listings = res.data.listings ?? res.data;
-      setMyListings(Array.isArray(listings) ? listings.filter((l: Listing) => l.status === 'ACTIVE') : []);
+      setMyListings(Array.isArray(listings) ? listings.filter((l: ListingLite) => l.status === 'ACTIVE') : []);
     } catch (err) {
       console.error('Failed to load listings:', err);
     }
@@ -84,7 +81,7 @@ export function AuctionList() {
         listingId: selectedListing,
         durationMinutes: parseInt(duration) || 10,
       });
-      toast.success('Auction started!');
+      toast.success('Auction started');
       setShowStartForm(false);
       fetchAuctions();
     } catch (err: any) {
@@ -94,143 +91,126 @@ export function AuctionList() {
     }
   }
 
-  function getTimeLeft(endsAt: string) {
+  function timeLeft(endsAt: string) {
     const ms = new Date(endsAt).getTime() - Date.now();
-    if (ms <= 0) return 'Ending...';
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    if (ms <= 0) return '0:00';
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Gavel className="w-7 h-7 text-primary" />
-            <h1 className="text-2xl font-bold text-text-primary">Live Auctions</h1>
-          </div>
-          {isFarmer && (
-            <Button onClick={() => setShowStartForm(!showStartForm)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Start Auction
-            </Button>
-          )}
-        </div>
-
-        {/* Start auction form (farmer only) */}
-        {showStartForm && isFarmer && (
-          <Card className="mb-6">
-            <h3 className="font-semibold text-text-primary mb-4">Start a New Auction</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1">
-                  Select Listing
-                </label>
-                <select
-                  value={selectedListing}
-                  onChange={(e) => setSelectedListing(e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-lg bg-surface text-text focus:ring-2 focus:ring-accent"
-                >
-                  <option value="">Choose a listing...</option>
-                  {myListings.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.cropName} {l.cropVariety ? `(${l.cropVariety})` : ''} — {l.quantity} {l.unit}
-                    </option>
-                  ))}
-                </select>
-                {myListings.length === 0 && (
-                  <p className="text-xs text-text-muted mt-1">No active listings available for auction.</p>
-                )}
-              </div>
-              <Input
-                label="Duration (minutes)"
-                type="number"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                min={5}
-                max={60}
-              />
-            </div>
-            <div className="flex gap-3 mt-4">
-              <Button onClick={handleStartAuction} loading={starting} disabled={!selectedListing}>
-                Start Auction
-              </Button>
-              <Button variant="outline" onClick={() => setShowStartForm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </Card>
-        )}
-
-        {/* Active auctions */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-          </div>
-        ) : auctions.length === 0 ? (
-          <Card>
-            <div className="text-center py-12">
-              <Gavel className="w-12 h-12 text-text-muted mx-auto mb-3" />
-              <p className="text-text-muted">No live auctions right now.</p>
-              {isFarmer && (
-                <p className="text-sm text-text-muted mt-1">
-                  Start one from your active listings!
-                </p>
-              )}
-            </div>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {auctions.map((auction) => (
-              <Link
-                key={auction.listingId}
-                to={`/auctions/${auction.listingId}`}
-                className="block"
-              >
-                <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-text-primary text-lg">
-                          {auction.cropName}
-                        </h3>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-status-error animate-pulse">
-                          <span className="w-2 h-2 bg-status-error rounded-full" />
-                          LIVE
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-6 text-sm">
-                        <div className="flex items-center gap-1 text-text-muted">
-                          <TrendingUp className="w-4 h-4" />
-                          <span>
-                            {auction.currency} {auction.currentPrice}/{auction.unit}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-text-muted">
-                          <Gavel className="w-4 h-4" />
-                          <span>{auction.bidCount} bids</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-text-muted">
-                          <Users className="w-4 h-4" />
-                          <span>{auction.participantCount} watching</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-text-muted">
-                          <Clock className="w-4 h-4" />
-                          <span>{getTimeLeft(auction.endsAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <ArrowRight className="w-5 h-5 text-text-muted" />
-                  </div>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        )}
+      <div className="cb-page-eyebrow">
+        Auctions · live · {auctions.length} clearing now
       </div>
+      <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+        {auctions.length} auctions<br />
+        <span className="cb-italic">clearing now.</span>
+      </h1>
+
+      {isFarmer && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28, marginBottom: 16 }}>
+          <Button onClick={() => setShowStartForm(!showStartForm)}>
+            Start auction
+            <ArrowIcon />
+          </Button>
+        </div>
+      )}
+
+      {showStartForm && isFarmer && (
+        <div className="cb-card" style={{ marginBottom: 24 }}>
+          <div className="cb-eyebrow" style={{ marginBottom: 12 }}>Start auction</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+            <div>
+              <label className="cb-label">Select listing</label>
+              <select value={selectedListing} onChange={(e) => setSelectedListing(e.target.value)} className="cb-input">
+                <option value="">Choose a listing…</option>
+                {myListings.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.cropName}{l.cropVariety ? ` (${l.cropVariety})` : ''} — {l.quantity} {l.unit.toLowerCase()}
+                  </option>
+                ))}
+              </select>
+              {myListings.length === 0 && <p className="cb-field-hint">No active listings available for auction.</p>}
+            </div>
+            <Input
+              label="Duration (min)"
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(e.target.value)}
+              min={5}
+              max={60}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <Button onClick={handleStartAuction} loading={starting} disabled={!selectedListing}>
+              Open auction
+              <ArrowIcon />
+            </Button>
+            <Button variant="ghost" onClick={() => setShowStartForm(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="cb-card" style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span className="cb-tiny">Loading…</span>
+        </div>
+      ) : auctions.length === 0 ? (
+        <EmptyState
+          title="No live auctions"
+          description={isFarmer ? 'Start one from your active listings.' : 'Auctions will appear here as they go live.'}
+        />
+      ) : (
+        <div className="cb-card" style={{ padding: 0 }}>
+          {auctions.map((a, i) => {
+            const left = timeLeft(a.endsAt);
+            const ending = left.startsWith('0:') && parseInt(left.split(':')[1]) < 60;
+            return (
+              <Link
+                key={a.listingId}
+                to={`/auctions/${a.listingId}`}
+                style={{ display: 'block', textDecoration: 'none', color: 'inherit', padding: '18px 20px', borderBottom: i < auctions.length - 1 ? '1px solid var(--cb-line)' : 'none' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+                  <div>
+                    <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 8 }}>
+                      #A-{a.listingId.slice(-4).toUpperCase()}
+                    </span>
+                    <span style={{ fontWeight: 500 }}>{a.cropName}</span>
+                  </div>
+                  <span className="cb-mono cb-tiny" style={{ color: ending ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
+                    <span className="cb-live-dot sm" style={{ marginRight: 6 }} />
+                    {ending ? '⚠ ENDING' : 'LIVE'} · ◷ {left}
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginTop: 12 }}>
+                  <div>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>CURRENT</div>
+                    <div className="cb-mono" style={{ fontWeight: 500 }}>{formatCurrency(a.currentPrice, a.currency)}/{a.unit.toLowerCase()}</div>
+                  </div>
+                  <div>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>BIDS</div>
+                    <div className="cb-mono" style={{ fontWeight: 500 }}>{a.bidCount}</div>
+                  </div>
+                  <div>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>WATCHING</div>
+                    <div className="cb-mono" style={{ fontWeight: 500 }}>{a.participantCount}</div>
+                  </div>
+                  <div>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>LEADING</div>
+                    <div className="cb-mono" style={{ fontWeight: 500, fontSize: 13 }}>{a.currentWinner || '—'}</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, color: 'var(--cb-ember)' }} className="cb-tiny">
+                  Enter room →
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

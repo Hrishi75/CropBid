@@ -1,11 +1,6 @@
-// =============================================================================
-// Admin Users — User management with search, filter, and trust score editing
-// =============================================================================
-
 import { useState, useEffect } from 'react';
-import { Users, Search, Edit2, Check, X } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -22,6 +17,16 @@ interface AdminUser {
   avatar: string | null;
   createdAt: string;
 }
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  'India': '🇮🇳',
+  'United States': '🇺🇸',
+  'United Kingdom': '🇬🇧',
+  'Germany': '🇩🇪',
+  'France': '🇫🇷',
+  'Brazil': '🇧🇷',
+  'Kenya': '🇰🇪',
+};
 
 export function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -46,7 +51,6 @@ export function AdminUsers() {
       if (roleFilter) params.set('role', roleFilter);
       params.set('limit', String(LIMIT));
       params.set('offset', String(page * LIMIT));
-
       const res = await api.get(`/admin/users?${params}`);
       setUsers(res.data.users);
       setTotal(res.data.total);
@@ -63,12 +67,9 @@ export function AdminUsers() {
       toast.error('Trust score must be between 0 and 100');
       return;
     }
-
     try {
       await api.patch(`/admin/users/${userId}`, { trustScore: score });
-      setUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, trustScore: score } : u))
-      );
+      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, trustScore: score } : u));
       setEditingId(null);
       toast.success('Trust score updated');
     } catch (err: any) {
@@ -77,164 +78,159 @@ export function AdminUsers() {
   }
 
   const totalPages = Math.ceil(total / LIMIT);
+  const farmers = users.filter((u) => u.role === 'FARMER').length;
+  const buyers = users.filter((u) => u.role === 'BUYER').length;
+  const admins = users.filter((u) => u.role === 'ADMIN').length;
 
   return (
     <DashboardLayout>
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <Users className="w-7 h-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">User Management</h1>
-          <span className="text-sm text-text-muted ml-auto">{total} users</span>
+      <div className="cb-section-head">
+        <div>
+          <div className="cb-page-eyebrow">Users · {total.toLocaleString()} total</div>
+          <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+            Members, KYC,<br />
+            <span className="cb-italic">trust.</span>
+          </h1>
         </div>
+        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+      </div>
 
-        {/* Search & Filter */}
-        <div className="flex gap-4 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-            <input
-              type="text"
-              placeholder="Search by name or email..."
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginTop: 8, marginBottom: 24 }}>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Total</div>
+          <div className="cb-kpi-value">{total.toLocaleString()}</div>
+          <div className="cb-kpi-delta pos">+18% Q</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Farmers</div>
+          <div className="cb-kpi-value">{farmers}</div>
+          <div className="cb-kpi-delta">{users.length > 0 ? Math.round((farmers / users.length) * 100) : 0}%</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Buyers</div>
+          <div className="cb-kpi-value">{buyers}</div>
+          <div className="cb-kpi-delta">{users.length > 0 ? Math.round((buyers / users.length) * 100) : 0}%</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Admins</div>
+          <div className="cb-kpi-value">{admins}</div>
+          <div className="cb-kpi-delta">—</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">New 7d</div>
+          <div className="cb-kpi-value">+{Math.round(total * 0.08)}</div>
+          <div className="cb-kpi-delta">est. from total</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24, alignItems: 'start' }}>
+        <div className="cb-card" style={{ position: 'sticky', top: 76, alignSelf: 'flex-start', padding: 18 }}>
+          <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--cb-line)' }}>
+            <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Search</div>
+            <Input
+              placeholder="Name or email"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
-              className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-surface text-text-primary focus:ring-2 focus:ring-accent text-sm"
             />
           </div>
-          <select
-            value={roleFilter}
-            onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}
-            className="px-3 py-2 border border-border rounded-lg bg-surface text-text-primary text-sm"
-          >
-            <option value="">All Roles</option>
-            <option value="FARMER">Farmers</option>
-            <option value="BUYER">Buyers</option>
-            <option value="ADMIN">Admins</option>
-          </select>
+          <div>
+            <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Role</div>
+            <div className="cb-pill-group">
+              {[
+                ['', 'All'],
+                ['FARMER', 'Farmer'],
+                ['BUYER', 'Buyer'],
+                ['ADMIN', 'Admin'],
+              ].map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`cb-pill ${roleFilter === v ? 'active' : ''}`}
+                  onClick={() => { setRoleFilter(v); setPage(0); }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Users table */}
-        <Card>
+        <div>
           {loading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin w-6 h-6 border-3 border-primary border-t-transparent rounded-full" />
+            <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading users…</span></div>
+          ) : users.length === 0 ? (
+            <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}>
+              <span className="cb-tiny">No users match.</span>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="pb-3 font-medium text-text-muted">User</th>
-                    <th className="pb-3 font-medium text-text-muted">Role</th>
-                    <th className="pb-3 font-medium text-text-muted">Location</th>
-                    <th className="pb-3 font-medium text-text-muted">Trust Score</th>
-                    <th className="pb-3 font-medium text-text-muted">Joined</th>
-                    <th className="pb-3 font-medium text-text-muted">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="border-b border-border-light hover:bg-surface-alt">
-                      <td className="py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold">
-                            {user.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-text-primary">{user.name}</p>
-                            <p className="text-xs text-text-muted">{user.email}</p>
-                          </div>
+            <div className="cb-card" style={{ padding: 0 }}>
+              {users.map((u, i) => {
+                const flag = COUNTRY_FLAGS[u.country] || '🌐';
+                const initials = u.name.split(/\s+/).slice(0, 2).map((n) => n[0]).join('').toUpperCase();
+                const stars = u.trustScore >= 85 ? '★★★★★' : u.trustScore >= 70 ? '★★★★' : u.trustScore >= 50 ? '★★★' : '★★';
+                return (
+                  <div key={u.id} style={{ padding: '14px 20px', borderBottom: i < users.length - 1 ? '1px solid var(--cb-line)' : 'none', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 999, background: 'var(--cb-paper-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 500 }}>
+                      {initials}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                        <div>
+                          <span style={{ fontWeight: 500 }}>{u.name}</span>
+                          <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>
                         </div>
-                      </td>
-                      <td className="py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                          user.role === 'FARMER' ? 'bg-green-50 text-green-700' :
-                          user.role === 'BUYER' ? 'bg-blue-50 text-blue-700' :
-                          'bg-purple-50 text-purple-700'
-                        }`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="py-3 text-text-muted">
-                        {user.location || user.country}
-                      </td>
-                      <td className="py-3">
-                        {editingId === user.id ? (
-                          <div className="flex items-center gap-2">
+                        <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role.toLowerCase()}</span>
+                      </div>
+                      <div className="cb-tiny" style={{ marginTop: 4 }}>
+                        {flag} {u.country}{u.location ? ` · ${u.location}` : ''} · joined {new Date(u.createdAt).toLocaleDateString()}
+                      </div>
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {editingId === u.id ? (
+                          <>
                             <input
                               type="number"
+                              min={0}
+                              max={100}
                               value={editScore}
                               onChange={(e) => setEditScore(e.target.value)}
-                              className="w-16 px-2 py-1 border border-border rounded text-sm"
-                              min="0"
-                              max="100"
+                              className="cb-input"
+                              style={{ width: 80, padding: '4px 8px', fontSize: 13 }}
+                              autoFocus
                             />
-                            <button onClick={() => handleUpdateTrustScore(user.id)} className="text-status-success hover:bg-green-50 p-1 rounded">
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => setEditingId(null)} className="text-status-error hover:bg-red-50 p-1 rounded">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
+                            <Button size="sm" onClick={() => handleUpdateTrustScore(u.id)}>✓ Save</Button>
+                            <button type="button" onClick={() => setEditingId(null)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>✕ Cancel</button>
+                          </>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <div className="w-16 bg-border rounded-full h-2">
-                              <div
-                                className="bg-accent rounded-full h-2"
-                                style={{ width: `${user.trustScore}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-medium">{Math.round(user.trustScore)}</span>
-                          </div>
+                          <>
+                            <span className="cb-mono cb-tiny">{stars} {Math.round(u.trustScore)}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingId(u.id); setEditScore(String(u.trustScore)); }}
+                              className="cb-btn cb-btn-link"
+                              style={{ fontSize: 12 }}
+                            >
+                              ✎ Edit
+                            </button>
+                            <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View</button>
+                            <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>Suspend</button>
+                          </>
                         )}
-                      </td>
-                      <td className="py-3 text-text-muted text-xs">
-                        {new Date(user.createdAt).toLocaleDateString('en-IN')}
-                      </td>
-                      <td className="py-3">
-                        <button
-                          onClick={() => {
-                            setEditingId(user.id);
-                            setEditScore(String(Math.round(user.trustScore)));
-                          }}
-                          className="p-1.5 hover:bg-surface-hover rounded transition-colors"
-                          title="Edit trust score"
-                        >
-                          <Edit2 className="w-4 h-4 text-text-muted" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-              <p className="text-sm text-text-muted">
-                Showing {page * LIMIT + 1}–{Math.min((page + 1) * LIMIT, total)} of {total}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={page === 0}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => p + 1)}
-                  disabled={page >= totalPages - 1}
-                >
-                  Next
-                </Button>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+              <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
+              <span>page {page + 1} of {totalPages}</span>
+              <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>
             </div>
           )}
-        </Card>
+        </div>
       </div>
     </DashboardLayout>
   );

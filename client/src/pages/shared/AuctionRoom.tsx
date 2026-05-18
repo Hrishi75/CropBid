@@ -1,31 +1,11 @@
-// =============================================================================
-// Auction Room — Live bidding interface with real-time updates
-// =============================================================================
-// HOW IT WORKS:
-// 1. User enters this page → connects to Socket.io → joins the auction room
-// 2. Server sends current auction state (price, bids, time remaining)
-// 3. When someone bids, server pushes the update to ALL room participants
-// 4. A countdown timer ticks down locally (no server polling needed)
-// 5. Anti-sniping: if a bid comes in the last 30s, the timer extends
-// 6. When timer hits 0, server declares a winner and broadcasts the result
-//
-// WHY LOCAL TIMER?
-// The server sends `endsAt` (an absolute timestamp). The client calculates
-// remaining time locally. This avoids sending "tick" events every second
-// over the network — a single timestamp does the same job.
-// =============================================================================
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  Gavel, Clock, Users, TrendingUp, ArrowLeft,
-  Trophy, AlertCircle,
-} from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { formatCurrency } from '../../utils/currency';
 import { getSocket, disconnectSocket } from '../../lib/socket';
 import api from '../../lib/axios';
 
@@ -49,6 +29,10 @@ interface AuctionState {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
+  // Some servers include the lot quantity in the auction snapshot. Others
+  // omit it (it's only on the listing). We fetch the listing as a fallback
+  // when this is missing so the bid-total preview reflects real volume.
+  quantity?: number;
 }
 
 interface AuctionEndResult {
@@ -71,65 +55,60 @@ export function AuctionRoom() {
   const [ended, setEnded] = useState<AuctionEndResult | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [lotQuantity, setLotQuantity] = useState<number | null>(null);
   const endsAtRef = useRef<Date | null>(null);
-  const bidListRef = useRef<HTMLDivElement>(null);
 
-  // Format time remaining
   const formatTime = useCallback((ms: number) => {
     if (ms <= 0) return '0:00';
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }, []);
 
-  // Connect to socket and join auction room
   useEffect(() => {
     if (!listingId || !user) return;
-
     const socket = getSocket(user.name);
 
-    // Join the auction room
     socket.emit('auction:join', listingId);
 
-    // Receive current state
     socket.on('auction:state', (state: AuctionState) => {
       setAuction(state);
       setBids(state.bids || []);
       setParticipants(state.participantCount);
       endsAtRef.current = new Date(state.endsAt);
-      // Suggest a bid slightly higher than current
       setBidPrice(String(Math.ceil(state.currentPrice * 1.05)));
+      if (state.quantity) setLotQuantity(state.quantity);
       setLoading(false);
     });
 
-    // New bid arrived
+    // Always fetch the listing to learn the lot quantity. Auction snapshots
+    // may omit it, and without it the bid-total preview would be wrong.
+    api.get(`/listings/${listingId}`)
+      .then(({ data }) => {
+        if (data?.quantity) setLotQuantity(data.quantity);
+      })
+      .catch(() => {
+        // Non-fatal: the bid total preview will hide itself when quantity is null.
+      });
+
     socket.on('auction:new_bid', (data: AuctionBid & { currentPrice: number; currentWinner: string; bidCount: number }) => {
       setBids((prev) => [...prev, { userId: data.userId, userName: data.userName, price: data.price, timestamp: data.timestamp }]);
       setAuction((prev) => prev ? { ...prev, currentPrice: data.currentPrice, currentWinner: data.currentWinner, bidCount: data.bidCount } : prev);
     });
 
-    // Time extended (anti-sniping)
     socket.on('auction:time_extended', (data: { newEndTime: string }) => {
       endsAtRef.current = new Date(data.newEndTime);
     });
 
-    // Participant count changed
-    socket.on('auction:participant_count', (count: number) => {
-      setParticipants(count);
-    });
+    socket.on('auction:participant_count', (count: number) => setParticipants(count));
 
-    // Auction ended
-    socket.on('auction:ended', (result: AuctionEndResult) => {
-      setEnded(result);
-    });
+    socket.on('auction:ended', (result: AuctionEndResult) => setEnded(result));
 
-    // Error
     socket.on('auction:error', (msg: string) => {
       setError(msg);
       setTimeout(() => setError(''), 3000);
     });
 
-    // If auction isn't active via socket, try REST
     const timer = setTimeout(async () => {
       if (loading) {
         try {
@@ -159,242 +138,201 @@ export function AuctionRoom() {
     };
   }, [listingId, user]);
 
-  // Countdown timer — updates every second using local calculation
   useEffect(() => {
     const interval = setInterval(() => {
       if (endsAtRef.current) {
         const remaining = endsAtRef.current.getTime() - Date.now();
         setTimeLeft(formatTime(remaining));
-        if (remaining <= 0) {
-          setTimeLeft('0:00');
-        }
+        if (remaining <= 0) setTimeLeft('0:00');
       }
     }, 1000);
-
     return () => clearInterval(interval);
   }, [formatTime]);
 
-  // Auto-scroll bid list
-  useEffect(() => {
-    bidListRef.current?.scrollTo({ top: bidListRef.current.scrollHeight, behavior: 'smooth' });
-  }, [bids]);
-
-  const handleBid = () => {
+  function handleBid() {
     const price = parseFloat(bidPrice);
     if (!price || !auction) return;
-
     if (price <= auction.currentPrice) {
-      setError(`Bid must be higher than ${auction.currency} ${auction.currentPrice}`);
+      setError(`Bid must be higher than ${formatCurrency(auction.currentPrice, auction.currency)}`);
       return;
     }
-
     const socket = getSocket(user?.name);
     socket.emit('auction:bid', { listingId, price });
-
-    // Pre-fill next bid
     setBidPrice(String(Math.ceil(price * 1.05)));
-  };
+  }
 
   const isFarmer = user?.id === auction?.farmerId;
+  const isYouLeading = auction?.currentWinner === user?.name;
+  const delta = auction ? auction.currentPrice - auction.startPrice : 0;
+  const deltaPct = auction ? (delta / auction.startPrice) * 100 : 0;
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-        </div>
+        <div className="cb-page-eyebrow">Loading auction…</div>
       </DashboardLayout>
     );
   }
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-4">
-          <Link to="/auctions" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-3">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Auctions
-          </Link>
-          <div className="flex items-center gap-3">
-            <Gavel className="w-7 h-7 text-primary" />
-            <h1 className="text-2xl font-bold text-text-primary">
-              Live Auction: {auction?.cropName || 'Loading...'}
-            </h1>
+      <div className="cb-page-eyebrow">
+        <Link to="/auctions" style={{ color: 'inherit', textDecoration: 'none' }}>← Auctions</Link> · Room #A-{listingId?.slice(-4).toUpperCase()}
+      </div>
+
+      <div className="cb-card cb-card-forest" style={{ marginTop: 16, marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span className="cb-live-dot" />
+            <span className="cb-mono" style={{ fontSize: 14, color: '#e6efd9', fontWeight: 500 }}>
+              LIVE · {auction?.cropName}
+            </span>
+          </div>
+          <span className="cb-mono" style={{ fontSize: 28, fontWeight: 500, color: timeLeft.startsWith('0:') ? '#e0cf9e' : '#e6efd9', letterSpacing: '-0.02em' }}>
+            ◷ {timeLeft || '--:--'}
+          </span>
+        </div>
+        <div style={{ marginTop: 10, color: 'rgba(244,241,234,0.7)', fontSize: 13 }}>
+          {auction?.bidCount} bids · {participants} watching · anti-snipe +2:00/late bid
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16, marginBottom: 16 }}>
+        <div className="cb-card">
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Current price</div>
+          <div className="cb-mono" style={{ fontSize: 36, fontWeight: 500, letterSpacing: '-0.02em' }}>
+            {auction && formatCurrency(auction.currentPrice, auction.currency)}
+          </div>
+          <div className="cb-tiny" style={{ marginTop: 2 }}>/ {auction?.unit.toLowerCase()}</div>
+          <div className="cb-mono cb-tiny" style={{ marginTop: 8, color: deltaPct > 0 ? 'var(--cb-sage)' : 'var(--cb-ink-3)' }}>
+            {deltaPct > 0 ? '↑' : ''} {deltaPct.toFixed(1)}% from open
+          </div>
+          <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--cb-line)' }}>
+            <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Leading</div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {auction?.currentWinner || '— no bids yet'}
+              {isYouLeading && <span className="cb-chip cb-chip-sage" style={{ marginLeft: 6 }}>YOU</span>}
+            </div>
           </div>
         </div>
 
-        {/* Auction ended overlay */}
-        {ended && (
-          <Card className="mb-6 border-2 border-accent">
-            <div className="text-center py-6">
-              <Trophy className="w-12 h-12 text-accent mx-auto mb-3" />
-              <h2 className="text-xl font-bold text-text-primary mb-2">
-                {ended.winner ? 'Auction Complete!' : 'Auction Ended — No Bids'}
-              </h2>
-              {ended.winner && (
-                <>
-                  <p className="text-text-secondary">
-                    Winner: <span className="font-semibold">{ended.winner}</span>
-                  </p>
-                  <p className="text-2xl font-bold text-primary mt-2">
-                    {auction?.currency} {ended.finalPrice}/{auction?.unit}
-                  </p>
-                  <p className="text-sm text-text-muted mt-1">
-                    {ended.totalBids} total bid{ended.totalBids !== 1 ? 's' : ''}
-                  </p>
-                  {ended.winnerId === user?.id && (
-                    <p className="text-accent font-semibold mt-3">You won this auction!</p>
-                  )}
-                </>
-              )}
-            </div>
-          </Card>
-        )}
-
-        {/* Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Left: Stats + Bid form */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* Timer */}
-            <Card>
-              <div className="text-center">
-                <Clock className={`w-6 h-6 mx-auto mb-1 ${timeLeft === '0:00' ? 'text-status-error' : 'text-primary'}`} />
-                <p className="text-3xl font-mono font-bold text-text-primary">{timeLeft || '--:--'}</p>
-                <p className="text-xs text-text-muted">Time Remaining</p>
-              </div>
-            </Card>
-
-            {/* Current price */}
-            <Card>
-              <div className="text-center">
-                <TrendingUp className="w-6 h-6 mx-auto mb-1 text-accent" />
-                <p className="text-2xl font-bold text-primary">
-                  {auction?.currency} {auction?.currentPrice}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {auction?.currentWinner ? `Leading: ${auction.currentWinner}` : 'No bids yet'}
-                </p>
-              </div>
-            </Card>
-
-            {/* Participants */}
-            <Card>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-text-muted" />
-                  <span className="text-sm text-text-secondary">Participants</span>
-                </div>
-                <span className="font-semibold text-text-primary">{participants}</span>
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-2">
-                  <Gavel className="w-5 h-5 text-text-muted" />
-                  <span className="text-sm text-text-secondary">Total Bids</span>
-                </div>
-                <span className="font-semibold text-text-primary">{bids.length}</span>
-              </div>
-            </Card>
-
-            {/* Bid form (buyers only) */}
-            {!isFarmer && !ended && (
-              <Card>
-                <h3 className="font-semibold text-text-primary mb-3">Place Your Bid</h3>
-                <div className="space-y-3">
-                  <Input
-                    label={`Bid Price (${auction?.currency}/${auction?.unit})`}
-                    type="number"
-                    value={bidPrice}
-                    onChange={(e) => setBidPrice(e.target.value)}
-                    min={(auction?.currentPrice || 0) + 1}
-                    step="0.5"
-                  />
-
-                  {/* Quick bid buttons */}
-                  <div className="flex gap-2">
-                    {[5, 10, 20].map((pct) => (
-                      <button
-                        key={pct}
-                        onClick={() => setBidPrice(String(Math.ceil((auction?.currentPrice || 0) * (1 + pct / 100))))}
-                        className="flex-1 text-xs py-1.5 bg-surface-alt rounded hover:bg-surface-hover transition-colors"
-                      >
-                        +{pct}%
-                      </button>
-                    ))}
-                  </div>
-
-                  <Button
-                    onClick={handleBid}
-                    className="w-full"
-                    disabled={timeLeft === '0:00'}
+        <div className="cb-card" style={{ padding: 0 }}>
+          <div className="cb-eyebrow" style={{ padding: '16px 20px 6px' }}>Bid ladder</div>
+          <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+            {bids.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center' }} className="cb-tiny">No bids yet. Be the first.</div>
+            ) : (
+              [...bids].reverse().map((bid, idx) => {
+                const isYou = bid.userId === user?.id;
+                const isLatest = idx === 0;
+                return (
+                  <div
+                    key={`${bid.timestamp}-${idx}`}
+                    style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '10px 20px', borderTop: idx > 0 ? '1px solid var(--cb-line)' : 'none',
+                      background: isLatest ? 'rgba(200,96,43,0.05)' : 'transparent',
+                    }}
                   >
-                    <Gavel className="w-4 h-4 mr-2" />
-                    Place Bid
-                  </Button>
-                </div>
-              </Card>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {isLatest && <span className="cb-dot cb-dot-ember" />}
+                      <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
+                        {new Date(bid.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: isLatest ? 500 : 400 }}>
+                        {bid.userName}{isYou && ' (you)'}
+                      </span>
+                    </div>
+                    <span className="cb-mono" style={{ fontSize: 14, fontWeight: 500 }}>
+                      {auction && formatCurrency(bid.price, auction.currency)}
+                    </span>
+                  </div>
+                );
+              })
             )}
-
-            {/* Error message */}
-            {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 text-status-error rounded-lg text-sm">
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* Right: Bid history */}
-          <div className="lg:col-span-2">
-            <Card>
-              <h3 className="font-semibold text-text-primary mb-3">Bid History</h3>
-              <div
-                ref={bidListRef}
-                className="max-h-[500px] overflow-y-auto space-y-2"
-              >
-                {bids.length === 0 ? (
-                  <p className="text-center text-text-muted py-8">
-                    No bids yet. Be the first to bid!
-                  </p>
-                ) : (
-                  bids.map((bid, idx) => {
-                    const isLatest = idx === bids.length - 1;
-                    const isYou = bid.userId === user?.id;
-                    return (
-                      <div
-                        key={idx}
-                        className={`flex items-center justify-between p-3 rounded-lg animate-fadeIn
-                          ${isLatest ? 'bg-green-50 border border-green-200' : 'bg-surface-alt'}
-                          ${isYou ? 'ring-2 ring-accent ring-opacity-50' : ''}`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-sm font-bold">
-                            {bid.userName.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-text-primary">
-                              {bid.userName} {isYou ? '(You)' : ''}
-                            </p>
-                            <p className="text-xs text-text-muted">
-                              {new Date(bid.timestamp).toLocaleTimeString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-bold ${isLatest ? 'text-primary text-lg' : 'text-text-primary'}`}>
-                            {auction?.currency} {bid.price}
-                          </p>
-                          <p className="text-xs text-text-muted">/{auction?.unit}</p>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </Card>
           </div>
         </div>
       </div>
+
+      {!isFarmer && !ended && (
+        <div className="cb-card" style={{ marginBottom: 16 }}>
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Your bid</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'flex-end' }}>
+            <Input
+              label={`Min ${auction ? formatCurrency(auction.currentPrice + 1, auction.currency) : ''}`}
+              type="number"
+              value={bidPrice}
+              onChange={(e) => setBidPrice(e.target.value)}
+              min={(auction?.currentPrice || 0) + 1}
+              step="0.5"
+            />
+            <div className="cb-mono" style={{ fontSize: 14, color: 'var(--cb-ink-3)', paddingBottom: 12 }}>
+              {auction && lotQuantity && parseFloat(bidPrice) > 0
+                ? `Total: ${formatCurrency(parseFloat(bidPrice) * lotQuantity, auction.currency)} (${lotQuantity} ${auction.unit.toLowerCase()})`
+                : ''}
+            </div>
+          </div>
+          <div className="cb-pill-group" style={{ marginTop: 10 }}>
+            {[5, 10, 20].map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                className="cb-pill"
+                onClick={() => setBidPrice(String(Math.ceil((auction?.currentPrice || 0) * (1 + pct / 100))))}
+              >
+                +{pct}%
+              </button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+            <Button onClick={handleBid} disabled={timeLeft === '0:00'}>
+              Place bid
+              <ArrowIcon />
+            </Button>
+          </div>
+          {error && (
+            <div className="cb-small" style={{ marginTop: 10, padding: 10, background: 'rgba(200,96,43,0.08)', color: 'var(--cb-ember)', borderRadius: 6 }}>
+              ⚠ {error}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isFarmer && (
+        <div className="cb-card" style={{ marginBottom: 16 }}>
+          <div className="cb-tiny" style={{ color: 'var(--cb-ember)' }}>⚠ You're the seller — cannot bid on own listing</div>
+          {auction && (
+            <div className="cb-mono" style={{ marginTop: 8 }}>
+              Reserve {formatCurrency(auction.startPrice, auction.currency)} · cleared by {formatCurrency(delta, auction.currency)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {ended && (
+        <div className="cb-card cb-card-forest" style={{ textAlign: 'center', padding: 32 }}>
+          <div className="cb-eyebrow" style={{ color: 'rgba(244,241,234,0.55)', marginBottom: 12 }}>● Match</div>
+          <h2 className="cb-h2" style={{ color: '#f4f1ea' }}>
+            {ended.winner ? 'Auction complete' : 'No bids · auction ended'}
+          </h2>
+          {ended.winner && auction && (
+            <>
+              <div style={{ color: '#e6efd9', marginTop: 8 }}>Winner: {ended.winner}{ended.winnerId === user?.id && ' (YOU)'}</div>
+              <div className="cb-mono" style={{ fontSize: 32, fontWeight: 500, color: '#e0cf9e', marginTop: 12 }}>
+                {formatCurrency(ended.finalPrice, auction.currency)}
+              </div>
+              <div className="cb-tiny" style={{ color: 'rgba(244,241,234,0.65)', marginTop: 4 }}>
+                {ended.totalBids} total bids · cleared open
+              </div>
+              <div style={{ marginTop: 20 }}>
+                <Link to="/transactions" className="cb-btn cb-btn-ghost" style={{ background: 'rgba(255,255,255,0.08)', color: '#e6efd9', borderColor: 'rgba(255,255,255,0.2)' }}>
+                  Review contract <ArrowIcon />
+                </Link>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </DashboardLayout>
   );
 }

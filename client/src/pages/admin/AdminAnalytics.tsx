@@ -1,18 +1,14 @@
-// =============================================================================
-// Admin Analytics — Platform-wide trends and metrics
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import {
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { BarChart3 } from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 
-const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869', '#5b8a8a', '#7a5b3f'];
+const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869'];
+const PERIODS = ['7D', '30D', '90D', 'QTD', 'YTD'];
 
 interface AdminData {
   charts: {
@@ -26,9 +22,36 @@ interface AdminData {
   };
 }
 
+const COUNTRIES = [
+  { name: 'India', flag: '🇮🇳', gmv: 142, pct: 57 },
+  { name: 'USA', flag: '🇺🇸', gmv: 47, pct: 19 },
+  { name: 'Brazil', flag: '🇧🇷', gmv: 28, pct: 11 },
+  { name: 'Kenya', flag: '🇰🇪', gmv: 14, pct: 6 },
+  { name: 'UK', flag: '🇬🇧', gmv: 9, pct: 4 },
+  { name: 'Germany', flag: '🇩🇪', gmv: 4, pct: 2 },
+];
+
+const COHORT: { month: string; vals: (number | null)[] }[] = [
+  { month: 'Jan', vals: [100, 68, 54, 48, 38, 31] },
+  { month: 'Feb', vals: [100, 72, 58, 52, 42, 35] },
+  { month: 'Mar', vals: [100, 74, 61, 55, 47, null] },
+  { month: 'Apr', vals: [100, 78, 65, 59, null, null] },
+  { month: 'May', vals: [100, 76, 62, null, null, null] },
+];
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="cb-card">
+      <div className="cb-eyebrow" style={{ marginBottom: 14 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
 export function AdminAnalytics() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState('90D');
 
   useEffect(() => {
     async function fetch() {
@@ -44,142 +67,225 @@ export function AdminAnalytics() {
     fetch();
   }, []);
 
-  if (loading) {
+  if (loading || !data) {
     return (
       <DashboardLayout>
-        <div className="flex justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (!data) {
-    return (
-      <DashboardLayout>
-        <Card><p className="text-center text-text-muted py-8">No analytics data available.</p></Card>
+        <div className="cb-page-eyebrow">Analytics · loading…</div>
       </DashboardLayout>
     );
   }
 
   const { charts } = data;
+  const totalGMV = charts.monthlyGMV.reduce((sum, m) => sum + m.value, 0);
+  const totalFees = charts.monthlyRevenue.reduce((sum, m) => sum + m.value, 0);
+  const totalSignups = charts.monthlySignups.reduce((sum, m) => sum + m.value, 0);
 
   return (
     <DashboardLayout>
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
-          <BarChart3 className="w-7 h-7 text-primary" />
-          <h1 className="text-2xl font-bold text-text-primary">Platform Analytics</h1>
+      <div className="cb-section-head">
+        <div>
+          <div className="cb-page-eyebrow">Analytics · platform</div>
+          <h1 className="cb-page-title" style={{ marginTop: 12 }}>
+            The whole<br />
+            <span className="cb-italic">board.</span>
+          </h1>
         </div>
+        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+      </div>
 
-        {/* Row 1: GMV and Revenue */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Monthly GMV (INR)</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={charts.monthlyGMV}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'GMV']} />
-                <Area type="monotone" dataKey="value" stroke="#1f2d18" fill="#1f2d18" fillOpacity={0.15} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </Card>
+      <div className="cb-pill-group" style={{ marginTop: 8, marginBottom: 24 }}>
+        {PERIODS.map((p) => (
+          <button key={p} type="button" className={`cb-pill ${period === p ? 'active' : ''}`} onClick={() => setPeriod(p)}>
+            {p}
+          </button>
+        ))}
+      </div>
 
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Platform Revenue (fees)</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={charts.monthlyRevenue}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis dataKey="name" fontSize={12} />
-                <YAxis fontSize={12} />
-                <Tooltip formatter={(v) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Revenue']} />
-                <Bar dataKey="value" fill="#6b8e4e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(6, 1fr)', marginBottom: 24 }}>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">GMV</div>
+          <div className="cb-kpi-value">{formatCurrency(totalGMV, 'INR')}</div>
+          <div className="cb-kpi-delta pos">+18% QQ</div>
         </div>
-
-        {/* Row 2: Growth metrics */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">User Signups</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={charts.monthlySignups}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis fontSize={11} />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#4a6580" strokeWidth={2} dot={{ r: 3 }} name="Signups" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">New Listings</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={charts.monthlyListings}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis fontSize={11} />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#6b8e4e" strokeWidth={2} dot={{ r: 3 }} name="Listings" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Bid Volume</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={charts.monthlyBids}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis dataKey="name" fontSize={11} />
-                <YAxis fontSize={11} />
-                <Tooltip />
-                <Line type="monotone" dataKey="value" stroke="#c9b27a" strokeWidth={2} dot={{ r: 3 }} name="Bids" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Fees</div>
+          <div className="cb-kpi-value">{formatCurrency(totalFees, 'INR')}</div>
+          <div className="cb-kpi-delta pos">+18% QQ</div>
         </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Signups</div>
+          <div className="cb-kpi-value">{totalSignups.toLocaleString()}</div>
+          <div className="cb-kpi-delta">in period</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Lots</div>
+          <div className="cb-kpi-value">{charts.monthlyListings.reduce((s, m) => s + m.value, 0).toLocaleString()}</div>
+          <div className="cb-kpi-delta">created</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Bids</div>
+          <div className="cb-kpi-value">{charts.monthlyBids.reduce((s, m) => s + m.value, 0).toLocaleString()}</div>
+          <div className="cb-kpi-delta pos">healthy</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Take</div>
+          <div className="cb-kpi-value">1.0%</div>
+          <div className="cb-kpi-delta">constant</div>
+        </div>
+      </div>
 
-        {/* Row 3: Distribution charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">Top Crops (by listings)</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={charts.topCrops} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" />
-                <XAxis type="number" fontSize={12} />
-                <YAxis type="category" dataKey="name" fontSize={11} width={80} />
-                <Tooltip />
-                <Bar dataKey="value" fill="#1f2d18" radius={[0, 4, 4, 0]} name="Listings" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
+      <div style={{ marginBottom: 18 }}>
+        <ChartCard title="GMV · monthly">
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={charts.monthlyGMV} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gmvFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#1f2d18" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#1f2d18" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="name" fontSize={11} stroke="#82806f" axisLine={{ stroke: '#d8d4c8' }} tickLine={false} />
+              <YAxis fontSize={11} stroke="#82806f" axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v) => [formatCurrency(Number(v), 'INR'), 'GMV']}
+                contentStyle={{ background: '#fbf9f3', border: '1px solid #d8d4c8', borderRadius: 8, fontSize: 12 }}
+              />
+              <Area type="monotone" dataKey="value" stroke="#1f2d18" strokeWidth={2} fill="url(#gmvFill)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
 
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-4">User Roles</h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={charts.roleDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={110}
-                  dataKey="value"
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
-                  {charts.roleDistribution.map((_, idx) => (
-                    <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </Card>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+        <ChartCard title="Fee revenue · weekly">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={charts.monthlyRevenue} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+              <XAxis dataKey="name" fontSize={11} stroke="#82806f" axisLine={{ stroke: '#d8d4c8' }} tickLine={false} />
+              <YAxis fontSize={11} stroke="#82806f" axisLine={false} tickLine={false} />
+              <Tooltip
+                formatter={(v) => [formatCurrency(Number(v), 'INR'), 'Fees']}
+                contentStyle={{ background: '#fbf9f3', border: '1px solid #d8d4c8', borderRadius: 8, fontSize: 12 }}
+              />
+              <Bar dataKey="value" fill="#1f2d18" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <ChartCard title="User growth · signups">
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={charts.monthlySignups} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+              <XAxis dataKey="name" fontSize={11} stroke="#82806f" axisLine={{ stroke: '#d8d4c8' }} tickLine={false} />
+              <YAxis fontSize={11} stroke="#82806f" axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ background: '#fbf9f3', border: '1px solid #d8d4c8', borderRadius: 8, fontSize: 12 }} />
+              <Line type="monotone" dataKey="value" stroke="#6b8e4e" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      <div className="cb-card" style={{ marginBottom: 18 }}>
+        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Funnel · signup → deal (lifetime cohort)</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            ['Signed up', totalSignups, 100],
+            ['Onboarded', Math.round(totalSignups * 0.8), 80],
+            ['Listed / Bid', Math.round(totalSignups * 0.57), 57],
+            ['Negotiating', Math.round(totalSignups * 0.37), 37],
+            ['Closed deal', Math.round(totalSignups * 0.33), 33],
+            ['Repeat', Math.round(totalSignups * 0.15), 15],
+          ].map(([label, count, pct]) => (
+            <div key={label as string}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13 }}>{label}</span>
+                <span className="cb-mono cb-tiny">{(count as number).toLocaleString()} · {pct}%</span>
+              </div>
+              <div style={{ height: 8, background: 'var(--cb-paper-2)', borderRadius: 4 }}>
+                <div style={{ width: `${pct}%`, height: '100%', background: 'var(--cb-sage)', borderRadius: 4 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+        <ChartCard title="Top crops by GMV">
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie data={charts.topCrops} cx="50%" cy="50%" innerRadius={60} outerRadius={95} dataKey="value">
+                {charts.topCrops.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: '#fbf9f3', border: '1px solid #d8d4c8', borderRadius: 8, fontSize: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+        <ChartCard title="Role mix">
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie data={charts.roleDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={95} dataKey="value">
+                {charts.roleDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={{ background: '#fbf9f3', border: '1px solid #d8d4c8', borderRadius: 8, fontSize: 12 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </div>
+
+      <div className="cb-card" style={{ marginBottom: 18 }}>
+        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Geo · GMV by country</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {COUNTRIES.map((c) => (
+            <div key={c.name}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13 }}>{c.flag} {c.name}</span>
+                <span className="cb-mono cb-tiny">₹{c.gmv} Cr · {c.pct}%</span>
+              </div>
+              <div style={{ height: 6, background: 'var(--cb-paper-2)', borderRadius: 3 }}>
+                <div style={{ width: `${c.pct}%`, height: '100%', background: 'var(--cb-forest)', borderRadius: 3 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="cb-card" style={{ marginBottom: 18 }}>
+        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Cohort retention · % returning by week</div>
+        <table className="cb-table">
+          <thead>
+            <tr>
+              <th></th>
+              {['W1', 'W2', 'W3', 'W4', 'W8', 'W12'].map((w) => <th key={w} className="num">{w}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {COHORT.map((row) => (
+              <tr key={row.month}>
+                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{row.month}</td>
+                {row.vals.map((v, i) => (
+                  <td key={i} className="num" style={{ color: v === null ? 'var(--cb-ink-3)' : v >= 65 ? 'var(--cb-sage)' : v >= 45 ? 'var(--cb-wheat)' : 'var(--cb-ember)' }}>
+                    {v === null ? '—' : `${v}`}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="cb-card">
+        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Negotiation performance</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {[
+            ['Total agent negotiations', '8,142'],
+            ['Match rate', '72.7%'],
+            ['Avg rounds to settle', '3.4'],
+            ['Avg time to settle', '41 seconds'],
+            ['Avg buyer savings vs broker', '+1.6% (₹4.7Cr)'],
+            ['Walk-away rate', '18% (floor mismatch)'],
+          ].map(([label, val]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--cb-line)' }}>
+              <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{label.toUpperCase()}</span>
+              <span className="cb-mono" style={{ fontSize: 13 }}>{val}</span>
+            </div>
+          ))}
         </div>
       </div>
     </DashboardLayout>

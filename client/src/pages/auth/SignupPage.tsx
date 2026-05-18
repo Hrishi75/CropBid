@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Card } from '../../components/ui/Card';
-import { Check, X } from 'lucide-react';
+import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import toast from 'react-hot-toast';
 import type { Currency } from '../../types';
 
@@ -30,9 +29,15 @@ const COUNTRIES = [
 
 function PasswordRule({ met, label }: { met: boolean; label: string }) {
   return (
-    <div className={`flex items-center gap-1.5 text-xs ${met ? 'text-accent' : 'text-text-muted'}`}>
-      {met ? <Check size={12} /> : <X size={12} />}
-      {label}
+    <div
+      className="cb-mono"
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        fontSize: 11, color: met ? 'var(--cb-sage)' : 'var(--cb-ink-3)',
+      }}
+    >
+      <span>{met ? '✓' : '○'}</span>
+      <span>{label}</span>
     </div>
   );
 }
@@ -50,7 +55,7 @@ export function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  const selectedCountry = COUNTRIES.find(c => c.code === country) || COUNTRIES[0];
+  const selectedCountry = COUNTRIES.find((c) => c.code === country) || COUNTRIES[0];
 
   const passwordRules = useMemo(() => ({
     length: password.length >= 8,
@@ -72,17 +77,14 @@ export function SignupPage() {
     return undefined;
   }
 
-  async function handleSubmit(e: { preventDefault: () => void }) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched({ name: true, email: true, password: true });
-
     if (!formValid) {
       toast.error('Please fix the errors above');
       return;
     }
-
     setLoading(true);
-
     try {
       await signup({
         name, email, password, role,
@@ -90,7 +92,7 @@ export function SignupPage() {
         country,
         currency: selectedCountry.currency,
       });
-      toast.success('Account created! Complete your profile.');
+      toast.success('Account created. Complete your profile.');
       navigate('/onboarding');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Signup failed');
@@ -99,129 +101,198 @@ export function SignupPage() {
     }
   }
 
+  const isFarmer = role === 'FARMER';
+
   return (
-    <div className="min-h-screen bg-surface-alt flex items-center justify-center px-4 py-8">
-      <Card className="w-full max-w-md" padding="lg">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <img src="/CropBidlogo.png" alt="CropBid" className="h-16 sm:h-20 mx-auto mb-3" />
-          <p className="text-text-secondary">Where AI Agents Negotiate, So Farmers Prosper</p>
-        </div>
+    <div className="cb-app cb-auth">
+      <header className="cb-auth-nav">
+        <Link to="/" className="wordmark">
+          <ArcMark size={22} />
+          <span className="wordmark-text">CropBid</span>
+        </Link>
+        <nav className="cb-auth-nav-links">
+          <a href="/#how">How it works</a>
+          <a href="/#marketplace">Marketplace</a>
+          <Link to="/login">Sign in</Link>
+        </nav>
+      </header>
 
-        {/* Role selector */}
-        <div className="flex gap-3 mb-6" role="radiogroup" aria-label="Account type">
-          {(['FARMER', 'BUYER'] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="radio"
-              aria-checked={role === r}
-              onClick={() => setRole(r)}
-              className={`flex-1 py-3 rounded-lg border-2 text-sm font-medium transition-all
-                ${role === r
-                  ? 'border-primary bg-primary text-white'
-                  : 'border-border text-text-secondary hover:border-accent'
-                }`}
-            >
-              {r === 'FARMER' ? "I'm a Farmer" : "I'm a Buyer"}
-            </button>
-          ))}
-        </div>
+      <div className="cb-auth-body">
+        <div className="cb-auth-form-wrap">
+          <div className="cb-auth-form">
+            <div className="cb-eyebrow">Auth · create account</div>
+            <h1 className="cb-h2" style={{ marginTop: 14 }}>
+              Deploy your agent<br />
+              <span className="cb-italic">in 60 seconds.</span>
+            </h1>
+            <p className="cb-body" style={{ marginTop: 14, marginBottom: 28 }}>
+              Pick a role. Brief your agent. Run auctions while you sleep.
+            </p>
 
-        {/* Signup Form */}
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-          <Input
-            label="Full Name"
-            placeholder="Enter your full name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => setTouched(t => ({ ...t, name: true }))}
-            error={getFieldError('name')}
-            required
-            aria-required="true"
-          />
+            <div role="radiogroup" aria-label="Account type" style={{ marginBottom: 24 }}>
+              <div className="cb-label">I'm a</div>
+              <div className="cb-pill-group">
+                {(['FARMER', 'BUYER'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    role="radio"
+                    aria-checked={role === r}
+                    onClick={() => setRole(r)}
+                    className={`cb-pill ${role === r ? 'active' : ''}`}
+                  >
+                    {r === 'FARMER' ? 'Farmer' : 'Buyer'}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <Input
-            label="Email"
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setTouched(t => ({ ...t, email: true }))}
-            error={getFieldError('email')}
-            required
-            aria-required="true"
-          />
+            <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Input
+                label="Full name"
+                placeholder="Enter your full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+                error={getFieldError('name')}
+                required
+              />
 
-          <div>
-            <label htmlFor="country-select" className="block text-sm font-medium text-text mb-1">Country</label>
-            <select
-              id="country-select"
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-border bg-surface text-text focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
-              required
-            >
-              {COUNTRIES.map(c => (
-                <option key={c.code} value={c.code}>{c.label}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-xs text-text-secondary">
-              Currency: {selectedCountry.currency}
+              <Input
+                label="Email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                error={getFieldError('email')}
+                required
+                autoComplete="email"
+              />
+
+              <div>
+                <label htmlFor="country-select" className="cb-label">Country</label>
+                <select
+                  id="country-select"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="cb-input"
+                  required
+                >
+                  {COUNTRIES.map((c) => (
+                    <option key={c.code} value={c.code}>{c.label}</option>
+                  ))}
+                </select>
+                <p className="cb-field-hint">Currency: {selectedCountry.currency}</p>
+              </div>
+
+              <Input
+                label="Phone (optional)"
+                type="tel"
+                placeholder={selectedCountry.phonePlaceholder}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+
+              <div>
+                <Input
+                  label="Password"
+                  type="password"
+                  placeholder="At least 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                  error={getFieldError('password')}
+                  required
+                  autoComplete="new-password"
+                  aria-describedby="password-rules"
+                />
+                {password.length > 0 && (
+                  <div
+                    id="password-rules"
+                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}
+                  >
+                    <PasswordRule met={passwordRules.length} label="8+ characters" />
+                    <PasswordRule met={passwordRules.upper} label="Uppercase letter" />
+                    <PasswordRule met={passwordRules.lower} label="Lowercase letter" />
+                    <PasswordRule met={passwordRules.number} label="Number" />
+                  </div>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                size="lg"
+                loading={loading}
+                disabled={!formValid && Object.keys(touched).length > 0}
+                style={{ width: '100%' }}
+              >
+                Create account
+                <ArrowIcon />
+              </Button>
+            </form>
+
+            <p className="cb-small" style={{ marginTop: 24, textAlign: 'center' }}>
+              Already on CropBid?{' '}
+              <Link to="/login" style={{ color: 'var(--cb-ember)', fontWeight: 500, textDecoration: 'none' }}>
+                Sign in →
+              </Link>
             </p>
           </div>
+        </div>
 
-          <Input
-            label="Phone (optional)"
-            type="tel"
-            placeholder={selectedCountry.phonePlaceholder}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
-
-          <div>
-            <Input
-              label="Password"
-              type="password"
-              placeholder="At least 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onBlur={() => setTouched(t => ({ ...t, password: true }))}
-              error={getFieldError('password')}
-              required
-              aria-required="true"
-              aria-describedby="password-rules"
-            />
-            {/* Password strength indicators */}
-            {password.length > 0 && (
-              <div id="password-rules" className="grid grid-cols-2 gap-1 mt-2">
-                <PasswordRule met={passwordRules.length} label="8+ characters" />
-                <PasswordRule met={passwordRules.upper} label="Uppercase letter" />
-                <PasswordRule met={passwordRules.lower} label="Lowercase letter" />
-                <PasswordRule met={passwordRules.number} label="Number" />
+        <aside className="cb-auth-rail">
+          {isFarmer ? (
+            <>
+              <div>
+                <span className="cb-eyebrow" style={{ color: 'rgba(244,241,234,0.6)' }}>● for farmers</span>
+                <h2 className="cb-h2" style={{ marginTop: 14, color: '#f4f1ea' }}>
+                  Your agent lists, negotiates,<br />
+                  <span style={{ fontFamily: 'var(--cb-font-serif)', fontStyle: 'italic', fontWeight: 400, color: '#e0cf9e' }}>and closes.</span>
+                </h2>
               </div>
-            )}
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full"
-            size="lg"
-            loading={loading}
-            disabled={!formValid && Object.keys(touched).length > 0}
-          >
-            Create Account
-          </Button>
-        </form>
-
-        {/* Login link */}
-        <p className="mt-6 text-center text-sm text-text-secondary">
-          Already have an account?{' '}
-          <Link to="/login" className="text-accent font-medium hover:underline">
-            Sign in
-          </Link>
-        </p>
-      </Card>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(-1deg)' }}>
+                <div className="cb-eyebrow">"I'm a Farmer"</div>
+                <div className="v">Your agent:</div>
+                <div className="sub">
+                  · Lists crops globally<br />
+                  · Runs counter negotiations<br />
+                  · Settles deals on-platform
+                </div>
+              </div>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(1.2deg)', marginLeft: 32 }}>
+                <div className="cb-eyebrow">Live · growers onboarded</div>
+                <div className="v">14,247</div>
+                <div className="sub">+312 today · 23 countries</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <span className="cb-eyebrow" style={{ color: 'rgba(244,241,234,0.6)' }}>● for buyers</span>
+                <h2 className="cb-h2" style={{ marginTop: 14, color: '#f4f1ea' }}>
+                  Stop calling brokers.<br />
+                  <span style={{ fontFamily: 'var(--cb-font-serif)', fontStyle: 'italic', fontWeight: 400, color: '#e0cf9e' }}>Run auctions.</span>
+                </h2>
+              </div>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(-1deg)' }}>
+                <div className="cb-eyebrow">"I'm a Buyer"</div>
+                <div className="v">Your agent:</div>
+                <div className="sub">
+                  · Finds verified growers<br />
+                  · Negotiates inside your guardrails<br />
+                  · Closes forward contracts
+                </div>
+              </div>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(1.2deg)', marginLeft: 32 }}>
+                <div className="cb-eyebrow">Live · savings vs broker</div>
+                <div className="v">+1.6%</div>
+                <div className="sub">avg price improvement · 14× faster bind</div>
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

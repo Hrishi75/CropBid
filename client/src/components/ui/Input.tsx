@@ -4,33 +4,27 @@ import type { InputHTMLAttributes } from 'react';
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
+  hint?: string;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, className = '', ...props }, ref) => {
+  ({ label, error, hint, className = '', id, ...props }, ref) => {
+    const inputId = id || (label ? `cb-input-${label.replace(/\s+/g, '-').toLowerCase()}` : undefined);
     return (
-      <div className="w-full">
+      <div style={{ width: '100%' }}>
         {label && (
-          <label className="block text-sm font-medium text-text mb-1">
+          <label htmlFor={inputId} className="cb-label">
             {label}
           </label>
         )}
         <input
           ref={ref}
-          className={`w-full px-3 py-2 rounded-lg border transition-colors duration-200
-            ${error
-              ? 'border-error focus:ring-error focus:border-error'
-              : 'border-border focus:ring-accent focus:border-accent'
-            }
-            bg-surface text-text placeholder-text-muted
-            focus:outline-none focus:ring-2 focus:ring-offset-0
-            disabled:opacity-50 disabled:cursor-not-allowed
-            ${className}`}
+          id={inputId}
+          className={`cb-input ${error ? 'error' : ''} ${className}`.trim()}
           {...props}
         />
-        {error && (
-          <p className="mt-1 text-sm text-error">{error}</p>
-        )}
+        {error && <p className="cb-field-error">{error}</p>}
+        {!error && hint && <p className="cb-field-hint">{hint}</p>}
       </div>
     );
   }

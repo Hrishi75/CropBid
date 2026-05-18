@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { Button } from './Button';
-import { AlertTriangle, Trash2, Info } from 'lucide-react';
 
 interface ConfirmModalProps {
   open: boolean;
@@ -42,57 +41,41 @@ export function ConfirmModal({
 
   if (!open) return null;
 
-  const icons = {
-    danger: <Trash2 className="w-6 h-6 text-error" />,
-    warning: <AlertTriangle className="w-6 h-6 text-warning" />,
-    info: <Info className="w-6 h-6 text-info" />,
-  };
-
   const confirmVariant = variant === 'danger' ? 'danger' : 'primary';
+  const accentColor = variant === 'danger' ? 'var(--cb-ember)' : variant === 'warning' ? 'var(--cb-wheat)' : 'var(--cb-info)';
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="cb-app"
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 80,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 16,
+      }}
     >
-      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 animate-fadeIn"
         onClick={onCancel}
+        style={{ position: 'absolute', inset: 0, background: 'rgba(20,20,15,0.55)' }}
       />
-
-      {/* Modal */}
-      <div className="relative bg-surface rounded-xl shadow-xl border border-border-light w-full max-w-md animate-fadeIn">
-        <div className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-surface-alt flex items-center justify-center">
-              {icons[variant]}
-            </div>
-            <div className="flex-1">
-              <h3 id="confirm-title" className="text-lg font-semibold text-text">
-                {title}
-              </h3>
-              <p className="mt-1 text-sm text-text-secondary">{message}</p>
-            </div>
-          </div>
+      <div className="cb-card" style={{ position: 'relative', width: '100%', maxWidth: 440, padding: 0, boxShadow: '0 24px 60px -20px rgba(0,0,0,0.4)' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--cb-line)' }}>
+          <div className="cb-eyebrow" style={{ color: accentColor, marginBottom: 8 }}>● {variant}</div>
+          <h3 id="confirm-title" className="cb-h3" style={{ fontSize: 20 }}>{title}</h3>
+          <p className="cb-small" style={{ marginTop: 8 }}>{message}</p>
         </div>
-
-        <div className="flex justify-end gap-3 px-6 py-4 bg-surface-alt rounded-b-xl border-t border-border-light">
-          <Button
-            ref={cancelRef}
-            variant="ghost"
-            onClick={onCancel}
-            disabled={loading}
-          >
+        <div
+          style={{
+            display: 'flex', justifyContent: 'flex-end', gap: 10,
+            padding: '14px 24px', background: 'var(--cb-paper-2)',
+          }}
+        >
+          <Button ref={cancelRef} variant="ghost" onClick={onCancel} disabled={loading}>
             {cancelLabel}
           </Button>
-          <Button
-            variant={confirmVariant}
-            onClick={onConfirm}
-            loading={loading}
-          >
+          <Button variant={confirmVariant} onClick={onConfirm} loading={loading}>
             {confirmLabel}
           </Button>
         </div>

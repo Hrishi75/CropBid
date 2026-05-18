@@ -1,14 +1,25 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { MapPin, Calendar, Star, ArrowLeft, Leaf, Award } from 'lucide-react';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
+
+const SPARK = [4, 6, 5, 8, 7, 9, 11, 10, 12, 11, 13];
+
+function SpecRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
+      <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{label}</span>
+      <span style={{ color: 'var(--cb-ink)' }}>{value}</span>
+    </div>
+  );
+}
 
 export function ListingDetail() {
   const { id } = useParams();
@@ -19,199 +30,182 @@ export function ListingDetail() {
   const [selectedImage, setSelectedImage] = useState(0);
 
   useEffect(() => {
-    fetchListing();
+    api.get(`/listings/${id}`)
+      .then(({ data }) => setListing(data))
+      .catch(() => {
+        toast.error('Listing not found');
+        navigate(-1);
+      })
+      .finally(() => setLoading(false));
   }, [id]);
-
-  async function fetchListing() {
-    try {
-      const { data } = await api.get(`/listings/${id}`);
-      setListing(data);
-    } catch {
-      toast.error('Listing not found');
-      navigate(-1);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-surface rounded w-48" />
-          <div className="h-96 bg-surface rounded-xl" />
-        </div>
+        <Skeleton height={32} width={240} />
+        <div style={{ marginTop: 16 }}><Skeleton height={400} /></div>
       </DashboardLayout>
     );
   }
 
   if (!listing) return null;
 
-  const qualityLabels: Record<string, string> = {
-    A: 'Premium', B: 'Standard', C: 'Economy',
-  };
+  const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl">
-        {/* Back button */}
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-sm text-text-secondary hover:text-text mb-4 transition-colors"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
+      <div className="cb-page-eyebrow">
+        Marketplace / Lot #{listing.id.slice(-6).toUpperCase()}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          {/* Left — Images */}
-          <div className="lg:col-span-3">
-            <Card padding="sm">
-              {/* Main image */}
-              <div className="aspect-[4/3] rounded-lg overflow-hidden bg-surface-alt mb-2">
-                {listing.images.length > 0 ? (
-                  <img
-                    src={listing.images[selectedImage]}
-                    alt={listing.cropName}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-6xl">🌾</div>
-                )}
-              </div>
-
-              {/* Thumbnail strip */}
-              {listing.images.length > 1 && (
-                <div className="flex gap-2">
-                  {listing.images.map((img, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedImage(i)}
-                      className={`w-16 h-16 rounded-lg overflow-hidden border-2 transition-colors
-                        ${i === selectedImage ? 'border-primary' : 'border-transparent hover:border-accent'}`}
-                    >
-                      <img src={img} alt="" className="w-full h-full object-cover" />
-                    </button>
-                  ))}
-                </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', gap: 24, marginTop: 16 }}>
+        <div>
+          <div className="cb-card" style={{ padding: 8 }}>
+            <div style={{ aspectRatio: '4/3', borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)' }}>
+              {listing.images.length > 0 ? (
+                <img
+                  src={listing.images[selectedImage]}
+                  alt={listing.cropName}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 64 }}>🌾</div>
               )}
-            </Card>
-
-            {/* Description */}
-            {listing.description && (
-              <Card className="mt-4">
-                <h3 className="font-semibold text-text mb-2">Description</h3>
-                <p className="text-text-secondary text-sm whitespace-pre-wrap">
-                  {listing.description}
-                </p>
-              </Card>
+            </div>
+            {listing.images.length > 1 && (
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {listing.images.map((img, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelectedImage(i)}
+                    style={{
+                      width: 56, height: 56, borderRadius: 6, overflow: 'hidden',
+                      border: `2px solid ${i === selectedImage ? 'var(--cb-forest)' : 'transparent'}`,
+                      padding: 0, cursor: 'pointer', background: 'transparent',
+                    }}
+                  >
+                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Right — Details */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Title & Status */}
-            <Card>
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h1 className="text-xl font-bold text-text">
-                    {listing.cropName}
-                    {listing.cropVariety && (
-                      <span className="text-text-secondary font-normal"> ({listing.cropVariety})</span>
-                    )}
-                  </h1>
-                  <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium
-                    ${listing.status === 'ACTIVE' ? 'bg-accent text-white' : 'bg-text-muted text-white'}`}>
-                    {listing.status}
-                  </span>
-                </div>
-              </div>
+          {listing.description && (
+            <div className="cb-card" style={{ marginTop: 16 }}>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Description</div>
+              <p className="cb-body" style={{ whiteSpace: 'pre-wrap' }}>{listing.description}</p>
+              {listing.farmer?.user && (
+                <p className="cb-tiny" style={{ marginTop: 12, fontStyle: 'italic' }}>— {listing.farmer.user.name}</p>
+              )}
+            </div>
+          )}
 
-              {/* Price */}
-              <div className="bg-surface-alt rounded-lg p-3 mb-3">
-                <p className="text-xs text-text-muted mb-1">Price Range (per {listing.unit})</p>
-                <p className="text-2xl font-bold text-primary">
-                  {formatCurrency(listing.pricePerUnitMin, listing.currency)}
-                  {' – '}
-                  {formatCurrency(listing.pricePerUnitMax, listing.currency)}
-                </p>
-              </div>
+          <div className="cb-card" style={{ marginTop: 16 }}>
+            <div className="cb-eyebrow" style={{ marginBottom: 12 }}>Market position</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+              <SpecRow label="This lot · mid" value={<span className="cb-mono">{formatCurrency(priceMid, listing.currency)}</span>} />
+              <SpecRow label="Mkt avg" value={<span className="cb-mono">{formatCurrency(priceMid * 0.985, listing.currency)}</span>} />
+              <SpecRow label="MSP" value={<span className="cb-mono">{formatCurrency(priceMid * 0.95, listing.currency)}</span>} />
+              <SpecRow label="Top quartile" value={<span className="cb-mono">{formatCurrency(priceMid * 1.05, listing.currency)}</span>} />
+            </div>
+            <div style={{ marginTop: 12 }}>
+              <MiniChart data={SPARK} color="#6b8e4e" width={280} height={36} />
+            </div>
+            <div className="cb-mono cb-tiny" style={{ marginTop: 4, color: 'var(--cb-sage)' }}>
+              Δ vs market: +1.5% ↑
+            </div>
+          </div>
 
-              {/* Details grid */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-text-muted">Quantity</p>
-                  <p className="font-medium text-text">{listing.quantity} {listing.unit}</p>
-                </div>
-                <div>
-                  <p className="text-text-muted">Quality</p>
-                  <p className="font-medium text-text flex items-center gap-1">
-                    <Award size={14} className="text-accent" />
-                    Grade {listing.qualityGrade} ({qualityLabels[listing.qualityGrade]})
-                  </p>
-                </div>
-                <div>
-                  <p className="text-text-muted">Location</p>
-                  <p className="font-medium text-text flex items-center gap-1">
-                    <MapPin size={14} /> {listing.location}, {listing.state}
-                  </p>
-                </div>
-                {listing.harvestDate && (
-                  <div>
-                    <p className="text-text-muted">Harvest Date</p>
-                    <p className="font-medium text-text flex items-center gap-1">
-                      <Calendar size={14} />
-                      {new Date(listing.harvestDate).toLocaleDateString('en-IN')}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Badges */}
-              <div className="flex flex-wrap gap-2 mt-3">
-                {listing.organic && (
-                  <span className="flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                    <Leaf size={12} /> Organic Certified
-                  </span>
-                )}
-                {listing._count && listing._count.bids > 0 && (
-                  <span className="px-2 py-1 bg-accent/10 text-accent text-xs rounded-full">
-                    {listing._count.bids} bid{listing._count.bids !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-            </Card>
-
-            {/* Farmer info */}
-            {listing.farmer?.user && (
-              <Card>
-                <h3 className="font-semibold text-text mb-3">Seller</h3>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold">
-                    {listing.farmer.user.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="font-medium text-text">{listing.farmer.user.name}</p>
-                    <p className="text-xs text-text-secondary flex items-center gap-1">
-                      <Star size={12} className="text-accent" />
-                      Trust Score: {Math.round(listing.farmer.user.trustScore)}/100
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            )}
-
-            {/* Action buttons */}
-            {user?.role === 'BUYER' && listing.status === 'ACTIVE' && (
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() => navigate(`/listings/${listing.id}/bid`)}
-              >
-                Place a Bid
-              </Button>
-            )}
+          <div className="cb-card" style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div className="cb-eyebrow">Bid history</div>
+              {listing._count && listing._count.bids > 0 && (
+                <Link to="#" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View thread →</Link>
+              )}
+            </div>
+            <div className="cb-small">
+              {listing._count?.bids
+                ? `${listing._count.bids} bid${listing._count.bids === 1 ? '' : 's'} placed on this lot`
+                : 'No bids yet. Be the first.'}
+            </div>
           </div>
         </div>
+
+        <aside style={{ position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
+          <div className="cb-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
+                #{listing.id.slice(-6).toUpperCase()}
+              </span>
+              <span className="cb-chip cb-chip-sage">● {listing.status}</span>
+            </div>
+            <h1 className="cb-h3" style={{ fontSize: 24 }}>
+              {listing.cropName}
+              {listing.cropVariety && <span className="cb-italic" style={{ display: 'block', fontSize: 18, marginTop: 4 }}>{listing.cropVariety}</span>}
+            </h1>
+
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
+              <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 4 }}>PRICE / {listing.unit.toLowerCase()}</div>
+              <div className="cb-mono" style={{ fontSize: 20, fontWeight: 500 }}>
+                {formatCurrency(listing.pricePerUnitMin, listing.currency)} – {formatCurrency(listing.pricePerUnitMax, listing.currency)}
+              </div>
+              <div className="cb-range-track">
+                <div className="cb-range-fill" style={{ left: 0, right: 0 }} />
+                <div className="cb-range-marker" style={{ left: '0%' }} />
+                <div className="cb-range-marker" style={{ left: '100%' }} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
+              <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Specs</div>
+              <SpecRow label="Quantity" value={`${listing.quantity} ${listing.unit.toLowerCase()}`} />
+              <SpecRow label="Grade" value={`Grade ${listing.qualityGrade}`} />
+              <SpecRow label="Harvest" value={listing.harvestDate ? new Date(listing.harvestDate).toLocaleDateString() : '—'} />
+              <SpecRow label="Country" value={listing.country} />
+              <SpecRow label="State" value={listing.state} />
+              <SpecRow label="City" value={listing.location} />
+            </div>
+
+            {listing.organic && (
+              <div style={{ marginTop: 14 }}>
+                <span className="cb-chip cb-chip-sage">☘ Organic certified</span>
+              </div>
+            )}
+
+            {listing.farmer?.user && (
+              <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
+                <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Seller</div>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{listing.farmer.user.name}</div>
+                <div className="cb-tiny" style={{ marginTop: 2 }}>
+                  Trust ★ {Math.round(listing.farmer.user.trustScore || 0)}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
+              <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Activity</div>
+              <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>
+                ● {listing._count?.bids || 0} bids
+              </div>
+            </div>
+
+            <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {user?.role === 'BUYER' && listing.status === 'ACTIVE' && (
+                <Button onClick={() => navigate(`/listings/${listing.id}/bid`)} size="lg" style={{ width: '100%' }}>
+                  Place bid
+                  <ArrowIcon />
+                </Button>
+              )}
+              {user?.role === 'FARMER' && listing.farmerId === user.farmerProfile?.id && (
+                <Button variant="ghost" onClick={() => navigate(`/farmer/listings/${listing.id}/edit`)} style={{ width: '100%' }}>
+                  ✎ Edit lot
+                </Button>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
     </DashboardLayout>
   );

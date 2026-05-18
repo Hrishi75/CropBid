@@ -1,32 +1,31 @@
-// =============================================================================
-// Transaction Detail — View and manage a single transaction
-// =============================================================================
-// Shows the full transaction lifecycle with actionable status updates.
-// Farmers can mark shipment progress. Buyers can confirm delivery.
-// Payment is automatically released when delivery is confirmed.
-// =============================================================================
-
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import {
-  ArrowLeft, Receipt, Shield, Truck, CheckCircle,
-  Package, MapPin, User, DollarSign, Clock,
-} from 'lucide-react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
-import type { Transaction } from '../../types';
+import type { Transaction, DeliveryStatus } from '../../types';
 
-// Delivery status steps for the progress tracker
-const DELIVERY_STEPS = [
-  { key: 'PENDING', label: 'Pending', icon: Package },
-  { key: 'IN_TRANSIT', label: 'In Transit', icon: Truck },
-  { key: 'DELIVERED', label: 'Delivered', icon: MapPin },
-  { key: 'CONFIRMED', label: 'Confirmed', icon: CheckCircle },
+const DELIVERY_STEPS: { key: DeliveryStatus; label: string }[] = [
+  { key: 'PENDING', label: 'PENDING' },
+  { key: 'IN_TRANSIT', label: 'SHIPPED' },
+  { key: 'DELIVERED', label: 'DELIVERED' },
+  { key: 'CONFIRMED', label: 'CONFIRMED' },
 ];
+
+const LIFECYCLE = ['MATCH', 'ESCROW', 'SHIPPED', 'DELIVERED', 'CONFIRMED', 'RELEASED'];
+
+function SpecRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, gap: 8 }}>
+      <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{label}</span>
+      <span style={{ color: 'var(--cb-ink)', textAlign: 'right' }}>{value}</span>
+    </div>
+  );
+}
 
 export function TransactionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -54,9 +53,9 @@ export function TransactionDetail() {
     try {
       const res = await api.patch(`/transactions/${id}/delivery`, { status });
       setTransaction(res.data);
-      toast.success(`Delivery status updated to ${status.replace('_', ' ').toLowerCase()}`);
+      toast.success(`Marked ${status.replace('_', ' ').toLowerCase()}`);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to update status');
+      toast.error(err.response?.data?.message || 'Failed to update');
     } finally {
       setUpdating(false);
     }
@@ -65,246 +64,173 @@ export function TransactionDetail() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex justify-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-        </div>
+        <div className="cb-page-eyebrow">Loading transaction…</div>
       </DashboardLayout>
     );
   }
-
   if (!transaction) {
     return (
       <DashboardLayout>
-        <Card><p className="text-center text-text-muted py-8">Transaction not found.</p></Card>
+        <div className="cb-card" style={{ textAlign: 'center', padding: 32 }}>
+          <span className="cb-tiny">Transaction not found.</span>
+        </div>
       </DashboardLayout>
     );
   }
 
   const isFarmer = user?.id === transaction.farmerId;
   const isBuyer = user?.id === transaction.buyerId;
-  const currentStepIndex = DELIVERY_STEPS.findIndex(s => s.key === transaction.deliveryStatus);
+  const currentStepIndex = DELIVERY_STEPS.findIndex((s) => s.key === transaction.deliveryStatus);
 
-  // What action can the current user take?
+  const lifecycleStep = transaction.paymentStatus === 'RELEASED' ? 5
+    : transaction.deliveryStatus === 'CONFIRMED' ? 4
+    : transaction.deliveryStatus === 'DELIVERED' ? 3
+    : transaction.deliveryStatus === 'IN_TRANSIT' ? 2
+    : transaction.paymentStatus === 'ESCROW' ? 1
+    : 0;
+
   const nextAction = isFarmer && transaction.deliveryStatus === 'PENDING'
-    ? { status: 'IN_TRANSIT', label: 'Mark as Shipped' }
+    ? { status: 'IN_TRANSIT', label: 'Mark as shipped' }
     : isFarmer && transaction.deliveryStatus === 'IN_TRANSIT'
-      ? { status: 'DELIVERED', label: 'Mark as Delivered' }
+      ? { status: 'DELIVERED', label: 'Mark as delivered' }
       : isBuyer && transaction.deliveryStatus === 'DELIVERED'
-        ? { status: 'CONFIRMED', label: 'Confirm Receipt' }
+        ? { status: 'CONFIRMED', label: 'Confirm receipt' }
         : null;
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto">
-        <Link to="/transactions" className="inline-flex items-center gap-1 text-sm text-primary hover:underline mb-4">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Transactions
-        </Link>
+      <div className="cb-section-head">
+        <div className="cb-page-eyebrow">
+          <Link to="/transactions" style={{ color: 'inherit', textDecoration: 'none' }}>← Transactions</Link> · #T-{transaction.id.slice(-6).toUpperCase()}
+        </div>
+        <button type="button" className="cb-btn cb-btn-ghost">↗ Contract.pdf ↓</button>
+      </div>
 
-        <div className="flex items-center gap-3 mb-6">
-          <Receipt className="w-7 h-7 text-primary" />
-          <h1 className="text-xl font-bold text-text-primary">
-            Transaction: {transaction.listing?.cropName || 'Crop'}
-          </h1>
+      <div className="cb-card" style={{ marginTop: 16, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <span className="cb-chip cb-chip-wheat" style={{ fontSize: 11 }}>● {transaction.paymentStatus}</span>
+          <span className="cb-mono" style={{ fontSize: 18, fontWeight: 500 }}>
+            {formatCurrency(transaction.totalAmount, transaction.currency)} held
+          </span>
+        </div>
+        <h1 className="cb-h3" style={{ fontSize: 22, marginTop: 6 }}>
+          {transaction.listing?.cropName}
+          {transaction.listing?.cropVariety && <span className="cb-italic" style={{ marginLeft: 8 }}>· {transaction.listing.cropVariety}</span>}
+        </h1>
+        <div className="cb-small" style={{ marginTop: 4 }}>
+          {transaction.bid?.quantity} {transaction.listing?.unit?.toLowerCase()} × {formatCurrency(transaction.finalPricePerUnit, transaction.currency)}/{transaction.listing?.unit?.toLowerCase()}
+        </div>
+        <div className="cb-small" style={{ marginTop: 4 }}>
+          {transaction.farmer?.name} → {transaction.buyer?.name}
+        </div>
+      </div>
+
+      <div className="cb-card" style={{ marginBottom: 16 }}>
+        <div className="cb-eyebrow" style={{ marginBottom: 18 }}>Lifecycle timeline</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+          {LIFECYCLE.map((step, i) => {
+            const done = i < lifecycleStep;
+            const current = i === lifecycleStep;
+            const color = done ? 'var(--cb-forest)' : current ? 'var(--cb-ember)' : 'var(--cb-line)';
+            return (
+              <div key={step} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                {i > 0 && (
+                  <div style={{ position: 'absolute', top: 6, left: '-50%', right: '50%', height: 1, background: done || current ? 'var(--cb-forest)' : 'var(--cb-line)' }} />
+                )}
+                <div style={{ width: 12, height: 12, borderRadius: 999, background: done ? 'var(--cb-forest)' : current ? 'var(--cb-ember)' : 'transparent', border: `1px solid ${color}`, position: 'relative', zIndex: 1 }} />
+                <span className="cb-mono cb-tiny" style={{ marginTop: 6, color, fontSize: 9.5 }}>{step}</span>
+              </div>
+            );
+          })}
+        </div>
+        {nextAction && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
+            <Button onClick={() => updateDelivery(nextAction.status)} loading={updating}>
+              {nextAction.label}
+              <ArrowIcon />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div className="cb-card">
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Contract terms</div>
+          <SpecRow label="Crop" value={transaction.listing?.cropName} />
+          <SpecRow label="Quantity" value={`${transaction.bid?.quantity} ${transaction.listing?.unit?.toLowerCase()}`} />
+          <SpecRow label="Price" value={<span className="cb-mono">{formatCurrency(transaction.finalPricePerUnit, transaction.currency)}/{transaction.listing?.unit?.toLowerCase()}</span>} />
+          <SpecRow label="Total" value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
+          <SpecRow label="Platform fee" value={<span className="cb-mono">−{formatCurrency(transaction.platformFeeAmount, transaction.currency)}</span>} />
+          <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
+            <SpecRow label="Farmer receives" value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(transaction.totalAmount - transaction.platformFeeAmount, transaction.currency)}</span>} />
+          </div>
+          <SpecRow label="Lot ID" value={<span className="cb-mono">#{transaction.listingId.slice(-6).toUpperCase()}</span>} />
         </div>
 
-        {/* Delivery Progress Tracker */}
-        <Card className="mb-6">
-          <h3 className="font-semibold text-text-primary mb-4">Delivery Progress</h3>
-          <div className="flex items-center justify-between mb-6">
-            {DELIVERY_STEPS.map((step, idx) => {
-              const StepIcon = step.icon;
-              const isCompleted = idx <= currentStepIndex;
-              const isCurrent = idx === currentStepIndex;
-
-              return (
-                <div key={step.key} className="flex-1 flex flex-col items-center relative">
-                  {/* Connector line */}
-                  {idx > 0 && (
-                    <div
-                      className={`absolute top-4 -left-1/2 w-full h-0.5 ${
-                        idx <= currentStepIndex ? 'bg-accent' : 'bg-border'
-                      }`}
-                      style={{ zIndex: 0 }}
-                    />
-                  )}
-
-                  {/* Step circle */}
-                  <div
-                    className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors
-                      ${isCompleted ? 'bg-accent text-white' : 'bg-surface-alt text-text-muted border border-border'}
-                      ${isCurrent ? 'ring-2 ring-accent ring-offset-2' : ''}`}
-                  >
-                    <StepIcon className="w-4 h-4" />
-                  </div>
-
-                  <p className={`text-xs mt-2 ${isCompleted ? 'text-accent font-medium' : 'text-text-muted'}`}>
-                    {step.label}
-                  </p>
-                </div>
-              );
-            })}
+        <div className="cb-card">
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Parties</div>
+          <div style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--cb-line)' }}>
+            <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>SELLER</div>
+            <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.farmer?.name}</div>
+            <div className="cb-tiny" style={{ marginTop: 2 }}>Trust {Math.round(transaction.farmer?.trustScore || 0)}</div>
           </div>
+          <div>
+            <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>BUYER</div>
+            <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.buyer?.name}{isBuyer && ' (YOU)'}</div>
+            <div className="cb-tiny" style={{ marginTop: 2 }}>Trust {Math.round(transaction.buyer?.trustScore || 0)}</div>
+          </div>
+        </div>
+      </div>
 
-          {/* Action button */}
-          {nextAction && transaction.paymentStatus === 'ESCROW' && (
-            <div className="flex justify-center">
-              <Button onClick={() => updateDelivery(nextAction.status)} loading={updating}>
-                {nextAction.label}
-              </Button>
-            </div>
-          )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div className="cb-card">
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Payment</div>
+          <SpecRow label="Status" value={<span style={{ color: 'var(--cb-wheat)' }}>● {transaction.paymentStatus}</span>} />
+          <SpecRow label="Held" value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
+          <SpecRow label="Release" value="on delivery confirm" />
+          <SpecRow label="Created" value={new Date(transaction.createdAt).toLocaleDateString()} />
+        </div>
 
-          {transaction.paymentStatus === 'RELEASED' && (
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-status-success mx-auto mb-1" />
-              <p className="text-sm font-medium text-status-success">
-                Payment released to farmer. Transaction complete!
-              </p>
-            </div>
-          )}
-
-          {transaction.paymentStatus === 'REFUNDED' && (
-            <div className="text-center p-3 bg-red-50 rounded-lg">
-              <p className="text-sm font-medium text-status-error">
-                Transaction refunded to buyer.
-              </p>
-            </div>
-          )}
-        </Card>
-
-        {/* Logistics section */}
-        <Card className="mb-6">
-          <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-            <Truck className="w-4 h-4" />
-            Logistics & Transport
-          </h3>
-          <div className="flex gap-3">
-            <Link to={`/logistics/shipment/transaction/${id}`}>
-              <Button variant="outline" size="sm">
-                <Truck className="w-4 h-4 mr-1" />
-                Track Shipment
-              </Button>
+        <div className="cb-card">
+          <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Delivery</div>
+          <SpecRow label="Status" value={DELIVERY_STEPS[currentStepIndex]?.label || 'PENDING'} />
+          <SpecRow label="Carrier" value="—" />
+          <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Link to={`/logistics/shipment/transaction/${id}`} className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5, justifyContent: 'flex-start' }}>
+              Track shipment →
             </Link>
             {transaction.deliveryStatus === 'PENDING' && (
-              <Link to={`/logistics/book/${id}`}>
-                <Button size="sm">
-                  <Truck className="w-4 h-4 mr-1" />
-                  Book Transport
-                </Button>
+              <Link to={`/logistics/book/${id}`} className="cb-btn cb-btn-primary" style={{ fontSize: 12.5, justifyContent: 'flex-start' }}>
+                ⊞ Book transport →
               </Link>
             )}
           </div>
-        </Card>
-
-        {/* Transaction details grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Financial details */}
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <DollarSign className="w-4 h-4" />
-              Financial Details
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-text-muted">Price per unit</span>
-                <span className="font-medium">{transaction.currency} {transaction.finalPricePerUnit}/{transaction.listing?.unit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Quantity</span>
-                <span className="font-medium">{transaction.bid?.quantity} {transaction.listing?.unit}</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-2">
-                <span className="text-text-muted">Subtotal</span>
-                <span className="font-medium">{transaction.currency} {transaction.totalAmount.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Platform fee ({transaction.platformFeePercent}%)</span>
-                <span className="text-text-muted">- {transaction.currency} {transaction.platformFeeAmount.toLocaleString('en-IN')}</span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-2 font-semibold">
-                <span>Farmer receives</span>
-                <span className="text-primary">
-                  {transaction.currency} {(transaction.totalAmount - transaction.platformFeeAmount).toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Payment status */}
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Payment & Escrow
-            </h3>
-            <div className="space-y-3">
-              <div className={`p-3 rounded-lg ${
-                transaction.paymentStatus === 'ESCROW' ? 'bg-yellow-50' :
-                transaction.paymentStatus === 'RELEASED' ? 'bg-green-50' : 'bg-red-50'
-              }`}>
-                <p className="text-sm font-medium">
-                  Status: {transaction.paymentStatus}
-                </p>
-                <p className="text-xs text-text-muted mt-1">
-                  {transaction.paymentStatus === 'ESCROW'
-                    ? 'Funds are held securely. Released when buyer confirms delivery.'
-                    : transaction.paymentStatus === 'RELEASED'
-                      ? 'Payment has been released to the farmer.'
-                      : 'Funds have been refunded to the buyer.'}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-text-muted">
-                <Clock className="w-3 h-3" />
-                Created {new Date(transaction.createdAt).toLocaleDateString('en-IN', {
-                  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                })}
-              </div>
-            </div>
-          </Card>
-
-          {/* Farmer info */}
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Farmer
-            </h3>
-            <div className="space-y-2 text-sm">
-              <p className="font-medium">{transaction.farmer?.name}</p>
-              {(transaction.farmer as any)?.email && (
-                <p className="text-text-muted">{(transaction.farmer as any).email}</p>
-              )}
-              {(transaction.farmer as any)?.phone && (
-                <p className="text-text-muted">{(transaction.farmer as any).phone}</p>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="text-text-muted">Trust Score:</span>
-                <span className="font-medium text-primary">{transaction.farmer?.trustScore}/100</span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Buyer info */}
-          <Card>
-            <h3 className="font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <User className="w-4 h-4" />
-              Buyer
-            </h3>
-            <div className="space-y-2 text-sm">
-              <p className="font-medium">{transaction.buyer?.name}</p>
-              {(transaction.buyer as any)?.email && (
-                <p className="text-text-muted">{(transaction.buyer as any).email}</p>
-              )}
-              {(transaction.buyer as any)?.phone && (
-                <p className="text-text-muted">{(transaction.buyer as any).phone}</p>
-              )}
-              <div className="flex items-center gap-2">
-                <span className="text-text-muted">Trust Score:</span>
-                <span className="font-medium text-primary">{transaction.buyer?.trustScore}/100</span>
-              </div>
-            </div>
-          </Card>
         </div>
+      </div>
+
+      <div className="cb-card" style={{ padding: 0 }}>
+        <div className="cb-eyebrow" style={{ padding: '16px 20px 0' }}>Audit log</div>
+        <table className="cb-table" style={{ marginTop: 8 }}>
+          <tbody>
+            <tr>
+              <td className="cb-mono" style={{ color: 'var(--cb-ink-3)', width: 100 }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+              <td>Match confirmed</td>
+              <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>contract drafted</td>
+            </tr>
+            <tr>
+              <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+              <td>Escrow lodged</td>
+              <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{formatCurrency(transaction.totalAmount, transaction.currency)}</td>
+            </tr>
+            {transaction.deliveryStatus !== 'PENDING' && (
+              <tr>
+                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>—</td>
+                <td>Status: {transaction.deliveryStatus}</td>
+                <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>delivery update</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </DashboardLayout>
   );
