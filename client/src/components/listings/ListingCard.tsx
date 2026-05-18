@@ -3,6 +3,27 @@ import type { Listing } from '../../types';
 import { formatCurrency } from '../../utils/currency';
 import { MiniChart } from '../ui/Brand';
 
+// Listings don't yet ship a price-history series from the API. To avoid
+// presenting a single hardcoded sparkline as if it were live data on every
+// card, we seed a small per-listing pseudo-random walk from the listing id.
+// This keeps the visual cue (price has motion) honest about being illustrative
+// until the backend exposes a real series.
+function pseudoRandomSpark(id: string, points = 11): number[] {
+  let seed = 0;
+  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) >>> 0;
+  const next = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return (seed & 0xffff) / 0xffff;
+  };
+  const out: number[] = [];
+  let v = 8;
+  for (let i = 0; i < points; i++) {
+    v = Math.max(2, Math.min(14, v + (next() - 0.5) * 3));
+    out.push(v);
+  }
+  return out;
+}
+
 interface ListingCardProps {
   listing: Listing & { _count?: { bids: number } };
   showActions?: boolean;
@@ -25,9 +46,8 @@ const STATUS_COLOR: Record<string, string> = {
   EXPIRED: 'var(--cb-ink-3)',
 };
 
-const SPARK = [4, 6, 5, 8, 7, 9, 11, 10, 12, 11, 13];
-
 export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 'grid' }: ListingCardProps) {
+  const spark = pseudoRandomSpark(listing.id);
   const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
   const statusLabel = STATUS_LABEL[listing.status] || listing.status.slice(0, 4).toUpperCase();
   const statusColor = STATUS_COLOR[listing.status] || 'var(--cb-ink-3)';
@@ -59,7 +79,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           <div className="cb-tiny">
             {listing.quantity} {listing.unit.toLowerCase()} · {listing._count?.bids || 0} bids
           </div>
-          <MiniChart data={SPARK} color="#6b8e4e" width={100} height={24} />
+          <MiniChart data={spark} color="#6b8e4e" width={100} height={24} />
           <div style={{ display: 'flex', gap: 10 }}>
             <Link to={`/listings/${listing.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>View →</Link>
             {showActions && onEdit && (
@@ -109,7 +129,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           {formatCurrency(priceMid, listing.currency)}
           <span className="cb-tiny" style={{ marginLeft: 4, fontFamily: 'var(--cb-font-sans)' }}>/{listing.unit.toLowerCase()}</span>
         </div>
-        <MiniChart data={SPARK} color="#6b8e4e" width={160} height={28} />
+        <MiniChart data={spark} color="#6b8e4e" width={160} height={28} />
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
           <span className="cb-tiny">{listing.quantity} {listing.unit.toLowerCase()}</span>
           <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● {listing._count?.bids || 0} bids</span>
