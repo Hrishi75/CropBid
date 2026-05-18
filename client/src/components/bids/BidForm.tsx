@@ -26,9 +26,10 @@ export function BidForm({ listing }: BidFormProps) {
   const bidPrice = parseFloat(price) || 0;
   const bidQty = parseFloat(quantity) || 0;
   const totalAmount = bidPrice * bidQty;
-  const positionPct = bidPrice > 0
-    ? Math.min(100, Math.max(0, ((bidPrice - listing.pricePerUnitMin) / (listing.pricePerUnitMax - listing.pricePerUnitMin)) * 100))
-    : 0;
+  const priceRange = listing.pricePerUnitMax - listing.pricePerUnitMin;
+  const positionPct = bidPrice > 0 && priceRange > 0
+    ? Math.min(100, Math.max(0, ((bidPrice - listing.pricePerUnitMin) / priceRange) * 100))
+    : bidPrice > 0 ? 50 : 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,6 +48,10 @@ export function BidForm({ listing }: BidFormProps) {
         bidPricePerUnit: bidPrice,
         quantity: bidQty,
         message: message || undefined,
+        paymentTerms: payment,
+        deliveryTerms: delivery,
+        agentMode,
+        walkAwayPrice: agentMode && walkAway ? parseFloat(walkAway) : undefined,
       });
       toast.success('Bid sent');
       navigate('/buyer/bids');

@@ -11,6 +11,13 @@ const placeBidSchema = z.object({
   bidPricePerUnit: z.number().positive('Bid price must be positive'),
   quantity: z.number().positive('Quantity must be positive'),
   message: z.string().max(500).optional(),
+  // Optional bid-terms captured on the new BidForm. Accepted today so the
+  // client's POST is validated end-to-end; persistence pending the
+  // bid-terms schema migration (Prisma model + service write).
+  paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
+  deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  agentMode: z.boolean().optional(),
+  walkAwayPrice: z.number().positive().optional(),
 });
 
 // POST /api/bids — Place a bid
