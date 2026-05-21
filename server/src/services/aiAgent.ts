@@ -41,9 +41,14 @@ async function callGemini(prompt: string): Promise<string> {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const response = await fetch(`${GEMINI_API_URL}?key=${config.geminiApiKey}`, {
+  const response = await fetch(GEMINI_API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // Send the API key via header so it never lands in access logs,
+      // referrer headers, or error traces that include the request URL.
+      'x-goog-api-key': config.geminiApiKey,
+    },
     body: JSON.stringify({
       contents: [
         {
