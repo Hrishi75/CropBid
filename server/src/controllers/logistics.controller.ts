@@ -171,7 +171,7 @@ export async function updateShipmentStatus(req: Request, res: Response, next: Ne
     const shipment = await logisticsService.updateShipmentStatus(
       params.id,
       body.status,
-      { location: body.location, note: body.note },
+      { location: body.location ?? '', note: body.note ?? '' },
       req.user!.userId
     );
     res.json(shipment);
