@@ -46,15 +46,21 @@ export async function createNotification(input: CreateNotificationInput) {
     },
   });
 
-  // Try to push via Socket.io
+  // Try to push via Socket.io. Push is best-effort: the DB row is the
+  // source of truth and the client will pick it up on next fetch.
   try {
     const io = getIO();
     if (io) {
       // Emit to the user's personal room (they join on connect)
       io.to(`user:${input.userId}`).emit('notification:new', notification);
     }
-  } catch {
-    // Socket.io not initialized yet — that's fine, DB has it
+  } catch (err) {
+    console.error('[notification] socket push failed', {
+      notificationId: notification.id,
+      userId: input.userId,
+      type: input.type,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return notification;
@@ -80,7 +86,7 @@ export async function createBulkNotifications(
     })),
   });
 
-  // Push to all online users
+  // Push to all online users. Best-effort like createNotification — DB has the rows.
   try {
     const io = getIO();
     if (io) {
@@ -95,8 +101,12 @@ export async function createBulkNotifications(
         });
       });
     }
-  } catch {
-    // Silently fail — DB has the notifications
+  } catch (err) {
+    console.error('[notification] bulk socket push failed', {
+      userCount: userIds.length,
+      type,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return notifications;
