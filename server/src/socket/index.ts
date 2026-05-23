@@ -56,8 +56,30 @@ interface AuctionState {
   bids: AuctionBid[];       // All bids in order
   participants: Set<string>; // Set of userIds in the room
   farmerId: string;         // The farmer who owns the listing
-  endsAt: Date;             // When the auction ends
+  endsAt: Date;             // When the auction ends (may extend on anti-sniping)
+  hardEndsAt: Date;         // Absolute ceiling — anti-sniping cannot push past this
   timer: NodeJS.Timeout | null; // Reference to the end timer
+}
+
+// Per-socket bid-rate tracking. Token bucket: max BID_BURST bids per
+// BID_WINDOW_MS window per socket. Cleared on disconnect.
+const BID_WINDOW_MS = 5_000;
+const BID_BURST = 5;
+const ANTI_SNIPE_WINDOW_MS = 30_000;
+const ANTI_SNIPE_EXTENSION_MS = 30_000;
+// Hard cap so an attacker (or an enthusiastic bidder) cannot extend a
+// 10-minute auction indefinitely. 5 minutes past the original endsAt.
+const ANTI_SNIPE_MAX_EXTENSION_MS = 5 * 60 * 1000;
+const bidTimestamps = new WeakMap<Socket, number[]>();
+
+function recordBid(socket: Socket): boolean {
+  const now = Date.now();
+  const history = bidTimestamps.get(socket) ?? [];
+  const fresh = history.filter((t) => now - t < BID_WINDOW_MS);
+  if (fresh.length >= BID_BURST) return false;
+  fresh.push(now);
+  bidTimestamps.set(socket, fresh);
+  return true;
 }
 
 // In-memory auction store
@@ -152,6 +174,16 @@ export function initializeSocket(httpServer: HttpServer) {
 
     // --- PLACE BID ---
     socket.on('auction:bid', async (data: { listingId: string; price: number }) => {
+      // Validate input shape before doing anything else
+      if (!data || typeof data.listingId !== 'string' || typeof data.price !== 'number' || !Number.isFinite(data.price)) {
+        return socket.emit('auction:error', 'Invalid bid payload');
+      }
+
+      // Per-socket rate limit — stops bid flooding from a single client
+      if (!recordBid(socket)) {
+        return socket.emit('auction:error', `Too many bids — slow down (max ${BID_BURST} per ${BID_WINDOW_MS / 1000}s)`);
+      }
+
       const auction = activeAuctions.get(data.listingId);
       if (!auction) {
         return socket.emit('auction:error', 'Auction not found or ended');
@@ -190,15 +222,20 @@ export function initializeSocket(httpServer: HttpServer) {
         bidCount: auction.bids.length,
       });
 
-      // Anti-sniping: if bid comes in the last 30 seconds, extend by 30s
-      const timeLeft = auction.endsAt.getTime() - Date.now();
-      if (timeLeft < 30000) {
-        auction.endsAt = new Date(Date.now() + 30000);
+      // Anti-sniping: if a bid comes in the last 30 seconds, extend by 30s
+      // but never past hardEndsAt so the auction can't be stretched forever.
+      const now = Date.now();
+      const timeLeft = auction.endsAt.getTime() - now;
+      const hardLeft = auction.hardEndsAt.getTime() - now;
+      if (timeLeft < ANTI_SNIPE_WINDOW_MS && hardLeft > 0) {
+        const extension = Math.min(ANTI_SNIPE_EXTENSION_MS, hardLeft);
+        auction.endsAt = new Date(now + extension);
         if (auction.timer) clearTimeout(auction.timer);
-        auction.timer = setTimeout(() => endAuction(data.listingId), 30000);
+        auction.timer = setTimeout(() => endAuction(data.listingId), extension);
 
         io.to(roomName).emit('auction:time_extended', {
           newEndTime: auction.endsAt.toISOString(),
+          hardEndTime: auction.hardEndsAt.toISOString(),
           reason: 'Anti-sniping: bid in last 30 seconds',
         });
       }
@@ -249,6 +286,7 @@ export async function startAuction(
   }
 
   const endsAt = new Date(Date.now() + durationMinutes * 60 * 1000);
+  const hardEndsAt = new Date(endsAt.getTime() + ANTI_SNIPE_MAX_EXTENSION_MS);
 
   const auction: AuctionState = {
     listingId,
@@ -263,6 +301,7 @@ export async function startAuction(
     participants: new Set(),
     farmerId: listing.farmer.userId,
     endsAt,
+    hardEndsAt,
     timer: setTimeout(() => endAuction(listingId), durationMinutes * 60 * 1000),
   };
 
