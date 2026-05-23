@@ -472,6 +472,42 @@ model Waitlist {
 }
 
 // =============================================================================
+// Model: AuditLog — Tamper-evident record of sensitive actions
+// =============================================================================
+// Captures who did what on which entity. Used for security review, dispute
+// resolution, and admin forensics. Append-only — never updated or deleted.
+//
+// actorId is nullable so system-initiated actions (cron jobs, webhooks) can
+// still be recorded. entityType + entityId form a logical foreign key but
+// are stored as plain strings so the log survives entity deletion.
+//
+// Indexed by (entityType, entityId) for entity history lookups and by
+// actorId for "what did this user do" queries.
+
+model AuditLog {
+  id         String   @id @default(uuid())
+
+  actorId    String?
+  actorRole  String?  // Snapshot of role at action time (FARMER / BUYER / ADMIN / SYSTEM)
+
+  action     String   // e.g., "bid.accept", "transaction.refund", "admin.user.update"
+  entityType String   // e.g., "Bid", "Transaction", "User", "Listing"
+  entityId   String   // ID of the affected entity
+
+  // Diff / context — before/after values, request IP, user-agent, reason text, etc.
+  metadata   Json?
+
+  ip         String?
+  userAgent  String?
+
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+// =============================================================================
 // Logistics Enums
 // =============================================================================
 

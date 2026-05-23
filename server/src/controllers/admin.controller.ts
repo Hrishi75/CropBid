@@ -3,7 +3,16 @@
 // =============================================================================
 
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import * as adminService from '../services/admin.service';
+
+const updateUserSchema = z.object({
+  trustScore: z.number().min(0).max(100).optional(),
+});
+
+const userIdParamSchema = z.object({
+  id: z.string().uuid('Invalid user id'),
+});
 
 // GET /api/admin/stats — Platform-wide statistics
 export async function getPlatformStats(_req: Request, res: Response, next: NextFunction) {
@@ -64,10 +73,17 @@ export async function getAllTransactions(req: Request, res: Response, next: Next
 // PATCH /api/admin/users/:id — Update user (trust score, verification)
 export async function updateUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await adminService.updateUser(
-      req.params.id as string,
-      req.body
-    );
+    const params = userIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      return res.status(400).json({ message: params.error.issues[0]?.message || 'Invalid id' });
+    }
+
+    const body = updateUserSchema.safeParse(req.body);
+    if (!body.success) {
+      return res.status(400).json({ message: body.error.issues[0]?.message || 'Invalid input' });
+    }
+
+    const user = await adminService.updateUser(params.data.id, body.data);
     res.json(user);
   } catch (error) {
     next(error);
