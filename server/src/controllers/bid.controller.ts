@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as bidService from '../services/bid.service';
+import { auditFromRequest } from '../services/audit.service';
 
 function paramId(req: Request): string {
   return req.params.id as string;
@@ -77,7 +78,19 @@ export async function getBidsForListing(req: Request, res: Response, next: NextF
 // PUT /api/bids/:id/accept — Farmer accepts
 export async function acceptBid(req: Request, res: Response, next: NextFunction) {
   try {
-    const bid = await bidService.acceptBid(paramId(req), req.user!.userId);
+    const bidId = paramId(req);
+    const bid = await bidService.acceptBid(bidId, req.user!.userId);
+    await auditFromRequest(req, {
+      action: 'bid.accept',
+      entityType: 'Bid',
+      entityId: bidId,
+      metadata: {
+        listingId: (bid as any)?.listingId ?? null,
+        buyerId: (bid as any)?.buyerId ?? null,
+        bidPricePerUnit: (bid as any)?.bidPricePerUnit ?? null,
+        totalAmount: (bid as any)?.totalAmount ?? null,
+      },
+    });
     res.json(bid);
   } catch (error) {
     next(error);
@@ -87,7 +100,17 @@ export async function acceptBid(req: Request, res: Response, next: NextFunction)
 // PUT /api/bids/:id/reject — Farmer rejects
 export async function rejectBid(req: Request, res: Response, next: NextFunction) {
   try {
-    const bid = await bidService.rejectBid(paramId(req), req.user!.userId);
+    const bidId = paramId(req);
+    const bid = await bidService.rejectBid(bidId, req.user!.userId);
+    await auditFromRequest(req, {
+      action: 'bid.reject',
+      entityType: 'Bid',
+      entityId: bidId,
+      metadata: {
+        listingId: (bid as any)?.listingId ?? null,
+        buyerId: (bid as any)?.buyerId ?? null,
+      },
+    });
     res.json(bid);
   } catch (error) {
     next(error);
@@ -97,11 +120,19 @@ export async function rejectBid(req: Request, res: Response, next: NextFunction)
 // PUT /api/bids/:id/counter — Farmer counters
 export async function counterBid(req: Request, res: Response, next: NextFunction) {
   try {
-    const bid = await bidService.counterBid(
-      paramId(req),
-      req.user!.userId,
-      Number(req.body.counterPrice)
-    );
+    const bidId = paramId(req);
+    const counterPrice = Number(req.body.counterPrice);
+    const bid = await bidService.counterBid(bidId, req.user!.userId, counterPrice);
+    await auditFromRequest(req, {
+      action: 'bid.counter',
+      entityType: 'Bid',
+      entityId: bidId,
+      metadata: {
+        listingId: (bid as any)?.listingId ?? null,
+        buyerId: (bid as any)?.buyerId ?? null,
+        counterPrice,
+      },
+    });
     res.json(bid);
   } catch (error) {
     next(error);
