@@ -89,13 +89,15 @@ const STYLE_INSTRUCTIONS = {
 // =============================================================================
 // SANITIZE — Neutralize user-controlled text before prompt interpolation
 // =============================================================================
-// Strips newlines, backticks, code fences, and markdown headers so a crafted
-// cropName or reasoning cannot inject new instructions ("## SYSTEM: ..." etc).
-// Also caps length so a long string cannot flood the context window.
+// Strips newlines, backticks, code fences, markdown headers, and bracket/tag
+// characters so a crafted cropName or reasoning cannot inject new
+// instructions via "## SYSTEM: ...", "<system>...</system>", or
+// "[INST]...[/INST]" patterns. Also caps length so a long string cannot
+// flood the context window.
 function sanitize(input: string | undefined | null, maxLen = 200): string {
   if (!input) return '';
   return String(input)
-    .replace(/[`*_#>]/g, '')
+    .replace(/[`*_#>\<\[\]\{\}]/g, '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
