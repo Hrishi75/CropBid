@@ -89,13 +89,15 @@ const STYLE_INSTRUCTIONS = {
 // =============================================================================
 // SANITIZE — Neutralize user-controlled text before prompt interpolation
 // =============================================================================
-// Strips newlines, backticks, code fences, and markdown headers so a crafted
-// cropName or reasoning cannot inject new instructions ("## SYSTEM: ..." etc).
-// Also caps length so a long string cannot flood the context window.
+// Strips newlines, backticks, code fences, markdown headers, and bracket/tag
+// characters so a crafted cropName or reasoning cannot inject new
+// instructions via "## SYSTEM: ...", "<system>...</system>", or
+// "[INST]...[/INST]" patterns. Also caps length so a long string cannot
+// flood the context window.
 function sanitize(input: string | undefined | null, maxLen = 200): string {
   if (!input) return '';
   return String(input)
-    .replace(/[`*_#>]/g, '')
+    .replace(/[`*_#>\<\[\]\{\}]/g, '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
@@ -113,15 +115,22 @@ export function buildNegotiationPrompt(ctx: NegotiationContext): string {
   const cropName = sanitize(ctx.cropName, 100);
   const cropVariety = sanitize(ctx.cropVariety, 100);
   const counterpartyName = sanitize(ctx.counterpartyName, 100);
+  // currency / unit / qualityGrade are DB-enforced enums today, but the
+  // NegotiationContext interface types them as plain string. Sanitize anyway
+  // so a future caller that bypasses Prisma cannot smuggle a prompt-injection
+  // payload through these fields.
+  const currency = sanitize(ctx.currency, 10);
+  const unit = sanitize(ctx.unit, 20);
+  const qualityGrade = sanitize(ctx.qualityGrade, 30);
 
   const boundary = isFarmer
-    ? `Your absolute FLOOR price is ${ctx.agentMinPrice || ctx.listingMinPrice} ${ctx.currency}/${ctx.unit}. NEVER accept or counter below this.`
-    : `Your absolute CEILING price is ${ctx.agentMaxPrice || ctx.listingMaxPrice} ${ctx.currency}/${ctx.unit}. NEVER accept or counter above this.`;
+    ? `Your absolute FLOOR price is ${ctx.agentMinPrice || ctx.listingMinPrice} ${currency}/${unit}. NEVER accept or counter below this.`
+    : `Your absolute CEILING price is ${ctx.agentMaxPrice || ctx.listingMaxPrice} ${currency}/${unit}. NEVER accept or counter above this.`;
 
   const autoAccept = ctx.autoAcceptThreshold
     ? isFarmer
-      ? `If the bid is >= ${ctx.autoAcceptThreshold} ${ctx.currency}/${ctx.unit}, immediately ACCEPT.`
-      : `If the price is <= ${ctx.autoAcceptThreshold} ${ctx.currency}/${ctx.unit}, immediately ACCEPT.`
+      ? `If the bid is >= ${ctx.autoAcceptThreshold} ${currency}/${unit}, immediately ACCEPT.`
+      : `If the price is <= ${ctx.autoAcceptThreshold} ${currency}/${unit}, immediately ACCEPT.`
     : '';
 
   const previousRoundsText = ctx.previousRounds.length > 0
@@ -129,7 +138,7 @@ export function buildNegotiationPrompt(ctx: NegotiationContext): string {
 ${ctx.previousRounds
   .map(
     (r) =>
-      `Round ${Number(r.round) || 0}: ${sanitize(r.from, 30)} ${sanitize(r.action, 20)}ed at ${Number(r.price) || 0} ${ctx.currency} — "${sanitize(r.reasoning, 300)}"`
+      `Round ${Number(r.round) || 0}: ${sanitize(r.from, 30)} ${sanitize(r.action, 20)}ed at ${Number(r.price) || 0} ${currency} — "${sanitize(r.reasoning, 300)}"`
   )
   .join('\n')}`
     : '';
@@ -137,11 +146,11 @@ ${ctx.previousRounds
   return `You are an AI negotiation agent acting on behalf of a ${roleLabel} in an agricultural marketplace called CropBid.
 
 ## Your Goal
-Negotiate the best possible price for your ${roleLabel}. You are negotiating the sale of ${ctx.quantity} ${ctx.unit} of ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, Grade ${ctx.qualityGrade}${ctx.organic ? ', Organic Certified' : ''}.
+Negotiate the best possible price for your ${roleLabel}. You are negotiating the sale of ${ctx.quantity} ${unit} of ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, Grade ${qualityGrade}${ctx.organic ? ', Organic Certified' : ''}.
 
 ## Price Context
-- Listing price range: ${ctx.listingMinPrice} - ${ctx.listingMaxPrice} ${ctx.currency}/${ctx.unit}
-- Current offer on the table: ${ctx.currentBidPrice} ${ctx.currency}/${ctx.unit}
+- Listing price range: ${ctx.listingMinPrice} - ${ctx.listingMaxPrice} ${currency}/${unit}
+- Current offer on the table: ${ctx.currentBidPrice} ${currency}/${unit}
 ${boundary}
 ${autoAccept}
 

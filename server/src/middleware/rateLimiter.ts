@@ -19,7 +19,12 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
-    const ip = ipKeyGenerator(req.ip ?? '');
+    // req.ip can be undefined when Express has no trust-proxy set and the
+    // request arrived without a recognisable forwarded header. Falling back
+    // to '' would collapse every such request into one shared bucket, so
+    // prefer the raw socket address before giving up.
+    const rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = ipKeyGenerator(rawIp);
     const rawEmail = (req.body as { email?: unknown } | undefined)?.email;
     const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : '';
     return email ? `${ip}:${email}` : ip;

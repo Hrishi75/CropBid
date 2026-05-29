@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import * as transactionService from '../services/transaction.service';
+import { auditFromRequest } from '../services/audit.service';
 
 const createTxSchema = z.object({
   bidId: z.string().min(1, 'bidId is required'),
@@ -99,11 +100,29 @@ export async function updateDeliveryStatus(req: Request, res: Response, next: Ne
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
 
+    const txId = req.params.id as string;
+    const before = await prisma.transaction.findUnique({
+      where: { id: txId },
+      select: { deliveryStatus: true, paymentStatus: true },
+    });
+
     const transaction = await transactionService.updateDeliveryStatus(
-      req.params.id as string,
+      txId,
       req.user!.userId,
       parsed.data.status
     );
+
+    await auditFromRequest(req, {
+      action: 'transaction.delivery.update',
+      entityType: 'Transaction',
+      entityId: txId,
+      metadata: {
+        before: { deliveryStatus: before?.deliveryStatus ?? null, paymentStatus: before?.paymentStatus ?? null },
+        after: { deliveryStatus: (transaction as any)?.deliveryStatus ?? null, paymentStatus: (transaction as any)?.paymentStatus ?? null },
+        requested: parsed.data.status,
+      },
+    });
+
     res.json(transaction);
   } catch (error) {
     next(error);
@@ -113,9 +132,28 @@ export async function updateDeliveryStatus(req: Request, res: Response, next: Ne
 // POST /api/transactions/:id/refund — Refund a transaction (admin)
 export async function refundTransaction(req: Request, res: Response, next: NextFunction) {
   try {
-    const transaction = await transactionService.refundTransaction(
-      req.params.id as string
-    );
+    const txId = req.params.id as string;
+    const before = await prisma.transaction.findUnique({
+      where: { id: txId },
+      select: { paymentStatus: true, totalAmount: true, currency: true, buyerId: true, farmerId: true },
+    });
+
+    const transaction = await transactionService.refundTransaction(txId);
+
+    await auditFromRequest(req, {
+      action: 'transaction.refund',
+      entityType: 'Transaction',
+      entityId: txId,
+      metadata: {
+        before: { paymentStatus: before?.paymentStatus ?? null },
+        after: { paymentStatus: (transaction as any)?.paymentStatus ?? null },
+        amount: before?.totalAmount ?? null,
+        currency: before?.currency ?? null,
+        buyerId: before?.buyerId ?? null,
+        farmerId: before?.farmerId ?? null,
+      },
+    });
+
     res.json(transaction);
   } catch (error) {
     next(error);
