@@ -21,6 +21,14 @@ const placeBidSchema = z.object({
   walkAwayPrice: z.number().positive().optional(),
 });
 
+const counterBidSchema = z.object({
+  counterPrice: z.number().positive('counterPrice must be positive'),
+});
+
+const updateBidSchema = z.object({
+  bidPricePerUnit: z.number().positive('bidPricePerUnit must be positive'),
+});
+
 // POST /api/bids — Place a bid
 export async function placeBid(req: Request, res: Response, next: NextFunction) {
   try {
@@ -120,8 +128,14 @@ export async function rejectBid(req: Request, res: Response, next: NextFunction)
 // PUT /api/bids/:id/counter — Farmer counters
 export async function counterBid(req: Request, res: Response, next: NextFunction) {
   try {
+    const parsed = counterBidSchema.safeParse({
+      counterPrice: Number(req.body?.counterPrice),
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
     const bidId = paramId(req);
-    const counterPrice = Number(req.body.counterPrice);
+    const { counterPrice } = parsed.data;
     const bid = await bidService.counterBid(bidId, req.user!.userId, counterPrice);
     await auditFromRequest(req, {
       action: 'bid.counter',
@@ -142,10 +156,16 @@ export async function counterBid(req: Request, res: Response, next: NextFunction
 // PUT /api/bids/:id/update — Buyer updates their bid
 export async function updateBid(req: Request, res: Response, next: NextFunction) {
   try {
+    const parsed = updateBidSchema.safeParse({
+      bidPricePerUnit: Number(req.body?.bidPricePerUnit),
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
     const bid = await bidService.updateBid(
       paramId(req),
       req.user!.userId,
-      Number(req.body.bidPricePerUnit)
+      parsed.data.bidPricePerUnit
     );
     res.json(bid);
   } catch (error) {
