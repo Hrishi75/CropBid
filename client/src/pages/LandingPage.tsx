@@ -1,15 +1,14 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../lib/axios';
 
 // =============================================================================
 // Landing Page — global, currency-aware
 // =============================================================================
-// Live stats come from GET /api/stats/landing. A country dropdown in the nav
+// STATIC marketing page. All numbers come from the baked-in constants below
+// (STATIC_STATS + STATIC_MARKET) — no API calls. A country dropdown in the nav
 // drives display currency: prices/GMV/example deals are converted from each
-// listing's native currency to the viewer's currency via FX_TO_USD. Selection
-// persists in localStorage. Page renders against fallback data if the API is
-// unreachable so a cold backend doesn't blank the marketing page.
+// row's native currency to the viewer's currency via FX_TO_USD. Selection
+// persists in localStorage. Live /api/stats/landing wiring comes in a later pass.
 
 type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
 type UnitCode = 'KG' | 'QUINTAL' | 'TONNE';
@@ -84,43 +83,45 @@ const GUARDRAILS = [
 ] as const;
 
 // Example deal — values stored in USD/MT; rendered in the viewer's currency.
+// HRW wheat 12.5% protein, FOB Gulf — Jun 2026 market band (~$258–274/MT).
 const DIAGRAM_BASE = {
   currency: 'USD' as CurrencyCode,
   unit: 'MT' as const,
-  floor: 275,
-  ceiling: 292,
-  walkAway: 294,
+  floor: 258,
+  ceiling: 272,
+  walkAway: 274,
   qtyLow: 4500,
   qtyHigh: 5500,
-  protein: '12.0%',
-  delivery: 'Oct 15 – Oct 30 · FOB hub',
+  protein: '12.5%',
+  delivery: 'Oct 15 – Oct 30 · FOB Gulf',
 };
 
 const SPARK_POS = [3, 5, 4, 6, 5, 8, 7, 9, 11, 10, 12];
 const SPARK_NEG = [10, 9, 11, 8, 9, 7, 8, 6, 5, 7, 5];
 
 // Negotiation panel base values — USD/MT, converted at render.
+// HRW wheat 12.5% protein, FOB Gulf — anchored to CBOT + Gulf basis, Jun 2026.
 const NEG_BASE = {
   currency: 'USD' as CurrencyCode,
   unit: 'MT' as const,
-  spotRef: 287.4,
-  open: 282.1,
-  counter1: 291.5,
-  counter2: 286.8,
-  final: 288.0,
-  competing: 287.2,
+  spotRef: 264.5,
+  open: 258.0,
+  counter1: 271.5,
+  counter2: 265.0,
+  final: 267.5,
+  competing: 266.0,
   qty: 5000,
-  savings: 17400,
+  savings: 16050, // ~1.2% of 5,000 MT × $267.5 saved vs broker spread
 };
 
 // How-it-works trace — USD/MT base values per row.
 const HOW_BASE = [
   { t: '+00:00', evt: 'Brief accepted',       counter: '—',                  price: null, spread: null, qty: null,  mark: '✓' as const },
   { t: '+00:12', evt: 'Invite sent',          counter: '14 sellers',         price: null, spread: null, qty: 5000,  mark: '✓' as const },
-  { t: '+01:03', evt: 'Bids opened',          counter: '11 received',        price: [281, 294] as [number, number], spread: 13, qty: 5000, mark: '✓' as const },
-  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Hartmann Farms',     price: 291.5, spread: 9.4, qty: 5000,  mark: '✓' as const },
-  { t: '+01:38', evt: 'Round 3 counter',      counter: 'Hartmann Farms',     price: 288.0, spread: 1.2, qty: 5000,  mark: '✓' as const },
-  { t: '+01:41', evt: 'Match · contract drafted', counter: 'Hartmann Farms', price: 288.0, spread: null, qty: 5000, mark: '●' as const },
+  { t: '+01:03', evt: 'Bids opened',          counter: '11 received',        price: [258, 274] as [number, number], spread: 16, qty: 5000, mark: '✓' as const },
+  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Hartmann Farms',     price: 271.5, spread: 4.0, qty: 5000,  mark: '✓' as const },
+  { t: '+01:38', evt: 'Round 3 counter',      counter: 'Hartmann Farms',     price: 267.5, spread: 0.8, qty: 5000,  mark: '✓' as const },
+  { t: '+01:41', evt: 'Match · contract drafted', counter: 'Hartmann Farms', price: 267.5, spread: null, qty: 5000, mark: '●' as const },
 ];
 
 const FOOTER_COLS = [
@@ -169,24 +170,24 @@ type LandingStats = {
   marketplace: MarketRow[];
 };
 
-const FALLBACK_STATS: LandingStats = {
+// Static platform totals — demo traction figures shown on the marketing page.
+const STATIC_STATS: Omit<LandingStats, 'marketplace'> = {
   totals: {
-    activeListings: 0,
-    farmers: 0,
-    buyers: 0,
-    gmvByCurrency: { INR: 0, USD: 0, EUR: 0, GBP: 0 },
-    completedDeals: 0,
-    activeAuctions: 0,
-    countries: 0,
+    activeListings: 540,
+    farmers: 1240,
+    buyers: 410,
+    gmvByCurrency: { INR: 0, USD: 8_400_000, EUR: 0, GBP: 0 },
+    completedDeals: 312,
+    activeAuctions: 47,
+    countries: 24,
   },
-  marketplace: [],
 };
 
-const FALLBACK_MARKET: MarketRow[] = [
-  { id: 'f1', crop: 'HRW Wheat',   variety: '12.5% protein', grade: 'A', organic: false, location: 'Kansas City', state: 'Kansas',     country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 285, pricePerUnitMax: 292, quantity: 5000, bidCount: 8,  trustScore: 86, farmerName: 'Hartmann Farms',  tone: 'pos', deltaPct: 0.8,  spark: SPARK_POS },
-  { id: 'f2', crop: 'Yellow Corn', variety: 'US #2',         grade: 'B', organic: false, location: 'Des Moines',  state: 'Iowa',       country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 172, pricePerUnitMax: 180, quantity: 12000, bidCount: 11, trustScore: 92, farmerName: 'John Miller',     tone: 'neg', deltaPct: -0.4, spark: SPARK_NEG },
-  { id: 'f3', crop: 'Soybeans',    variety: 'GMO-free',      grade: 'A', organic: false, location: 'São Paulo',   state: 'São Paulo',  country: 'Brazil', unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 408, pricePerUnitMax: 418, quantity: 3500,  bidCount: 6,  trustScore: 78, farmerName: 'Carlos Silva',    tone: 'pos', deltaPct: 1.2,  spark: SPARK_POS },
-  { id: 'f4', crop: 'Arabica',     variety: 'Specialty 85+', grade: 'A', organic: true,  location: 'Nairobi',     state: 'Central',    country: 'Kenya',  unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 5750, pricePerUnitMax: 5890, quantity: 240,  bidCount: 9,  trustScore: 88, farmerName: 'James Mwangi',    tone: 'pos', deltaPct: 2.1,  spark: SPARK_POS },
+const STATIC_MARKET: MarketRow[] = [
+  { id: 'f1', crop: 'HRW Wheat',   variety: '12.5% protein · FOB Gulf', grade: 'A', organic: false, location: 'Kansas City', state: 'Kansas',     country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 260, pricePerUnitMax: 272, quantity: 5000, bidCount: 8,  trustScore: 86, farmerName: 'Hartmann Farms',  tone: 'pos', deltaPct: 0.8,  spark: SPARK_POS },
+  { id: 'f2', crop: 'Yellow Corn', variety: 'US #2 · CIF',        grade: 'B', organic: false, location: 'Des Moines',  state: 'Iowa',       country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 185, pricePerUnitMax: 196, quantity: 12000, bidCount: 11, trustScore: 92, farmerName: 'John Miller',     tone: 'neg', deltaPct: -0.4, spark: SPARK_NEG },
+  { id: 'f3', crop: 'Soybeans',    variety: 'GMO-free · FOB Santos', grade: 'A', organic: false, location: 'São Paulo',   state: 'São Paulo',  country: 'Brazil', unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 420, pricePerUnitMax: 432, quantity: 3500,  bidCount: 6,  trustScore: 78, farmerName: 'Carlos Silva',    tone: 'pos', deltaPct: 1.2,  spark: SPARK_POS },
+  { id: 'f4', crop: 'Arabica',     variety: 'SCA 85+ specialty', grade: 'A', organic: true,  location: 'Nairobi',     state: 'Central',    country: 'Kenya',  unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 7850, pricePerUnitMax: 8150, quantity: 240,  bidCount: 9,  trustScore: 88, farmerName: 'James Mwangi',    tone: 'pos', deltaPct: 2.1,  spark: SPARK_POS },
 ];
 
 // =============================================================================
@@ -649,7 +650,7 @@ function AgentAnatomy({ currency }: { currency: CurrencyCode }) {
 }
 
 function MarketSnapshot({ rows, activeCount, currency }: { rows: MarketRow[]; activeCount: number; currency: CurrencyCode }) {
-  const display = rows.length > 0 ? rows : FALLBACK_MARKET;
+  const display = rows.length > 0 ? rows : STATIC_MARKET;
   const headline = activeCount > 0 ? `${activeCount} auctions clearing right now.` : 'Live marketplace.';
 
   return (
@@ -872,27 +873,9 @@ function loadCountry(): Country {
 
 export function LandingPage() {
   const [country, setCountry] = useState<Country>(loadCountry);
-  const [stats, setStats] = useState<LandingStats>(FALLBACK_STATS);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .get<LandingStats>('/stats/landing')
-      .then(({ data }) => {
-        // Defensive: when no backend is wired (e.g. Vercel without
-        // VITE_API_URL), a misrouted /api/* request can return HTML.
-        // Only swap in the response if it actually looks like LandingStats.
-        if (!cancelled && data && typeof data === 'object' && 'totals' in data) {
-          setStats(data);
-        }
-      })
-      .catch(() => {
-        // API down — fallback stays. Page still renders.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Static content only — no API. Live stats wiring comes in a later pass.
+  const stats: LandingStats = { ...STATIC_STATS, marketplace: STATIC_MARKET };
 
   const currency = country.currency;
 
