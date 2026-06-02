@@ -178,7 +178,7 @@ const STATIC_STATS: Omit<LandingStats, 'marketplace'> = {
     buyers: 410,
     gmvByCurrency: { INR: 0, USD: 8_400_000, EUR: 0, GBP: 0 },
     completedDeals: 312,
-    activeAuctions: 47,
+    activeAuctions: 0,
     countries: 24,
   },
 };
@@ -409,7 +409,7 @@ function Hero({ stats, currency }: { stats: LandingStats; currency: CurrencyCode
   const heroStats: ReadonlyArray<readonly [string, string]> = [
     [gmv > 0 ? formatMoney(gmv, currency, { compact: true }) : '—', 'GMV settled on-platform'],
     [formatCount(stats.totals.farmers), 'verified growers & FPOs'],
-    [`${stats.totals.activeAuctions}`, 'auctions clearing now'],
+    [stats.totals.activeAuctions > 0 ? `${stats.totals.activeAuctions}` : '—', 'auctions clearing now'],
   ];
 
   return (
@@ -866,10 +866,12 @@ function CBFooter() {
 
 const LS_KEY = 'cb-landing-country';
 
+const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === 'IN') ?? COUNTRIES[0];
+
 function loadCountry(): Country {
-  if (typeof window === 'undefined') return COUNTRIES[0];
+  if (typeof window === 'undefined') return DEFAULT_COUNTRY;
   const code = window.localStorage.getItem(LS_KEY);
-  return COUNTRIES.find((c) => c.code === code) ?? COUNTRIES[0];
+  return COUNTRIES.find((c) => c.code === code) ?? DEFAULT_COUNTRY;
 }
 
 export function LandingPage() {
