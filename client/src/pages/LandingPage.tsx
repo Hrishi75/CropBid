@@ -36,10 +36,10 @@ const COUNTRIES: Country[] = [
 // per-listing prices to the viewer's currency. Replace with a daily feed once
 // treasury wires one in.
 const FX_TO_USD: Record<CurrencyCode, number> = {
-  INR: 0.012,
+  INR: 0.0105, // ~₹95/USD (Jun 2026)
   USD: 1,
-  EUR: 1.08,
-  GBP: 1.27,
+  EUR: 1.16,   // EUR/USD ~1.16 (Jun 2026)
+  GBP: 1.35,   // GBP/USD ~1.35 (Jun 2026)
 };
 
 const CURRENCY_SYMBOL: Record<CurrencyCode, string> = {
@@ -126,7 +126,7 @@ const HOW_BASE = [
 const FOOTER_COLS = [
   { title: 'Product',     items: ['How it works', 'For buyers', 'For farmers', 'Marketplace', 'Pricing', 'Security'] },
   { title: 'Commodities', items: ['Wheat & barley', 'Corn & soy', 'Rice', 'Coffee & cocoa', 'Spices', 'See all'] },
-  { title: 'Company',     items: ['About', 'Customers', 'Careers', 'Press', 'Blog', 'Contact'] },
+  { title: 'Company',     items: ['About', 'Careers', 'Press', 'Blog', 'Contact'] },
   { title: 'Resources',   items: ['Documentation', 'Trust center', 'Status', 'Reports', 'Glossary', 'API'] },
 ];
 
@@ -764,20 +764,21 @@ function Proof({ stats }: { stats: LandingStats }) {
   );
 }
 
-function Testimonial() {
+function Mission() {
   return (
     <section className="testimonial">
       <div className="testimonial-inner">
-        <div className="img-slot">customer · grain buyer portrait</div>
+        <div className="img-slot">grain markets · global trade</div>
         <div>
-          <span className="cb-eyebrow">Customer · Aria Mills, NA</span>
+          <span className="cb-eyebrow">Why we built CropBid</span>
           <p className="testimonial-quote">
-            “We replaced three brokers and a six-person desk. The agent runs 40 forward contracts a week
-            and we audit every one. Our basis improved 90 bps in the first quarter.”
+            “Every harvest, growers lose margin to opaque pricing and a chain of middlemen.
+            CropBid runs transparent, auditable auctions that put real-time market access
+            directly in farmers' hands — no brokers, no guesswork.”
           </p>
           <div className="testimonial-attribution">
-            <div className="name">Marta Okafor</div>
-            <div className="cb-small">VP of Grain Procurement, Aria Mills</div>
+            <div className="name">The CropBid team</div>
+            <div className="cb-small">Building fair price discovery for agriculture</div>
           </div>
         </div>
       </div>
@@ -917,7 +918,7 @@ export function LandingPage() {
       <MarketSnapshot rows={stats.marketplace} activeCount={stats.totals.activeAuctions} currency={currency} />
       <HowItWorks currency={currency} />
       <Proof stats={stats} />
-      <Testimonial />
+      <Mission />
       <CTA />
       <CBFooter />
     </div>
