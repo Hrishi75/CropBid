@@ -71,9 +71,9 @@ const NAV_LINKS = [
 const LOGO_STRIP = ['CARGILL', 'ADM', 'BUNGE', 'OLAM', 'ITC FOODS', 'COFCO', 'LOUIS DREYFUS', 'NESTLÉ'] as const;
 
 const PILLARS = [
-  ['01', 'Brief the agent in plain language', 'Crop, grade, volume, delivery window, payment terms — and the price you walk away at. Any language, any units.'],
-  ['02', 'Auctions run while you sleep', 'CropBid invites verified growers and FPOs across 20+ countries, runs sealed-bid or live counter rounds, and stays inside your guardrails.'],
-  ['03', 'Settle on-platform with escrow', 'GAFTA, FOSFA, NGFA, APMC templates pre-loaded. Escrow, L/C, origin certificates handled in one settlement flow.'],
+  ['01', 'List your crop — stay on your farm', 'Crop, grade, volume, location, and your floor price. Any language, any units. No mandi trips, no middlemen, no travel.'],
+  ['02', 'Buyers bid in the open', 'Verified buyers across 20+ countries bid in transparent rounds. You see every offer — including the ones you turn down — with the full spread surfaced, never hidden.'],
+  ['03', 'We verify, transport, and settle', 'CropBid inspects every lot for authenticity and grade, arranges third-party logistics farm-to-buyer, and releases escrow on confirmed delivery.'],
 ] as const;
 
 const GUARDRAILS = [
@@ -568,8 +568,8 @@ function Pillars() {
     <section id="how" className="pillars">
       <div className="pillars-inner">
         <div className="pillars-head">
-          <span className="cb-eyebrow">The procurement stack, reduced</span>
-          <h2 className="cb-h1">Three steps replace a six-week RFQ.</h2>
+          <span className="cb-eyebrow">How CropBid works</span>
+          <h2 className="cb-h1">From your field to the buyer —<br />without leaving home.</h2>
         </div>
         <div className="pillars-grid">
           {PILLARS.map(([n, title, body]) => (
@@ -774,8 +774,9 @@ function Mission() {
           <span className="cb-eyebrow">Why we built CropBid</span>
           <p className="testimonial-quote">
             “Every harvest, growers lose margin to opaque pricing and a chain of middlemen.
-            CropBid runs transparent, auditable auctions that put real-time market access
-            directly in farmers' hands — no brokers, no guesswork.”
+            CropBid runs transparent, auditable auctions, verifies every lot ourselves, and
+            handles transport farm-to-buyer — so farmers get fair prices without ever leaving
+            the field.”
           </p>
           <div className="testimonial-attribution">
             <div className="name">The CropBid team</div>
