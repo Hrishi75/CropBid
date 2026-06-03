@@ -1,0 +1,105 @@
+# 🚀 Deploying CropBid (Neon + Render + Vercel)
+
+Production demo stack — all free tier:
+
+| Layer | Host | Notes |
+|-------|------|-------|
+| Database | **Neon** | Serverless Postgres. Works with the `pg` driver adapter unchanged. |
+| Backend | **Render** | Express + Socket.io. Needs a persistent process (not serverless) for WebSockets + in-memory auctions. |
+| Frontend | **Vercel** | Static Vite build. |
+
+> ⚠️ **Render free tier sleeps after ~15 min idle** → first request cold-starts in ~50s.
+> For a live demo, hit the URL ~2 min early to warm it, or upgrade to the $7/mo instance.
+
+---
+
+## 0. Prerequisites
+
+- A **Neon** project → copy two connection strings from the Neon dashboard:
+  - **Pooled** (host contains `-pooler`) → used as `DATABASE_URL`
+  - **Direct / unpooled** (same host *without* `-pooler`) → used as `DIRECT_URL`
+- A **Gemini API key** (optional, only for AI negotiation): https://aistudio.google.com/app/apikey
+- Two strong JWT secrets:
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+  ```
+  Run twice → one for `JWT_SECRET`, one for `JWT_REFRESH_SECRET`.
+
+---
+
+## 1. Backend → Render
+
+1. Render Dashboard → **New → Blueprint** → connect the `Hrishi75/CropBid` repo.
+   Render reads [`render.yaml`](render.yaml) and creates the `cropbid-api` service.
+2. When prompted, fill the secret env vars:
+
+   | Key | Value |
+   |-----|-------|
+   | `DATABASE_URL` | Neon **pooled** url (`...-pooler...neon.tech/...?sslmode=require`) |
+   | `DIRECT_URL` | Neon **unpooled** url (same, drop `-pooler`) |
+   | `JWT_SECRET` | first generated secret |
+   | `JWT_REFRESH_SECRET` | second generated secret |
+   | `GEMINI_API_KEY` | Gemini key (or leave blank) |
+   | `CLIENT_URL` | leave as a placeholder for now (set in step 3) |
+   | `RUN_SEED` | **`true`** for this first deploy only |
+
+3. Deploy. The build runs: install → `prisma generate` → `prisma migrate deploy`
+   → seed (because `RUN_SEED=true`) → `tsc`.
+   Watch the logs for "migrations applied" and the seed output.
+4. **After the first successful deploy: set `RUN_SEED` back to `false`** and don't
+   redeploy with it `true` again (seeding **wipes** all tables every run).
+5. Note the service URL, e.g. `https://cropbid-api.onrender.com`.
+   Verify: open `https://cropbid-api.onrender.com/api/health` → `{"status":"ok",...}`.
+
+---
+
+## 2. Frontend → Vercel
+
+1. Vercel → **Add New → Project** → import `Hrishi75/CropBid`.
+2. **Root Directory: `client`** (important — repo is a monorepo).
+   Framework preset: **Vite**. Build command / output (`dist`) are auto-detected.
+3. Add Environment Variables (Production):
+
+   | Key | Value |
+   |-----|-------|
+   | `VITE_API_URL` | `https://cropbid-api.onrender.com/api` |
+   | `VITE_SOCKET_URL` | `https://cropbid-api.onrender.com` |
+
+   > Vite inlines these at **build time** — they must be set before/at deploy.
+4. Deploy → note the URL, e.g. `https://cropbid.vercel.app`.
+
+---
+
+## 3. Close the loop (CORS / cookies)
+
+1. Back in Render → set `CLIENT_URL` = exact Vercel URL (e.g. `https://cropbid.vercel.app`,
+   **no trailing slash**) → save (triggers a redeploy).
+
+   Why: CORS uses an exact origin (can't be `*` with credentials), and the refresh
+   cookie is cross-site (`SameSite=None; Secure`) — it only flows to/from this origin.
+2. If you later add a custom domain on Vercel, update `CLIENT_URL` to match.
+
+---
+
+## 4. Smoke test the live demo
+
+- Open the Vercel URL.
+- Log in with a seeded account (password `password123`):
+  - Farmer: `rajesh@cropbid.test`
+  - Buyer:  `vikram@cropbid.test`
+  - Admin:  `admin@cropbid.test`
+- Check: login persists across refresh (refresh-token cookie works), browse listings,
+  place a bid, open an auction (WebSocket).
+
+---
+
+## Known demo limitations
+
+- **Uploads are ephemeral** — Render's free filesystem resets on redeploy, so
+  user-uploaded listing images disappear after a deploy/restart. Seed data is
+  unaffected. For permanent uploads, move to S3/Cloudinary later.
+- **Cold starts** — see the free-tier note at the top.
+- **Local dev** currently can't reach Neon on this machine (router DNS refuses
+  `*.aws.neon.tech`). Production hosts resolve it fine. To dev locally, either set
+  the machine's DNS to `1.1.1.1`/`8.8.8.8`, or run a local Postgres via `docker compose up -d`
+  and point `DATABASE_URL` at `localhost:5432`.

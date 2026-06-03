@@ -40,10 +40,20 @@ const app = express();
 // Middleware Stack (order matters!)
 // =============================================================================
 
+// Trust the first proxy (Render/Vercel/any reverse proxy terminating TLS).
+// WHY? Behind a proxy, the client IP arrives in X-Forwarded-For and the original
+// protocol in X-Forwarded-Proto. Without this:
+//   - express-rate-limit sees one shared proxy IP (or throws a validation error)
+//   - req.secure is false, so secure cookies look misconfigured
+// '1' = trust exactly one hop (the platform's proxy), not arbitrary client headers.
+app.set('trust proxy', 1);
+
 // Security headers — sets X-Frame-Options, X-Content-Type-Options, HSTS, etc.
 app.use(helmet({
   contentSecurityPolicy: false,       // CSP handled separately or by frontend
   crossOriginEmbedderPolicy: false,   // allow image loading from uploads
+  // Allow the Vercel-hosted frontend to load /uploads images from this API origin.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // CORS — Cross-Origin Resource Sharing

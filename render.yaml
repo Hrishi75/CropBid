@@ -1,0 +1,59 @@
+# =============================================================================
+# Render Blueprint — CropBid backend (Express + Socket.io)
+# =============================================================================
+# Deploy: Render Dashboard → New → Blueprint → connect this repo.
+# Render reads this file, creates the service, and prompts for the secret env
+# vars marked `sync: false` (set them in the dashboard / Blueprint wizard).
+#
+# The React frontend is NOT here — it deploys separately on Vercel (see DEPLOY.md).
+# =============================================================================
+services:
+  - type: web
+    name: cropbid-api
+    runtime: node
+    plan: free            # free tier sleeps after ~15 min idle (cold start ~50s)
+    rootDir: server       # build/start run from the server/ directory
+    region: oregon        # change if you prefer; keep client/DB latency in mind
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # Build: install (incl. dev deps for tsc/ts-node), generate client, apply
+    # migrations, optionally seed (only when RUN_SEED=true), then compile TS.
+    buildCommand: >-
+      npm install --include=dev &&
+      npx prisma generate &&
+      npx prisma migrate deploy &&
+      if [ "$RUN_SEED" = "true" ]; then npx prisma db seed; fi &&
+      npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # --- Database (set both as secrets in the dashboard) ---
+      # DATABASE_URL = Neon POOLED url   (...-pooler...neon.tech...)  → app runtime
+      # DIRECT_URL   = Neon UNPOOLED url (same host without "-pooler") → migrations
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      # --- Auth secrets (generate: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))") ---
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      # --- Google Gemini (AI negotiation). App runs without it; that feature won't. ---
+      - key: GEMINI_API_KEY
+        sync: false
+      # --- CORS / cookies: exact Vercel frontend origin, no trailing slash ---
+      # e.g. https://cropbid.vercel.app  (set AFTER the Vercel deploy exists)
+      - key: CLIENT_URL
+        sync: false
+      # --- Seed gate: set "true" for the FIRST deploy only, then back to "false".
+      #     Seeding wipes & repopulates all tables on every run. ---
+      - key: RUN_SEED
+        value: "false"
+      # --- Locale defaults ---
+      - key: DEFAULT_CURRENCY
+        value: INR
+      - key: DEFAULT_LOCALE
+        value: en-IN
+    # NOTE: Render injects PORT automatically; config reads process.env.PORT.
