@@ -101,9 +101,10 @@ enum BidStatus {
 }
 
 enum PaymentStatus {
-  ESCROW   // Money held by platform
-  RELEASED // Paid to farmer
-  REFUNDED // Returned to buyer
+  AWAITING_PAYMENT // Transaction created, buyer has not paid yet (Razorpay order open)
+  ESCROW           // Money captured & held by platform
+  RELEASED         // Paid to farmer
+  REFUNDED         // Returned to buyer
 }
 
 enum DeliveryStatus {
@@ -383,8 +384,16 @@ model Transaction {
   platformFeePercent Float        @default(2.0)  // 2% fee
   platformFeeAmount  Float                        // Calculated: totalAmount × 2%
 
+  // Default stays ESCROW for a clean single-step enum migration (Postgres can't use
+  // a freshly-added enum value as a DEFAULT in the same migration). The real initial
+  // status for new deals is set explicitly to AWAITING_PAYMENT in transaction.service.ts.
   paymentStatus     PaymentStatus @default(ESCROW)
   deliveryStatus    DeliveryStatus @default(PENDING)
+
+  // Razorpay (capture-only). Order is created when buyer initiates payment;
+  // paymentId is set once the payment is verified/captured into the platform account.
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?
 
   createdAt DateTime @default(now())
 

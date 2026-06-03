@@ -66,7 +66,9 @@ export async function createTransaction(bidId: string) {
       currency: bid.currency,
       platformFeePercent: PLATFORM_FEE_PERCENT,
       platformFeeAmount,
-      paymentStatus: 'ESCROW',
+      // Capture-only Razorpay flow: deal is matched but money isn't in escrow until
+      // the buyer actually pays (see payment.service.ts). Was 'ESCROW' (simulated).
+      paymentStatus: 'AWAITING_PAYMENT',
       deliveryStatus: 'PENDING',
     },
     include: {

@@ -27,6 +27,8 @@ import agentRoutes from './routes/agent.routes';
 import negotiationRoutes from './routes/negotiation.routes';
 import auctionRoutes from './routes/auction.routes';
 import transactionRoutes from './routes/transaction.routes';
+import paymentRoutes from './routes/payment.routes';
+import * as paymentController from './controllers/payment.controller';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
@@ -64,6 +66,11 @@ app.use(cors({
 
 // Global API rate limiter — 100 req/min per IP
 app.use('/api', apiLimiter);
+
+// Razorpay webhook — MUST run before express.json so we keep the RAW body for
+// HMAC signature verification. express.raw sets req._body, so the global
+// express.json below skips re-parsing this route. No auth: the signature is the auth.
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), paymentController.webhook);
 
 // Parse JSON request bodies
 app.use(express.json({ limit: '10mb' }));
@@ -105,6 +112,7 @@ app.use('/api/agent', agentRoutes);
 app.use('/api/negotiations', negotiationRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
