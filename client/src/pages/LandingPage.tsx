@@ -840,7 +840,7 @@ function CBFooter() {
             <div key={c.title} className="cb-footer-col">
               <div className="cb-footer-col-title">{c.title}</div>
               <ul>
-                {c.items.map((i) => <li key={i}><a href="#">{i}</a></li>)}
+                {c.items.map((i) => <li key={i}><a href={i === 'Contact' ? 'mailto:hrishikeshborkar94@gmail.com' : '#'}>{i}</a></li>)}
               </ul>
             </div>
           ))}
