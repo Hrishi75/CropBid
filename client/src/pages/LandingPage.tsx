@@ -848,7 +848,6 @@ function CBFooter() {
 
         <div className="cb-footer-bottom">
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  All rights reserved</span>
-          <span className="cb-mono">EBOL // L3 GAFTA license #04428</span>
           <span className="cb-footer-bottom-links">
             <a href="#">Terms</a>
             <a href="#">Privacy</a>
