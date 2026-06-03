@@ -17,7 +17,7 @@ export type CompanyType = 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RE
 export type AgentType = 'FARMER_AGENT' | 'BUYER_AGENT';
 export type NegotiationStyle = 'AGGRESSIVE' | 'BALANCED' | 'CONSERVATIVE';
 export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED';
-export type PaymentStatus = 'ESCROW' | 'RELEASED' | 'REFUNDED';
+export type PaymentStatus = 'AWAITING_PAYMENT' | 'ESCROW' | 'RELEASED' | 'REFUNDED';
 export type DeliveryStatus = 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | 'CONFIRMED';
 export type NegotiationOutcome = 'DEAL' | 'NO_DEAL' | 'IN_PROGRESS';
 
@@ -148,6 +148,8 @@ export interface Transaction {
   platformFeeAmount: number;
   paymentStatus: PaymentStatus;
   deliveryStatus: DeliveryStatus;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
   createdAt: string;
 }
 

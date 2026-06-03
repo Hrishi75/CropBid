@@ -46,6 +46,14 @@ export const config = {
   // Google Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
+  // Razorpay (capture-only payments). In dev use TEST keys (rzp_test_...).
+  // Leave blank to run with payments disabled — the API returns 503 on pay attempts.
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
+  },
+
   // Client URL (for CORS)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 

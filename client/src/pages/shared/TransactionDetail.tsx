@@ -6,6 +6,7 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
+import { openCheckout } from '../../lib/razorpay';
 import toast from 'react-hot-toast';
 import type { Transaction, DeliveryStatus } from '../../types';
 
@@ -33,6 +34,7 @@ export function TransactionDetail() {
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     async function fetch() {
@@ -47,6 +49,43 @@ export function TransactionDetail() {
     }
     fetch();
   }, [id]);
+
+  async function handlePay() {
+    if (!transaction) return;
+    setPaying(true);
+    try {
+      // 1. Create a Razorpay order on the server for this transaction.
+      const { data: order } = await api.post('/payments/order', { transactionId: transaction.id });
+
+      // 2. Open Checkout. On success Razorpay calls handler with the signed handshake.
+      await openCheckout({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: 'CropBid',
+        description: `${transaction.listing?.cropName ?? 'Crop'} — escrow payment`,
+        prefill: { name: user?.name, email: user?.email },
+        theme: { color: '#2f6b3a' },
+        handler: async (resp) => {
+          try {
+            // 3. Verify the signature server-side; transaction moves to ESCROW.
+            const { data: updated } = await api.post('/payments/verify', resp);
+            setTransaction(updated);
+            toast.success('Payment captured — funds in escrow');
+          } catch (err: any) {
+            toast.error(err.response?.data?.message || 'Payment verification failed');
+          } finally {
+            setPaying(false);
+          }
+        },
+        modal: { ondismiss: () => setPaying(false) },
+      });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not start payment');
+      setPaying(false);
+    }
+  }
 
   async function updateDelivery(status: string) {
     setUpdating(true);
@@ -110,7 +149,7 @@ export function TransactionDetail() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <span className="cb-chip cb-chip-wheat" style={{ fontSize: 11 }}>● {transaction.paymentStatus}</span>
           <span className="cb-mono" style={{ fontSize: 18, fontWeight: 500 }}>
-            {formatCurrency(transaction.totalAmount, transaction.currency)} held
+            {formatCurrency(transaction.totalAmount, transaction.currency)} {transaction.paymentStatus === 'AWAITING_PAYMENT' ? 'due' : 'held'}
           </span>
         </div>
         <h1 className="cb-h3" style={{ fontSize: 22, marginTop: 6 }}>
@@ -186,9 +225,20 @@ export function TransactionDetail() {
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Payment</div>
           <SpecRow label="Status" value={<span style={{ color: 'var(--cb-wheat)' }}>● {transaction.paymentStatus}</span>} />
-          <SpecRow label="Held" value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
+          <SpecRow label={transaction.paymentStatus === 'AWAITING_PAYMENT' ? 'Due' : 'Held'} value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
           <SpecRow label="Release" value="on delivery confirm" />
           <SpecRow label="Created" value={new Date(transaction.createdAt).toLocaleDateString()} />
+          {transaction.razorpayPaymentId && (
+            <SpecRow label="Razorpay" value={<span className="cb-mono cb-tiny">{transaction.razorpayPaymentId}</span>} />
+          )}
+          {isBuyer && transaction.paymentStatus === 'AWAITING_PAYMENT' && (
+            <div style={{ marginTop: 14 }}>
+              <Button onClick={handlePay} loading={paying} style={{ width: '100%' }}>
+                Pay {formatCurrency(transaction.totalAmount, transaction.currency)} via Razorpay
+                <ArrowIcon />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="cb-card">
