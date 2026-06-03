@@ -10,6 +10,11 @@ export default defineConfig({
     seed: "npx ts-node --transpile-only prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations (migrate deploy / dev) must use a DIRECT, non-pooled connection.
+    // Neon's pooled endpoint (PgBouncer) does not support the session-level
+    // advisory locks Prisma Migrate relies on. Set DIRECT_URL to the unpooled
+    // Neon host for migrations; the app runtime still uses the pooled DATABASE_URL
+    // via the driver adapter (src/lib/prisma.ts). Falls back to DATABASE_URL.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });

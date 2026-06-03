@@ -35,15 +35,19 @@ const loginSchema = z.object({
 
 // Cookie options for the refresh token
 // WHY THESE OPTIONS?
-//   httpOnly: true  → JavaScript cannot access it (prevents XSS theft)
-//   secure: false   → Allow HTTP in development (set true in production with HTTPS)
-//   sameSite: 'lax' → Cookie sent on same-site requests + top-level navigations
-//   maxAge: 7 days  → Matches the refresh token's JWT expiry
+//   httpOnly: true   → JavaScript cannot access it (prevents XSS theft)
+//   secure           → HTTPS only in production (required when sameSite='none')
+//   sameSite         → In production the API (Render) and client (Vercel) live on
+//                      different domains, so the refresh cookie is cross-site and
+//                      MUST be 'none' to be sent on XHR. 'none' requires secure:true.
+//                      In development both run on localhost, so 'lax' is fine.
+//   maxAge: 7 days   → Matches the refresh token's JWT expiry
 //   path: '/api/auth'→ Only sent to auth endpoints (not every API call)
+const isProd = process.env.NODE_ENV === 'production';
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: isProd,
+  sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
   path: '/api/auth',
 };
@@ -126,8 +130,14 @@ export async function refreshHandler(req: Request, res: Response) {
 // POST /api/auth/logout
 // ---------------------------------------------------------------------------
 export async function logoutHandler(req: Request, res: Response) {
-  // Clear the refresh token cookie
-  res.clearCookie('refreshToken', { path: '/api/auth' });
+  // Clear the refresh token cookie — attributes must match the ones used to set
+  // it (secure + sameSite) or the browser won't clear a cross-site cookie in prod.
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/api/auth',
+  });
 
   // If user is authenticated, also clear from database
   try {
