@@ -58,6 +58,19 @@ export async function createOrder(transactionId: string, userId: string) {
 
   const amountInSubunits = Math.round(transaction.totalAmount * 100);
 
+  // Idempotency: if an order was already created (e.g. buyer dismissed the modal
+  // and clicked Pay again), reuse it. Minting a fresh order would orphan the first
+  // one — a webhook for it could no longer be matched back to this transaction.
+  if (transaction.razorpayOrderId) {
+    return {
+      orderId: transaction.razorpayOrderId,
+      amount: amountInSubunits,
+      currency: transaction.currency,
+      keyId: config.razorpay.keyId,
+      transactionId: transaction.id,
+    };
+  }
+
   const order = await client.orders.create({
     amount: amountInSubunits,
     currency: transaction.currency, // INR works in Razorpay test mode out of the box
@@ -157,14 +170,19 @@ export async function handleWebhook(rawBody: Buffer, signature: string | undefin
 // markCaptured — Idempotent flip AWAITING_PAYMENT → ESCROW
 // =============================================================================
 async function markCaptured(transactionId: string, paymentId: string) {
-  const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
-  if (!tx) throw new ApiError(404, 'Transaction not found');
-
-  // Already captured (e.g. webhook beat the client callback) — nothing to do.
-  if (tx.paymentStatus !== 'AWAITING_PAYMENT') return tx;
-
-  return prisma.transaction.update({
-    where: { id: transactionId },
+  // Atomic conditional update: closes the race between verifyPayment (browser
+  // callback) and handleWebhook both seeing AWAITING_PAYMENT and both writing.
+  const result = await prisma.transaction.updateMany({
+    where: { id: transactionId, paymentStatus: 'AWAITING_PAYMENT' },
     data: { paymentStatus: 'ESCROW', razorpayPaymentId: paymentId },
   });
+
+  // count === 0 → either already captured (webhook beat us) or no such row.
+  if (result.count === 0) {
+    const tx = await prisma.transaction.findUnique({ where: { id: transactionId } });
+    if (!tx) throw new ApiError(404, 'Transaction not found');
+    return tx;
+  }
+
+  return prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
 }
