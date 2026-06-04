@@ -45,6 +45,18 @@ interface SignupData {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Non-secret UX hint: "this browser had a session". Lets the root route show the
+// static landing immediately for anonymous visitors instead of blocking on the
+// /auth/refresh call (which is slow when the API is cold-starting). The actual
+// token still lives in memory only — this is just a boolean flag.
+export const SESSION_HINT_KEY = 'cb_has_session';
+function setSessionHint(on: boolean) {
+  try {
+    if (on) localStorage.setItem(SESSION_HINT_KEY, '1');
+    else localStorage.removeItem(SESSION_HINT_KEY);
+  } catch { /* localStorage unavailable — ignore */ }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // True until initial auth check
@@ -58,9 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = await api.post('/auth/refresh');
         setAccessToken(data.accessToken);
         setUser(data.user);
+        setSessionHint(true);
       } catch {
         // No valid refresh token — user is not logged in
         // This is normal for first-time visitors
+        setSessionHint(false);
       } finally {
         setLoading(false);
       }
@@ -72,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleLogout = () => {
       setAccessToken(null);
       setUser(null);
+      setSessionHint(false);
     };
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
@@ -84,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = await api.post('/auth/login', { email, password });
     setAccessToken(data.accessToken);
     setUser(data.user);
+    setSessionHint(true);
   }
 
   // -------------------------------------------------------------------------
@@ -93,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data } = await api.post('/auth/signup', signupData);
     setAccessToken(data.accessToken);
     setUser(data.user);
+    setSessionHint(true);
   }
 
   // -------------------------------------------------------------------------
@@ -106,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setAccessToken(null);
     setUser(null);
+    setSessionHint(false);
   }
 
   // -------------------------------------------------------------------------

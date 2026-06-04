@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, SESSION_HINT_KEY } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
 
 // Auth pages (public)
@@ -48,6 +48,16 @@ function RootRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
+    // While the /auth/refresh check is in flight (slow when the API is cold):
+    //   - returning visitor (has a session hint) → spinner, then redirect to dashboard
+    //   - anonymous visitor (no hint) → render the static landing immediately,
+    //     so a cold backend never blocks the public homepage.
+    const hadSession = (() => {
+      try { return localStorage.getItem(SESSION_HINT_KEY) === '1'; } catch { return false; }
+    })();
+
+    if (!hadSession) return <LandingPage />;
+
     return (
       <div className="min-h-screen bg-surface-alt flex items-center justify-center">
         <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
