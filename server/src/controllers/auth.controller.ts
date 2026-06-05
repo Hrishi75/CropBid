@@ -45,10 +45,12 @@ const loginSchema = z.object({
 //   path: '/api/auth'→ Only sent to auth endpoints (not every API call)
 const isProd = process.env.NODE_ENV === 'production';
 
-// Native apps (Expo) have no cookie jar. They send `X-Client: mobile` and we
-// return the refresh token in the JSON body instead; the app stores it in
-// expo-secure-store and replays it on /refresh (body or X-Refresh-Token header).
-// Web is unchanged — it keeps using the httpOnly cookie below.
+// Native apps (Expo) have no cookie jar. On the CREDENTIALED endpoints
+// (signup/login) they send `X-Client: mobile` and we return the refresh token
+// in the JSON body too; the app stores it in expo-secure-store. This header is
+// safe to trust here because the caller already proved knowledge of the
+// password — an XSS payload can't forge a login. The /refresh endpoint does NOT
+// trust this header (it rides an existing session); see refreshHandler.
 function isMobileClient(req: Request): boolean {
   return req.headers['x-client'] === 'mobile';
 }
@@ -120,10 +122,18 @@ export async function loginHandler(req: Request, res: Response) {
 // Web reads the refresh token from the httpOnly cookie; mobile sends it in the
 // request body or the X-Refresh-Token header (no cookie jar on native).
 export async function refreshHandler(req: Request, res: Response) {
-  const refreshToken =
-    req.cookies?.refreshToken ||
-    (req.headers['x-refresh-token'] as string | undefined) ||
-    req.body?.refreshToken;
+  const cookieToken = req.cookies?.refreshToken;
+  const explicitToken =
+    (req.headers['x-refresh-token'] as string | undefined) || req.body?.refreshToken;
+
+  // Prefer the cookie when present. A token supplied EXPLICITLY (header/body)
+  // with no cookie marks a native client that has no cookie jar — only then do
+  // we echo the rotated token back in the body. We must NOT key this off the
+  // client-controlled `X-Client` header: a web XSS payload could spoof it on a
+  // cookie-bearing /refresh and exfiltrate the rotated token, defeating the
+  // whole point of the httpOnly cookie.
+  const refreshToken = cookieToken || explicitToken;
+  const isNativeRefresh = !cookieToken && !!explicitToken;
 
   if (!refreshToken) {
     res.status(401).json({ error: true, message: 'No refresh token' });
@@ -138,7 +148,7 @@ export async function refreshHandler(req: Request, res: Response) {
   res.json({
     user: result.user,
     accessToken: result.accessToken,
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    ...(isNativeRefresh ? { refreshToken: result.refreshToken } : {}),
   });
 }
 

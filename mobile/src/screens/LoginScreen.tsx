@@ -79,9 +79,11 @@ export default function LoginScreen() {
           <Button label="Log in" onPress={onSubmit} loading={submitting} />
         </View>
 
-        <Text style={styles.hint}>
-          Demo: rajesh@cropbid.test / vikram@cropbid.test · password123
-        </Text>
+        {__DEV__ ? (
+          <Text style={styles.hint}>
+            Demo: rajesh@cropbid.test / vikram@cropbid.test · password123
+          </Text>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
