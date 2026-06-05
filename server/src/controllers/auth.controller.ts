@@ -44,6 +44,15 @@ const loginSchema = z.object({
 //   maxAge: 7 days   → Matches the refresh token's JWT expiry
 //   path: '/api/auth'→ Only sent to auth endpoints (not every API call)
 const isProd = process.env.NODE_ENV === 'production';
+
+// Native apps (Expo) have no cookie jar. They send `X-Client: mobile` and we
+// return the refresh token in the JSON body instead; the app stores it in
+// expo-secure-store and replays it on /refresh (body or X-Refresh-Token header).
+// Web is unchanged — it keeps using the httpOnly cookie below.
+function isMobileClient(req: Request): boolean {
+  return req.headers['x-client'] === 'mobile';
+}
+
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isProd,
@@ -76,6 +85,7 @@ export async function signupHandler(req: Request, res: Response) {
   res.status(201).json({
     user: result.user,
     accessToken: result.accessToken,
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
   });
 }
 
@@ -99,6 +109,7 @@ export async function loginHandler(req: Request, res: Response) {
   res.json({
     user: result.user,
     accessToken: result.accessToken,
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
   });
 }
 
@@ -106,9 +117,13 @@ export async function loginHandler(req: Request, res: Response) {
 // POST /api/auth/refresh
 // ---------------------------------------------------------------------------
 // Called automatically by the Axios interceptor when access token expires.
-// Reads the refresh token from the httpOnly cookie.
+// Web reads the refresh token from the httpOnly cookie; mobile sends it in the
+// request body or the X-Refresh-Token header (no cookie jar on native).
 export async function refreshHandler(req: Request, res: Response) {
-  const refreshToken = req.cookies?.refreshToken;
+  const refreshToken =
+    req.cookies?.refreshToken ||
+    (req.headers['x-refresh-token'] as string | undefined) ||
+    req.body?.refreshToken;
 
   if (!refreshToken) {
     res.status(401).json({ error: true, message: 'No refresh token' });
@@ -123,6 +138,7 @@ export async function refreshHandler(req: Request, res: Response) {
   res.json({
     user: result.user,
     accessToken: result.accessToken,
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
   });
 }
 
