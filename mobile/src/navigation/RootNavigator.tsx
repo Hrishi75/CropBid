@@ -1,74 +1,42 @@
 import React from 'react';
-import { Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../context/AuthContext';
 import { Loading } from '../components/ui';
 import LoginScreen from '../screens/LoginScreen';
-import BrowseScreen from '../screens/BrowseScreen';
-import ListingDetailScreen from '../screens/ListingDetailScreen';
-import ActivityScreen from '../screens/ActivityScreen';
+import HomeScreen from '../screens/buyer/HomeScreen';
+import MarketScreen from '../screens/buyer/MarketScreen';
+import BriefScreen from '../screens/buyer/BriefScreen';
+import SettleScreen from '../screens/buyer/SettleScreen';
+import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import type { BrowseStackParamList, TabParamList } from './types';
-import { colors } from '../theme';
+import BuyerTabBar from './BuyerTabBar';
+import type { BuyerTabParamList, RootStackParamList } from './types';
 
-const headerStyle = {
-  headerStyle: { backgroundColor: colors.forest },
-  headerTintColor: colors.textInverse,
-  headerTitleStyle: { fontWeight: '700' as const },
-};
-
-const BrowseStack = createNativeStackNavigator<BrowseStackParamList>();
-function BrowseNavigator() {
-  return (
-    <BrowseStack.Navigator screenOptions={headerStyle}>
-      <BrowseStack.Screen
-        name="BrowseList"
-        component={BrowseScreen}
-        options={{ title: 'Browse crops' }}
-      />
-      <BrowseStack.Screen
-        name="ListingDetail"
-        component={ListingDetailScreen}
-        options={{ title: 'Listing' }}
-      />
-    </BrowseStack.Navigator>
-  );
-}
-
-const Tab = createBottomTabNavigator<TabParamList>();
-function tabIcon(emoji: string) {
-  return ({ color }: { color: string }) => (
-    <Text style={{ fontSize: 18, color }}>{emoji}</Text>
-  );
-}
-
-function AppTabs() {
+const Tab = createBottomTabNavigator<BuyerTabParamList>();
+function BuyerTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{
-        ...headerStyle,
-        tabBarActiveTintColor: colors.forest,
-        tabBarInactiveTintColor: colors.textMuted,
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <BuyerTabBar {...props} />}
     >
-      <Tab.Screen
-        name="BrowseTab"
-        component={BrowseNavigator}
-        options={{ title: 'Browse', headerShown: false, tabBarIcon: tabIcon('🌾') }}
-      />
-      <Tab.Screen
-        name="Activity"
-        component={ActivityScreen}
-        options={{ title: 'Activity', tabBarIcon: tabIcon('📊') }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{ title: 'Profile', tabBarIcon: tabIcon('👤') }}
-      />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
+      <Tab.Screen name="Market" component={MarketScreen} options={{ title: 'Market' }} />
+      <Tab.Screen name="Agents" component={BriefScreen} options={{ title: 'Agents' }} />
+      <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: 'Contracts' }} />
+      <Tab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
     </Tab.Navigator>
+  );
+}
+
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+function AppNavigator() {
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Screen name="Tabs" component={BuyerTabs} />
+      <RootStack.Screen name="Auction" component={AuctionScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+    </RootStack.Navigator>
   );
 }
 
@@ -85,6 +53,6 @@ export default function RootNavigator() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
   return (
-    <NavigationContainer>{user ? <AppTabs /> : <AuthNavigator />}</NavigationContainer>
+    <NavigationContainer>{user ? <AppNavigator /> : <AuthNavigator />}</NavigationContainer>
   );
 }

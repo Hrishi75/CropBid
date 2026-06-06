@@ -47,6 +47,39 @@ export const radius = {
   pill: 999,
 } as const;
 
+// Design-system extras for the buyer-agent iOS screens (mobile.html).
+// Translucent lines + dark-marketplace surfaces that don't map cleanly to the
+// opaque tokens above.
+export const design = {
+  bg: colors.surfaceAlt, //   --bg     #f4f1ea
+  paper: colors.surface, //   --paper  #fbf9f3
+  paper2: colors.surfaceHover, // --paper-2 #efece3
+  ink: colors.text,
+  ink2: colors.textSecondary,
+  ink3: colors.textMuted,
+  line: 'rgba(20,20,15,0.09)', //   --line
+  lineLight: 'rgba(20,20,15,0.05)', // --line-2
+  // accent greens used on dark surfaces
+  leaf: '#9bc97a',
+  mint: '#e6efd9',
+  // dark marketplace
+  forestDeep: '#161f10',
+  forestCard: '#1f2b16',
+} as const;
+
+// Font family keys — must match the names loaded via expo-google-fonts in App.tsx.
+export const font = {
+  sans: 'Geist_400Regular',
+  sansMed: 'Geist_500Medium',
+  sansSemi: 'Geist_600SemiBold',
+  sansBold: 'Geist_700Bold',
+  mono: 'GeistMono_400Regular',
+  monoMed: 'GeistMono_500Medium',
+  monoSemi: 'GeistMono_600SemiBold',
+  serif: 'InstrumentSerif_400Regular',
+  serifItalic: 'InstrumentSerif_400Regular_Italic',
+} as const;
+
 // Map bid/listing status → status colour
 export const statusColor: Record<string, string> = {
   PENDING: colors.warning,

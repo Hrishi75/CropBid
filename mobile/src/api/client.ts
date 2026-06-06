@@ -9,6 +9,7 @@
 // =============================================================================
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 const API_URL =
@@ -38,10 +39,28 @@ export function setOnLogout(cb: (() => void) | null) {
   onLogout = cb;
 }
 
+// expo-secure-store has no web implementation, so on web (the dev preview) we
+// fall back to localStorage. Native uses the encrypted keystore.
 export async function getRefreshToken(): Promise<string | null> {
+  if (Platform.OS === 'web') {
+    try {
+      return globalThis.localStorage?.getItem(REFRESH_KEY) ?? null;
+    } catch {
+      return null;
+    }
+  }
   return SecureStore.getItemAsync(REFRESH_KEY);
 }
 export async function setRefreshToken(token: string | null): Promise<void> {
+  if (Platform.OS === 'web') {
+    try {
+      if (token) globalThis.localStorage?.setItem(REFRESH_KEY, token);
+      else globalThis.localStorage?.removeItem(REFRESH_KEY);
+    } catch {
+      // storage unavailable — token simply won't persist in this preview
+    }
+    return;
+  }
   if (token) await SecureStore.setItemAsync(REFRESH_KEY, token);
   else await SecureStore.deleteItemAsync(REFRESH_KEY);
 }

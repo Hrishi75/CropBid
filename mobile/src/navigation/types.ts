@@ -10,3 +10,17 @@ export type TabParamList = {
   Activity: undefined;
   Profile: undefined;
 };
+
+// Buyer-agent app (iOS design screens)
+export type BuyerTabParamList = {
+  Home: undefined;
+  Market: undefined;
+  Agents: undefined;
+  Contracts: undefined;
+  You: undefined;
+};
+
+export type RootStackParamList = {
+  Tabs: undefined;
+  Auction: undefined;
+};
