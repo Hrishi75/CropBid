@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# design reference bundle (Claude artifact mockups — source of the buyer screens)
+crop-bid/
