@@ -1,3 +1,11 @@
+// =============================================================================
+// Waitlist Controller — HTTP Layer
+// =============================================================================
+// Single public endpoint to join the email waitlist. Validates the email,
+// dedupes against existing entries, and inserts via Prisma. Simple enough that
+// it talks to the DB directly rather than through a dedicated service.
+// =============================================================================
+
 import type { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';

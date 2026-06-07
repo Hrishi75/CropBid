@@ -1,3 +1,11 @@
+// =============================================================================
+// Agent Controller — HTTP Layer
+// =============================================================================
+// Thin HTTP wrappers for the AI negotiation-agent config endpoints (get/update
+// config, toggle on/off). Reads req.user/req.body, delegates to agent.service,
+// returns JSON. No business logic here.
+// =============================================================================
+
 import { Request, Response, NextFunction } from 'express';
 import * as agentService from '../services/agent.service';
 

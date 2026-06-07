@@ -1,3 +1,9 @@
+// =============================================================================
+// Stats Routes — /api/stats
+// =============================================================================
+// Public (no auth) stats consumed by the marketing landing page.
+// =============================================================================
+
 import { Router } from 'express';
 import * as statsController from '../controllers/stats.controller';
 

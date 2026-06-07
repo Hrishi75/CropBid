@@ -1,3 +1,14 @@
+// =============================================================================
+// Rate Limiters — express-rate-limit middleware
+// =============================================================================
+// Two limiters mounted in app.ts:
+//   - apiLimiter:  broad per-IP cap on all endpoints (anti-abuse)
+//   - authLimiter: strict cap on login/signup/refresh, keyed by (ip + email)
+//                  so attackers can't dodge it by rotating IPs or enumerate
+//                  accounts from one IP. See keyGenerator below for the fallback
+//                  when req.ip is unavailable.
+// =============================================================================
+
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 // Global API rate limiter — prevents abuse across all endpoints

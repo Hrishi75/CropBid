@@ -1,3 +1,12 @@
+// =============================================================================
+// Logistics Routes — /api/logistics
+// =============================================================================
+// All routes require authentication (router.use(authenticate)). Grouped into:
+//   - partner discovery + quoting (any authed user)
+//   - shipment lifecycle (farmer/buyer on the transaction)
+//   - admin-only partner management (requireRole('ADMIN'))
+// =============================================================================
+
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
