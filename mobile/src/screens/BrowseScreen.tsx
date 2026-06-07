@@ -1,3 +1,7 @@
+// Browse tab — marketplace listing feed with search and pull-to-refresh.
+// Taps navigate to ListingDetail (passing the listing as a preview for instant
+// render while the full record loads).
+
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   FlatList,

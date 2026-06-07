@@ -1,3 +1,6 @@
+// Listing detail screen — full crop listing (photos, specs, price) loaded by id,
+// with an inline form for buyers to place a bid (placeBid).
+
 import React, { useEffect, useState } from 'react';
 import {
   Alert,

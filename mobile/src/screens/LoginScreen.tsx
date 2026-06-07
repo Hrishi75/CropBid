@@ -1,3 +1,6 @@
+// Login screen — email/password sign-in. Calls AuthContext.signIn(); the root
+// navigator swaps to the app once authenticated.
+
 import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,

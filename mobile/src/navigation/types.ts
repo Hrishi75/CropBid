@@ -1,3 +1,6 @@
+// React Navigation param-list types. Define the route names and the params each
+// screen receives, giving navigation.navigate(...) and route.params full typing.
+
 import type { Listing } from '../api/types';
 
 export type BrowseStackParamList = {
