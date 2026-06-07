@@ -1,3 +1,13 @@
+// =============================================================================
+// ImageUploader — Crop photo picker with previews
+// =============================================================================
+// Controlled multi-image picker used by the listing forms. Holds two buckets:
+//   - existingImages: URLs already saved on the server (editing a listing)
+//   - images:         newly picked File objects not yet uploaded
+// Enforces a combined max count and renders thumbnails with per-image remove
+// buttons. See the JSDoc below for why we hide the native file input.
+// =============================================================================
+
 import { useRef } from 'react';
 import { Upload, X } from 'lucide-react';
 

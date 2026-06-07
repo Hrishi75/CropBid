@@ -1,3 +1,12 @@
+// =============================================================================
+// BuyerDashboard — Buyer home / overview
+// =============================================================================
+// Landing page for buyers. Pulls live KPIs (active bids, won deals, total spent)
+// from /bids/my and /transactions/stats, and renders the activity queue + market
+// strip. QUEUE_FALLBACK / MARKET_FALLBACK are illustrative placeholders shown
+// until those feeds are wired to real endpoints.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

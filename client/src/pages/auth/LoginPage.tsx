@@ -1,3 +1,11 @@
+// =============================================================================
+// LoginPage — Email/password sign-in
+// =============================================================================
+// Public page. Validates the email locally, calls AuthContext.login(), then
+// redirects to "/" (which RootRedirect sends to the role dashboard). Includes
+// one-tap "Quick login" chips for the seeded demo accounts and a marketing rail.
+// =============================================================================
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

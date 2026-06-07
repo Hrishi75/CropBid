@@ -1,3 +1,12 @@
+// =============================================================================
+// NegotiationStylePicker — Pick how the AI agent bargains
+// =============================================================================
+// Renders three selectable cards (Aggressive / Balanced / Conservative) that
+// set the agent's negotiation strategy. Controlled component: parent owns the
+// `value` and gets the new choice via `onChange`. See the JSDoc below for why
+// cards are used instead of a dropdown.
+// =============================================================================
+
 import { Zap, Scale, Shield } from 'lucide-react';
 import type { NegotiationStyle } from '../../types';
 

@@ -1,3 +1,15 @@
+// =============================================================================
+// AuctionRoom — Live bidding screen (real-time)
+// =============================================================================
+// The real-time heart of an auction. Connects to Socket.io (see lib/socket) to
+// receive live price/bid/participant updates and to place bids, while falling
+// back to REST (/auctions, /listings) for the initial snapshot and lot quantity.
+// Runs a local countdown to the auction end, then shows the result (winner /
+// final price) when the server emits the end event.
+//
+// Cleans up its socket subscription on unmount via disconnectSocket().
+// =============================================================================
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

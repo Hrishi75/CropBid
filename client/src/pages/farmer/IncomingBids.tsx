@@ -1,3 +1,11 @@
+// =============================================================================
+// IncomingBids — Bids received on the farmer's listings
+// =============================================================================
+// Lists bids buyers have placed (via /bids/incoming), filtered by status tabs
+// with live counts. Each BidCard (viewAs="farmer") lets the farmer accept,
+// counter, or reject; onUpdate refetches the list.
+// =============================================================================
+
 import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { BidCard } from '../../components/bids/BidCard';

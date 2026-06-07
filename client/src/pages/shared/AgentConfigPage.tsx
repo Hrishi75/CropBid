@@ -1,3 +1,13 @@
+// =============================================================================
+// AgentConfigPage — Configure the AI negotiation agent
+// =============================================================================
+// Shared by farmers and buyers (copy adapts via user.role). Lets the user set
+// their negotiation style, price floor/ceiling, auto-accept threshold, whether
+// to auto-negotiate, preferred crops, and max distance — the guardrails the
+// agent stays within. Loads the saved config from /agent on mount and saves
+// changes back. Also toggles the agent on/off.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

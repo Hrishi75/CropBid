@@ -1,3 +1,11 @@
+// =============================================================================
+// BuyerAnalytics — Buyer procurement charts
+// =============================================================================
+// Dashboard of recharts visualizations off /analytics: monthly spending,
+// procurement mix, bid statuses, monthly bids, plus summary KPIs (spend,
+// success rate, deals). PERIODS drives the time-range selector.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,

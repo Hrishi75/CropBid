@@ -1,3 +1,15 @@
+// =============================================================================
+// Skeleton — Loading placeholders
+// =============================================================================
+// Pulsing grey blocks shown while data loads, to avoid layout jumps.
+//   - Skeleton:      one configurable bar (width/height)
+//   - SkeletonCard:  a card-shaped cluster of bars
+//   - SkeletonStats: a 4-cell KPI strip placeholder
+//
+// The pulse @keyframes is injected once into <head> on first mount (guarded by
+// an id check) so the animation works without relying on the global stylesheet.
+// =============================================================================
+
 import { useEffect } from 'react';
 
 interface SkeletonProps {

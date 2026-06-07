@@ -1,3 +1,12 @@
+// =============================================================================
+// CreateListing — Create or edit a crop listing
+// =============================================================================
+// Dual-purpose form: with a :id route param it loads the existing listing and
+// runs in EDIT mode; without one it CREATES a new listing. Collects crop, qty,
+// unit, grade, price range, location, certifications, and photos (ImageUploader),
+// then POSTs/PUTs to /listings. CROPS and INDIAN_STATES drive the dropdowns.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

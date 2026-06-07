@@ -1,14 +1,16 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-
 // =============================================================================
 // Landing Page — global, currency-aware
 // =============================================================================
-// STATIC marketing page. All numbers come from the baked-in constants below
-// (STATIC_STATS + STATIC_MARKET) — no API calls. A country dropdown in the nav
-// drives display currency: prices/GMV/example deals are converted from each
-// row's native currency to the viewer's currency via FX_TO_USD. Selection
-// persists in localStorage. Live /api/stats/landing wiring comes in a later pass.
+// STATIC marketing page (the public homepage). All numbers come from the
+// baked-in constants below (STATIC_STATS + STATIC_MARKET) — no API calls. A
+// country dropdown in the nav drives display currency: prices/GMV/example deals
+// are converted from each row's native currency to the viewer's currency via
+// FX_TO_USD. Selection persists in localStorage. Live /api/stats/landing wiring
+// comes in a later pass.
+// =============================================================================
+
+import { useMemo, useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
 type UnitCode = 'KG' | 'QUINTAL' | 'TONNE';

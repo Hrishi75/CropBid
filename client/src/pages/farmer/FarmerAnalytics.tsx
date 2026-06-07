@@ -1,3 +1,11 @@
+// =============================================================================
+// FarmerAnalytics — Farmer performance charts
+// =============================================================================
+// Dashboard of recharts visualizations off /analytics: monthly revenue, crop
+// distribution, listing statuses, monthly bids, plus summary KPIs (revenue,
+// conversion rate, avg bids/listing). PERIODS drives the time-range selector.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,

@@ -1,3 +1,12 @@
+// =============================================================================
+// Sidebar — Role-aware primary navigation
+// =============================================================================
+// Builds the nav menu from the logged-in user's role (farmer / buyer / admin),
+// highlights the active route, shows optional pending-count badges, and holds
+// the user identity + sign-out at the bottom. On mobile it slides in via the
+// `mobile` prop; onNavigate closes it after a link tap.
+// =============================================================================
+
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -139,6 +148,8 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
   );
 }
 
+// Local copy of the logo arc (a fixed-color variant of ui/Brand's ArcMark).
+// Kept inline so the sidebar wordmark has no cross-component dependency.
 function ArcMark({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">

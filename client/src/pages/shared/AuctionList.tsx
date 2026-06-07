@@ -1,3 +1,12 @@
+// =============================================================================
+// AuctionList — Live auctions index
+// =============================================================================
+// Shows every currently-running auction (crop, current price, winner, bid count,
+// time left) with a link into each AuctionRoom. Farmers additionally get a
+// "start auction" form that picks one of their active listings and a duration,
+// then opens it for live bidding.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

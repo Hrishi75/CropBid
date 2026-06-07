@@ -1,3 +1,11 @@
+// =============================================================================
+// MyListings — Farmer's own crop listings
+// =============================================================================
+// Paginated grid of the farmer's listings (via /listings/my) with status-tab
+// filtering. Each ListingCard exposes Edit (→ CreateListing in edit mode) and
+// Delete (confirmed through ConfirmModal). Empty/loading states handled inline.
+// =============================================================================
+
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

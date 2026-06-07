@@ -1,3 +1,11 @@
+// =============================================================================
+// ListingDetail — Full view of a single crop listing
+// =============================================================================
+// Fetches one listing by :id and shows its photos (with a thumbnail gallery),
+// spec sheet, price range, and bid count. Buyers get a path to place a bid;
+// the listing owner sees owner-oriented actions. Redirects back if not found.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

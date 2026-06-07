@@ -1,3 +1,12 @@
+// =============================================================================
+// AdminAnalytics — Platform-wide analytics charts
+// =============================================================================
+// Admin recharts dashboard off /analytics: monthly GMV, revenue, signups,
+// listings, bids, top crops, role split. PERIODS drives the range selector.
+// COUNTRIES (geo split) and COHORT (retention grid) are static illustrative
+// data until the backend exposes those series.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,

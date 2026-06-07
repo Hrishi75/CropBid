@@ -1,3 +1,11 @@
+// =============================================================================
+// AdminListings — Moderate all crop listings
+// =============================================================================
+// Admin table of every listing on the platform (via /admin/listings) with
+// status-tab filtering and pagination. Shows crop, farmer, price range, bid
+// count, and status; links into each listing's detail view.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

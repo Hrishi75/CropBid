@@ -1,3 +1,17 @@
+// =============================================================================
+// OnboardingPage — Post-signup profile setup (step 2 of 2)
+// =============================================================================
+// Shown right after signup, before the user can reach a dashboard (enforced by
+// ProtectedRoute). Renders a farmer OR buyer form based on user.role:
+//   - Farmer: region, farm size, organic cert, crops grown, India compliance
+//   - Buyer:  region, company name/type, tax id, annual volume
+// Region options and tax-id labels adapt to the user's country. On submit it
+// POSTs to /auth/onboarding/{farmer|buyer}, refreshes the user, and redirects.
+//
+// COUNTRY DATA: REGIONS_BY_COUNTRY and ALL_CROP_CATEGORIES are static lookup
+// tables driving the region <select> and the crop picker.
+// =============================================================================
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

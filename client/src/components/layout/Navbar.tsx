@@ -1,3 +1,14 @@
+// =============================================================================
+// Navbar — Top bar inside the dashboard shell
+// =============================================================================
+// Holds the mobile menu toggle (hamburger), a role-aware search box, the
+// notification bell (NotificationDropdown), and the user avatar (initials).
+// The search placeholder changes per role; onMenuClick opens the mobile sidebar.
+//
+// NOTE: the search box is presentational for now — typing updates local state
+// but is not yet wired to a search endpoint.
+// =============================================================================
+
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationDropdown } from './NotificationDropdown';
