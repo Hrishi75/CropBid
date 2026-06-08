@@ -1,3 +1,12 @@
+// =============================================================================
+// AdminLogistics — Manage logistics partners
+// =============================================================================
+// Admin CRUD for the logistics partners buyers/farmers book shipping from.
+// Lists partners (via /logistics/admin/partners) with type/active filters, and
+// a create/edit form (EMPTY_FORM is the blank template) covering coverage
+// regions, vehicle types, capacity, pricing, contact, and commission.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';

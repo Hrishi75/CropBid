@@ -1,3 +1,15 @@
+// =============================================================================
+// BidForm — Place a new bid on a listing
+// =============================================================================
+// The buyer-side form for submitting a bid: price (with a floor/ideal range
+// slider), quantity (capped at available), payment + delivery terms, an
+// optional message, and agent mode. When agent mode is on the buyer also sets
+// a walk-away price so the AI can auto-counter up to that ceiling.
+//
+// Validates against the listing's min price and available quantity before
+// POSTing to /bids, then redirects to the buyer's bid list.
+// =============================================================================
+
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '../ui/Input';

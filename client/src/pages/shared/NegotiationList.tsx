@@ -1,3 +1,11 @@
+// =============================================================================
+// NegotiationList — All of the user's negotiations
+// =============================================================================
+// Lists every negotiation (across listings) with a summary strip — in-progress
+// count, deals, no-deals, and win rate computed client-side from the data. Tabs
+// filter by outcome; each row links into NegotiationChat.
+// =============================================================================
+
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

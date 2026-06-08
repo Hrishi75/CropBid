@@ -1,3 +1,15 @@
+// =============================================================================
+// BidCard — One bid row with inline actions
+// =============================================================================
+// Renders a single bid and the actions available to the current viewer:
+//   - viewAs="farmer": Accept / Counter / Reject a pending bid
+//   - viewAs="buyer":  Update price / Revise (after counter) / Withdraw
+//
+// All actions call the /bids API directly, toast the result, then notify the
+// parent via onUpdate() so the list can refetch. STATUS_META maps each bid
+// status to its short label + accent color.
+// =============================================================================
+
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/Button';

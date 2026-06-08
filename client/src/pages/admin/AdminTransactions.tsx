@@ -1,3 +1,11 @@
+// =============================================================================
+// AdminTransactions — All deals + escrow oversight
+// =============================================================================
+// Admin table of every transaction (via /admin/transactions) with status-tab
+// filtering and pagination. Surfaces payment + delivery status, platform fee,
+// and the farmer/buyer pair for each closed deal.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

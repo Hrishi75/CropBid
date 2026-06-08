@@ -1,3 +1,12 @@
+// =============================================================================
+// SignupPage — Create a farmer or buyer account
+// =============================================================================
+// Public page. Collects name/email/password, role, country (which fixes the
+// account currency), and optional phone. Enforces live password rules and email
+// validity before calling AuthContext.signup(), then routes to /onboarding to
+// finish the profile. The right-hand rail swaps copy based on the chosen role.
+// =============================================================================
+
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

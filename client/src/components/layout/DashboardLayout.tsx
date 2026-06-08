@@ -1,3 +1,11 @@
+// =============================================================================
+// DashboardLayout — Shell wrapper for all logged-in pages
+// =============================================================================
+// Provides the standard app chrome: a fixed Sidebar, a top Navbar, and the page
+// content area. Owns the mobile menu open/close state and renders a tap-to-close
+// backdrop when the sidebar is open on small screens. Pages render as children.
+// =============================================================================
+
 import { useState, type ReactNode } from 'react';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';

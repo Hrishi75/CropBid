@@ -1,3 +1,12 @@
+// =============================================================================
+// Logistics Service — Business Logic
+// =============================================================================
+// All shipping logic: matching logistics partners to a transaction, computing
+// transport quotes, booking shipments, and advancing shipment status along the
+// allowed state machine (VALID_TRANSITIONS below). Converts crop units to kg
+// for weight-based pricing and emits socket/notification events on changes.
+// =============================================================================
+
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getIO } from '../socket';

@@ -1,3 +1,7 @@
+// Root React component (registered by index.ts). Loads the custom Geist /
+// Instrument Serif fonts, shows a loader until they're ready, then mounts the
+// provider tree: SafeAreaProvider → AuthProvider → RootNavigator.
+
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {

@@ -1,3 +1,12 @@
+// =============================================================================
+// BrowseListings — Buyer marketplace browse
+// =============================================================================
+// The buyer's shopping view. Combines ListingFilters (search/crop/state/grade/
+// price/sort) with a paginated, grid-or-row list of ListingCards from /browse.
+// Filters and page sync into the query string; changing a filter resets to
+// page 1. Each card links to ListingDetail / PlaceBid.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

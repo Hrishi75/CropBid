@@ -1,3 +1,16 @@
+// =============================================================================
+// ConfirmModal — Yes/No confirmation dialog
+// =============================================================================
+// Renders a centered modal over a dimmed backdrop for destructive or important
+// actions (delete listing, accept bid, etc). Returns null when `open` is false.
+//
+// Accessibility/UX details handled here:
+//   - role="dialog" + aria-modal + aria-labelledby for screen readers
+//   - autofocus the Cancel button when opened (safer default)
+//   - Escape key and backdrop click both trigger onCancel
+//   - `variant` tints the eyebrow/confirm button (danger | warning | info)
+// =============================================================================
+
 import { useEffect, useRef } from 'react';
 import { Button } from './Button';
 

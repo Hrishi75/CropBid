@@ -1,3 +1,12 @@
+// =============================================================================
+// TransactionDetail — Single deal lifecycle + payment
+// =============================================================================
+// Shows one transaction and walks it through the lifecycle (MATCH → ESCROW →
+// SHIPPED → DELIVERED → CONFIRMED → RELEASED). The buyer pays into escrow via
+// Razorpay (lib/razorpay openCheckout); both sides advance delivery status and
+// confirm receipt, which releases escrow to the farmer.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

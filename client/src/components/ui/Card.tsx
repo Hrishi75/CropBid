@@ -1,3 +1,11 @@
+// =============================================================================
+// Card — Surface container primitive
+// =============================================================================
+// Thin wrapper over the `cb-card` CSS class. `padding` and `variant` pick the
+// matching modifier classes (e.g. cb-card-sm, cb-card-forest). Used everywhere
+// a boxed/elevated content panel is needed.
+// =============================================================================
+
 import type { ReactNode } from 'react';
 
 interface CardProps {

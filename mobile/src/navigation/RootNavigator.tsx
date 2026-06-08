@@ -1,3 +1,7 @@
+// Root navigation. Gates on auth state from AuthContext: shows a loader while
+// restoring the session, the LoginScreen when signed out, and the buyer tab
+// navigator (Home/Market/Brief/Settle/Auction + Profile) once signed in.
+
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';

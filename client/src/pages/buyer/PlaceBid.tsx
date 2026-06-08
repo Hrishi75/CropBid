@@ -1,3 +1,11 @@
+// =============================================================================
+// PlaceBid — Bid on a specific listing
+// =============================================================================
+// Loads the listing by :id and renders the BidForm alongside a summary + price
+// preview chart. Redirects back if the listing isn't found. See pseudoSpark
+// below for why the preview chart is seeded rather than real market data.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

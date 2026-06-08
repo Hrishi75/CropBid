@@ -1,3 +1,12 @@
+// =============================================================================
+// ShipmentTracking — Track (and update) a shipment
+// =============================================================================
+// Loads the shipment for a transaction and renders its progress along the fixed
+// status timeline (PENDING_PICKUP → ... → DELIVERED). The logistics provider /
+// farmer can push status updates, attach a location/note, and assign driver
+// details; the counterpart just watches the timeline.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

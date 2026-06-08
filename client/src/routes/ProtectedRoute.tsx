@@ -1,3 +1,10 @@
+// =============================================================================
+// ProtectedRoute — Auth/Role/Onboarding Gate
+// =============================================================================
+// Wraps any page that must not be shown to the wrong user. Used throughout
+// routes/index.tsx. See the JSDoc on the component below for the exact rules.
+// =============================================================================
+
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { Role } from '../types';

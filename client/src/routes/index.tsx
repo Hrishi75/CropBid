@@ -1,3 +1,16 @@
+// =============================================================================
+// Route Map — Single Source of Truth for Client URLs
+// =============================================================================
+// Declares every page in the app and which role(s) may see it. The structure:
+//   - "/"                 → RootRedirect (sends each role to its dashboard)
+//   - public auth routes  → /login, /signup, /onboarding
+//   - role-gated routes   → wrapped in <ProtectedRoute allowedRoles={[...]}>
+//   - catch-all "*"       → bounces unknown URLs back to "/"
+//
+// ProtectedRoute enforces auth + role + onboarding before rendering a page, so
+// the lists below are the only place route-to-role mapping is defined.
+// =============================================================================
+
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth, SESSION_HINT_KEY } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';

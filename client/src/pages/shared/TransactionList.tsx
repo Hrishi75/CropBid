@@ -1,3 +1,11 @@
+// =============================================================================
+// TransactionList — All of the user's transactions
+// =============================================================================
+// Lists every transaction with a KPI strip (total, in escrow, released,
+// refunded, revenue) loaded from /transactions/stats. Status filters narrow by
+// payment state; each row shows payment + delivery status and links to detail.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

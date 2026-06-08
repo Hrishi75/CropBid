@@ -1,3 +1,12 @@
+// =============================================================================
+// BookTransport — Arrange shipping for a closed deal
+// =============================================================================
+// Reached from a transaction (/logistics/book/:transactionId). Loads available
+// logistics partners and the cargo info (weight, perishable, origin), lets the
+// user pick a partner, fetch a price quote, set pickup/delivery details and who
+// pays (buyer / farmer / split), then books the shipment.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

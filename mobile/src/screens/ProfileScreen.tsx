@@ -1,3 +1,5 @@
+// Profile tab — shows the signed-in user's identity/role summary and sign-out.
+
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';

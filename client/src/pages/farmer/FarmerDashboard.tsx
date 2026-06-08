@@ -1,3 +1,12 @@
+// =============================================================================
+// FarmerDashboard — Farmer home / overview
+// =============================================================================
+// Landing page for farmers. Pulls live KPIs (active listings, pending bids,
+// total earnings) from /listings/my, /bids/incoming, /transactions/stats, and
+// renders the activity queue + market strip. The QUEUE_FALLBACK / MARKET_FALLBACK
+// constants are illustrative placeholders shown until those feeds are wired.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

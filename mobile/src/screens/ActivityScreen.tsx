@@ -1,3 +1,6 @@
+// Activity tab — the user's bid activity. Loads incoming bids for farmers and
+// placed bids for buyers (role-aware via useAuth), with pull-to-refresh.
+
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { incomingBids, myBids } from '../api/endpoints';

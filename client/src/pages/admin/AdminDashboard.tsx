@@ -1,3 +1,13 @@
+// =============================================================================
+// AdminDashboard — Platform operations overview
+// =============================================================================
+// Admin home. Loads platform-wide stats (users, listings, bids, transactions,
+// GMV, revenue) from /admin/stats. The live event stream and "needs attention"
+// triage queue render from server data only — they stay empty (no fabricated
+// rows) until /admin/events and /admin/attention exist (see TODO below).
+// The COUNTRIES list is static illustrative geo-distribution data.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

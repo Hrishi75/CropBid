@@ -1,3 +1,12 @@
+// =============================================================================
+// NegotiationChat — Replay of an agent negotiation
+// =============================================================================
+// Shows a single negotiation as a chat-style transcript of the offer/counter
+// rounds between the two agents. Rounds reveal progressively for a "live" feel,
+// and auto-scrolls to the latest. The user can intervene: walk away (stop the
+// agent) or take it manual (pause the agent and bid the next round themselves).
+// =============================================================================
+
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

@@ -1,3 +1,11 @@
+// =============================================================================
+// MyBids — Buyer's placed bids
+// =============================================================================
+// Lists the bids this buyer has placed (via /bids/my), filtered by status tabs,
+// with a summary of committed/at-risk/won/lost amounts computed client-side.
+// Each BidCard (viewAs="buyer") lets the buyer update price or withdraw.
+// =============================================================================
+
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';

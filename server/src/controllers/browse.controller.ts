@@ -1,3 +1,11 @@
+// =============================================================================
+// Browse Controller — HTTP Layer
+// =============================================================================
+// HTTP wrappers for the buyer marketplace: browse listings with filters
+// (crop/state/price/quality/organic/search + pagination/sort) and smart-match.
+// Parses query params, delegates to browse.service, returns JSON.
+// =============================================================================
+
 import { Request, Response, NextFunction } from 'express';
 import * as browseService from '../services/browse.service';
 

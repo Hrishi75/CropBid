@@ -1,3 +1,11 @@
+// =============================================================================
+// AgentStatusBadge — Toggle pill for the AI negotiation agent
+// =============================================================================
+// A single button that shows whether the user's auto-negotiation agent is on,
+// and toggles it via the onToggle callback. The bot icon pulses while active.
+// Parent owns the state; this is a presentational toggle.
+// =============================================================================
+
 import { Bot } from 'lucide-react';
 
 interface AgentStatusBadgeProps {

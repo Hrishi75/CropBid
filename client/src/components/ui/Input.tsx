@@ -1,3 +1,13 @@
+// =============================================================================
+// Input — Labelled text input primitive
+// =============================================================================
+// Native <input> plus an optional label, error message, and hint text. If no
+// `id` is given, one is derived from the label so the <label htmlFor> stays
+// linked for accessibility. `error` swaps in the error style and message.
+//
+// forwardRef lets form libraries / parents attach a ref to the raw input.
+// =============================================================================
+
 import { forwardRef } from 'react';
 import type { InputHTMLAttributes } from 'react';
 

@@ -1,3 +1,12 @@
+// =============================================================================
+// Bid Controller — HTTP Layer
+// =============================================================================
+// HTTP wrappers for the bid lifecycle: place, accept, reject, counter, update,
+// withdraw, and list (incoming/my). Validates request bodies with zod schemas
+// (defined below), then delegates to bid.service. Records audit entries for
+// state-changing actions via audit.service.
+// =============================================================================
+
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as bidService from '../services/bid.service';

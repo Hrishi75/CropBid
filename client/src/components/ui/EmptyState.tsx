@@ -1,3 +1,11 @@
+// =============================================================================
+// EmptyState — "Nothing here yet" placeholder
+// =============================================================================
+// Shown when a list/table has no data (no listings, no bids, etc). Optional
+// icon, title, description, plus a call-to-action that is either a button
+// (onAction) or a link (actionHref) depending on which prop is passed.
+// =============================================================================
+
 import type { ReactNode } from 'react';
 import { Button } from './Button';
 

@@ -1,3 +1,15 @@
+// =============================================================================
+// ListingCard — Crop listing summary tile
+// =============================================================================
+// Renders one listing in two layouts via the `variant` prop:
+//   - "grid": image-led card for browse/grid views
+//   - "row":  dense single-line row for list views
+// Shows price (midpoint of the min/max range), quantity, bid count, status, and
+// an illustrative price sparkline. When showActions is set it exposes Edit /
+// Delete callbacks (used by the farmer's own listings). See pseudoRandomSpark
+// below for why the sparkline is seeded rather than real data.
+// =============================================================================
+
 import { Link } from 'react-router-dom';
 import type { Listing } from '../../types';
 import { formatCurrency } from '../../utils/currency';

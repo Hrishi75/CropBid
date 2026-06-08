@@ -1,3 +1,12 @@
+// =============================================================================
+// Logistics Controller — HTTP Layer
+// =============================================================================
+// HTTP wrappers for shipping: partner discovery, transport quotes, booking a
+// shipment, shipment status/driver/proof updates, and admin partner CRUD.
+// Validates request bodies with zod (schemas below), delegates to
+// logistics.service, returns JSON.
+// =============================================================================
+
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as logisticsService from '../services/logistics.service';

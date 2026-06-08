@@ -1,3 +1,11 @@
+// =============================================================================
+// AdminUsers — User directory + trust-score editing
+// =============================================================================
+// Admin table of all users (via /admin/users) with search, role filter, and
+// pagination. Admins can edit a user's trust score inline. COUNTRY_FLAGS maps
+// country names to flag emoji for display.
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';

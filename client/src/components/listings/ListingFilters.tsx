@@ -1,3 +1,13 @@
+// =============================================================================
+// ListingFilters — Browse filter rail
+// =============================================================================
+// Controlled filter panel for the buyer's browse page. Parent owns the `filters`
+// object; this component reports changes via onChange. Details:
+//   - Available crops/states are fetched once from /browse/filters
+//   - The search box is debounced (300ms) so typing doesn't spam the parent
+//   - "Clear all" resets every field to its default
+// =============================================================================
+
 import { useState, useEffect } from 'react';
 import api from '../../lib/axios';
 

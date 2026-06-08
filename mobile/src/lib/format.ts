@@ -1,3 +1,6 @@
+// Display formatting helpers shared across screens: currency (money), unit
+// labels (unitLabel), and relative timestamps (timeAgo). Pure functions, no deps.
+
 const SYMBOLS: Record<string, string> = { INR: '₹', USD: '$', EUR: '€', GBP: '£' };
 
 export function money(amount: number, currency = 'INR'): string {

@@ -1,3 +1,9 @@
+// =============================================================================
+// Waitlist Routes — /api/waitlist
+// =============================================================================
+// Public (no auth) endpoint for visitors to join the email waitlist.
+// =============================================================================
+
 import { Router } from 'express';
 import { joinWaitlist } from '../controllers/waitlist.controller';
 

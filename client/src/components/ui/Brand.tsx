@@ -1,3 +1,15 @@
+// =============================================================================
+// Brand — Inline SVG marks, icons, and the sparkline chart
+// =============================================================================
+// Small self-contained SVGs reused across the UI so we don't ship icon-font or
+// extra image assets:
+//   - ArcMark:    the CropBid logo arc
+//   - ArrowIcon / ArrowLeftIcon / ChevronIcon: directional glyphs
+//   - MiniChart:  a tiny inline sparkline (area + line) from a number[] series
+//
+// All are pure, prop-driven SVGs (size/color) with aria-hidden where decorative.
+// =============================================================================
+
 export function ArcMark({ size = 24, accent = '#c8602b' }: { size?: number; accent?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">

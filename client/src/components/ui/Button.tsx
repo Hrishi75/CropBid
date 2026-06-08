@@ -1,3 +1,14 @@
+// =============================================================================
+// Button — Reusable button primitive
+// =============================================================================
+// Wraps a native <button> and maps a small set of `variant`/`size` props onto
+// the project's `cb-btn` CSS classes (defined in index.css). When `loading` is
+// true it shows an inline spinner and disables the button.
+//
+// forwardRef is used so parents can attach a ref (e.g. ConfirmModal focuses the
+// cancel button). Any extra native button attributes pass straight through.
+// =============================================================================
+
 import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
