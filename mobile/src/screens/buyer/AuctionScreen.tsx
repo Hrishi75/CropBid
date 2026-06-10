@@ -1,26 +1,105 @@
-// Buyer app · Live auction negotiation — port of crop-bid ScreenAuction.
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+// Buyer app · Live auction — wired to /auctions via REST polling (5s).
+// Shows the real bid thread, countdown, and current price. Live bidding uses
+// the web client's WebSocket room; mobile is a live viewer with a jump-off to
+// the listing for standard bids when no auction is running.
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { IconArrow, IconChevR } from '../../components/icons';
 import { LiveDot, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
+import { listAuctions } from '../../api/endpoints';
+import { errorMessage } from '../../api/client';
+import type { Auction, AuctionBid } from '../../api/types';
+import { money, unitLabel } from '../../lib/format';
 
-type Side = 'buyer' | 'seller' | 'system';
-type Line = { side: Side; name: string; time: string; body: React.ReactNode };
-const styles_b = { fontFamily: font.sansSemi } as const;
-const THREAD: Line[] = [
-  { side: 'buyer', name: 'Buyer · Wheat Desk-KC', time: '14:22:01', body: <><Text>Opening at </Text><Text style={styles_b}>$282.10/MT</Text><Text> — 5,000 MT HRW 12.5%, FOB KC, Oct 15–30, std GAFTA-49.</Text></> },
-  { side: 'seller', name: 'Seller · Hartmann Farms', time: '14:22:04', body: <><Text>Counter </Text><Text style={styles_b}>$291.50/MT</Text><Text>. Clean 13.1% protein, falling number 320+. 50% L/C on signing.</Text></> },
-  { side: 'buyer', name: 'Buyer · Wheat Desk-KC', time: '14:22:11', body: <><Text>Premium acknowledged. </Text><Text style={styles_b}>$286.80/MT</Text><Text>, 30% L/C, balance NET-15 post-discharge. Confirm certs.</Text></> },
-  { side: 'seller', name: 'Seller · Hartmann Farms', time: '14:22:15', body: <><Text style={styles_b}>$288.00/MT</Text><Text> — final. USDA-FGIS certs attached, EU-RED traceable.</Text></> },
-  { side: 'system', name: 'Settlement engine', time: '14:22:19', body: <Text>Match found. Within ceiling by $4.00. Drafting GAFTA-49…</Text> },
-];
+const POLL_MS = 5000;
+
+function countdown(endsAt: string): string {
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (ms <= 0) return '00:00';
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
 export default function AuctionScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
+  const route = useRoute<any>();
+  const { user } = useAuth();
+  const wantedId: string | undefined = route.params?.listingId;
+
+  const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [, setTick] = useState(0); // re-render for the countdown
+  const scrollRef = useRef<ScrollView>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await listAuctions();
+      setAuctions(Array.isArray(data) ? data : []);
+      setError(null);
+    } catch (e) {
+      setError(errorMessage(e, 'Could not load auctions'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const poll = setInterval(load, POLL_MS);
+    const clock = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(clock);
+    };
+  }, [load]);
+
+  const auction = (wantedId ? auctions.find((a) => a.listingId === wantedId) : null) ?? auctions[0] ?? null;
+
+  if (loading) {
+    return (
+      <View style={[styles.flex, { justifyContent: 'center' }]}>
+        <ActivityIndicator color={colors.forest} />
+      </View>
+    );
+  }
+
+  if (!auction) {
+    return (
+      <View style={[styles.flex, { paddingTop: insets.top + 8 }]}>
+        <View style={styles.headerInner}>
+          <Pressable onPress={() => nav.goBack()} hitSlop={10} style={{ transform: [{ rotate: '180deg' }], alignSelf: 'flex-start' }}>
+            <IconChevR size={15} stroke={design.ink2} />
+          </Pressable>
+        </View>
+        <View style={styles.emptyWrap}>
+          <Text style={styles.emptyTitle}>No live auctions right now.</Text>
+          <Text style={styles.emptyText}>
+            {error ?? 'Farmers open auctions from their listings. When one goes live, it shows up here in real time.'}
+          </Text>
+          <Pressable
+            style={({ pressed }) => [styles.emptyBtn, pressed && { opacity: 0.9 }]}
+            onPress={() => nav.navigate('Tabs', { screen: 'Market' })}
+          >
+            <Text style={styles.emptyBtnText}>Browse the market </Text>
+            <IconArrow size={13} stroke="#f4f1ea" />
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  const unit = unitLabel(auction.unit);
+  const leading = auction.currentWinner;
+  const youLead = !!user && auction.bids.length > 0 && auction.bids[auction.bids.length - 1].userId === user.id;
+
   return (
     <View style={styles.flex}>
       {/* sticky lot header */}
@@ -34,51 +113,68 @@ export default function AuctionScreen() {
               <View style={{ width: 8 }} />
               <StatusPill tone="ember" dot>Live auction</StatusPill>
             </View>
-            <Mono style={styles.timer}>⏱ 03:47</Mono>
+            <Mono style={styles.timer}>⏱ {countdown(auction.endsAt)}</Mono>
           </View>
           <View style={styles.rowBetweenBaseline}>
             <View>
-              <Text style={styles.lotTitle}>HRW Wheat · 12.5%</Text>
-              <Text style={styles.lotSub}>5,000 MT · FOB KC · Oct 15–30</Text>
+              <Text style={styles.lotTitle}>{auction.cropName}</Text>
+              <Text style={styles.lotSub}>
+                {auction.bidCount} {auction.bidCount === 1 ? 'bid' : 'bids'} · {auction.participantCount} in room
+              </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Mono style={styles.spotLabel}>SPOT REF</Mono>
-              <Mono style={styles.spotVal}>$287.40</Mono>
+              <Mono style={styles.spotLabel}>FLOOR</Mono>
+              <Mono style={styles.spotVal}>{money(auction.startPrice, auction.currency)}/{unit}</Mono>
             </View>
           </View>
         </View>
       </View>
 
-      {/* chat scroll */}
+      {/* bid thread */}
       <ScrollView
+        ref={scrollRef}
         style={styles.flex}
-        contentContainerStyle={{ paddingTop: insets.top + 86, paddingBottom: insets.bottom + 150, paddingHorizontal: 16, gap: 11 }}
+        contentContainerStyle={{ paddingTop: insets.top + 92, paddingBottom: insets.bottom + 150, paddingHorizontal: 16, gap: 11 }}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
       >
-        {THREAD.map((m, i) => (
-          <Msg key={i} {...m} />
-        ))}
-        {/* competing bid inline */}
         <View style={styles.outbid}>
-          <Mono style={styles.outbidEmber}>ADM-12 outbid · $287.20</Mono>
-          <Mono style={styles.outbidMuted}> 1.4s ago</Mono>
+          <LiveDot size={6} />
+          <Mono style={styles.outbidMuted}>  Auction opened at {money(auction.startPrice, auction.currency)}/{unit}</Mono>
         </View>
+        {auction.bids.length === 0 ? (
+          <View style={styles.outbid}>
+            <Mono style={styles.outbidMuted}>No bids yet — floor stands.</Mono>
+          </View>
+        ) : (
+          auction.bids.map((b, i) => <BidMsg key={`${b.timestamp}-${i}`} bid={b} mine={b.userId === user?.id} unit={unit} currency={auction.currency} />)
+        )}
+        {leading ? (
+          <View style={styles.outbid}>
+            <Mono style={styles.outbidEmber}>
+              {youLead ? 'You lead' : `${leading} leads`} · {money(auction.currentPrice, auction.currency)}
+            </Mono>
+          </View>
+        ) : null}
       </ScrollView>
 
-      {/* settlement bar */}
+      {/* status bar */}
       <View style={[styles.settleBar, { paddingBottom: insets.bottom + 8 }]}>
         <View style={[styles.rowBetween, { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 8, alignItems: 'center' }]}>
           <View>
-            <Mono style={styles.settleLabel}>SETTLEMENT</Mono>
+            <Mono style={styles.settleLabel}>CURRENT HIGH</Mono>
             <Text style={styles.settleVal}>
-              $288.00<Text style={styles.settleUnit}>/MT</Text> · $1.44M
+              {money(auction.currentPrice, auction.currency)}<Text style={styles.settleUnit}>/{unit}</Text>
             </Text>
           </View>
-          <Mono style={styles.saved}>+$17.4K saved</Mono>
+          <Mono style={styles.saved}>{youLead ? 'you lead' : leading ? `${leading} leads` : 'no bids'}</Mono>
         </View>
         <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
-          <Pressable style={({ pressed }) => [styles.signBtn, pressed && { opacity: 0.9 }]} onPress={() => nav.navigate('Tabs', { screen: 'Contracts' })}>
-            <Text style={styles.signBtnText}>Review &amp; sign contract </Text>
+          <Pressable
+            style={({ pressed }) => [styles.signBtn, pressed && { opacity: 0.9 }]}
+            onPress={() => nav.navigate('ListingDetail', { id: auction.listingId })}
+          >
+            <Text style={styles.signBtnText}>View listing · bid live on the web </Text>
             <IconArrow size={14} stroke={colors.forest} />
           </Pressable>
         </View>
@@ -87,31 +183,21 @@ export default function AuctionScreen() {
   );
 }
 
-function Msg({ side, name, time, body }: Line) {
-  const isBuyer = side === 'buyer';
-  const isSeller = side === 'seller';
-  const isSystem = side === 'system';
-  const bg = isBuyer ? 'rgba(31,45,24,0.05)' : isSeller ? 'rgba(200,96,43,0.05)' : 'transparent';
-  const border = isBuyer ? 'rgba(31,45,24,0.15)' : isSeller ? 'rgba(200,96,43,0.18)' : design.line;
-  const dot = isBuyer ? colors.forest : isSeller ? colors.ember : design.ink3;
+function BidMsg({ bid, mine, unit, currency }: { bid: AuctionBid; mine: boolean; unit: string; currency: string }) {
+  const bg = mine ? 'rgba(31,45,24,0.05)' : 'rgba(200,96,43,0.05)';
+  const border = mine ? 'rgba(31,45,24,0.15)' : 'rgba(200,96,43,0.18)';
+  const dot = mine ? colors.forest : colors.ember;
+  const time = new Date(bid.timestamp).toLocaleTimeString('en-IN', { hour12: false });
   return (
-    <View
-      style={[
-        styles.msg,
-        {
-          alignSelf: isBuyer ? 'flex-start' : isSeller ? 'flex-end' : 'center',
-          backgroundColor: bg,
-          borderColor: border,
-          borderStyle: isSystem ? 'dashed' : 'solid',
-        },
-      ]}
-    >
+    <View style={[styles.msg, { alignSelf: mine ? 'flex-end' : 'flex-start', backgroundColor: bg, borderColor: border }]}>
       <View style={styles.msgHead}>
         <View style={[styles.msgDot, { backgroundColor: dot }]} />
-        <Mono style={styles.msgName}>{name}</Mono>
+        <Mono style={styles.msgName}>{mine ? 'You' : bid.userName}</Mono>
         <Mono style={styles.msgTime}>{time}</Mono>
       </View>
-      <Text style={[styles.msgBody, { fontStyle: isSystem ? 'italic' : 'normal', color: isSystem ? design.ink2 : design.ink }]}>{body}</Text>
+      <Text style={styles.msgBody}>
+        Bid <Text style={{ fontFamily: font.sansSemi }}>{money(bid.price, currency)}/{unit}</Text>
+      </Text>
     </View>
   );
 }
@@ -129,6 +215,12 @@ const styles = StyleSheet.create({
   spotLabel: { fontSize: 10.5, color: design.ink3 },
   spotVal: { fontFamily: font.monoSemi, fontSize: 15 },
 
+  emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 10 },
+  emptyTitle: { fontFamily: font.sansMed, fontSize: 19, letterSpacing: -0.3, color: design.ink },
+  emptyText: { fontFamily: font.sans, fontSize: 13.5, lineHeight: 20, color: design.ink3, textAlign: 'center' },
+  emptyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, backgroundColor: colors.forest, marginTop: 8 },
+  emptyBtnText: { fontFamily: font.sansMed, fontSize: 14, color: '#f4f1ea' },
+
   outbid: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', paddingVertical: 7, paddingHorizontal: 12, backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line, borderStyle: 'dashed', borderRadius: 999 },
   outbidEmber: { fontFamily: font.monoSemi, fontSize: 11, color: colors.ember },
   outbidMuted: { fontSize: 11, color: design.ink3 },
@@ -138,7 +230,7 @@ const styles = StyleSheet.create({
   msgDot: { width: 7, height: 7, borderRadius: 999 },
   msgName: { fontSize: 10, color: design.ink3, letterSpacing: 0.3 },
   msgTime: { fontSize: 10, color: design.ink3, opacity: 0.7, marginLeft: 'auto' },
-  msgBody: { fontFamily: font.sans, fontSize: 13.5, lineHeight: 20 },
+  msgBody: { fontFamily: font.sans, fontSize: 13.5, lineHeight: 20, color: design.ink },
 
   settleBar: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 30, backgroundColor: colors.forest },
   settleLabel: { fontSize: 10.5, letterSpacing: 1, color: 'rgba(244,241,234,0.65)' },

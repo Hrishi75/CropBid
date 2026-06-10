@@ -25,5 +25,6 @@ export type BuyerTabParamList = {
 
 export type RootStackParamList = {
   Tabs: undefined;
-  Auction: undefined;
+  Auction: { listingId?: string } | undefined;
+  ListingDetail: { id: string; preview?: Listing };
 };

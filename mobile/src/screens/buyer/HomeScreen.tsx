@@ -1,40 +1,108 @@
-// Buyer app · Home / dashboard — port of crop-bid ScreenHome.
-import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+// Buyer app · Home / dashboard — wired to live API data.
+// KPIs from /transactions/stats + /bids/my, agent row from /agent/config,
+// "needs your decision" from countered bids and live auctions.
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Wordmark, MARKS } from '../../components/marks';
 import { IconArrow, IconBell } from '../../components/icons';
 import { Eyebrow, GridBg, LiveDot, MiniChart, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
+import { getAgentConfig, listAuctions, myBids, myNegotiations, transactionStats } from '../../api/endpoints';
+import type { AgentConfig, Auction, Bid, Negotiation, TransactionStats } from '../../api/types';
+import { money, timeAgo } from '../../lib/format';
 
-type Agent = { name: string; crop: string; lots: string; state: string; tone: 'ember' | 'sage' | 'paper'; glyph: string };
-const AGENTS: Agent[] = [
-  { name: 'Wheat Desk · KC', crop: 'HRW · Yellow Corn', lots: '12 lots', state: 'negotiating', tone: 'ember', glyph: 'sprout' },
-  { name: 'Oilseeds', crop: 'Soybeans · GMO-free', lots: '5 lots', state: 'scanning', tone: 'sage', glyph: 'bars' },
-  { name: 'Specialty', crop: 'Arabica 85+ · Cocoa', lots: '3 lots', state: 'idle', tone: 'paper', glyph: 'kernel' },
-];
+const SPARK = [4, 6, 5, 8, 7, 10, 9, 12, 11, 14, 16];
+
+function outcomeTone(o: Negotiation['finalOutcome']): 'ember' | 'sage' | 'paper' {
+  if (o === 'IN_PROGRESS') return 'ember';
+  if (o === 'DEAL') return 'sage';
+  return 'paper';
+}
+function outcomeLabel(o: Negotiation['finalOutcome']): string {
+  if (o === 'IN_PROGRESS') return 'negotiating';
+  if (o === 'DEAL') return 'deal';
+  return 'no deal';
+}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
+  const { user } = useAuth();
+
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [stats, setStats] = useState<TransactionStats | null>(null);
+  const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
+  const [agent, setAgent] = useState<AgentConfig | null>(null);
+  const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    const [b, s, n, a, au] = await Promise.allSettled([
+      myBids(),
+      transactionStats(),
+      myNegotiations(),
+      getAgentConfig(),
+      listAuctions(),
+    ]);
+    if (b.status === 'fulfilled') setBids(Array.isArray(b.value) ? b.value : []);
+    if (s.status === 'fulfilled') setStats(s.value);
+    if (n.status === 'fulfilled') setNegotiations(Array.isArray(n.value) ? n.value : []);
+    if (a.status === 'fulfilled') setAgent(a.value);
+    if (au.status === 'fulfilled') setAuctions(Array.isArray(au.value) ? au.value : []);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
+
+  const currency = user?.currency || 'INR';
+  const firstName = user?.name?.split(/\s+/)[0] || 'there';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const activeBids = bids.filter((b) => b.status === 'PENDING' || b.status === 'COUNTERED');
+  const countered = bids.filter((b) => b.status === 'COUNTERED');
+  const liveNegotiations = negotiations.filter((n) => n.finalOutcome === 'IN_PROGRESS');
+  const needsYou = countered.length;
+  const working = liveNegotiations.length + activeBids.length;
+
+  // Top decision item: a countered bid beats a live auction.
+  const decisionBid = countered[0] ?? null;
+  const decisionAuction = !decisionBid && auctions.length > 0 ? auctions[0] : null;
+
+  const recentNegotiations = negotiations.slice(0, 3);
+  const glyphs = ['sprout', 'bars', 'kernel'];
+
   return (
     <View style={styles.flex}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
+      >
         {/* header */}
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <Wordmark size={17} glyph="arc" />
             <View>
               <IconBell size={22} stroke={design.ink2} />
-              <View style={styles.bellDot} />
+              {needsYou > 0 ? <View style={styles.bellDot} /> : null}
             </View>
           </View>
           <View style={{ marginTop: 18 }}>
-            <Text style={styles.greeting}>Good morning, Marta</Text>
+            <Text style={styles.greeting}>{greeting}, {firstName}</Text>
             <Text style={styles.h1}>
-              3 agents working,{'\n'}
-              <Text style={styles.h1Serif}>1 needs you.</Text>
+              {working > 0 ? `${working} ${working === 1 ? 'deal' : 'deals'} working,` : 'All quiet on the desk,'}{'\n'}
+              <Text style={styles.h1Serif}>{needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you.` : 'nothing needs you.'}</Text>
             </Text>
           </View>
         </View>
@@ -46,17 +114,21 @@ export default function HomeScreen() {
             <View>
               <View style={styles.rowBetweenTop}>
                 <View>
-                  <Mono style={styles.portfolioLabel}>CONTRACTED · QTD</Mono>
-                  <Text style={styles.portfolioValue}>$48.2M</Text>
+                  <Mono style={styles.portfolioLabel}>SETTLED · ALL TIME</Mono>
+                  <Text style={styles.portfolioValue}>{money(stats?.totalRevenue ?? 0, currency)}</Text>
                 </View>
                 <View style={styles.benchRow}>
                   <IconArrow size={11} stroke={design.leaf} />
-                  <Mono style={styles.benchText}> +1.6% vs bench</Mono>
+                  <Mono style={styles.benchText}> {stats?.released ?? 0} released</Mono>
                 </View>
               </View>
-              <MiniChart width={330} height={46} data={[4, 6, 5, 8, 7, 10, 9, 12, 11, 14, 16]} color={design.leaf} fill />
+              <MiniChart width={330} height={46} data={SPARK} color={design.leaf} fill />
               <View style={styles.statsRow}>
-                {[['42', 'contracts'], ['$612K', 'saved'], ['7', 'lots open']].map(([n, l]) => (
+                {[
+                  [String(stats?.total ?? 0), 'contracts'],
+                  [String(stats?.inEscrow ?? 0), 'in escrow'],
+                  [String(activeBids.length), 'bids open'],
+                ].map(([n, l]) => (
                   <View key={l} style={{ flex: 1 }}>
                     <Text style={styles.statN}>{n}</Text>
                     <Text style={styles.statL}>{l}</Text>
@@ -70,55 +142,123 @@ export default function HomeScreen() {
         {/* action required */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
           <Eyebrow>Needs your decision</Eyebrow>
-          <View style={styles.liveRow}>
-            <LiveDot size={6} />
-            <Mono style={styles.liveText}> 1 live</Mono>
-          </View>
+          {decisionBid || decisionAuction ? (
+            <View style={styles.liveRow}>
+              <LiveDot size={6} />
+              <Mono style={styles.liveText}> {decisionAuction ? `${auctions.length} live` : `${countered.length} waiting`}</Mono>
+            </View>
+          ) : null}
         </View>
         <View style={styles.sidePad}>
-          <View style={styles.actionCard}>
-            <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
-              <StatusPill tone="ember" dot>Auction #B-22841</StatusPill>
-              <Mono style={styles.muted12}>03:47 left</Mono>
+          {decisionBid ? (
+            <View style={styles.actionCard}>
+              <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
+                <StatusPill tone="ember" dot>Counter received</StatusPill>
+                <Mono style={styles.muted12}>{timeAgo(decisionBid.createdAt)}</Mono>
+              </View>
+              <Text style={styles.cardTitle}>
+                {decisionBid.listing?.cropName ?? 'Listing'}
+                {decisionBid.listing?.cropVariety ? ` · ${decisionBid.listing.cropVariety}` : ''}
+              </Text>
+              <Text style={styles.cardSub}>
+                Your bid {money(decisionBid.bidPricePerUnit, decisionBid.currency)} · farmer countered{' '}
+                {decisionBid.counterPrice != null ? money(decisionBid.counterPrice, decisionBid.currency) : '—'}
+              </Text>
+              <View style={styles.actionBtns}>
+                <Pressable
+                  style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
+                  onPress={() => nav.navigate('ListingDetail', { id: decisionBid.listingId })}
+                >
+                  <Text style={styles.btnPrimaryText}>Review &amp; respond </Text>
+                  <IconArrow size={13} stroke={colors.textInverse} />
+                </Pressable>
+              </View>
             </View>
-            <Text style={styles.cardTitle}>HRW Wheat · 12.5% protein</Text>
-            <Text style={styles.cardSub}>5,000 MT · FOB Kansas City · matched at $288.00/MT</Text>
-            <View style={styles.actionBtns}>
-              <Pressable style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]} onPress={() => nav.navigate('Auction')}>
-                <Text style={styles.btnPrimaryText}>Review contract </Text>
-                <IconArrow size={13} stroke={colors.textInverse} />
-              </Pressable>
-              <Pressable style={({ pressed }) => [styles.btnGhost, pressed && styles.pressed]}>
-                <Text style={styles.btnGhostText}>Snooze</Text>
-              </Pressable>
+          ) : decisionAuction ? (
+            <View style={styles.actionCard}>
+              <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
+                <StatusPill tone="ember" dot>Live auction</StatusPill>
+                <Mono style={styles.muted12}>{decisionAuction.bidCount} bids</Mono>
+              </View>
+              <Text style={styles.cardTitle}>{decisionAuction.cropName}</Text>
+              <Text style={styles.cardSub}>
+                Now at {money(decisionAuction.currentPrice, decisionAuction.currency)} · {decisionAuction.participantCount} in the room
+              </Text>
+              <View style={styles.actionBtns}>
+                <Pressable
+                  style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
+                  onPress={() => nav.navigate('Auction', { listingId: decisionAuction.listingId })}
+                >
+                  <Text style={styles.btnPrimaryText}>Watch live </Text>
+                  <IconArrow size={13} stroke={colors.textInverse} />
+                </Pressable>
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Nothing waiting on you. Browse the market to start a deal.</Text>
+            </View>
+          )}
         </View>
 
-        {/* active agents */}
+        {/* agent + recent negotiations */}
         <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
-          <Eyebrow>Your agents</Eyebrow>
-          <Text style={styles.manage}>Manage</Text>
+          <Eyebrow>Your agent</Eyebrow>
+          <Pressable onPress={() => nav.navigate('Agents')}>
+            <Text style={styles.manage}>Manage</Text>
+          </Pressable>
         </View>
         <View style={[styles.sidePad, { gap: 10 }]}>
-          {AGENTS.map((a) => {
-            const Mark = MARKS[a.glyph];
+          {agent ? (
+            <View style={styles.agentRow}>
+              <View style={styles.agentIcon}>
+                {(() => {
+                  const Mark = MARKS['sprout'];
+                  return <Mark size={22} color={colors.forest} accent={colors.ember} />;
+                })()}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.agentName}>Buyer agent · {agent.negotiationStyle.toLowerCase()}</Text>
+                <Text style={styles.agentCrop} numberOfLines={1}>
+                  {agent.preferredCrops.length > 0 ? agent.preferredCrops.join(' · ') : 'No crop preferences set'}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <StatusPill tone={agent.active ? 'sage' : 'paper'}>{agent.active ? 'active' : 'paused'}</StatusPill>
+                <Mono style={styles.agentLots}>
+                  {agent.maxPrice != null ? `cap ${money(agent.maxPrice, currency)}` : 'no cap'}
+                </Mono>
+              </View>
+            </View>
+          ) : null}
+          {recentNegotiations.map((n, i) => {
+            const Mark = MARKS[glyphs[i % glyphs.length]];
             return (
-              <View key={a.name} style={styles.agentRow}>
+              <View key={n.id} style={styles.agentRow}>
                 <View style={styles.agentIcon}>
                   <Mark size={22} color={colors.forest} accent={colors.ember} />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.agentName}>{a.name}</Text>
-                  <Text style={styles.agentCrop}>{a.crop}</Text>
+                  <Text style={styles.agentName} numberOfLines={1}>
+                    {n.listing?.cropName ?? 'Negotiation'}
+                    {n.listing?.cropVariety ? ` · ${n.listing.cropVariety}` : ''}
+                  </Text>
+                  <Text style={styles.agentCrop} numberOfLines={1}>
+                    vs {n.listing?.farmer?.user?.name ?? 'farmer'} · {Array.isArray(n.rounds) ? n.rounds.length : 0} rounds
+                  </Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <StatusPill tone={a.tone}>{a.state}</StatusPill>
-                  <Mono style={styles.agentLots}>{a.lots}</Mono>
+                  <StatusPill tone={outcomeTone(n.finalOutcome)}>{outcomeLabel(n.finalOutcome)}</StatusPill>
+                  <Mono style={styles.agentLots}>{timeAgo(n.startedAt)}</Mono>
                 </View>
               </View>
             );
           })}
+          {!agent && recentNegotiations.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Configure your agent to negotiate while you sleep.</Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -157,9 +297,10 @@ const styles = StyleSheet.create({
   actionBtns: { flexDirection: 'row', gap: 9, marginTop: 14 },
   btnPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.forest },
   btnPrimaryText: { fontFamily: font.sansMed, fontSize: 14, letterSpacing: -0.14, color: '#f4f1ea' },
-  btnGhost: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 11, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: design.line },
-  btnGhostText: { fontFamily: font.sansMed, fontSize: 14, color: design.ink2 },
   pressed: { opacity: 0.85 },
+
+  emptyCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  emptyText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3 },
 
   manage: { fontFamily: font.sansMed, fontSize: 13, color: colors.forest },
   agentRow: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14 },

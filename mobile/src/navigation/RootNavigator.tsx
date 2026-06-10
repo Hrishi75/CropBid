@@ -14,6 +14,7 @@ import MarketScreen from '../screens/buyer/MarketScreen';
 import BriefScreen from '../screens/buyer/BriefScreen';
 import SettleScreen from '../screens/buyer/SettleScreen';
 import AuctionScreen from '../screens/buyer/AuctionScreen';
+import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import BuyerTabBar from './BuyerTabBar';
 import type { BuyerTabParamList, RootStackParamList } from './types';
@@ -40,6 +41,11 @@ function AppNavigator() {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
       <RootStack.Screen name="Auction" component={AuctionScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <RootStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen as React.ComponentType<any>}
+        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
     </RootStack.Navigator>
   );
 }
