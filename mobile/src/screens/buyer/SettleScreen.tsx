@@ -219,7 +219,7 @@ export default function SettleScreen() {
 
       {/* action bar */}
       {tx ? (
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
           <View style={styles.signRow}>
             <Pressable
               onPress={onConfirmDelivery}

@@ -184,7 +184,7 @@ export default function BriefScreen() {
       </ScrollView>
 
       {/* deploy bar */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
         <View style={{ paddingHorizontal: 16 }}>
           <Pressable
             onPress={onToggle}

@@ -21,8 +21,10 @@ function countdown(endsAt: string): string {
   const ms = new Date(endsAt).getTime() - Date.now();
   if (ms <= 0) return '00:00';
   const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
@@ -112,6 +114,7 @@ export default function AuctionScreen() {
               </Pressable>
               <View style={{ width: 8 }} />
               <StatusPill tone="ember" dot>Live auction</StatusPill>
+              {error ? <Text style={styles.staleText}>  feed stalled</Text> : null}
             </View>
             <Mono style={styles.timer}>⏱ {countdown(auction.endsAt)}</Mono>
           </View>
@@ -212,6 +215,7 @@ const styles = StyleSheet.create({
   timer: { fontSize: 13, color: design.ink2 },
   lotTitle: { fontFamily: font.sansMed, fontSize: 17, letterSpacing: -0.25, color: design.ink },
   lotSub: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3, marginTop: 1 },
+  staleText: { fontFamily: font.sans, fontSize: 11, color: colors.ember },
   spotLabel: { fontSize: 10.5, color: design.ink3 },
   spotVal: { fontFamily: font.monoSemi, fontSize: 15 },
 
