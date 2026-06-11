@@ -1,4 +1,4 @@
-// Buyer app · Marketplace (dark forest) — wired to /browse with live listings.
+// Buyer app · Marketplace — wired to /browse with live listings.
 // Filter chips narrow by quality grade / organic; tapping a lot opens
 // ListingDetail where a bid can be placed.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -15,8 +15,8 @@ import { money, timeAgo, unitLabel } from '../../lib/format';
 
 const FILTERS = ['All', 'Grade A', 'Grade B', 'Organic', 'Most bid'] as const;
 type Filter = (typeof FILTERS)[number];
-const POS = '#9bc97a';
-const NEG = '#e07a3f';
+const POS = colors.sage;
+const NEG = colors.ember;
 const SPARK_POS = [3, 5, 4, 6, 5, 8, 7, 9, 11, 10, 12];
 const SPARK_NEG = [10, 9, 11, 8, 9, 7, 8, 6, 5, 7, 5];
 
@@ -73,7 +73,7 @@ export default function MarketScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e9e6dc" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
         {/* header */}
         <View style={styles.headerPad}>
@@ -83,7 +83,7 @@ export default function MarketScreen() {
               <Text style={styles.h1}>{total} {total === 1 ? 'lot' : 'lots'} open</Text>
             </View>
             <View style={styles.searchBtn}>
-              <IconSearch size={19} stroke="#e9e6dc" />
+              <IconSearch size={19} stroke={design.ink2} />
             </View>
           </View>
         </View>
@@ -94,7 +94,7 @@ export default function MarketScreen() {
             const active = f === filter;
             return (
               <Pressable key={f} onPress={() => setFilter(f)} style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}>
-                <Text style={[styles.chipText, { color: active ? colors.forest : 'rgba(244,241,234,0.75)' }]}>{f}</Text>
+                <Text style={[styles.chipText, { color: active ? colors.textInverse : design.ink2 }]}>{f}</Text>
               </Pressable>
             );
           })}
@@ -102,7 +102,7 @@ export default function MarketScreen() {
 
         {/* lot cards */}
         {loading ? (
-          <ActivityIndicator color="#e9e6dc" style={{ marginTop: 40 }} />
+          <ActivityIndicator color={colors.forest} style={{ marginTop: 40 }} />
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : visible.length === 0 ? (
@@ -161,30 +161,30 @@ export default function MarketScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: design.forestDeep },
+  flex: { flex: 1, backgroundColor: design.bg },
   headerPad: { paddingHorizontal: 20, paddingVertical: 6 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eyebrow: { fontSize: 10.5, letterSpacing: 1, color: 'rgba(244,241,234,0.55)' },
-  h1: { marginTop: 4, fontFamily: font.sansMed, fontSize: 26, letterSpacing: -0.65, color: '#f4f1ea' },
-  searchBtn: { width: 40, height: 40, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
+  eyebrow: { fontSize: 10.5, letterSpacing: 1, color: design.ink3 },
+  h1: { marginTop: 4, fontFamily: font.sansMed, fontSize: 26, letterSpacing: -0.65, color: design.ink },
+  searchBtn: { width: 40, height: 40, borderRadius: 999, backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line, alignItems: 'center', justifyContent: 'center' },
 
   chips: { gap: 8, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14 },
   chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999 },
-  chipActive: { backgroundColor: design.mint },
-  chipIdle: { backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  chipActive: { backgroundColor: colors.forest },
+  chipIdle: { backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line },
   chipText: { fontFamily: font.sansMed, fontSize: 13, letterSpacing: -0.13 },
 
-  errorText: { fontFamily: font.sans, fontSize: 13.5, color: 'rgba(244,241,234,0.6)', textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
+  errorText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3, textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
 
-  card: { backgroundColor: design.forestCard, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: 16, padding: 16 },
+  card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  crop: { fontFamily: font.sansMed, fontSize: 16.5, letterSpacing: -0.16, color: '#f4f1ea' },
-  grade: { fontFamily: font.sans, fontSize: 12, color: 'rgba(244,241,234,0.5)', marginTop: 3 },
+  crop: { fontFamily: font.sansMed, fontSize: 16.5, letterSpacing: -0.16, color: design.ink },
+  grade: { fontFamily: font.sans, fontSize: 12, color: design.ink3, marginTop: 3 },
   priceRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 10 },
-  price: { fontFamily: font.monoSemi, fontSize: 20, letterSpacing: -0.25, color: '#f4f1ea' },
-  cardFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
-  vol: { fontSize: 11.5, color: 'rgba(244,241,234,0.5)' },
+  price: { fontFamily: font.monoSemi, fontSize: 20, letterSpacing: -0.25, color: design.ink },
+  cardFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: design.line },
+  vol: { fontSize: 11.5, color: design.ink3 },
   footRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  closes: { fontSize: 11.5, color: colors.ember2 },
-  bid: { fontFamily: font.sansSemi, fontSize: 12.5, color: POS },
+  closes: { fontSize: 11.5, color: colors.ember },
+  bid: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
 });
