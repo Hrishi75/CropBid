@@ -110,7 +110,7 @@ export function BookTransport() {
         logisticsPartnerId: selectedPartner,
         pickupLocation,
         deliveryLocation,
-        pickupDate,
+        pickupDate: new Date(pickupDate).toISOString(),
         distanceKm: Number(distanceKm),
         totalWeightKg: txInfo?.weightKg,
         vehicleType,
