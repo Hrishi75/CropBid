@@ -1,0 +1,35 @@
+flowchart TB
+    subgraph Clients
+        WEB["Web App<br/>React 19 + Vite + Tailwind<br/>(Vercel · cropbid.in)"]
+        MOB["Mobile App<br/>Expo + React Native + NativeWind<br/>(X-Client: mobile header)"]
+    end
+
+    subgraph Server["API Server — Express 5 (Render)"]
+        MW["Middleware<br/>JWT auth · role guard · validation"]
+        RT["REST Routes<br/>auth · listings · bids · auctions<br/>negotiations · payments · logistics<br/>transactions · analytics · admin · agent"]
+        SVC["Services (business logic)<br/>bid / negotiation / payment / logistics<br/>notification · trust score · audit"]
+        AI["AI Agent Service<br/>round-by-round negotiation<br/>within user price limits"]
+        WS["Socket.IO<br/>live auctions · bids · notifications"]
+    end
+
+    subgraph Data
+        PRISMA["Prisma 7 ORM"]
+        DB[("PostgreSQL<br/>(Neon)")]
+    end
+
+    subgraph External["External Services"]
+        RZP["Razorpay<br/>escrow payments"]
+        GEM["Google Gemini<br/>LLM for agent negotiation"]
+    end
+
+    WEB -->|"HTTPS / REST (JWT)"| MW
+    MOB -->|"HTTPS / REST (JWT)"| MW
+    WEB <-->|WebSocket| WS
+    MOB <-->|WebSocket| WS
+
+    MW --> RT --> SVC
+    SVC --> AI
+    SVC --> WS
+    SVC --> PRISMA --> DB
+    AI --> GEM
+    SVC --> RZP

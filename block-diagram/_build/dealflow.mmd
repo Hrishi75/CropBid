@@ -1,0 +1,12 @@
+flowchart LR
+    L["Farmer lists crop<br/>(qty · grade · price range)"] --> P{Deal path}
+    P -->|Manual| B["Buyer bids →<br/>farmer accepts / rejects / counters"]
+    P -->|AI agents| N["Buyer & farmer agents<br/>negotiate via Gemini"]
+    P -->|Auction| A["Live auction<br/>(Socket.IO)"]
+    B --> D[Deal struck]
+    N --> D
+    A --> D
+    D --> E["Escrow funded<br/>(Razorpay)"]
+    E --> S["Crop ships<br/>(logistics partner)"]
+    S --> C["Delivery confirmed →<br/>payment released to farmer"]
+    C --> T["Trust scores updated"]
