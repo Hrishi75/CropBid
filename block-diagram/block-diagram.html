@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>CropBid — System Block Diagram</title>
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #1a1a1a;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  header {
+    text-align: center;
+    border-bottom: 3px solid #2f6b3a;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+  }
+  header h1 { margin: 0; font-size: 26px; color: #2f6b3a; }
+  header p { margin: 6px 0 0; font-size: 13px; color: #555; }
+  h2 {
+    font-size: 17px;
+    color: #2f6b3a;
+    border-left: 4px solid #2f6b3a;
+    padding-left: 8px;
+    margin: 22px 0 10px;
+  }
+  .diagram { text-align: center; margin: 0 auto; }
+  .diagram svg { max-width: 100%; height: auto; }
+  .page-break { page-break-before: always; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12.5px;
+    margin-top: 8px;
+  }
+  th, td { border: 1px solid #ccc; padding: 7px 10px; text-align: left; }
+  th { background: #2f6b3a; color: #fff; }
+  tr:nth-child(even) td { background: #f3f7f4; }
+  footer {
+    margin-top: 24px;
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+    border-top: 1px solid #ddd;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CropBid — System Block Diagram</h1>
+  <p>AI-powered agricultural marketplace · cropbid.in · clients, API server, real-time layer, data store, external services</p>
+</header>
+
+<h2>1. System Architecture</h2>
+<div class="diagram">
+  <img src="_build/system.svg" alt="CropBid system architecture" style="max-height: 215mm;" />
+</div>
+
+<div class="page-break"></div>
+
+<h2>2. Deal Flow (Domain View)</h2>
+<div class="diagram">
+  <img src="_build/dealflow.svg" alt="CropBid deal flow" style="width: 100%;" />
+</div>
+
+<h2>3. Component Summary</h2>
+<table>
+  <tr><th>Block</th><th>Technology</th><th>Hosting</th></tr>
+  <tr><td>Web client</td><td>React 19, Vite, Tailwind</td><td>Vercel (cropbid.in)</td></tr>
+  <tr><td>Mobile client</td><td>Expo, React Native, NativeWind</td><td>—</td></tr>
+  <tr><td>API server</td><td>Express 5, TypeScript</td><td>Render</td></tr>
+  <tr><td>Real-time</td><td>Socket.IO</td><td>Render (same process)</td></tr>
+  <tr><td>ORM / Database</td><td>Prisma 7 → PostgreSQL</td><td>Neon</td></tr>
+  <tr><td>Payments</td><td>Razorpay (escrow)</td><td>External</td></tr>
+  <tr><td>AI negotiation</td><td>Google Gemini</td><td>External</td></tr>
+</table>
+
+<footer>CropBid · System Block Diagram · generated from block-diagram.md</footer>
+
+</body>
+</html>
