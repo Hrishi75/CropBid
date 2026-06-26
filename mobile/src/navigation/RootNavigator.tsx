@@ -1,6 +1,7 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
-// restoring the session, the LoginScreen when signed out, and the buyer tab
-// navigator (Home/Market/Brief/Settle/Auction + Profile) once signed in.
+// restoring the session, the LoginScreen when signed out, and — once signed in —
+// the tab navigator for the user's role: farmers get Home/Listings/Bids/Agent/You,
+// buyers get Home/Market/Agents/Contracts/Auction + Profile.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -16,9 +17,15 @@ import SettleScreen from '../screens/buyer/SettleScreen';
 import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import FarmerHomeScreen from '../screens/farmer/HomeScreen';
+import MyListingsScreen from '../screens/farmer/MyListingsScreen';
+import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
+import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import BuyerTabBar from './BuyerTabBar';
-import type { BuyerTabParamList, RootStackParamList } from './types';
+import FarmerTabBar from './FarmerTabBar';
+import type { BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
 
+// --- Buyer ---
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
 function BuyerTabs() {
   return (
@@ -36,7 +43,7 @@ function BuyerTabs() {
 }
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
-function AppNavigator() {
+function BuyerNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
@@ -47,6 +54,34 @@ function AppNavigator() {
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
       />
     </RootStack.Navigator>
+  );
+}
+
+// --- Farmer ---
+const FarmerTab = createBottomTabNavigator<FarmerTabParamList>();
+function FarmerTabs() {
+  return (
+    <FarmerTab.Navigator
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <FarmerTabBar {...props} />}
+    >
+      <FarmerTab.Screen name="Home" component={FarmerHomeScreen} options={{ title: 'Home' }} />
+      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'Listings' }} />
+      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Bids' }} />
+      <FarmerTab.Screen name="Agent" component={BriefScreen} options={{ title: 'Agent' }} />
+      <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
+    </FarmerTab.Navigator>
+  );
+}
+
+const FarmerStack = createNativeStackNavigator<FarmerStackParamList>();
+function FarmerNavigator() {
+  return (
+    <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
+      <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
+      <FarmerStack.Screen name="CreateListing" component={CreateListingScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+    </FarmerStack.Navigator>
   );
 }
 
@@ -63,6 +98,8 @@ export default function RootNavigator() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
   return (
-    <NavigationContainer>{user ? <AppNavigator /> : <AuthNavigator />}</NavigationContainer>
+    <NavigationContainer>
+      {!user ? <AuthNavigator /> : user.role === 'FARMER' ? <FarmerNavigator /> : <BuyerNavigator />}
+    </NavigationContainer>
   );
 }
