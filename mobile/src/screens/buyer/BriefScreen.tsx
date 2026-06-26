@@ -79,23 +79,36 @@ export default function BriefScreen() {
     );
   }
 
-  const maxPrice = config?.maxPrice ?? null;
+  const isFarmer =
+    (config?.agentType ?? (user?.role === 'FARMER' ? 'FARMER_AGENT' : 'BUYER_AGENT')) ===
+    'FARMER_AGENT';
+  // Farmers guard a floor (minPrice); buyers guard a ceiling (maxPrice).
+  const priceGuard = (isFarmer ? config?.minPrice : config?.maxPrice) ?? null;
   const autoAccept = config?.autoAcceptThreshold ?? null;
   const distance = config?.maxDistanceKm ?? null;
   const crops = config?.preferredCrops ?? [];
 
-  const briefText = maxPrice != null
-    ? (
-      <>
-        Buy{' '}
-        <Text style={styles.b}>{crops.length > 0 ? crops.join(', ') : 'any matching crop'}</Text>
-        {' '}within my quality requirements. Don't pay over <Text style={styles.b}>{money(maxPrice, currency)}</Text> per unit.
-        {autoAccept != null ? <> Auto-accept anything at or below <Text style={styles.b}>{money(autoAccept, currency)}</Text>.</> : null}
-      </>
-    )
-    : (
-      <>No price ceiling set yet. Set a max price on the web dashboard (Agent settings) so your agent knows its walk-away point.</>
-    );
+  const briefText = priceGuard != null
+    ? isFarmer
+      ? (
+        <>
+          Sell{' '}
+          <Text style={styles.b}>{crops.length > 0 ? crops.join(', ') : 'my crops'}</Text>
+          {' '}from my farm. Don't accept below <Text style={styles.b}>{money(priceGuard, currency)}</Text> per unit.
+          {autoAccept != null ? <> Auto-accept anything at or above <Text style={styles.b}>{money(autoAccept, currency)}</Text>.</> : null}
+        </>
+      )
+      : (
+        <>
+          Buy{' '}
+          <Text style={styles.b}>{crops.length > 0 ? crops.join(', ') : 'any matching crop'}</Text>
+          {' '}within my quality requirements. Don't pay over <Text style={styles.b}>{money(priceGuard, currency)}</Text> per unit.
+          {autoAccept != null ? <> Auto-accept anything at or below <Text style={styles.b}>{money(autoAccept, currency)}</Text>.</> : null}
+        </>
+      )
+    : isFarmer
+      ? <>No floor price set yet. Set a min price on the web dashboard (Agent settings) so your agent knows its walk-away point.</>
+      : <>No price ceiling set yet. Set a max price on the web dashboard (Agent settings) so your agent knows its walk-away point.</>;
 
   return (
     <View style={styles.flex}>
@@ -106,7 +119,7 @@ export default function BriefScreen() {
       >
         <View style={styles.titlePad}>
           <View style={styles.titleRow}>
-            <Eyebrow>Your buyer agent</Eyebrow>
+            <Eyebrow>{isFarmer ? 'Your farmer agent' : 'Your buyer agent'}</Eyebrow>
             {config ? (
               <StatusPill tone={config.active ? 'sage' : 'paper'} dot={config.active}>
                 {config.active ? 'deployed' : 'paused'}
@@ -136,16 +149,16 @@ export default function BriefScreen() {
         <View style={{ paddingHorizontal: 16 }}>
           <View style={styles.guardCard}>
             <GuardRow
-              label="PRICE CEILING"
-              val={maxPrice != null ? `${money(maxPrice, currency)} /unit` : 'not set'}
-              bar={maxPrice != null ? 0.9 : 0}
+              label={isFarmer ? 'PRICE FLOOR' : 'PRICE CEILING'}
+              val={priceGuard != null ? `${money(priceGuard, currency)} /unit` : 'not set'}
+              bar={priceGuard != null ? 0.9 : 0}
               hot
             />
             <View style={styles.divider} />
             <GuardRow
               label="AUTO-ACCEPT AT"
               val={autoAccept != null ? `${money(autoAccept, currency)} /unit` : 'not set'}
-              bar={autoAccept != null && maxPrice ? autoAccept / maxPrice : 0}
+              bar={autoAccept != null && priceGuard ? autoAccept / priceGuard : 0}
             />
             <View style={styles.divider} />
             <GuardRow
