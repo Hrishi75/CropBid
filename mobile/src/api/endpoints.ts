@@ -55,6 +55,33 @@ export async function fetchListing(id: string): Promise<Listing> {
   return data;
 }
 
+// --- Farmer listings (own) ---
+export async function myListings(): Promise<Paginated<Listing>> {
+  const { data } = await api.get<Paginated<Listing>>('/listings/my');
+  return data;
+}
+
+// Create with optional photos — sent as multipart/form-data (see listing.routes.ts).
+export async function createListing(form: FormData): Promise<Listing> {
+  const { data } = await api.post<Listing>('/listings', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+// Edit is a JSON body (photos are managed separately via the create/image routes).
+export async function updateListing(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<Listing> {
+  const { data } = await api.put<Listing>(`/listings/${id}`, body);
+  return data;
+}
+
+export async function deleteListing(id: string): Promise<void> {
+  await api.delete(`/listings/${id}`);
+}
+
 // --- Bids ---
 export async function placeBid(input: {
   listingId: string;
@@ -71,8 +98,26 @@ export async function myBids(): Promise<Bid[]> {
   return data;
 }
 
-export async function incomingBids(): Promise<Bid[]> {
-  const { data } = await api.get<Bid[]>('/bids/incoming');
+export async function incomingBids(status?: string): Promise<Bid[]> {
+  const { data } = await api.get<Bid[]>('/bids/incoming', {
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
+// --- Farmer bid actions ---
+export async function acceptBid(id: string): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/accept`);
+  return data;
+}
+
+export async function rejectBid(id: string): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/reject`);
+  return data;
+}
+
+export async function counterBid(id: string, counterPrice: number): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/counter`, { counterPrice });
   return data;
 }
 

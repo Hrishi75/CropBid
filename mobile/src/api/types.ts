@@ -39,6 +39,7 @@ export interface Listing {
   state: string;
   country: string;
   status: ListingStatus;
+  harvestDate?: string | null;
   createdAt: string;
   matchScore?: number;
   _count?: { bids: number };
@@ -49,6 +50,7 @@ export interface Bid {
   listingId: string;
   listing?: Listing;
   buyerId: string;
+  buyer?: { id?: string; name: string; trustScore?: number };
   bidPricePerUnit: number;
   totalAmount: number;
   quantity: number;
@@ -56,6 +58,7 @@ export interface Bid {
   message: string | null;
   status: BidStatus;
   counterPrice: number | null;
+  isAgentBid?: boolean;
   createdAt: string;
 }
 
