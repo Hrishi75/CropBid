@@ -28,3 +28,18 @@ export type RootStackParamList = {
   Auction: { listingId?: string } | undefined;
   ListingDetail: { id: string; preview?: Listing };
 };
+
+// Farmer app
+export type FarmerTabParamList = {
+  Home: undefined;
+  Listings: undefined;
+  Bids: undefined;
+  Agent: undefined;
+  You: undefined;
+};
+
+export type FarmerStackParamList = {
+  FarmerTabs: undefined;
+  CreateListing: { id?: string } | undefined;
+  Contracts: undefined;
+};
