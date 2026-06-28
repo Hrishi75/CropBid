@@ -162,6 +162,35 @@ export async function myNegotiations(): Promise<Negotiation[]> {
   return data;
 }
 
+// --- Payments (Razorpay capture-only; reuses the web flow's order/verify API) ---
+// createOrder mints (or reuses) a Razorpay order for a transaction; the returned
+// keyId + orderId feed Checkout inside the in-app WebView. verifyPayment posts the
+// signed Checkout handshake back so the server validates the HMAC and flips the
+// transaction AWAITING_PAYMENT -> ESCROW. See server/src/services/payment.service.ts.
+export interface PaymentOrder {
+  orderId: string;
+  amount: number; // smallest currency subunit (paise for INR)
+  currency: string;
+  keyId: string;
+  transactionId: string;
+}
+
+export interface PaymentHandshake {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+export async function createPaymentOrder(transactionId: string): Promise<PaymentOrder> {
+  const { data } = await api.post<PaymentOrder>('/payments/order', { transactionId });
+  return data;
+}
+
+export async function verifyPayment(handshake: PaymentHandshake): Promise<Transaction> {
+  const { data } = await api.post<Transaction>('/payments/verify', handshake);
+  return data;
+}
+
 // --- Live auctions (read via REST; bidding stays on the web client's socket) ---
 export async function listAuctions(): Promise<Auction[]> {
   const { data } = await api.get<Auction[]>('/auctions');
