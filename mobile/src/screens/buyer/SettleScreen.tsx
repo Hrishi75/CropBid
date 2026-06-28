@@ -11,7 +11,7 @@ import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { createPaymentOrder, myTransactions, updateDeliveryStatus, type PaymentOrder } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
-import type { Transaction } from '../../api/types';
+import type { DeliveryStatus, Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import RazorpayCheckout from '../../components/RazorpayCheckout';
 
@@ -70,7 +70,7 @@ export default function SettleScreen() {
 
   const tx = txs[selected] ?? null;
   const isBuyer = user?.id === tx?.buyerId;
-  const canConfirm = !!tx && isBuyer && tx.deliveryStatus === 'DELIVERED';
+  const isFarmer = user?.id === tx?.farmerId;
   const canPay = !!tx && isBuyer && tx.paymentStatus === 'AWAITING_PAYMENT';
 
   async function onPayNow() {
@@ -98,29 +98,84 @@ export default function SettleScreen() {
     if (err) Alert.alert('Payment not completed', err);
   }
 
-  async function onConfirmDelivery() {
+  // Drives PATCH /transactions/:id/delivery. The server enforces who may make
+  // each transition: farmer ships (PENDING→IN_TRANSIT→DELIVERED), buyer confirms
+  // (DELIVERED→CONFIRMED, which releases escrow).
+  function advanceDelivery(status: DeliveryStatus, title: string, message: string) {
     if (!tx || busy) return;
-    Alert.alert(
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Confirm',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await updateDeliveryStatus(tx.id, status);
+            await load();
+          } catch (e) {
+            Alert.alert('Could not update', errorMessage(e));
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  }
+
+  const onConfirmDelivery = () =>
+    tx &&
+    advanceDelivery(
+      'CONFIRMED',
       'Confirm delivery',
       `This releases ${money(tx.totalAmount, tx.currency)} from escrow to the farmer. Confirm you received the goods?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              await updateDeliveryStatus(tx.id, 'CONFIRMED');
-              await load();
-            } catch (e) {
-              Alert.alert('Could not confirm', errorMessage(e));
-            } finally {
-              setBusy(false);
-            }
-          },
-        },
-      ],
     );
+  const onShip = () =>
+    advanceDelivery('IN_TRANSIT', 'Mark as shipped', 'Confirm the crop has been dispatched to the buyer?');
+  const onDeliver = () =>
+    advanceDelivery('DELIVERED', 'Mark as delivered', 'Confirm the shipment has reached the buyer?');
+
+  // The single context-aware delivery action for the bottom bar. `go` = tappable,
+  // `idle` = a disabled status label (waiting on the other party).
+  type DeliveryAction = { kind: 'go'; label: string; onPress: () => void } | { kind: 'idle'; label: string };
+  function deliveryAction(): DeliveryAction {
+    if (!tx) return { kind: 'idle', label: '' };
+    if (isBuyer && tx.deliveryStatus === 'DELIVERED') {
+      return { kind: 'go', label: 'Confirm delivery · release escrow', onPress: onConfirmDelivery };
+    }
+    if (isFarmer && tx.deliveryStatus === 'PENDING') {
+      if (tx.paymentStatus === 'ESCROW') return { kind: 'go', label: 'Mark as shipped', onPress: onShip };
+      return {
+        kind: 'idle',
+        label: tx.paymentStatus === 'AWAITING_PAYMENT' ? 'Waiting for buyer payment' : DELIVERY_LABEL[tx.deliveryStatus],
+      };
+    }
+    if (isFarmer && tx.deliveryStatus === 'IN_TRANSIT') {
+      return { kind: 'go', label: 'Mark as delivered', onPress: onDeliver };
+    }
+    return {
+      kind: 'idle',
+      label: tx.deliveryStatus === 'CONFIRMED' ? 'Delivery confirmed' : DELIVERY_LABEL[tx.deliveryStatus],
+    };
+  }
+
+  // Status/escrow guidance, written for whichever side is viewing.
+  function escrowNote(): string {
+    if (!tx) return '';
+    if (isFarmer) {
+      if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'Waiting for the buyer to fund escrow. You can ship once the payment is held.';
+      if (tx.paymentStatus === 'ESCROW') {
+        if (tx.deliveryStatus === 'PENDING') return 'Payment is secured in escrow. Ship the crop, then mark it shipped here.';
+        if (tx.deliveryStatus === 'IN_TRANSIT') return 'In transit. Mark it delivered once it reaches the buyer.';
+        if (tx.deliveryStatus === 'DELIVERED') return 'Delivered. Waiting for the buyer to confirm and release your payment.';
+        return 'Funds are held in escrow.';
+      }
+      if (tx.paymentStatus === 'RELEASED') return 'Settled. Payment has been released to you.';
+      return 'This contract was refunded to the buyer.';
+    }
+    if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'Tap Pay to fund escrow. Your money is held safely until you confirm delivery.';
+    if (tx.paymentStatus === 'ESCROW') return 'Funds are held in escrow. Confirming delivery releases payment to the farmer.';
+    if (tx.paymentStatus === 'RELEASED') return 'This contract is settled. Payment was released to the farmer.';
+    return 'This contract was refunded to you.';
   }
 
   if (loading) {
@@ -205,13 +260,7 @@ export default function SettleScreen() {
             <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
               <View style={styles.audit}>
                 <IconShield size={17} sw={2} stroke={colors.sage} />
-                <Text style={styles.auditText}>
-                  {tx.paymentStatus === 'AWAITING_PAYMENT'
-                    ? 'Payment runs through Razorpay on the web dashboard. Once paid, funds sit in escrow until you confirm delivery.'
-                    : tx.paymentStatus === 'ESCROW'
-                      ? 'Funds are held in escrow. Confirming delivery releases payment to the farmer.'
-                      : 'This contract is settled. The full audit log is available on the web dashboard.'}
-                </Text>
+                <Text style={styles.auditText}>{escrowNote()}</Text>
               </View>
             </View>
 
@@ -266,30 +315,30 @@ export default function SettleScreen() {
                 )}
               </Pressable>
             ) : (
-              <Pressable
-                onPress={onConfirmDelivery}
-                disabled={!canConfirm || busy}
-                style={({ pressed }) => [
-                  styles.btnPrimary,
-                  (!canConfirm || busy) && { opacity: 0.45 },
-                  pressed && canConfirm && { opacity: 0.9 },
-                ]}
-              >
-                {busy ? (
-                  <ActivityIndicator color="#f4f1ea" size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.btnPrimaryText}>
-                      {canConfirm
-                        ? 'Confirm delivery · release escrow '
-                        : tx.deliveryStatus === 'CONFIRMED'
-                          ? 'Delivery confirmed '
-                          : `${DELIVERY_LABEL[tx.deliveryStatus]} `}
-                    </Text>
-                    <IconArrow size={14} stroke="#f4f1ea" />
-                  </>
-                )}
-              </Pressable>
+              (() => {
+                const action = deliveryAction();
+                const blocked = action.kind === 'idle' || busy;
+                return (
+                  <Pressable
+                    onPress={action.kind === 'go' ? action.onPress : undefined}
+                    disabled={blocked}
+                    style={({ pressed }) => [
+                      styles.btnPrimary,
+                      blocked && { opacity: 0.45 },
+                      pressed && action.kind === 'go' && { opacity: 0.9 },
+                    ]}
+                  >
+                    {busy ? (
+                      <ActivityIndicator color="#f4f1ea" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.btnPrimaryText}>{action.label} </Text>
+                        {action.kind === 'go' ? <IconArrow size={14} stroke="#f4f1ea" /> : null}
+                      </>
+                    )}
+                  </Pressable>
+                );
+              })()
             )}
           </View>
         </View>
