@@ -11,7 +11,7 @@ import { IconArrow, IconBell } from '../../components/icons';
 import { Eyebrow, GridBg, LiveDot, MiniChart, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
-import { getAgentConfig, incomingBids, myListings, transactionStats } from '../../api/endpoints';
+import { getAgentConfig, incomingBids, myListings, transactionStats, unreadNotificationCount } from '../../api/endpoints';
 import type { AgentConfig, Bid, Listing, TransactionStats } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 
@@ -26,19 +26,22 @@ export default function FarmerHomeScreen() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [stats, setStats] = useState<TransactionStats | null>(null);
   const [agent, setAgent] = useState<AgentConfig | null>(null);
+  const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [l, b, s, a] = await Promise.allSettled([
+    const [l, b, s, a, u] = await Promise.allSettled([
       myListings(),
       incomingBids(),
       transactionStats(),
       getAgentConfig(),
+      unreadNotificationCount(),
     ]);
     if (l.status === 'fulfilled') setListings(l.value.listings ?? []);
     if (b.status === 'fulfilled') setBids(Array.isArray(b.value) ? b.value : []);
     if (s.status === 'fulfilled') setStats(s.value);
     if (a.status === 'fulfilled') setAgent(a.value);
+    if (u.status === 'fulfilled') setUnread(u.value);
   }, []);
 
   useFocusEffect(
@@ -75,9 +78,9 @@ export default function FarmerHomeScreen() {
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <Wordmark size={17} glyph="arc" />
-            <Pressable onPress={() => nav.navigate('Bids')}>
+            <Pressable onPress={() => nav.navigate('Notifications')}>
               <IconBell size={22} stroke={design.ink2} />
-              {needsYou > 0 ? <View style={styles.bellDot} /> : null}
+              {unread > 0 ? <View style={styles.bellDot} /> : null}
             </Pressable>
           </View>
           <View style={{ marginTop: 18 }}>

@@ -3,6 +3,12 @@
 
 import type { Listing } from '../api/types';
 
+// Signed-out stack: email/password sign-in + account creation.
+export type AuthStackParamList = {
+  Login: undefined;
+  Signup: undefined;
+};
+
 export type BrowseStackParamList = {
   BrowseList: undefined;
   ListingDetail: { id: string; preview?: Listing };
@@ -27,6 +33,7 @@ export type RootStackParamList = {
   Tabs: undefined;
   Auction: { listingId?: string } | undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Notifications: undefined;
 };
 
 // Farmer app
@@ -42,4 +49,5 @@ export type FarmerStackParamList = {
   FarmerTabs: undefined;
   CreateListing: { id?: string } | undefined;
   Contracts: undefined;
+  Notifications: undefined;
 };
