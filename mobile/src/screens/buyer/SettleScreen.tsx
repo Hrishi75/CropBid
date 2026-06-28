@@ -9,10 +9,11 @@ import { IconArrow, IconCheck, IconShield } from '../../components/icons';
 import { Eyebrow, GridBg, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
-import { myTransactions, updateDeliveryStatus } from '../../api/endpoints';
+import { createPaymentOrder, myTransactions, updateDeliveryStatus, type PaymentOrder } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
 import type { Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
+import RazorpayCheckout from '../../components/RazorpayCheckout';
 
 const PAYMENT_LABEL: Record<Transaction['paymentStatus'], string> = {
   AWAITING_PAYMENT: 'Awaiting payment',
@@ -41,6 +42,8 @@ export default function SettleScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [order, setOrder] = useState<PaymentOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -68,6 +71,32 @@ export default function SettleScreen() {
   const tx = txs[selected] ?? null;
   const isBuyer = user?.id === tx?.buyerId;
   const canConfirm = !!tx && isBuyer && tx.deliveryStatus === 'DELIVERED';
+  const canPay = !!tx && isBuyer && tx.paymentStatus === 'AWAITING_PAYMENT';
+
+  async function onPayNow() {
+    if (!tx || paying) return;
+    setPaying(true);
+    try {
+      // Mint (or reuse) the Razorpay order, then hand it to the WebView checkout.
+      setOrder(await createPaymentOrder(tx.id));
+    } catch (e) {
+      Alert.alert('Could not start payment', errorMessage(e));
+    } finally {
+      setPaying(false);
+    }
+  }
+
+  async function onPaid(updated: Transaction) {
+    setOrder(null);
+    // Trust the verified transaction from the server, then refetch for good measure.
+    setTxs((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    await load();
+  }
+
+  function onCheckoutClose(err?: string) {
+    setOrder(null);
+    if (err) Alert.alert('Payment not completed', err);
+  }
 
   async function onConfirmDelivery() {
     if (!tx || busy) return;
@@ -221,33 +250,57 @@ export default function SettleScreen() {
       {tx ? (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 14 }]}>
           <View style={styles.signRow}>
-            <Pressable
-              onPress={onConfirmDelivery}
-              disabled={!canConfirm || busy}
-              style={({ pressed }) => [
-                styles.btnPrimary,
-                (!canConfirm || busy) && { opacity: 0.45 },
-                pressed && canConfirm && { opacity: 0.9 },
-              ]}
-            >
-              {busy ? (
-                <ActivityIndicator color="#f4f1ea" size="small" />
-              ) : (
-                <>
-                  <Text style={styles.btnPrimaryText}>
-                    {canConfirm
-                      ? 'Confirm delivery · release escrow '
-                      : tx.deliveryStatus === 'CONFIRMED'
-                        ? 'Delivery confirmed '
-                        : `${DELIVERY_LABEL[tx.deliveryStatus]} `}
-                  </Text>
-                  <IconArrow size={14} stroke="#f4f1ea" />
-                </>
-              )}
-            </Pressable>
+            {canPay ? (
+              <Pressable
+                onPress={onPayNow}
+                disabled={paying}
+                style={({ pressed }) => [styles.btnPrimary, paying && { opacity: 0.45 }, pressed && { opacity: 0.9 }]}
+              >
+                {paying ? (
+                  <ActivityIndicator color="#f4f1ea" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.btnPrimaryText}>Pay {money(tx.totalAmount, tx.currency)} · fund escrow </Text>
+                    <IconArrow size={14} stroke="#f4f1ea" />
+                  </>
+                )}
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={onConfirmDelivery}
+                disabled={!canConfirm || busy}
+                style={({ pressed }) => [
+                  styles.btnPrimary,
+                  (!canConfirm || busy) && { opacity: 0.45 },
+                  pressed && canConfirm && { opacity: 0.9 },
+                ]}
+              >
+                {busy ? (
+                  <ActivityIndicator color="#f4f1ea" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.btnPrimaryText}>
+                      {canConfirm
+                        ? 'Confirm delivery · release escrow '
+                        : tx.deliveryStatus === 'CONFIRMED'
+                          ? 'Delivery confirmed '
+                          : `${DELIVERY_LABEL[tx.deliveryStatus]} `}
+                    </Text>
+                    <IconArrow size={14} stroke="#f4f1ea" />
+                  </>
+                )}
+              </Pressable>
+            )}
           </View>
         </View>
       ) : null}
+
+      <RazorpayCheckout
+        order={order}
+        prefill={{ name: user?.name, email: user?.email, contact: user?.phone ?? undefined }}
+        onPaid={onPaid}
+        onClose={onCheckoutClose}
+      />
     </View>
   );
 }
