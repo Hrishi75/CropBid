@@ -2,6 +2,7 @@
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
   AgentConfig,
+  AppNotification,
   Auction,
   Bid,
   DeliveryStatus,
@@ -27,6 +28,26 @@ export async function login(email: string, password: string): Promise<User> {
   return data.user;
 }
 
+export interface SignupInput {
+  name: string;
+  email: string;
+  password: string;
+  role: 'FARMER' | 'BUYER';
+  phone?: string;
+  country?: string;
+  currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
+}
+
+// Signup returns the same auth payload as login (and, for X-Client: mobile, the
+// refresh token in the body). The new user has no profile yet, so the navigator
+// routes them to onboarding next.
+export async function signup(input: SignupInput): Promise<User> {
+  const { data } = await api.post<AuthResult>('/auth/signup', input);
+  setAccessToken(data.accessToken);
+  if (data.refreshToken) await setRefreshToken(data.refreshToken);
+  return data.user;
+}
+
 export async function fetchMe(): Promise<User> {
   const { data } = await api.get<{ user: User }>('/auth/me');
   return data.user;
@@ -39,6 +60,31 @@ export async function logout(): Promise<void> {
     setAccessToken(null);
     await setRefreshToken(null);
   }
+}
+
+// --- Onboarding (creates the role profile required to use the app) ---
+export interface FarmerOnboardingInput {
+  farmSizeAcres: number;
+  cropsGrown: string[];
+  state: string;
+  organicCertified?: boolean;
+  fpoName?: string;
+  apmcLicense?: string;
+}
+
+export interface BuyerOnboardingInput {
+  companyName: string;
+  companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
+  taxId?: string;
+  annualProcurementVolume?: string;
+}
+
+export async function farmerOnboarding(input: FarmerOnboardingInput): Promise<void> {
+  await api.post('/auth/onboarding/farmer', input);
+}
+
+export async function buyerOnboarding(input: BuyerOnboardingInput): Promise<void> {
+  await api.post('/auth/onboarding/buyer', input);
 }
 
 // --- Browse / listings ---
@@ -189,6 +235,31 @@ export async function createPaymentOrder(transactionId: string): Promise<Payment
 export async function verifyPayment(handshake: PaymentHandshake): Promise<Transaction> {
   const { data } = await api.post<Transaction>('/payments/verify', handshake);
   return data;
+}
+
+// --- Notifications (DB feed; live push arrives over the socket: notification:new) ---
+export interface NotificationsPage {
+  notifications: AppNotification[];
+  total: number;
+  unreadCount: number;
+}
+
+export async function fetchNotifications(limit = 30, offset = 0): Promise<NotificationsPage> {
+  const { data } = await api.get<NotificationsPage>('/notifications', { params: { limit, offset } });
+  return data;
+}
+
+export async function unreadNotificationCount(): Promise<number> {
+  const { data } = await api.get<{ count: number }>('/notifications/unread-count');
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await api.patch(`/notifications/${id}/read`);
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await api.patch('/notifications/read-all');
 }
 
 // --- Live auctions (read via REST; bidding stays on the web client's socket) ---

@@ -10,6 +10,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../context/AuthContext';
 import { Loading } from '../components/ui';
 import LoginScreen from '../screens/LoginScreen';
+import SignupScreen from '../screens/SignupScreen';
+import OnboardingScreen from '../screens/OnboardingScreen';
+import ActivityScreen from '../screens/ActivityScreen';
 import HomeScreen from '../screens/buyer/HomeScreen';
 import MarketScreen from '../screens/buyer/MarketScreen';
 import BriefScreen from '../screens/buyer/BriefScreen';
@@ -23,7 +26,8 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
-import type { BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
+import type { AuthStackParamList, BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
+import type { User } from '../api/types';
 
 // --- Buyer ---
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
@@ -53,6 +57,11 @@ function BuyerNavigator() {
         component={ListingDetailScreen as React.ComponentType<any>}
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
       />
+      <RootStack.Screen
+        name="Notifications"
+        component={ActivityScreen}
+        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+      />
     </RootStack.Navigator>
   );
 }
@@ -81,17 +90,30 @@ function FarmerNavigator() {
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
       <FarmerStack.Screen name="CreateListing" component={CreateListingScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <FarmerStack.Screen
+        name="Notifications"
+        component={ActivityScreen}
+        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+      />
     </FarmerStack.Navigator>
   );
 }
 
-const AuthStack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
       <AuthStack.Screen name="Login" component={LoginScreen} />
+      <AuthStack.Screen name="Signup" component={SignupScreen} options={{ animation: 'slide_from_right' }} />
     </AuthStack.Navigator>
   );
+}
+
+// A signed-in user with no role profile yet must finish onboarding before the app.
+function needsOnboarding(user: User): boolean {
+  if (user.role === 'FARMER') return !user.farmerProfile;
+  if (user.role === 'BUYER') return !user.buyerProfile;
+  return false; // admins have no onboarding step
 }
 
 export default function RootNavigator() {
@@ -99,7 +121,15 @@ export default function RootNavigator() {
   if (loading) return <Loading />;
   return (
     <NavigationContainer>
-      {!user ? <AuthNavigator /> : user.role === 'FARMER' ? <FarmerNavigator /> : <BuyerNavigator />}
+      {!user ? (
+        <AuthNavigator />
+      ) : needsOnboarding(user) ? (
+        <OnboardingScreen />
+      ) : user.role === 'FARMER' ? (
+        <FarmerNavigator />
+      ) : (
+        <BuyerNavigator />
+      )}
     </NavigationContainer>
   );
 }

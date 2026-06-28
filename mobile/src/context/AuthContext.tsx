@@ -18,13 +18,21 @@ import api, {
   setOnLogout,
   setRefreshToken,
 } from '../api/client';
-import { login as apiLogin, logout as apiLogout } from '../api/endpoints';
+import {
+  fetchMe,
+  login as apiLogin,
+  logout as apiLogout,
+  signup as apiSignup,
+  type SignupInput,
+} from '../api/endpoints';
 import type { User } from '../api/types';
 
 interface AuthState {
   user: User | null;
   loading: boolean; // bootstrap (silent refresh) in progress
   signIn: (email: string, password: string) => Promise<void>;
+  signUp: (input: SignupInput) => Promise<void>;
+  refreshUser: () => Promise<void>; // re-pull /auth/me (e.g. after onboarding)
   signOut: () => Promise<void>;
 }
 
@@ -64,13 +72,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
+  const signUp = useCallback(async (input: SignupInput) => {
+    const u = await apiSignup(input);
+    setUser(u);
+  }, []);
+
+  // Onboarding sets the role profile server-side; pull the fresh user so the
+  // navigator drops the onboarding gate and shows the app.
+  const refreshUser = useCallback(async () => {
+    setUser(await fetchMe());
+  }, []);
+
   const signOut = useCallback(async () => {
     await apiLogout();
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, signOut }}>
       {children}
     </AuthContext.Provider>
   );

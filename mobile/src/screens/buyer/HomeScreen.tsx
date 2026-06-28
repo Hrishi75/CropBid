@@ -10,7 +10,7 @@ import { IconArrow, IconBell } from '../../components/icons';
 import { Eyebrow, GridBg, LiveDot, MiniChart, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
-import { getAgentConfig, listAuctions, myBids, myNegotiations, transactionStats } from '../../api/endpoints';
+import { getAgentConfig, listAuctions, myBids, myNegotiations, transactionStats, unreadNotificationCount } from '../../api/endpoints';
 import type { AgentConfig, Auction, Bid, Negotiation, TransactionStats } from '../../api/types';
 import { money, timeAgo } from '../../lib/format';
 
@@ -37,21 +37,24 @@ export default function HomeScreen() {
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [agent, setAgent] = useState<AgentConfig | null>(null);
   const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [b, s, n, a, au] = await Promise.allSettled([
+    const [b, s, n, a, au, u] = await Promise.allSettled([
       myBids(),
       transactionStats(),
       myNegotiations(),
       getAgentConfig(),
       listAuctions(),
+      unreadNotificationCount(),
     ]);
     if (b.status === 'fulfilled') setBids(Array.isArray(b.value) ? b.value : []);
     if (s.status === 'fulfilled') setStats(s.value);
     if (n.status === 'fulfilled') setNegotiations(Array.isArray(n.value) ? n.value : []);
     if (a.status === 'fulfilled') setAgent(a.value);
     if (au.status === 'fulfilled') setAuctions(Array.isArray(au.value) ? au.value : []);
+    if (u.status === 'fulfilled') setUnread(u.value);
   }, []);
 
   useEffect(() => {
@@ -93,10 +96,10 @@ export default function HomeScreen() {
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <Wordmark size={17} glyph="arc" />
-            <View>
+            <Pressable onPress={() => nav.navigate('Notifications')}>
               <IconBell size={22} stroke={design.ink2} />
-              {needsYou > 0 ? <View style={styles.bellDot} /> : null}
-            </View>
+              {needsYou > 0 || unread > 0 ? <View style={styles.bellDot} /> : null}
+            </Pressable>
           </View>
           <View style={{ marginTop: 18 }}>
             <Text style={styles.greeting}>{greeting}, {firstName}</Text>

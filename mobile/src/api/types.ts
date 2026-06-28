@@ -129,6 +129,20 @@ export interface Negotiation {
   endedAt: string | null;
 }
 
+// --- Notifications ---
+// Mirrors the Notification model (server prisma schema). `type` is one of
+// NEW_BID, BID_ACCEPTED, BID_REJECTED, BID_COUNTERED, NEGOTIATION_DONE,
+// AUCTION_WON, DELIVERY_UPDATE, PAYMENT_RELEASED, SHIPMENT_BOOKED, SHIPMENT_UPDATE.
+export interface AppNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  read: boolean;
+  data?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 // --- Live auctions ---
 export interface AuctionBid {
   userId: string;

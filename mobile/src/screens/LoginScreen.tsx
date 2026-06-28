@@ -5,18 +5,23 @@ import React, { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { errorMessage } from '../api/client';
 import { Button } from '../components/ui';
 import { colors, radius, spacing } from '../theme';
+import type { AuthStackParamList } from '../navigation/types';
 
 export default function LoginScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -82,6 +87,12 @@ export default function LoginScreen() {
           <Button label="Log in" onPress={onSubmit} loading={submitting} />
         </View>
 
+        <Pressable onPress={() => navigation.navigate('Signup')} hitSlop={8}>
+          <Text style={styles.switch}>
+            New to CropBid? <Text style={styles.switchLink}>Create account</Text>
+          </Text>
+        </Pressable>
+
         {__DEV__ ? (
           <Text style={styles.hint}>
             Demo: rajesh@cropbid.test / vikram@cropbid.test · password123
@@ -124,6 +135,8 @@ const styles = StyleSheet.create({
   },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
   spacer: { height: spacing.xs },
+  switch: { textAlign: 'center', marginTop: spacing.xl, color: colors.textSecondary, fontSize: 14 },
+  switchLink: { color: colors.ember, fontWeight: '600' },
   hint: {
     color: colors.textMuted,
     fontSize: 12,
