@@ -26,6 +26,7 @@
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getAgentDecision, checkAutoAccept } from './aiAgent';
+import { createTransaction } from './transaction.service';
 import type { NegotiationContext } from '../utils/prompts';
 
 const MAX_ROUNDS = 6; // Max back-and-forth rounds
@@ -253,8 +254,18 @@ async function runNegotiation(
 
   // If deal was reached, accept the bid and mark listing as sold
   if (outcome === 'DEAL') {
-    await prisma.$transaction([
-      prisma.bid.update({
+    // Conditionally claim the listing (status must still be sellable) so a
+    // negotiated deal can't double-sell a listing that a concurrent accept —
+    // a manual acceptBid or another negotiation — already took. If the claim
+    // loses the race, void this deal rather than create a second sale.
+    const claimed = await prisma.$transaction(async (tx) => {
+      const claim = await tx.listing.updateMany({
+        where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
+        data: { status: 'SOLD' },
+      });
+      if (claim.count === 0) return false;
+
+      await tx.bid.update({
         where: { id: bid.id },
         data: {
           status: 'ACCEPTED',
@@ -262,26 +273,43 @@ async function runNegotiation(
           totalAmount: currentPrice * bid.quantity,
           isAgentBid: true,
         },
-      }),
+      });
       // Reject competing bids
-      prisma.bid.updateMany({
+      await tx.bid.updateMany({
         where: {
           listingId: bid.listingId,
           id: { not: bid.id },
           status: { in: ['PENDING', 'COUNTERED'] },
         },
         data: { status: 'REJECTED' },
-      }),
-      // Mark listing as sold
-      prisma.listing.update({
-        where: { id: bid.listingId },
-        data: { status: 'SOLD' },
-      }),
-    ]);
+      });
+      return true;
+    });
+
+    if (claimed) {
+      // Spin up the escrow transaction for the agreed bid, mirroring the manual
+      // accept path (bid.service.acceptBid). Without this a negotiated deal would
+      // have a SOLD listing and ACCEPTED bid but nothing for the buyer to pay.
+      createTransaction(bid.id).catch((err) => {
+        console.error(`Failed to create transaction for negotiated bid ${bid.id}:`, err);
+      });
+    } else {
+      // Lost the race — the listing was already sold elsewhere. Void this bid,
+      // but ONLY if it's still PENDING. If a concurrent acceptBid happened to
+      // accept THIS very bid (and created its transaction), we must not clobber
+      // that winning ACCEPTED state back to REJECTED.
+      await prisma.bid.updateMany({
+        where: { id: bid.id, status: 'PENDING' },
+        data: { status: 'REJECTED' },
+      });
+    }
   } else {
-    // No deal — reject the bid
-    await prisma.bid.update({
-      where: { id: bid.id },
+    // No deal — reject the bid, but ONLY if it's still PENDING. A concurrent
+    // acceptBid could have accepted this bid while the AI rounds were running;
+    // an unconditional update would flip that winning bid back to REJECTED while
+    // the listing stays SOLD and its transaction exists.
+    await prisma.bid.updateMany({
+      where: { id: bid.id, status: 'PENDING' },
       data: { status: 'REJECTED' },
     });
   }

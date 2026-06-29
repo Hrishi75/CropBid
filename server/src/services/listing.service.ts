@@ -54,7 +54,9 @@ interface UpdateListingInput {
   location?: string;
   country?: string;
   state?: string;
-  status?: string;
+  // NOTE: `status` is deliberately NOT editable here. Listing status is owned by
+  // the bid/auction/expiry flows; allowing a direct write would bypass the sale
+  // state machine (e.g. flipping a live IN_AUCTION listing to SOLD).
 }
 
 interface ListingsQuery {
@@ -133,8 +135,12 @@ export async function getListings(query: ListingsQuery) {
   const page = Math.max(1, query.page || 1);
   const limit = Math.min(50, Math.max(1, query.limit || 20));
   const skip = (page - 1) * limit;
-  const sort = query.sort || 'createdAt';
-  const order = query.order || 'desc';
+  // Whitelist sortable columns. `sort` comes straight from the query string and
+  // is used as a Prisma orderBy key; an unknown field makes Prisma throw and the
+  // endpoint 500s. Fall back to a safe default instead.
+  const SORTABLE_FIELDS = ['createdAt', 'pricePerUnitMin', 'pricePerUnitMax', 'quantity', 'harvestDate', 'expiryDate'];
+  const sort = SORTABLE_FIELDS.includes(query.sort || '') ? (query.sort as string) : 'createdAt';
+  const order = query.order === 'asc' ? 'asc' : 'desc';
 
   // Build where clause
   const where: any = {};
@@ -255,7 +261,6 @@ export async function updateListing(listingId: string, userId: string, input: Up
       ...(input.location && { location: input.location }),
       ...(input.country && { country: input.country }),
       ...(input.state && { state: input.state }),
-      ...(input.status && { status: input.status as any }),
     },
     include: {
       farmer: {
