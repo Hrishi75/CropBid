@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma';
 interface BrowseQuery {
   // Filters
   crop?: string;
+  crops?: string[]; // match any crop in this list (e.g. a "Fresh produce" category)
   state?: string;
   country?: string;
   priceMin?: number;
@@ -45,6 +46,9 @@ export async function browseListings(query: BrowseQuery) {
 
   if (query.crop) {
     where.cropName = { equals: query.crop, mode: 'insensitive' };
+  } else if (query.crops && query.crops.length > 0) {
+    // Category filter (e.g. "Fresh produce") — match any crop in the list.
+    where.cropName = { in: query.crops };
   }
 
   if (query.state) {

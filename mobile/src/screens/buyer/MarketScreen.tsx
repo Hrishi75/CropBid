@@ -12,8 +12,9 @@ import { browse } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
 import type { Listing } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
+import { isFreshProduce } from '../../lib/crops';
 
-const FILTERS = ['All', 'Grade A', 'Grade B', 'Organic', 'Most bid'] as const;
+const FILTERS = ['All', 'Fresh produce', 'Grade A', 'Grade B', 'Organic', 'Most bid'] as const;
 type Filter = (typeof FILTERS)[number];
 const POS = colors.sage;
 const NEG = colors.ember;
@@ -55,6 +56,8 @@ export default function MarketScreen() {
 
   const visible = useMemo(() => {
     switch (filter) {
+      case 'Fresh produce':
+        return listings.filter((l) => isFreshProduce(l.cropName));
       case 'Grade A':
         return listings.filter((l) => l.qualityGrade === 'A');
       case 'Grade B':

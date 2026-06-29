@@ -4,7 +4,7 @@
 // Dual-purpose form: with a :id route param it loads the existing listing and
 // runs in EDIT mode; without one it CREATES a new listing. Collects crop, qty,
 // unit, grade, price range, location, certifications, and photos (ImageUploader),
-// then POSTs/PUTs to /listings. CROPS and INDIAN_STATES drive the dropdowns.
+// then POSTs/PUTs to /listings. CROP_CATEGORIES and INDIAN_STATES drive the dropdowns.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -16,14 +16,10 @@ import { Input } from '../../components/ui/Input';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { ImageUploader } from '../../components/listings/ImageUploader';
 import { formatCurrency } from '../../utils/currency';
+import { mspForCrop } from '../../utils/msp';
+import { CROP_CATEGORIES } from '../../utils/crops';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
-
-const CROPS = [
-  'Rice', 'Wheat', 'Cotton', 'Soybean', 'Sugarcane', 'Turmeric', 'Onion',
-  'Tomato', 'Potato', 'Chana Dal', 'Mustard', 'Coffee', 'Tea', 'Pepper',
-  'Groundnut', 'Coconut', 'Banana', 'Corn', 'Barley', 'Ragi',
-];
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -95,6 +91,18 @@ export function CreateListing() {
     if (parseFloat(priceMin) > parseFloat(priceMax)) {
       toast.error('Minimum price cannot exceed maximum price');
       return;
+    }
+    // Government MSP guard — warn (but don't block) when the floor is below the
+    // official support price for this crop.
+    const msp = mspForCrop(cropName, unit);
+    const floor = parseFloat(priceMin);
+    const cur = user?.currency || 'INR';
+    if (msp != null && floor < msp) {
+      const proceed = window.confirm(
+        `The government MSP for ${cropName} is ${formatCurrency(msp, cur)} per ${unit.toLowerCase()}. ` +
+          `Your floor of ${formatCurrency(floor, cur)} is below it — you may sell under the support price.\n\nList anyway?`,
+      );
+      if (!proceed) return;
     }
     setLoading(true);
     try {
@@ -170,7 +178,11 @@ export function CreateListing() {
                 <label className="cb-label">Crop</label>
                 <select value={cropName} onChange={(e) => setCropName(e.target.value)} className="cb-input" required>
                   <option value="">Select crop</option>
-                  {CROPS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {CROP_CATEGORIES.map((cat) => (
+                    <optgroup key={cat.name} label={`${cat.icon} ${cat.name}`}>
+                      {cat.crops.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
               <Input

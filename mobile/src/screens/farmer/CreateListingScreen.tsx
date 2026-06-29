@@ -13,6 +13,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  SectionList,
   StyleSheet,
   Switch,
   Text,
@@ -29,13 +30,9 @@ import { useAuth } from '../../context/AuthContext';
 import { createListing, fetchListing, updateListing } from '../../api/endpoints';
 import { errorMessage, mediaUrl } from '../../api/client';
 import type { FarmerStackParamList } from '../../navigation/types';
-import { money } from '../../lib/format';
-
-const CROPS = [
-  'Rice', 'Wheat', 'Cotton', 'Soybean', 'Sugarcane', 'Turmeric', 'Onion',
-  'Tomato', 'Potato', 'Chana Dal', 'Mustard', 'Coffee', 'Tea', 'Pepper',
-  'Groundnut', 'Coconut', 'Banana', 'Corn', 'Barley', 'Ragi',
-];
+import { money, unitLabel } from '../../lib/format';
+import { mspForCrop } from '../../lib/msp';
+import { CROP_CATEGORIES } from '../../lib/crops';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -153,6 +150,29 @@ export default function CreateListingScreen({ route, navigation }: Props) {
       return;
     }
 
+    // Government MSP guard — warn (but don't block) when the floor is below the
+    // official support price for this crop.
+    const msp = mspForCrop(cropName, unit);
+    if (msp != null && minN < msp) {
+      Alert.alert(
+        'Floor below government MSP',
+        `The government MSP for ${cropName} is ${money(msp, currency)}/${unitLabel(unit)}. ` +
+          `Your floor of ${money(minN, currency)}/${unitLabel(unit)} is below it — you may sell under the support price.`,
+        [
+          { text: 'Edit price', style: 'cancel' },
+          { text: 'List anyway', style: 'destructive', onPress: save },
+        ],
+      );
+      return;
+    }
+
+    save();
+  }
+
+  async function save() {
+    const minN = Number(priceMin);
+    const maxN = Number(priceMax);
+    const qtyN = Number(quantity);
     setSaving(true);
     try {
       if (isEdit && editId) {
@@ -418,27 +438,52 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 8 }]}>
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>{picker === 'crop' ? 'Select crop' : 'Select state'}</Text>
-          <FlatList
-            data={picker === 'crop' ? CROPS : INDIAN_STATES}
-            keyExtractor={(item) => item}
-            style={{ maxHeight: 360 }}
-            renderItem={({ item }) => {
-              const selected = picker === 'crop' ? item === cropName : item === stateName;
-              return (
-                <Pressable
-                  style={styles.optionRow}
-                  onPress={() => {
-                    if (picker === 'crop') setCropName(item);
-                    else setStateName(item);
-                    setPicker(null);
-                  }}
-                >
-                  <Text style={[styles.optionText, selected && styles.optionTextActive]}>{item}</Text>
-                  {selected ? <Text style={styles.optionCheck}>✓</Text> : null}
-                </Pressable>
-              );
-            }}
-          />
+          {picker === 'crop' ? (
+            <SectionList
+              sections={CROP_CATEGORIES.map((c) => ({ title: `${c.icon}  ${c.name}`, data: c.crops }))}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 420 }}
+              stickySectionHeadersEnabled={false}
+              keyboardShouldPersistTaps="handled"
+              renderSectionHeader={({ section }) => <Text style={styles.sectionHeader}>{section.title}</Text>}
+              renderItem={({ item }) => {
+                const selected = item === cropName;
+                return (
+                  <Pressable
+                    style={styles.optionRow}
+                    onPress={() => {
+                      setCropName(item);
+                      setPicker(null);
+                    }}
+                  >
+                    <Text style={[styles.optionText, selected && styles.optionTextActive]}>{item}</Text>
+                    {selected ? <Text style={styles.optionCheck}>✓</Text> : null}
+                  </Pressable>
+                );
+              }}
+            />
+          ) : (
+            <FlatList
+              data={INDIAN_STATES}
+              keyExtractor={(item) => item}
+              style={{ maxHeight: 360 }}
+              renderItem={({ item }) => {
+                const selected = item === stateName;
+                return (
+                  <Pressable
+                    style={styles.optionRow}
+                    onPress={() => {
+                      setStateName(item);
+                      setPicker(null);
+                    }}
+                  >
+                    <Text style={[styles.optionText, selected && styles.optionTextActive]}>{item}</Text>
+                    {selected ? <Text style={styles.optionCheck}>✓</Text> : null}
+                  </Pressable>
+                );
+              }}
+            />
+          )}
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -540,6 +585,7 @@ const styles = StyleSheet.create({
   modalSheet: { backgroundColor: design.paper, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 10 },
   modalHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 999, backgroundColor: design.line, marginBottom: 12 },
   modalTitle: { fontFamily: font.sansMed, fontSize: 17, color: design.ink, marginBottom: 8, paddingHorizontal: 4 },
+  sectionHeader: { fontFamily: font.sansSemi, fontSize: 12, letterSpacing: 0.3, color: design.ink3, backgroundColor: design.paper, paddingTop: 14, paddingBottom: 6, paddingHorizontal: 4 },
   optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: design.lineLight },
   optionText: { fontFamily: font.sans, fontSize: 15.5, color: design.ink2 },
   optionTextActive: { fontFamily: font.sansSemi, color: colors.forest },

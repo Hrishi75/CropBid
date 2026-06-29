@@ -17,6 +17,7 @@ interface Filters {
   state: string;
   quality: string;
   organic: string;
+  freshProduce: string;
   priceMin: string;
   priceMax: string;
   sort: string;
@@ -70,12 +71,12 @@ export function ListingFilters({ filters, onChange }: ListingFiltersProps) {
     setSearchInput('');
     onChange({
       search: '', crop: '', state: '', quality: '',
-      organic: '', priceMin: '', priceMax: '', sort: 'createdAt',
+      organic: '', freshProduce: '', priceMin: '', priceMax: '', sort: 'createdAt',
     });
   }
 
   const hasActiveFilters = filters.crop || filters.state || filters.quality
-    || filters.organic || filters.priceMin || filters.priceMax;
+    || filters.organic || filters.freshProduce || filters.priceMin || filters.priceMax;
 
   return (
     <div className="cb-card" style={{ padding: 18, position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
@@ -88,6 +89,18 @@ export function ListingFilters({ filters, onChange }: ListingFiltersProps) {
           className="cb-input"
           style={{ fontSize: 13 }}
         />
+      </Section>
+
+      <Section title="Category">
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={filters.freshProduce === 'true'}
+            onChange={(e) => updateFilter('freshProduce', e.target.checked ? 'true' : '')}
+            style={{ accentColor: 'var(--cb-forest)' }}
+          />
+          🥬 Fresh produce only (veg & fruit)
+        </label>
       </Section>
 
       <Section title="Crop">
