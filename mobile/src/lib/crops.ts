@@ -14,11 +14,12 @@ export interface CropCategory {
 export const CROP_CATEGORIES: CropCategory[] = [
   { name: 'Cereals & Grains', icon: '🌾', crops: ['Rice', 'Wheat', 'Corn', 'Barley', 'Ragi', 'Jowar', 'Bajra', 'Oats'] },
   { name: 'Pulses & Legumes', icon: '🫘', crops: ['Chana Dal', 'Toor Dal', 'Moong Dal', 'Urad Dal', 'Masoor Dal', 'Rajma'] },
-  { name: 'Oilseeds', icon: '🫒', crops: ['Soybean', 'Mustard', 'Groundnut', 'Sunflower', 'Sesame'] },
+  { name: 'Oilseeds', icon: '🫒', crops: ['Soybean', 'Mustard', 'Groundnut', 'Sunflower', 'Sesame', 'Castor'] },
   { name: 'Cash Crops', icon: '💰', crops: ['Cotton', 'Sugarcane', 'Coffee', 'Tea', 'Jute', 'Tobacco'] },
   { name: 'Spices', icon: '🌶️', crops: ['Turmeric', 'Pepper', 'Chili', 'Cardamom', 'Cumin', 'Coriander', 'Ginger', 'Garlic'] },
   { name: 'Vegetables', icon: '🥬', crops: ['Tomato', 'Potato', 'Onion', 'Cauliflower', 'Cabbage', 'Spinach', 'Okra', 'Brinjal', 'Carrot', 'Green Peas', 'Bottle Gourd', 'Bitter Gourd', 'Pumpkin', 'Cucumber', 'Capsicum', 'Beetroot', 'Radish', 'Sweet Potato'] },
   { name: 'Fruits', icon: '🍎', crops: ['Mango', 'Banana', 'Apple', 'Orange', 'Grapes', 'Papaya', 'Guava', 'Pomegranate', 'Watermelon', 'Pineapple', 'Coconut', 'Lemon', 'Sapota', 'Custard Apple', 'Jackfruit', 'Strawberry'] },
+  { name: 'Nuts & Dry Fruits', icon: '🥜', crops: ['Almond', 'Cashew', 'Walnut', 'Pistachio', 'Arecanut'] },
 ];
 
 // Flat list of every crop in the catalogue.

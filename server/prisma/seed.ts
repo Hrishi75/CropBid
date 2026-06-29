@@ -162,7 +162,7 @@ const indianListings: ListingData[] = [
   { crop: 'Coffee',     variety: 'Robusta',       quantity: 50,  unit: 'QUINTAL', grade: 'B', minPrice: 12000, maxPrice: 15000, organic: false, description: 'Robusta coffee beans, strong body, good for blends.' },
 
   // Pepper & Spices
-  { crop: 'Black Pepper', variety: 'Malabar',     quantity: 20,  unit: 'QUINTAL', grade: 'A', minPrice: 42000, maxPrice: 48000, organic: true,  description: 'Malabar black pepper, bold grade, high piperine content.' },
+  { crop: 'Pepper',     variety: 'Malabar',      quantity: 20,  unit: 'QUINTAL', grade: 'A', minPrice: 42000, maxPrice: 48000, organic: true,  description: 'Malabar black pepper, bold grade, high piperine content.' },
   { crop: 'Cardamom',    variety: 'Green',        quantity: 10,  unit: 'QUINTAL', grade: 'A', minPrice: 120000, maxPrice: 140000, organic: false, description: 'Green cardamom from Kerala, bold 8mm+, intense aroma.' },
 
   // Other crops
@@ -175,7 +175,7 @@ const indianListings: ListingData[] = [
   { crop: 'Castor',     variety: 'GCH-7',         quantity: 80,  unit: 'QUINTAL', grade: 'B', minPrice: 5800, maxPrice: 6400, organic: false, description: 'Castor seeds for oil extraction, high oil yield.' },
   { crop: 'Bajra',      variety: 'HHB-67',        quantity: 100, unit: 'QUINTAL', grade: 'B', minPrice: 2100, maxPrice: 2500, organic: false, description: 'Pearl millet from Rajasthan, drought-resistant variety.' },
   { crop: 'Ragi',       variety: 'GPU-28',        quantity: 60,  unit: 'QUINTAL', grade: 'A', minPrice: 3200, maxPrice: 3800, organic: true,  description: 'Organic finger millet from Karnataka, high calcium content.' },
-  { crop: 'Gram',       variety: 'JG-11',         quantity: 80,  unit: 'QUINTAL', grade: 'A', minPrice: 4800, maxPrice: 5400, organic: false, description: 'Bengal gram from MP, bold seeds, suitable for besan production.' },
+  { crop: 'Chana Dal',  variety: 'JG-11',         quantity: 80,  unit: 'QUINTAL', grade: 'A', minPrice: 4800, maxPrice: 5400, organic: false, description: 'Bengal gram from MP, bold seeds, suitable for besan production.' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -191,7 +191,7 @@ const globalListings: (ListingData & { country: string; state: string; currency:
   { crop: 'Coffee',     variety: 'AA',            quantity: 30,   unit: 'TONNE', grade: 'A', minPrice: 6200, maxPrice: 7200, organic: false, description: 'Kenya AA coffee beans, bright acidity, berry notes.', country: 'Kenya', state: 'Central', currency: 'USD' },
   { crop: 'Wheat',      variety: 'ASW',           quantity: 800,  unit: 'TONNE', grade: 'A', minPrice: 260, maxPrice: 300, organic: false, description: 'Australian Standard White wheat, high protein.', country: 'Australia', state: 'Western Australia', currency: 'USD' },
   { crop: 'Barley',     variety: 'Bass',          quantity: 400,  unit: 'TONNE', grade: 'B', minPrice: 240, maxPrice: 290, organic: false, description: 'Bass barley for malting and feed.', country: 'Australia', state: 'Western Australia', currency: 'USD' },
-  { crop: 'Grape',      variety: 'Thompson',      quantity: 30,   unit: 'TONNE', grade: 'A', minPrice: 1800, maxPrice: 2200, organic: true, description: 'Thompson Seedless table grapes, USDA Organic.', country: 'USA', state: 'California', currency: 'USD' },
+  { crop: 'Grapes',     variety: 'Thompson',      quantity: 30,   unit: 'TONNE', grade: 'A', minPrice: 1800, maxPrice: 2200, organic: true, description: 'Thompson Seedless table grapes, USDA Organic.', country: 'USA', state: 'California', currency: 'USD' },
 ];
 
 // =============================================================================

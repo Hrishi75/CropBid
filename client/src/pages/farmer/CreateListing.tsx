@@ -17,7 +17,7 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { ImageUploader } from '../../components/listings/ImageUploader';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
-import { CROP_CATEGORIES } from '../../utils/crops';
+import { CROP_CATEGORIES, ALL_CROPS } from '../../utils/crops';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -178,6 +178,10 @@ export function CreateListing() {
                 <label className="cb-label">Crop</label>
                 <select value={cropName} onChange={(e) => setCropName(e.target.value)} className="cb-input" required>
                   <option value="">Select crop</option>
+                  {cropName && !ALL_CROPS.includes(cropName) && (
+                    // Preserve a legacy / off-catalogue crop name when editing so it isn't silently blanked.
+                    <option value={cropName}>{cropName}</option>
+                  )}
                   {CROP_CATEGORIES.map((cat) => (
                     <optgroup key={cat.name} label={`${cat.icon} ${cat.name}`}>
                       {cat.crops.map((c) => <option key={c} value={c}>{c}</option>)}
