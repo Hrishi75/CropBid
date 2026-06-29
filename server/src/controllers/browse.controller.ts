@@ -14,7 +14,12 @@ export async function browseListings(req: Request, res: Response, next: NextFunc
   try {
     const result = await browseService.browseListings({
       crop: req.query.crop as string,
-      crops: req.query.crops ? (req.query.crops as string).split(',').filter(Boolean) : undefined,
+      crops: req.query.crops
+        ? (Array.isArray(req.query.crops)
+            ? (req.query.crops as string[])
+            : (req.query.crops as string).split(','))
+            .filter(Boolean)
+        : undefined,
       state: req.query.state as string,
       country: req.query.country as string,
       priceMin: req.query.priceMin ? Number(req.query.priceMin) : undefined,

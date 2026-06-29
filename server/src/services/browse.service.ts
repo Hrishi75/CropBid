@@ -48,7 +48,8 @@ export async function browseListings(query: BrowseQuery) {
     where.cropName = { equals: query.crop, mode: 'insensitive' };
   } else if (query.crops && query.crops.length > 0) {
     // Category filter (e.g. "Fresh produce") — match any crop in the list.
-    where.cropName = { in: query.crops };
+    // Case-insensitive to mirror the single-crop filter above.
+    where.cropName = { in: query.crops, mode: 'insensitive' };
   }
 
   if (query.state) {
