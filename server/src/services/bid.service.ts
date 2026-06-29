@@ -210,31 +210,48 @@ export async function acceptBid(bidId: string, farmerId: string) {
     throw new ApiError(400, `Cannot accept a ${bid.status.toLowerCase()} bid`);
   }
 
-  // Accept this bid and reject all other pending bids on the same listing
-  const [accepted] = await prisma.$transaction([
-    prisma.bid.update({
-      where: { id: bidId },
+  // Accept this bid and reject all other pending bids on the same listing.
+  // The listing claim is a CONDITIONAL updateMany (status must still be sellable),
+  // not an unconditional update. This closes a TOCTOU double-sell: two concurrent
+  // acceptBid calls for different bids on the same listing would both pass the
+  // status pre-check above, then both write ACCEPTED. With the conditional claim,
+  // the second transaction blocks on the row lock, re-evaluates against the now
+  // committed SOLD row, gets count 0, and bails — so only one bid can win.
+  const accepted = await prisma.$transaction(async (tx) => {
+    const claim = await tx.listing.updateMany({
+      where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
+      data: { status: 'SOLD' },
+    });
+    if (claim.count === 0) {
+      throw new ApiError(409, 'This listing is no longer available — another bid was just accepted.');
+    }
+
+    const claimedBid = await tx.bid.updateMany({
+      where: { id: bidId, status: 'PENDING' },
       data: { status: 'ACCEPTED' },
-      include: {
-        listing: true,
-        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
-      },
-    }),
+    });
+    if (claimedBid.count === 0) {
+      throw new ApiError(409, 'This bid is no longer pending.');
+    }
+
     // Reject competing bids
-    prisma.bid.updateMany({
+    await tx.bid.updateMany({
       where: {
         listingId: bid.listingId,
         id: { not: bidId },
         status: { in: ['PENDING', 'COUNTERED'] },
       },
       data: { status: 'REJECTED' },
-    }),
-    // Mark listing as SOLD
-    prisma.listing.update({
-      where: { id: bid.listingId },
-      data: { status: 'SOLD' },
-    }),
-  ]);
+    });
+
+    return tx.bid.findUniqueOrThrow({
+      where: { id: bidId },
+      include: {
+        listing: true,
+        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      },
+    });
+  });
 
   // Create transaction and notify buyer
   createTransaction(bidId).catch((err) => {
