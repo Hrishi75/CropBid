@@ -11,12 +11,38 @@
 // =============================================================================
 
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import * as listingService from '../services/listing.service';
 
 // Express 5 types params as string | string[]. Our routes use single :id params.
 function paramId(req: Request): string {
   return req.params.id as string;
 }
+
+// Whitelist of farmer-editable fields. NOTE: `status` is intentionally absent —
+// listing status is driven by the bid/auction/expiry flows, never set directly
+// by the client (that would let a farmer bypass the sale state machine). Unknown
+// keys (including a smuggled `status`) are stripped by zod before reaching the
+// service. Numbers are coerced so a JSON or multipart body both validate.
+const updateListingSchema = z.object({
+  cropName: z.string().min(1).max(200).optional(),
+  cropVariety: z.string().max(200).optional(),
+  quantity: z.coerce.number().positive().optional(),
+  unit: z.string().max(20).optional(),
+  qualityGrade: z.string().max(50).optional(),
+  pricePerUnitMin: z.coerce.number().positive().optional(),
+  pricePerUnitMax: z.coerce.number().positive().optional(),
+  currency: z.string().max(10).optional(),
+  harvestDate: z.string().optional(),
+  expiryDate: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  images: z.array(z.string()).optional(),
+  labReportUrl: z.string().optional(),
+  organic: z.coerce.boolean().optional(),
+  location: z.string().min(1).max(200).optional(),
+  country: z.string().max(100).optional(),
+  state: z.string().min(1).max(100).optional(),
+});
 
 // POST /api/listings — Create a new listing
 export async function createListing(req: Request, res: Response, next: NextFunction) {
@@ -88,10 +114,14 @@ export async function getListingById(req: Request, res: Response, next: NextFunc
 // PUT /api/listings/:id — Update a listing
 export async function updateListing(req: Request, res: Response, next: NextFunction) {
   try {
+    const parsed = updateListingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
     const listing = await listingService.updateListing(
       paramId(req),
       req.user!.userId,
-      req.body
+      parsed.data
     );
     res.json(listing);
   } catch (error) {
