@@ -21,6 +21,7 @@ import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
 import { money, unitLabel } from '../lib/format';
+import { mspForCrop } from '../lib/msp';
 import { colors, radius, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'ListingDetail'>;
@@ -122,12 +123,34 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
   const qtyNum = Number(qty);
   const total = priceNum > 0 && qtyNum > 0 ? priceNum * qtyNum : 0;
 
-  async function submit() {
+  function submit() {
     if (!(priceNum > 0) || !(qtyNum > 0)) {
       setError('Enter a valid price and quantity');
       return;
     }
     setError(null);
+
+    // Government MSP guard — warn (but don't block) when the bid is below the
+    // official support price for this crop.
+    const msp = mspForCrop(listing.cropName, listing.unit);
+    if (msp != null && priceNum < msp) {
+      const u = unitLabel(listing.unit);
+      Alert.alert(
+        'Bid below government MSP',
+        `The government MSP for ${listing.cropName} is ${money(msp, listing.currency)}/${u}. ` +
+          `Your bid of ${money(priceNum, listing.currency)}/${u} is below it.`,
+        [
+          { text: 'Raise bid', style: 'cancel' },
+          { text: 'Bid anyway', style: 'destructive', onPress: doPlaceBid },
+        ],
+      );
+      return;
+    }
+
+    doPlaceBid();
+  }
+
+  async function doPlaceBid() {
     setSubmitting(true);
     try {
       await placeBid({

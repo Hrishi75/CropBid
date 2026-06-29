@@ -16,6 +16,7 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { ArrowIcon } from '../ui/Brand';
 import { formatCurrency } from '../../utils/currency';
+import { mspForCrop } from '../../utils/msp';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
@@ -52,6 +53,16 @@ export function BidForm({ listing }: BidFormProps) {
     if (bidQty > listing.quantity) {
       toast.error(`Only ${listing.quantity} ${listing.unit.toLowerCase()} available`);
       return;
+    }
+    // Government MSP guard — warn (but don't block) when the bid is below the
+    // official support price for this crop.
+    const msp = mspForCrop(listing.cropName, listing.unit);
+    if (msp != null && bidPrice < msp) {
+      const proceed = window.confirm(
+        `The government MSP for ${listing.cropName} is ${formatCurrency(msp, listing.currency)} per ${listing.unit.toLowerCase()}. ` +
+          `Your bid of ${formatCurrency(bidPrice, listing.currency)} is below it.\n\nBid anyway?`,
+      );
+      if (!proceed) return;
     }
     setLoading(true);
     try {

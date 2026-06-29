@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
 import api from '../../lib/axios';
+import { FRESH_PRODUCE_CROPS } from '../../utils/crops';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
 
@@ -29,7 +30,7 @@ export function BrowseListings() {
 
   const [filters, setFilters] = useState({
     search: '', crop: '', state: '', quality: '',
-    organic: '', priceMin: '', priceMax: '', sort: 'createdAt',
+    organic: '', freshProduce: '', priceMin: '', priceMax: '', sort: 'createdAt',
   });
 
   useEffect(() => { setPage(1); }, [filters]);
@@ -49,6 +50,9 @@ export function BrowseListings() {
       if (filters.state) params.set('state', filters.state);
       if (filters.quality) params.set('quality', filters.quality);
       if (filters.organic) params.set('organic', filters.organic);
+      if (filters.freshProduce === 'true' && !filters.crop) {
+        params.set('crops', FRESH_PRODUCE_CROPS.join(','));
+      }
       if (filters.priceMin) params.set('priceMin', filters.priceMin);
       if (filters.priceMax) params.set('priceMax', filters.priceMax);
       if (filters.sort) {
