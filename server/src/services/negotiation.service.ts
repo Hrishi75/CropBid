@@ -294,9 +294,12 @@ async function runNegotiation(
         console.error(`Failed to create transaction for negotiated bid ${bid.id}:`, err);
       });
     } else {
-      // Lost the race — the listing was already sold elsewhere. Void the bid.
-      await prisma.bid.update({
-        where: { id: bid.id },
+      // Lost the race — the listing was already sold elsewhere. Void this bid,
+      // but ONLY if it's still PENDING. If a concurrent acceptBid happened to
+      // accept THIS very bid (and created its transaction), we must not clobber
+      // that winning ACCEPTED state back to REJECTED.
+      await prisma.bid.updateMany({
+        where: { id: bid.id, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
     }
