@@ -304,9 +304,12 @@ async function runNegotiation(
       });
     }
   } else {
-    // No deal — reject the bid
-    await prisma.bid.update({
-      where: { id: bid.id },
+    // No deal — reject the bid, but ONLY if it's still PENDING. A concurrent
+    // acceptBid could have accepted this bid while the AI rounds were running;
+    // an unconditional update would flip that winning bid back to REJECTED while
+    // the listing stays SOLD and its transaction exists.
+    await prisma.bid.updateMany({
+      where: { id: bid.id, status: 'PENDING' },
       data: { status: 'REJECTED' },
     });
   }
