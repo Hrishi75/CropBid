@@ -117,8 +117,9 @@ export function ListingDetail() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <SpecRow label="This lot · mid" value={<span className="cb-mono">{formatCurrency(priceMid, listing.currency)}</span>} />
               <SpecRow label="Mkt avg" value={<span className="cb-mono">{formatCurrency(priceMid * 0.985, listing.currency)}</span>} />
-              {msp != null && (
-                <SpecRow label="Govt MSP" value={<span className="cb-mono">{formatCurrency(msp, listing.currency)}</span>} />
+              {msp != null && listing.currency === 'INR' && (
+                // MSP is an India-only government price in ₹ — only meaningful for INR listings.
+                <SpecRow label="Govt MSP" value={<span className="cb-mono">{formatCurrency(msp, 'INR')}</span>} />
               )}
               <SpecRow label="Top quartile" value={<span className="cb-mono">{formatCurrency(priceMid * 1.05, listing.currency)}</span>} />
             </div>
