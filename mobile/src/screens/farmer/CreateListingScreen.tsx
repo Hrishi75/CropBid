@@ -154,7 +154,7 @@ export default function CreateListingScreen({ route, navigation }: Props) {
     // official support price. MSP is an India-only price in ₹, so only applies
     // to INR listings.
     const msp = mspForCrop(cropName, unit);
-    if (msp != null && currency === 'INR' && minN < msp) {
+    if (msp != null && currency.toUpperCase() === 'INR' && minN < msp) {
       Alert.alert(
         'Floor below government MSP',
         `The government MSP for ${cropName} is ${money(msp, currency)}/${unitLabel(unit)}. ` +

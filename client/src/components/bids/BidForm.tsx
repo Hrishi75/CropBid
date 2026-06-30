@@ -58,7 +58,7 @@ export function BidForm({ listing }: BidFormProps) {
     // official support price. MSP is an India-only price in ₹, so only applies
     // to INR listings.
     const msp = mspForCrop(listing.cropName, listing.unit);
-    if (msp != null && listing.currency === 'INR' && bidPrice < msp) {
+    if (msp != null && listing.currency.toUpperCase() === 'INR' && bidPrice < msp) {
       const proceed = window.confirm(
         `The government MSP for ${listing.cropName} is ${formatCurrency(msp, listing.currency)} per ${listing.unit.toLowerCase()}. ` +
           `Your bid of ${formatCurrency(bidPrice, listing.currency)} is below it.\n\nBid anyway?`,

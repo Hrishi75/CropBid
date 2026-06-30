@@ -98,7 +98,7 @@ export function CreateListing() {
     const msp = mspForCrop(cropName, unit);
     const floor = parseFloat(priceMin);
     const cur = user?.currency || 'INR';
-    if (msp != null && cur === 'INR' && floor < msp) {
+    if (msp != null && cur.toUpperCase() === 'INR' && floor < msp) {
       const proceed = window.confirm(
         `The government MSP for ${cropName} is ${formatCurrency(msp, cur)} per ${unit.toLowerCase()}. ` +
           `Your floor of ${formatCurrency(floor, cur)} is below it — you may sell under the support price.\n\nList anyway?`,
