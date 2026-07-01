@@ -8,7 +8,7 @@
 
 [![Live Demo](https://img.shields.io/badge/live-cropbid.in-2f6b3a?style=flat-square)](https://cropbid.in)
 &nbsp;
-![Stack](https://img.shields.io/badge/React_19-Express_5-Prisma_7-Postgres-444?style=flat-square)
+![X](https://x.com/CropBid)
 &nbsp;
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
