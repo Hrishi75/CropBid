@@ -121,6 +121,8 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 - **Analytics Dashboards** — Recharts visualizations for farmer, buyer, admin
 - **Admin Panel** — platform stats, user management, transaction oversight, refunds
 - **Audit Log** — tamper-evident record of sensitive actions (accept, refund, payment, admin edits)
+- **Native Mobile Apps** — Expo / React Native apps for buyers and farmers: browse, place bids, live auctions, escrow checkout, manage listings, incoming bids, and ship/confirm delivery
+- **MSP Price Floor (India)** — warns farmers and buyers when an INR listing is priced below the government Minimum Support Price for the ~23 mandated crops
 - **Dark Mode** + responsive mobile layout
 
 ---
@@ -130,6 +132,7 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 19, TypeScript, Tailwind CSS v4, Vite, Recharts |
+| Mobile | Expo 56, React Native 0.85, React 19, React Navigation 7, socket.io-client, expo-secure-store |
 | Backend | Express 5, TypeScript, Prisma 7 (driver adapter) |
 | Database | PostgreSQL 16 (Docker locally · Neon serverless in prod) |
 | Payments | Razorpay (capture-only) |
@@ -155,6 +158,7 @@ git clone https://github.com/Hrishi75/CropBid.git
 cd CropBid
 cd server && npm install
 cd ../client && npm install
+cd ../mobile && npm install    # optional — only if running the mobile apps
 cd ..
 ```
 
@@ -188,6 +192,20 @@ cd server && npm run dev
 cd client && npm run dev
 ```
 Open **http://localhost:5173**.
+
+### 6. (Optional) Run the mobile apps
+The buyer and farmer apps live in `mobile/` (Expo). By default they point at the
+hosted API; to target your local server, set `EXPO_PUBLIC_API_URL` first.
+```bash
+cd mobile
+# Point the app at your machine's LAN IP (not localhost — the phone can't reach that)
+EXPO_PUBLIC_API_URL=http://192.168.x.x:5000/api npm start
+```
+Scan the QR code with **Expo Go** (iOS/Android), or press `i` / `a` for a
+simulator. Leaving `EXPO_PUBLIC_API_URL` unset uses the deployed Render API.
+
+> **Note:** Expo 56 is a major version — read the versioned docs at
+> [docs.expo.dev/versions/v56.0.0](https://docs.expo.dev/versions/v56.0.0/) before changing mobile code.
 
 ### Test accounts (password `password123`)
 | Role | Email | Notes |
@@ -228,6 +246,7 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | POST | `/api/auth/refresh` | Rotate refresh token |
 | POST | `/api/auth/logout` | Clear refresh token |
 | GET | `/api/auth/me` | Current user profile |
+| PATCH | `/api/auth/me` | Edit account + farm details (farmer) — partial update |
 | POST | `/api/auth/onboarding/farmer` | Complete farmer profile |
 | POST | `/api/auth/onboarding/buyer` | Complete buyer profile |
 </details>
@@ -347,6 +366,17 @@ CropBid/
 │       ├── socket/         # Socket.io server
 │       ├── utils/          # ApiError, JWT, AI prompts
 │       └── lib/            # Prisma singleton
+│
+├── mobile/                 # Expo / React Native apps (buyer + farmer)
+│   ├── App.tsx             # root — providers + navigation
+│   ├── app.json            # Expo config
+│   └── src/
+│       ├── api/            # axios client, typed endpoints, shared types
+│       ├── components/     # UI kit, icons, Razorpay checkout
+│       ├── context/        # AuthContext (in-memory access + secure-store refresh)
+│       ├── lib/            # crops, MSP floor, price formatting, socket
+│       ├── navigation/     # RootNavigator + buyer/farmer tab bars
+│       └── screens/        # buyer/ farmer/ + shared auth & onboarding
 │
 ├── render.yaml             # Render blueprint (API)
 ├── docker-compose.yml      # PostgreSQL 16 Alpine
