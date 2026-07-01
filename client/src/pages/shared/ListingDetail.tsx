@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
+import { mspForCrop } from '../../utils/msp';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -59,6 +60,7 @@ export function ListingDetail() {
   if (!listing) return null;
 
   const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
+  const msp = mspForCrop(listing.cropName, listing.unit);
 
   return (
     <DashboardLayout>
@@ -115,7 +117,10 @@ export function ListingDetail() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <SpecRow label="This lot · mid" value={<span className="cb-mono">{formatCurrency(priceMid, listing.currency)}</span>} />
               <SpecRow label="Mkt avg" value={<span className="cb-mono">{formatCurrency(priceMid * 0.985, listing.currency)}</span>} />
-              <SpecRow label="MSP" value={<span className="cb-mono">{formatCurrency(priceMid * 0.95, listing.currency)}</span>} />
+              {msp != null && listing.currency === 'INR' && (
+                // MSP is an India-only government price in ₹ — only meaningful for INR listings.
+                <SpecRow label="Govt MSP" value={<span className="cb-mono">{formatCurrency(msp, 'INR')}</span>} />
+              )}
               <SpecRow label="Top quartile" value={<span className="cb-mono">{formatCurrency(priceMid * 1.05, listing.currency)}</span>} />
             </div>
             <div style={{ marginTop: 12 }}>

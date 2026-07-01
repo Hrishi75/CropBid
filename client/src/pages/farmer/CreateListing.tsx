@@ -93,11 +93,12 @@ export function CreateListing() {
       return;
     }
     // Government MSP guard — warn (but don't block) when the floor is below the
-    // official support price for this crop.
+    // official support price. MSP is an India-only price in ₹, so only applies
+    // to INR listings.
     const msp = mspForCrop(cropName, unit);
     const floor = parseFloat(priceMin);
     const cur = user?.currency || 'INR';
-    if (msp != null && floor < msp) {
+    if (msp != null && cur.toUpperCase() === 'INR' && floor < msp) {
       const proceed = window.confirm(
         `The government MSP for ${cropName} is ${formatCurrency(msp, cur)} per ${unit.toLowerCase()}. ` +
           `Your floor of ${formatCurrency(floor, cur)} is below it — you may sell under the support price.\n\nList anyway?`,

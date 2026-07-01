@@ -185,11 +185,14 @@ const STATIC_STATS: Omit<LandingStats, 'marketplace'> = {
   },
 };
 
+// Marketplace snapshot — real Indian crops, ₹/quintal, with floors anchored at
+// or above the 2025-26 government MSP (see utils/msp.ts). Prices reflect actual
+// mandi bands so the figures are credible to growers and investors alike.
 const STATIC_MARKET: MarketRow[] = [
-  { id: 'f1', crop: 'HRW Wheat',   variety: '12.5% protein · FOB Gulf', grade: 'A', organic: false, location: 'Kansas City', state: 'Kansas',     country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 260, pricePerUnitMax: 272, quantity: 5000, bidCount: 8,  trustScore: 86, farmerName: 'Hartmann Farms',  tone: 'pos', deltaPct: 0.8,  spark: SPARK_POS },
-  { id: 'f2', crop: 'Yellow Corn', variety: 'US #2 · CIF',        grade: 'B', organic: false, location: 'Des Moines',  state: 'Iowa',       country: 'USA',    unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 185, pricePerUnitMax: 196, quantity: 12000, bidCount: 11, trustScore: 92, farmerName: 'John Miller',     tone: 'neg', deltaPct: -0.4, spark: SPARK_NEG },
-  { id: 'f3', crop: 'Soybeans',    variety: 'GMO-free · FOB Santos', grade: 'A', organic: false, location: 'São Paulo',   state: 'São Paulo',  country: 'Brazil', unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 420, pricePerUnitMax: 432, quantity: 3500,  bidCount: 6,  trustScore: 78, farmerName: 'Carlos Silva',    tone: 'pos', deltaPct: 1.2,  spark: SPARK_POS },
-  { id: 'f4', crop: 'Arabica',     variety: 'SCA 85+ specialty', grade: 'A', organic: true,  location: 'Nairobi',     state: 'Central',    country: 'Kenya',  unit: 'TONNE',   currency: 'USD', pricePerUnitMin: 7850, pricePerUnitMax: 8150, quantity: 240,  bidCount: 9,  trustScore: 88, farmerName: 'James Mwangi',    tone: 'pos', deltaPct: 2.1,  spark: SPARK_POS },
+  { id: 'f1', crop: 'Wheat',     variety: 'Sharbati',   grade: 'A', organic: false, location: 'Sehore',  state: 'Madhya Pradesh', country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 2480, pricePerUnitMax: 2760, quantity: 320, bidCount: 9,  trustScore: 88, farmerName: 'Rajesh Patidar', tone: 'pos', deltaPct: 0.9,  spark: SPARK_POS },
+  { id: 'f2', crop: 'Cotton',    variety: 'Shankar-6',  grade: 'A', organic: false, location: 'Rajkot',  state: 'Gujarat',        country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 7800, pricePerUnitMax: 8350, quantity: 140, bidCount: 12, trustScore: 84, farmerName: 'Patel Agro FPO', tone: 'neg', deltaPct: -0.5, spark: SPARK_NEG },
+  { id: 'f3', crop: 'Soybean',   variety: 'JS-335',     grade: 'A', organic: false, location: 'Latur',   state: 'Maharashtra',    country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 5420, pricePerUnitMax: 5880, quantity: 260, bidCount: 7,  trustScore: 90, farmerName: 'Sahyadri FPO',   tone: 'pos', deltaPct: 1.3,  spark: SPARK_POS },
+  { id: 'f4', crop: 'Chana Dal', variety: 'Desi gram',  grade: 'A', organic: true,  location: 'Kota',    state: 'Rajasthan',      country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 5720, pricePerUnitMax: 6180, quantity: 180, bidCount: 6,  trustScore: 86, farmerName: 'Meena Lal',      tone: 'pos', deltaPct: 0.7,  spark: SPARK_POS },
 ];
 
 // =============================================================================
