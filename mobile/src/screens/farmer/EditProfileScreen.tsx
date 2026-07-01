@@ -57,7 +57,9 @@ export default function EditProfileScreen() {
 
   function validate(): string | null {
     if (name.trim().length < 2) return 'Enter your name';
-    const size = parseFloat(farmSize);
+    // Number() (not parseFloat) so partially-numeric input like "1.5.2" or
+    // "1abc" becomes NaN and is rejected here rather than silently truncated.
+    const size = Number(farmSize.trim());
     if (!Number.isFinite(size) || size <= 0) return 'Enter a valid farm size';
     if (!state.trim()) return 'Enter your state / region';
     if (crops.length === 0) return 'Pick at least one crop';
@@ -77,7 +79,7 @@ export default function EditProfileScreen() {
         name: name.trim(),
         phone: phone.trim() || null,
         location: location.trim() || null,
-        farmSizeAcres: parseFloat(farmSize),
+        farmSizeAcres: Number(farmSize.trim()),
         cropsGrown: crops,
         state: state.trim(),
       });
