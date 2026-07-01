@@ -53,6 +53,22 @@ export async function fetchMe(): Promise<User> {
   return data.user;
 }
 
+// Farmer edits their account + farm details. Every field is optional; only the
+// keys sent are updated server-side. Returns the same shape as fetchMe().
+export interface UpdateFarmerProfileInput {
+  name?: string;
+  phone?: string | null;
+  location?: string | null;
+  farmSizeAcres?: number;
+  cropsGrown?: string[];
+  state?: string;
+}
+
+export async function updateFarmerProfile(input: UpdateFarmerProfileInput): Promise<User> {
+  const { data } = await api.patch<{ user: User }>('/auth/me', input);
+  return data.user;
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post('/auth/logout');

@@ -24,6 +24,7 @@ import FarmerHomeScreen from '../screens/farmer/HomeScreen';
 import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
+import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import type { AuthStackParamList, BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
@@ -89,6 +90,11 @@ function FarmerNavigator() {
     <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
       <FarmerStack.Screen name="CreateListing" component={CreateListingScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <FarmerStack.Screen
+        name="EditProfile"
+        component={EditProfileScreen}
+        options={{ headerShown: true, title: 'Edit profile', presentation: 'card', animation: 'slide_from_right' }}
+      />
       <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen
         name="Notifications"

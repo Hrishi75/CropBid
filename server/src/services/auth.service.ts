@@ -262,6 +262,63 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
   return profile;
 }
 
+// ---------------------------------------------------------------------------
+// Update Farmer Profile — edit account + farm details after onboarding
+// ---------------------------------------------------------------------------
+// Unlike onboarding (which CREATES the profile once), this patches the fields a
+// farmer can change later: their contact info on the User row and the farm
+// details on the FarmerProfile row. Every field is optional — only the keys the
+// client sends are written, so a partial form never clears untouched columns.
+interface UpdateFarmerProfileInput {
+  name?: string;
+  phone?: string | null;
+  location?: string | null;
+  farmSizeAcres?: number;
+  cropsGrown?: string[];
+  state?: string;
+}
+
+export async function updateFarmerProfile(userId: string, input: UpdateFarmerProfileInput) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { farmerProfile: true },
+  });
+
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+  if (user.role !== 'FARMER') {
+    throw new ApiError(403, 'Only farmers can update a farmer profile');
+  }
+  if (!user.farmerProfile) {
+    throw new ApiError(400, 'Complete your farmer profile before editing it');
+  }
+
+  // Split the payload across the two tables, keeping only the keys present.
+  const userData: { name?: string; phone?: string | null; location?: string | null } = {};
+  if (input.name !== undefined) userData.name = input.name;
+  if (input.phone !== undefined) userData.phone = input.phone;
+  if (input.location !== undefined) userData.location = input.location;
+
+  const profileData: { farmSizeAcres?: number; cropsGrown?: string[]; state?: string } = {};
+  if (input.farmSizeAcres !== undefined) profileData.farmSizeAcres = input.farmSizeAcres;
+  if (input.cropsGrown !== undefined) profileData.cropsGrown = input.cropsGrown;
+  if (input.state !== undefined) profileData.state = input.state;
+
+  // One transaction so the two rows never drift if the second write fails.
+  await prisma.$transaction([
+    ...(Object.keys(userData).length
+      ? [prisma.user.update({ where: { id: userId }, data: userData })]
+      : []),
+    ...(Object.keys(profileData).length
+      ? [prisma.farmerProfile.update({ where: { userId }, data: profileData })]
+      : []),
+  ]);
+
+  // Return the same shape as GET /me so the client can swap its user in place.
+  return getCurrentUser(userId);
+}
+
 export async function completeBuyerOnboarding(userId: string, input: BuyerOnboardingInput) {
   const existing = await prisma.buyerProfile.findUnique({
     where: { userId },

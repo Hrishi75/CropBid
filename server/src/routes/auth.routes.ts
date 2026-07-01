@@ -22,6 +22,7 @@ import {
   refreshHandler,
   logoutHandler,
   getMeHandler,
+  updateProfileHandler,
   farmerOnboardingHandler,
   buyerOnboardingHandler,
 } from '../controllers/auth.controller';
@@ -36,6 +37,7 @@ router.post('/refresh', refreshHandler);
 // Protected routes (must be logged in)
 router.post('/logout', authenticate, logoutHandler);
 router.get('/me', authenticate, getMeHandler);
+router.patch('/me', authenticate, requireRole('FARMER'), updateProfileHandler);
 
 // Onboarding (must be logged in + correct role)
 router.post('/onboarding/farmer', authenticate, requireRole('FARMER'), farmerOnboardingHandler);
