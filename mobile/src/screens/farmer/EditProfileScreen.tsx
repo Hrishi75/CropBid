@@ -57,10 +57,12 @@ export default function EditProfileScreen() {
 
   function validate(): string | null {
     if (name.trim().length < 2) return 'Enter your name';
-    // Number() (not parseFloat) so partially-numeric input like "1.5.2" or
-    // "1abc" becomes NaN and is rejected here rather than silently truncated.
-    const size = Number(farmSize.trim());
-    if (!Number.isFinite(size) || size <= 0) return 'Enter a valid farm size';
+    // Reject anything that isn't a plain decimal before converting — Number()
+    // would otherwise silently transform pasted values like "1e3" -> 1000,
+    // "0x10" -> 16, or truncate "1.5.2"/"1abc".
+    const normalizedFarmSize = farmSize.trim();
+    if (!/^\d+(?:\.\d+)?$/.test(normalizedFarmSize)) return 'Enter a valid farm size';
+    if (Number(normalizedFarmSize) <= 0) return 'Enter a valid farm size';
     if (!state.trim()) return 'Enter your state / region';
     if (crops.length === 0) return 'Pick at least one crop';
     return null;
