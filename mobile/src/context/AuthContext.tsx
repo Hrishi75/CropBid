@@ -33,6 +33,7 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (input: SignupInput) => Promise<void>;
   refreshUser: () => Promise<void>; // re-pull /auth/me (e.g. after onboarding)
+  applyUser: (user: User) => void; // swap in a fresh user (e.g. after editing the profile)
   signOut: () => Promise<void>;
 }
 
@@ -83,13 +84,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(await fetchMe());
   }, []);
 
+  // Endpoints that already return the updated user (e.g. PATCH /auth/me) can
+  // hand it straight to state without a second /auth/me round-trip.
+  const applyUser = useCallback((next: User) => setUser(next), []);
+
   const signOut = useCallback(async () => {
     await apiLogout();
     setUser(null);
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, applyUser, signOut }}>
       {children}
     </AuthContext.Provider>
   );

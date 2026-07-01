@@ -48,6 +48,7 @@ export type FarmerTabParamList = {
 export type FarmerStackParamList = {
   FarmerTabs: undefined;
   CreateListing: { id?: string } | undefined;
+  EditProfile: undefined;
   Contracts: undefined;
   Notifications: undefined;
 };

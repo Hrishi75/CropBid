@@ -13,10 +13,16 @@ export interface User {
   email: string;
   role: Role;
   phone: string | null;
+  location?: string | null;
   country: string;
   currency: string;
   trustScore: number;
-  farmerProfile?: { state?: string; cropsGrown?: string[] } | null;
+  farmerProfile?: {
+    farmSizeAcres?: number;
+    state?: string;
+    cropsGrown?: string[];
+    organicCertified?: boolean;
+  } | null;
   buyerProfile?: { companyName?: string; companyType?: string } | null;
 }
 

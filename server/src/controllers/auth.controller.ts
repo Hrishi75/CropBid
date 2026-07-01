@@ -33,6 +33,17 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+// PATCH /api/auth/me — a farmer editing their own account + farm details.
+// Every field is optional; the service writes only the keys that are present.
+const updateFarmerProfileSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
+  phone: z.string().max(20).nullable().optional(),
+  location: z.string().max(120).nullable().optional(),
+  farmSizeAcres: z.number().positive('Farm size must be greater than zero').optional(),
+  cropsGrown: z.array(z.string().min(1)).min(1, 'Pick at least one crop').optional(),
+  state: z.string().min(1, 'Enter your state / region').max(60).optional(),
+});
+
 // Cookie options for the refresh token
 // WHY THESE OPTIONS?
 //   httpOnly: true   → JavaScript cannot access it (prevents XSS theft)
@@ -184,6 +195,23 @@ export async function logoutHandler(req: Request, res: Response) {
 // Returns the current user's profile (requires authentication)
 export async function getMeHandler(req: Request, res: Response) {
   const user = await authService.getCurrentUser(req.user!.userId);
+  res.json({ user });
+}
+
+// ---------------------------------------------------------------------------
+// PATCH /api/auth/me
+// ---------------------------------------------------------------------------
+// Farmer edits their account + farm details after onboarding. Returns the same
+// { user } shape as GET /me so the client can drop it straight into state.
+export async function updateProfileHandler(req: Request, res: Response) {
+  const parsed = updateFarmerProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  const user = await authService.updateFarmerProfile(req.user!.userId, parsed.data);
   res.json({ user });
 }
 
