@@ -122,7 +122,7 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 - **Admin Panel** — platform stats, user management, transaction oversight, refunds
 - **Audit Log** — tamper-evident record of sensitive actions (accept, refund, payment, admin edits)
 - **Native Mobile Apps** — Expo / React Native apps for buyers and farmers: browse, place bids, live auctions, escrow checkout, manage listings, incoming bids, and ship/confirm delivery
-- **MSP Price Floor (India)** — warns farmers and buyers when an INR listing is priced below the government Minimum Support Price for the ~23 mandated crops
+- **MSP Price Floor (India)** — warns farmers and buyers when an INR listing is priced below the government Minimum Support Price, for catalogue crops that carry an official MSP (~11 of the ~23 nationally mandated crops)
 - **Dark Mode** + responsive mobile layout
 
 ---
@@ -246,7 +246,7 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | POST | `/api/auth/refresh` | Rotate refresh token |
 | POST | `/api/auth/logout` | Clear refresh token |
 | GET | `/api/auth/me` | Current user profile |
-| PATCH | `/api/auth/me` | Edit account + farm details (farmer) — partial update |
+| PATCH | `/api/auth/me` | Edit account + farm details — **farmer only** (partial update) |
 | POST | `/api/auth/onboarding/farmer` | Complete farmer profile |
 | POST | `/api/auth/onboarding/buyer` | Complete buyer profile |
 </details>
