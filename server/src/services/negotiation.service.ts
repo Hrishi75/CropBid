@@ -256,8 +256,11 @@ async function runNegotiation(
   // Notify both sides of the outcome (best-effort — the DB has the record).
   // Uses the freshly-included `updated` shape so the user ids are the FARMER's
   // and BUYER's User.id (not the FarmerProfile id) that the socket rooms key on.
-  const buyerUserId = updated.bid?.buyer?.id;
-  const farmerUserId = updated.listing?.farmer?.user?.id;
+  // `listing` and `bid` are required relations on Negotiation, so the include
+  // above always populates them — access them directly (matching the `args`
+  // line below) rather than optional-chaining a value that can't be null.
+  const buyerUserId = updated.bid.buyer.id;
+  const farmerUserId = updated.listing.farmer.user.id;
   const notifyBoth = (result: 'DEAL' | 'NO_DEAL', price: number | null) => {
     const args = [updated.listing.cropName, result, price, updated.bid.currency, updated.listing.unit, negotiationId] as const;
     if (buyerUserId) notifyNegotiationResult(buyerUserId, ...args).catch(() => {});
