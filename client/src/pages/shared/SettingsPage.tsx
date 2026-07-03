@@ -142,11 +142,11 @@ export function SettingsPage() {
 
       <form onSubmit={handleSaveProfile} style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 28 }}>
         <Section title="Account" hint="How you appear across listings, bids and negotiations.">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--cb-line)' }}>
-            <span style={{ fontSize: 14, fontWeight: 500 }}>{user?.email}</span>
-            <span className="cb-tiny" style={{ marginLeft: 'auto' }}>email · locked</span>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--cb-line)' }}>
+            <span style={{ fontSize: 14, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{user?.email}</span>
+            <span className="cb-tiny" style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}>email · locked</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="cb-form-grid-2">
             <Input
               label="Full name"
               placeholder="Your name"
@@ -171,7 +171,7 @@ export function SettingsPage() {
 
         {isFarmer && user?.farmerProfile && (
           <Section title="Farm" hint="Your agent uses these to match buyers and set price anchors.">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="cb-form-grid-2">
               <Input
                 label="Farm size (acres)"
                 type="number"
@@ -251,7 +251,7 @@ export function SettingsPage() {
                 ))}
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="cb-form-grid-2">
               <Input
                 label={user?.country === 'India' ? 'GST number' : 'Tax ID'}
                 placeholder={user?.country === 'India' ? 'e.g., 27AABCA1234A1ZA' : 'Tax identification number'}
@@ -285,7 +285,7 @@ export function SettingsPage() {
             onChange={(e) => setCurrentPassword(e.target.value)}
             autoComplete="current-password"
           />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="cb-form-grid-2">
             <Input
               label="New password"
               type="password"

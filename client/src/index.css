@@ -943,6 +943,9 @@ body * {
 
 /* Pill toggle group */
 .cb-app .cb-pill-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* Two-column form field grid — collapses to a single column on phones */
+.cb-app .cb-form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .cb-app .cb-pill {
   padding: 6px 12px; border-radius: 999px; border: 1px solid var(--cb-line);
   background: transparent; color: var(--cb-ink-2); cursor: pointer;
@@ -1171,6 +1174,7 @@ body * {
   .cb-page-title { font-size: 26px; }
   .cb-page { padding: 16px 12px 40px; }
   .cb-kpi-strip { grid-template-columns: 1fr; }
+  .cb-app .cb-form-grid-2 { grid-template-columns: 1fr; }
 }
 
 /* =============================================================================
