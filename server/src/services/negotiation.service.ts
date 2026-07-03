@@ -27,6 +27,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getAgentDecision, checkAutoAccept } from './aiAgent';
 import { createTransaction } from './transaction.service';
+import { notifyNegotiationResult } from './notification.helpers';
 import type { NegotiationContext } from '../utils/prompts';
 
 const MAX_ROUNDS = 6; // Max back-and-forth rounds
@@ -252,6 +253,20 @@ async function runNegotiation(
     },
   });
 
+  // Notify both sides of the outcome (best-effort — the DB has the record).
+  // Uses the freshly-included `updated` shape so the user ids are the FARMER's
+  // and BUYER's User.id (not the FarmerProfile id) that the socket rooms key on.
+  // `listing` and `bid` are required relations on Negotiation, so the include
+  // above always populates them — access them directly (matching the `args`
+  // line below) rather than optional-chaining a value that can't be null.
+  const buyerUserId = updated.bid.buyer.id;
+  const farmerUserId = updated.listing.farmer.user.id;
+  const notifyBoth = (result: 'DEAL' | 'NO_DEAL', price: number | null) => {
+    const args = [updated.listing.cropName, result, price, updated.bid.currency, updated.listing.unit, negotiationId] as const;
+    if (buyerUserId) notifyNegotiationResult(buyerUserId, ...args).catch(() => {});
+    if (farmerUserId) notifyNegotiationResult(farmerUserId, ...args).catch(() => {});
+  };
+
   // If deal was reached, accept the bid and mark listing as sold
   if (outcome === 'DEAL') {
     // Conditionally claim the listing (status must still be sellable) so a
@@ -293,6 +308,7 @@ async function runNegotiation(
       createTransaction(bid.id).catch((err) => {
         console.error(`Failed to create transaction for negotiated bid ${bid.id}:`, err);
       });
+      notifyBoth('DEAL', currentPrice);
     } else {
       // Lost the race — the listing was already sold elsewhere. Void this bid,
       // but ONLY if it's still PENDING. If a concurrent acceptBid happened to
@@ -302,6 +318,9 @@ async function runNegotiation(
         where: { id: bid.id, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
+      // For these parties the agent didn't close a deal — the listing sold
+      // elsewhere. Tell them it's a no-deal rather than a misleading "deal".
+      notifyBoth('NO_DEAL', null);
     }
   } else {
     // No deal — reject the bid, but ONLY if it's still PENDING. A concurrent
@@ -312,6 +331,7 @@ async function runNegotiation(
       where: { id: bid.id, status: 'PENDING' },
       data: { status: 'REJECTED' },
     });
+    notifyBoth('NO_DEAL', null);
   }
 
   return updated;
