@@ -63,5 +63,8 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Test (vitest)
+        run: npm test
+
       - name: Build (tsc)
         run: npm run build

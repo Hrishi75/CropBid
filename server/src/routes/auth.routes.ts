@@ -23,6 +23,9 @@ import {
   logoutHandler,
   getMeHandler,
   updateProfileHandler,
+  forgotPasswordHandler,
+  resetPasswordHandler,
+  changePasswordHandler,
   farmerOnboardingHandler,
   buyerOnboardingHandler,
 } from '../controllers/auth.controller';
@@ -34,10 +37,17 @@ router.post('/signup', signupHandler);
 router.post('/login', loginHandler);
 router.post('/refresh', refreshHandler);
 
+// Password recovery (public — the emailed token IS the credential).
+// Covered by the strict authLimiter mounted on /api/auth in app.ts.
+router.post('/forgot-password', forgotPasswordHandler);
+router.post('/reset-password', resetPasswordHandler);
+
 // Protected routes (must be logged in)
 router.post('/logout', authenticate, logoutHandler);
 router.get('/me', authenticate, getMeHandler);
-router.patch('/me', authenticate, requireRole('FARMER'), updateProfileHandler);
+// PATCH /me is role-aware inside the controller (farmer / buyer / admin)
+router.patch('/me', authenticate, updateProfileHandler);
+router.post('/change-password', authenticate, changePasswordHandler);
 
 // Onboarding (must be logged in + correct role)
 router.post('/onboarding/farmer', authenticate, requireRole('FARMER'), farmerOnboardingHandler);

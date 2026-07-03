@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "nodemon",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -27,6 +29,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "nodemailer": "^9.0.3",
     "pg": "^8.20.0",
     "razorpay": "^2.9.6",
     "sharp": "^0.34.5",
@@ -41,11 +44,13 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.5.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.18.0",
     "@types/sharp": "^0.31.1",
     "nodemon": "^3.1.14",
     "prisma": "^7.5.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
   }
 }

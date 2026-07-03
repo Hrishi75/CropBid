@@ -92,15 +92,26 @@ export function LoginPage() {
                 required
                 autoComplete="email"
               />
-              <Input
-                label="Password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
+              <div>
+                <Input
+                  label="Password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                <div style={{ textAlign: 'right', marginTop: 6 }}>
+                  <Link
+                    to="/forgot-password"
+                    className="cb-small"
+                    style={{ color: 'var(--cb-ember)', fontWeight: 500, textDecoration: 'none' }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              </div>
               <Button
                 type="submit"
                 size="lg"

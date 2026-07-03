@@ -48,6 +48,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
       title: 'Settings',
       items: [
         { label: 'Agent', path: '/agent' },
+        { label: 'Account', path: '/settings' },
       ],
     },
   ];
@@ -69,6 +70,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
       title: 'Settings',
       items: [
         { label: 'Agent', path: '/agent' },
+        { label: 'Account', path: '/settings' },
       ],
     },
   ];
@@ -83,6 +85,12 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
         { label: 'Transactions', path: '/admin/transactions' },
         { label: 'Logistics', path: '/admin/logistics' },
         { label: 'Analytics', path: '/admin/analytics' },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        { label: 'Account', path: '/settings' },
       ],
     },
   ];

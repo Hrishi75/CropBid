@@ -54,8 +54,19 @@ export const config = {
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
   },
 
-  // Client URL (for CORS)
+  // Client URL (for CORS + links inside transactional emails)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
+
+  // SMTP (transactional email — password resets etc.).
+  // Leave SMTP_HOST unset in development: emails are printed to the server
+  // console instead of sent, so the flow is fully testable without a provider.
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.EMAIL_FROM || 'CropBid <no-reply@cropbid.in>',
+  },
 
   // Defaults
   defaultCurrency: process.env.DEFAULT_CURRENCY || 'INR',

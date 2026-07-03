@@ -19,6 +19,8 @@ import { ProtectedRoute } from './ProtectedRoute';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { SignupPage } from '../pages/auth/SignupPage';
 import { OnboardingPage } from '../pages/auth/OnboardingPage';
+import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 
 // Dashboard pages (protected)
 import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
@@ -50,6 +52,7 @@ import { BookTransport } from '../pages/shared/BookTransport';
 import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
 import { LandingPage } from '../pages/LandingPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
+import { SettingsPage } from '../pages/shared/SettingsPage';
 
 /**
  * WHY a separate RootRedirect component?
@@ -98,6 +101,8 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Farmer routes */}
       <Route
@@ -202,6 +207,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
             <AgentConfigPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <SettingsPage />
           </ProtectedRoute>
         }
       />

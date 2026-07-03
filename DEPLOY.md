@@ -42,6 +42,14 @@ Production demo stack — all free tier:
    | `GEMINI_API_KEY` | Gemini key (or leave blank) |
    | `CLIENT_URL` | leave as a placeholder for now (set in step 3) |
    | `RUN_SEED` | **`true`** for this first deploy only |
+   | `SMTP_HOST` | SMTP server for transactional email, e.g. `smtp.resend.com` (blank = emails print to server logs) |
+   | `SMTP_PORT` | usually `587` (or `465` for implicit TLS) |
+   | `SMTP_USER` / `SMTP_PASS` | SMTP credentials from your email provider |
+   | `EMAIL_FROM` | e.g. `CropBid <no-reply@cropbid.in>` |
+
+   > **Email:** password-reset links are emailed via SMTP. Any provider works
+   > (Resend, Brevo, SES, Gmail app-password). With `SMTP_HOST` unset the app
+   > still runs — reset emails are printed to the Render logs instead of sent.
 
 3. Deploy. The build runs: install → `prisma generate` → `prisma migrate deploy`
    → seed (because `RUN_SEED=true`) → `tsc`.
