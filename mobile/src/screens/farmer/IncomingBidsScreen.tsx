@@ -24,10 +24,10 @@ import { money, timeAgo, unitLabel } from '../../lib/format';
 
 const TABS: { value: '' | BidStatus; label: string }[] = [
   { value: '', label: 'All' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'COUNTERED', label: 'Countered' },
+  { value: 'PENDING', label: 'New' },
+  { value: 'COUNTERED', label: 'You replied' },
   { value: 'ACCEPTED', label: 'Accepted' },
-  { value: 'REJECTED', label: 'Rejected' },
+  { value: 'REJECTED', label: 'Declined' },
 ];
 
 const STATUS_TONE: Record<string, 'sage' | 'ember' | 'paper'> = {
@@ -36,6 +36,16 @@ const STATUS_TONE: Record<string, 'sage' | 'ember' | 'paper'> = {
   ACCEPTED: 'sage',
   REJECTED: 'paper',
   EXPIRED: 'paper',
+};
+
+// Plain words for each status — "pending"/"countered"/"rejected" read like
+// paperwork to a farmer; these say what actually happened.
+const STATUS_WORD: Record<string, string> = {
+  PENDING: 'new offer',
+  COUNTERED: 'you replied',
+  ACCEPTED: 'accepted',
+  REJECTED: 'declined',
+  EXPIRED: 'expired',
 };
 
 export default function IncomingBidsScreen() {
@@ -87,9 +97,9 @@ export default function IncomingBidsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
         <View style={styles.headerPad}>
-          <Eyebrow>Bids · incoming</Eyebrow>
+          <Eyebrow>Offers from buyers</Eyebrow>
           <Text style={styles.h1}>
-            {pending} {pending === 1 ? 'buyer wants' : 'buyers want'} <Text style={styles.h1Serif}>your call.</Text>
+            {pending} {pending === 1 ? 'offer waits' : 'offers wait'} <Text style={styles.h1Serif}>for your reply.</Text>
           </Text>
         </View>
 
@@ -115,7 +125,7 @@ export default function IncomingBidsScreen() {
           <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                {filter ? 'No bids in this state.' : 'No bids yet. Once buyers bid on your listings, they show up here.'}
+                {filter ? 'Nothing here right now.' : 'No offers yet. When a buyer makes an offer on your crops, it will show here.'}
               </Text>
             </View>
           </View>
@@ -178,7 +188,7 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
             {bid.listing?.cropName ?? 'Listing'}{bid.listing?.cropVariety ? ` · ${bid.listing.cropVariety}` : ''}
           </Text>
         </View>
-        <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{bid.status.toLowerCase()}</StatusPill>
+        <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{STATUS_WORD[bid.status] ?? bid.status.toLowerCase()}</StatusPill>
       </View>
 
       <Text style={styles.sub}>
@@ -187,9 +197,9 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
       </Text>
 
       <View style={styles.figs}>
-        <Fig label="BID" value={`${money(bid.bidPricePerUnit, currency)}/${unit}`} />
-        {bid.counterPrice != null ? <Fig label="COUNTER" value={`${money(bid.counterPrice, currency)}/${unit}`} hot /> : null}
-        <Fig label="TOTAL" value={money(bid.totalAmount, currency)} />
+        <Fig label="THEIR PRICE" value={`${money(bid.bidPricePerUnit, currency)}/${unit}`} />
+        {bid.counterPrice != null ? <Fig label="YOUR PRICE" value={`${money(bid.counterPrice, currency)}/${unit}`} hot /> : null}
+        <Fig label="TOTAL MONEY" value={money(bid.totalAmount, currency)} />
       </View>
 
       {bid.message ? <Text style={styles.message}>“{bid.message}”</Text> : null}
@@ -209,16 +219,20 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
               )}
             </Pressable>
             <Pressable style={styles.btnGhost} onPress={() => setShowCounter((s) => !s)} disabled={!!busy}>
-              <Text style={styles.btnGhostText}>Counter</Text>
+              <Text style={styles.btnGhostText}>Ask my price</Text>
             </Pressable>
             <Pressable style={styles.btnLink} onPress={() => act('reject')} disabled={!!busy}>
               {busy === 'reject' ? (
                 <ActivityIndicator size="small" color={colors.ember} />
               ) : (
-                <Text style={styles.btnLinkText}>Reject</Text>
+                <Text style={styles.btnLinkText}>Decline</Text>
               )}
             </Pressable>
           </View>
+          <Text style={styles.explain}>
+            If you accept, the deal is fixed. The buyer pays first — the money is kept safe and
+            comes to you after the crop is delivered.
+          </Text>
 
           {showCounter ? (
             <View style={styles.counterRow}>
@@ -227,7 +241,7 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
                 value={counter}
                 onChangeText={setCounter}
                 keyboardType="numeric"
-                placeholder={`Counter price /${unit}`}
+                placeholder={`Your price per ${unit}`}
                 placeholderTextColor={design.ink3}
               />
               <Pressable
@@ -241,7 +255,9 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
           ) : null}
         </>
       ) : bid.status === 'COUNTERED' ? (
-        <Mono style={styles.waiting}>Countered — waiting on the buyer.</Mono>
+        <Mono style={styles.waiting}>
+          You asked for {bid.counterPrice != null ? `${money(bid.counterPrice, currency)}/${unit}` : 'a different price'} — waiting for the buyer's reply.
+        </Mono>
       ) : null}
     </View>
   );
@@ -284,6 +300,7 @@ const styles = StyleSheet.create({
   figVal: { fontFamily: font.monoSemi, fontSize: 15, color: design.ink, marginTop: 2 },
 
   message: { fontFamily: font.sans, fontStyle: 'italic', fontSize: 13, color: design.ink2, marginTop: 12, padding: 10, backgroundColor: design.paper2, borderRadius: 8 },
+  explain: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3, marginTop: 10 },
 
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
   btnAccept: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: colors.forest },

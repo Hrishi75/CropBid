@@ -196,8 +196,8 @@ export default function BriefScreen() {
         <>
           Sell{' '}
           <Text style={styles.b}>{crops.length > 0 ? crops.join(', ') : 'my crops'}</Text>
-          {' '}from my farm. Don't accept below <Text style={styles.b}>{money(priceGuard, currency)}</Text> per unit.
-          {autoAccept != null ? <> Auto-accept anything at or above <Text style={styles.b}>{money(autoAccept, currency)}</Text>.</> : null}
+          {' '}from my farm. Never accept below <Text style={styles.b}>{money(priceGuard, currency)}</Text> per unit.
+          {autoAccept != null ? <> Say yes at once at or above <Text style={styles.b}>{money(autoAccept, currency)}</Text>.</> : null}
         </>
       )
       : (
@@ -209,7 +209,7 @@ export default function BriefScreen() {
         </>
       )
     : isFarmer
-      ? <>No floor price set yet. Tap <Text style={styles.b}>Calibrate</Text> to set the walk-away point your agent will defend.</>
+      ? <>No lowest price set yet. Tap <Text style={styles.b}>change</Text> and set the lowest price you'll accept — your helper will never go below it.</>
       : <>No price ceiling set yet. Tap <Text style={styles.b}>Calibrate</Text> to set the walk-away point your agent will defend.</>;
 
   const cropOptions = [...CROPS, ...editCrops.filter((c) => !CROPS.includes(c))];
@@ -226,17 +226,21 @@ export default function BriefScreen() {
       >
         <View style={styles.titlePad}>
           <View style={styles.titleRow}>
-            <Eyebrow>{isFarmer ? 'Your farmer agent' : 'Your buyer agent'}</Eyebrow>
+            <Eyebrow>{isFarmer ? 'Your AI helper' : 'Your buyer agent'}</Eyebrow>
             {config ? (
               <StatusPill tone={config.active ? 'sage' : 'paper'} dot={config.active}>
-                {config.active ? 'deployed' : 'paused'}
+                {config.active ? (isFarmer ? 'working' : 'deployed') : 'paused'}
               </StatusPill>
             ) : null}
           </View>
           <Text style={styles.h1}>
             {editing
-              ? <>Calibrate your <Text style={styles.h1Serif}>agent.</Text></>
-              : <>Briefed in <Text style={styles.h1Serif}>plain English.</Text></>}
+              ? isFarmer
+                ? <>Set your helper's <Text style={styles.h1Serif}>rules.</Text></>
+                : <>Calibrate your <Text style={styles.h1Serif}>agent.</Text></>
+              : isFarmer
+                ? <>Sells for you, <Text style={styles.h1Serif}>day and night.</Text></>
+                : <>Briefed in <Text style={styles.h1Serif}>plain English.</Text></>}
           </Text>
         </View>
 
@@ -254,22 +258,22 @@ export default function BriefScreen() {
 
             {/* guardrails */}
             <View style={[styles.sectionHead, { paddingTop: 20 }]}>
-              <Eyebrow>Guardrails · hard stop</Eyebrow>
+              <Eyebrow>{isFarmer ? 'Your rules · never broken' : 'Guardrails · hard stop'}</Eyebrow>
               <Pressable onPress={enterEdit} disabled={!config} hitSlop={8}>
-                <Mono style={styles.calibrateLink}>calibrate →</Mono>
+                <Mono style={styles.calibrateLink}>{isFarmer ? 'change →' : 'calibrate →'}</Mono>
               </Pressable>
             </View>
             <View style={{ paddingHorizontal: 16 }}>
               <View style={styles.guardCard}>
                 <GuardRow
-                  label={isFarmer ? 'PRICE FLOOR' : 'PRICE CEILING'}
+                  label={isFarmer ? 'LOWEST PRICE' : 'PRICE CEILING'}
                   val={priceGuard != null ? `${money(priceGuard, currency)} /unit` : 'not set'}
                   bar={priceGuard != null ? 0.9 : 0}
                   hot
                 />
                 <View style={styles.divider} />
                 <GuardRow
-                  label="AUTO-ACCEPT AT"
+                  label={isFarmer ? 'SAYS YES ABOVE' : 'AUTO-ACCEPT AT'}
                   val={autoAccept != null ? `${money(autoAccept, currency)} /unit` : 'not set'}
                   bar={autoAccept != null && priceGuard ? autoAccept / priceGuard : 0}
                 />
@@ -281,7 +285,7 @@ export default function BriefScreen() {
                 />
                 <View style={styles.divider} />
                 <GuardRow
-                  label="AUTO-NEGOTIATE"
+                  label={isFarmer ? 'BARGAINS FOR YOU' : 'AUTO-NEGOTIATE'}
                   val={config?.autoNegotiate ? 'on' : 'off'}
                   bar={config?.autoNegotiate ? 0.98 : 0.02}
                   hot={!config?.autoNegotiate}
@@ -303,7 +307,9 @@ export default function BriefScreen() {
                 ))
               ) : (
                 <View style={[styles.cpChip, styles.cpChipIdle]}>
-                  <Text style={[styles.cpText, { color: design.ink3 }]}>Any crop · tap calibrate to set preferences</Text>
+                  <Text style={[styles.cpText, { color: design.ink3 }]}>
+                    {isFarmer ? 'All your crops · tap change to pick some' : 'Any crop · tap calibrate to set preferences'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -312,7 +318,7 @@ export default function BriefScreen() {
           <>
             {/* style picker */}
             <View style={[styles.sectionHead, { paddingTop: 14 }]}>
-              <Eyebrow>Style · negotiation cadence</Eyebrow>
+              <Eyebrow>{isFarmer ? 'How should it bargain?' : 'Style · negotiation cadence'}</Eyebrow>
             </View>
             <View style={styles.styleRow}>
               {STYLES.map((s) => {
@@ -332,13 +338,13 @@ export default function BriefScreen() {
 
             {/* guardrail inputs */}
             <View style={[styles.sectionHead, { paddingTop: 20 }]}>
-              <Eyebrow>Guardrails · hard stop</Eyebrow>
-              <Mono style={styles.noOverride}>no override</Mono>
+              <Eyebrow>{isFarmer ? 'Your rules · never broken' : 'Guardrails · hard stop'}</Eyebrow>
+              <Mono style={styles.noOverride}>{isFarmer ? 'always followed' : 'no override'}</Mono>
             </View>
             <View style={{ paddingHorizontal: 16 }}>
               <View style={[styles.guardCard, { paddingVertical: 16 }]}>
                 <Text style={styles.inputLabel}>
-                  {isFarmer ? `Min sell price (${currency} per unit)` : `Max buy price (${currency} per unit)`}
+                  {isFarmer ? `Lowest price you'll accept (${currency} per unit)` : `Max buy price (${currency} per unit)`}
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -350,7 +356,7 @@ export default function BriefScreen() {
                 />
 
                 <Text style={styles.inputLabel}>
-                  {isFarmer ? 'Auto-accept at or above (optional)' : 'Auto-accept at or below (optional)'}
+                  {isFarmer ? 'Say yes at once if the offer is above (optional)' : 'Auto-accept at or below (optional)'}
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -373,8 +379,10 @@ export default function BriefScreen() {
 
                 <View style={styles.switchRow}>
                   <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={styles.inputLabel}>Auto-negotiate</Text>
-                    <Text style={styles.switchHint}>Let the agent counter offers round by round</Text>
+                    <Text style={styles.inputLabel}>{isFarmer ? 'Bargain for me' : 'Auto-negotiate'}</Text>
+                    <Text style={styles.switchHint}>
+                      {isFarmer ? 'It talks to buyers and pushes for a better price' : 'Let the agent counter offers round by round'}
+                    </Text>
                   </View>
                   <Switch
                     value={editAutoNeg}
@@ -429,7 +437,7 @@ export default function BriefScreen() {
                 {saving ? (
                   <ActivityIndicator color="#f4f1ea" size="small" />
                 ) : (
-                  <Text style={styles.deployText}>Save brief</Text>
+                  <Text style={styles.deployText}>{isFarmer ? 'Save' : 'Save brief'}</Text>
                 )}
               </Pressable>
             </>
@@ -449,7 +457,9 @@ export default function BriefScreen() {
               ) : (
                 <>
                   <IconBolt size={17} fill="#f4f1ea" stroke="none" />
-                  <Text style={styles.deployText}> {config?.active ? 'Pause agent' : 'Deploy agent'}</Text>
+                  <Text style={styles.deployText}>
+                    {' '}{config?.active ? (isFarmer ? 'Pause helper' : 'Pause agent') : (isFarmer ? 'Start helper' : 'Deploy agent')}
+                  </Text>
                 </>
               )}
             </Pressable>
