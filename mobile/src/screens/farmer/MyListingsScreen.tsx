@@ -30,6 +30,19 @@ const STATUS_TONE: Record<ListingStatus, 'sage' | 'ember' | 'paper'> = {
   EXPIRED: 'paper',
 };
 
+// Plain words for each status so a farmer knows at a glance what's happening.
+const STATUS_WORD: Record<string, string> = {
+  ACTIVE: 'on sale',
+  IN_AUCTION: 'in auction',
+  SOLD: 'sold',
+  EXPIRED: 'expired',
+};
+
+// Statuses the API adds later still need readable text, not raw strings like "IN_REVIEW".
+function statusWord(status: string) {
+  return STATUS_WORD[status] ?? status.toLowerCase().replace(/_/g, ' ');
+}
+
 export default function MyListingsScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
@@ -65,10 +78,10 @@ export default function MyListingsScreen() {
   }, [load]);
 
   function onDelete(l: Listing) {
-    Alert.alert('Delete listing', `Remove "${l.cropName}"? This can't be undone.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('Remove this crop?', `"${l.cropName}" will no longer be for sale. This can't be undone.`, [
+      { text: 'Keep it', style: 'cancel' },
       {
-        text: 'Delete',
+        text: 'Remove',
         style: 'destructive',
         onPress: async () => {
           setBusyId(l.id);
@@ -97,14 +110,14 @@ export default function MyListingsScreen() {
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <View>
-              <Eyebrow>Your lots · {activeCount} active</Eyebrow>
-              <Text style={styles.h1}>My listings</Text>
+              <Eyebrow>Your crops · {activeCount} on sale</Eyebrow>
+              <Text style={styles.h1}>My crops</Text>
             </View>
             <Pressable
               style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.9 }]}
               onPress={() => nav.navigate('CreateListing')}
             >
-              <Text style={styles.newBtnText}>List a crop </Text>
+              <Text style={styles.newBtnText}>Sell a crop </Text>
               <IconArrow size={13} stroke="#f4f1ea" />
             </Pressable>
           </View>
@@ -118,8 +131,8 @@ export default function MyListingsScreen() {
           <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                No listings yet. Tap “List a crop” to publish your first lot — your agent takes
-                bids from there.
+                Nothing on sale yet. Tap “Sell a crop” to put your first crop in front of buyers —
+                offers will come to you.
               </Text>
             </View>
           </View>
@@ -142,7 +155,7 @@ export default function MyListingsScreen() {
                         <Text style={styles.crop} numberOfLines={1}>
                           {l.cropName}{l.cropVariety ? ` · ${l.cropVariety}` : ''}
                         </Text>
-                        <StatusPill tone={STATUS_TONE[l.status]}>{l.status.toLowerCase()}</StatusPill>
+                        <StatusPill tone={STATUS_TONE[l.status] ?? 'paper'}>{statusWord(l.status)}</StatusPill>
                       </View>
                       <Text style={styles.meta} numberOfLines={1}>
                         Grade {l.qualityGrade}{l.organic ? ' · Organic' : ''} · {l.location}, {l.state}
@@ -160,7 +173,7 @@ export default function MyListingsScreen() {
                       {l.quantity.toLocaleString('en-IN')} {unitLabel(l.unit)} · {timeAgo(l.createdAt)}
                     </Mono>
                     <View style={styles.footRight}>
-                      <Mono style={styles.footBids}>● {bids} {bids === 1 ? 'bid' : 'bids'}</Mono>
+                      <Mono style={styles.footBids}>● {bids} {bids === 1 ? 'offer' : 'offers'}</Mono>
                       <Pressable
                         hitSlop={10}
                         onPress={() => onDelete(l)}

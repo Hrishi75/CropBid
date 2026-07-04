@@ -8,14 +8,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Wordmark, MARKS } from '../../components/marks';
 import { IconArrow, IconBell } from '../../components/icons';
-import { Eyebrow, GridBg, LiveDot, MiniChart, Mono, StatusPill } from '../../components/buyerKit';
+import { Eyebrow, GridBg, LiveDot, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { getAgentConfig, incomingBids, myListings, transactionStats, unreadNotificationCount } from '../../api/endpoints';
 import type { AgentConfig, Bid, Listing, TransactionStats } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
-
-const SPARK = [4, 6, 5, 8, 7, 10, 9, 12, 11, 14, 16];
 
 export default function FarmerHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -86,8 +84,8 @@ export default function FarmerHomeScreen() {
           <View style={{ marginTop: 18 }}>
             <Text style={styles.greeting}>{greeting}, {firstName}</Text>
             <Text style={styles.h1}>
-              {activeLots > 0 ? `${activeLots} ${activeLots === 1 ? 'lot' : 'lots'} listed,` : 'Nothing listed yet,'}{'\n'}
-              <Text style={styles.h1Serif}>{needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'bid needs' : 'bids need'} you.` : 'no bids waiting.'}</Text>
+              {activeLots > 0 ? `${activeLots} ${activeLots === 1 ? 'crop' : 'crops'} on sale,` : 'No crops on sale,'}{'\n'}
+              <Text style={styles.h1Serif}>{needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'offer is' : 'offers are'} waiting.` : 'no offers yet.'}</Text>
             </Text>
           </View>
         </View>
@@ -99,20 +97,19 @@ export default function FarmerHomeScreen() {
             <View>
               <View style={styles.rowBetweenTop}>
                 <View>
-                  <Mono style={styles.portfolioLabel}>EARNED · SEASON</Mono>
+                  <Mono style={styles.portfolioLabel}>MONEY YOU HAVE EARNED</Mono>
                   <Text style={styles.portfolioValue}>{money(stats?.totalRevenue ?? 0, currency)}</Text>
                 </View>
                 <View style={styles.benchRow}>
                   <IconArrow size={11} stroke={design.leaf} />
-                  <Mono style={styles.benchText}> {stats?.released ?? 0} released</Mono>
+                  <Mono style={styles.benchText}> {stats?.released ?? 0} paid out</Mono>
                 </View>
               </View>
-              <MiniChart width={330} height={46} data={SPARK} color={design.leaf} fill />
               <View style={styles.statsRow}>
                 {[
-                  [String(activeLots), 'active lots'],
-                  [String(stats?.inEscrow ?? 0), 'in escrow'],
-                  [String(needsYou), 'bids open'],
+                  [String(activeLots), 'crops on sale'],
+                  [String(stats?.inEscrow ?? 0), 'payments coming'],
+                  [String(needsYou), 'offers waiting'],
                 ].map(([n, l]) => (
                   <View key={l} style={{ flex: 1 }}>
                     <Text style={styles.statN}>{n}</Text>
@@ -126,7 +123,7 @@ export default function FarmerHomeScreen() {
 
         {/* needs your decision */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
-          <Eyebrow>Needs your decision</Eyebrow>
+          <Eyebrow>Waiting for your reply</Eyebrow>
           {needsYou > 0 ? (
             <View style={styles.liveRow}>
               <LiveDot size={6} />
@@ -138,34 +135,34 @@ export default function FarmerHomeScreen() {
           {topBid ? (
             <View style={styles.actionCard}>
               <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
-                <StatusPill tone="ember" dot>Bid received</StatusPill>
+                <StatusPill tone="ember" dot>New offer</StatusPill>
                 <Mono style={styles.muted12}>{timeAgo(topBid.createdAt)}</Mono>
               </View>
               <Text style={styles.cardTitle}>
                 {topBid.listing?.cropName ?? 'Listing'}{topBid.listing?.cropVariety ? ` · ${topBid.listing.cropVariety}` : ''}
               </Text>
               <Text style={styles.cardSub}>
-                {topBid.buyer?.name ?? 'A buyer'} bid {money(topBid.bidPricePerUnit, topBid.currency)}/{unit} · {topBid.quantity.toLocaleString('en-IN')} {unit}
+                {topBid.buyer?.name ?? 'A buyer'} offers {money(topBid.bidPricePerUnit, topBid.currency)}/{unit} for {topBid.quantity.toLocaleString('en-IN')} {unit}
               </Text>
               <View style={styles.actionBtns}>
                 <Pressable style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]} onPress={() => nav.navigate('Bids')}>
-                  <Text style={styles.btnPrimaryText}>Review &amp; respond </Text>
+                  <Text style={styles.btnPrimaryText}>See offer &amp; reply </Text>
                   <IconArrow size={13} stroke={colors.textInverse} />
                 </Pressable>
               </View>
             </View>
           ) : (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>No bids waiting. List a crop to start taking offers.</Text>
+              <Text style={styles.emptyText}>No offers right now. Put a crop on sale and buyers will send offers here.</Text>
             </View>
           )}
         </View>
 
         {/* agent strip */}
         <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
-          <Eyebrow>Your agent</Eyebrow>
+          <Eyebrow>Your AI helper</Eyebrow>
           <Pressable onPress={() => nav.navigate('Agent')}>
-            <Text style={styles.manage}>Manage</Text>
+            <Text style={styles.manage}>Open</Text>
           </Pressable>
         </View>
         <View style={styles.sidePad}>
@@ -178,19 +175,19 @@ export default function FarmerHomeScreen() {
                 })()}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.agentName}>Farmer agent · {agent.negotiationStyle.toLowerCase()}</Text>
+                <Text style={styles.agentName}>Answers offers for you</Text>
                 <Text style={styles.agentCrop} numberOfLines={1}>
-                  {agent.preferredCrops.length > 0 ? agent.preferredCrops.join(' · ') : 'No crop preferences set'}
+                  {agent.preferredCrops.length > 0 ? agent.preferredCrops.join(' · ') : 'Works on all your crops'}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <StatusPill tone={agent.active ? 'sage' : 'paper'}>{agent.active ? 'active' : 'paused'}</StatusPill>
-                <Mono style={styles.agentLots}>{agent.minPrice != null ? `floor ${money(agent.minPrice, currency)}` : 'no floor'}</Mono>
+                <StatusPill tone={agent.active ? 'sage' : 'paper'}>{agent.active ? 'working' : 'paused'}</StatusPill>
+                <Mono style={styles.agentLots}>{agent.minPrice != null ? `min ${money(agent.minPrice, currency)}` : 'no min price set'}</Mono>
               </View>
             </Pressable>
           ) : (
             <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Configure your agent to negotiate bids while you work the field.</Text>
+              <Text style={styles.emptyText}>Turn on your AI helper — it replies to offers for you, even while you're in the field.</Text>
             </View>
           )}
         </View>
@@ -201,11 +198,11 @@ export default function FarmerHomeScreen() {
         </View>
         <View style={[styles.sidePad, styles.quickRow]}>
           <Pressable style={({ pressed }) => [styles.quickPrimary, pressed && styles.pressed]} onPress={() => nav.navigate('CreateListing')}>
-            <Text style={styles.quickPrimaryText}>List a crop </Text>
+            <Text style={styles.quickPrimaryText}>Sell a crop </Text>
             <IconArrow size={13} stroke="#f4f1ea" />
           </Pressable>
           <Pressable style={({ pressed }) => [styles.quickGhost, pressed && styles.pressed]} onPress={() => nav.navigate('Bids')}>
-            <Text style={styles.quickGhostText}>Review bids</Text>
+            <Text style={styles.quickGhostText}>See offers</Text>
           </Pressable>
         </View>
       </ScrollView>
