@@ -233,8 +233,9 @@ export async function requestPasswordReset(email: string) {
   // The RAW token goes in the link; only its hash is in the database.
   const resetUrl = `${config.clientUrl}/reset-password?token=${token}`;
 
-  // If the email can't be sent, let the error bubble up (500) — silently
-  // telling the user "check your inbox" when nothing was sent is worse.
+  // A failed send throws, but the controller swallows it and still answers
+  // 200: only real accounts reach this point, so a bubbled 500 would let an
+  // attacker distinguish registered emails during an SMTP outage.
   await sendPasswordResetEmail(user.email, user.name, resetUrl);
 
   await recordAudit({

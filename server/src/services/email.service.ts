@@ -10,8 +10,9 @@
 //
 // The transporter is created lazily and cached so the SMTP connection pool is
 // shared across sends. All senders here throw on failure — callers decide
-// whether a failed send should fail the request (for password reset it should:
-// telling the user "email sent" when nothing was sent is worse than a 500).
+// whether a failed send should fail the request (password reset swallows it
+// at the controller so the response stays enumeration-safe; the failure is
+// still logged server-side).
 // =============================================================================
 
 import nodemailer, { Transporter } from 'nodemailer';
@@ -101,13 +102,13 @@ export async function sendPasswordResetEmail(
       <p>We received a request to reset your CropBid password. Click the button below to choose a new one.
          The link expires in <strong>1 hour</strong> and works once.</p>
       <p style="margin: 28px 0;">
-        <a href="${resetUrl}"
+        <a href="${escapeHtml(resetUrl)}"
            style="background: #2f6b3a; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
           Choose a new password
         </a>
       </p>
       <p style="font-size: 13px; color: #5a6b5a;">If the button doesn't work, paste this link into your browser:<br/>
-        <a href="${resetUrl}">${resetUrl}</a></p>
+        <a href="${escapeHtml(resetUrl)}">${escapeHtml(resetUrl)}</a></p>
       <p style="font-size: 13px; color: #5a6b5a;">If you didn't request this, ignore this email — your password stays unchanged.</p>
       <p>— CropBid</p>
     </div>`;

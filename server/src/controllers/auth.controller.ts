@@ -275,7 +275,14 @@ export async function forgotPasswordHandler(req: Request, res: Response) {
     return;
   }
 
-  await authService.requestPasswordReset(parsed.data.email);
+  try {
+    await authService.requestPasswordReset(parsed.data.email);
+  } catch (err) {
+    // Still answer 200 — a bubbled 500 (e.g. SMTP down) only ever fires for
+    // real accounts (unknown emails return silently), which would hand
+    // attackers the enumeration signal this endpoint exists to hide.
+    console.error('[forgot-password] delivery error (non-fatal):', err);
+  }
 
   res.json({
     message: 'If an account exists for that email, a reset link is on its way.',
