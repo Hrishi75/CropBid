@@ -316,13 +316,23 @@ export async function changePasswordHandler(req: Request, res: Response) {
     return;
   }
 
-  await authService.changePassword(
+  const tokens = await authService.changePassword(
     req.user!.userId,
     parsed.data.currentPassword,
     parsed.data.newPassword,
   );
 
-  res.json({ message: 'Password changed successfully.' });
+  // The service rotated the refresh token to evict any stolen session; hand
+  // the new one back the same way login does so THIS session stays alive.
+  // Trusting X-Client here is fine: the caller just proved the password.
+  res.cookie('refreshToken', tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+
+  res.json({
+    message: 'Password changed successfully.',
+    ...(isMobileClient(req)
+      ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
+      : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -307,12 +307,19 @@ export async function changePassword(userId: string, currentPassword: string, ne
 
   const hashedPassword = await bcrypt.hash(newPassword, 12);
 
+  // Rotate the session: storing a fresh refresh token invalidates every
+  // previously issued one — if the password is being changed because a token
+  // was stolen, the thief is evicted, while THIS session stays alive because
+  // the controller hands the new pair back to the caller.
+  const tokens = generateTokens(user.id, user.role);
+
   // Also clear any pending reset token — the user just proved they know the
   // password, so an older "forgot password" link shouldn't stay live.
   await prisma.user.update({
     where: { id: userId },
     data: {
       password: hashedPassword,
+      refreshToken: tokens.refreshToken,
       passwordResetToken: null,
       passwordResetExpires: null,
     },
@@ -325,6 +332,8 @@ export async function changePassword(userId: string, currentPassword: string, ne
     entityType: 'User',
     entityId: user.id,
   });
+
+  return tokens;
 }
 
 // ---------------------------------------------------------------------------
