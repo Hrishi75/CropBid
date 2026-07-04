@@ -48,6 +48,11 @@ const STATUS_WORD: Record<string, string> = {
   EXPIRED: 'expired',
 };
 
+// Statuses the API adds later still need readable text, not raw strings like "IN_REVIEW".
+function statusWord(status: string) {
+  return STATUS_WORD[status] ?? status.toLowerCase().replace(/_/g, ' ');
+}
+
 export default function IncomingBidsScreen() {
   const insets = useSafeAreaInsets();
   const [bids, setBids] = useState<Bid[]>([]);
@@ -88,6 +93,8 @@ export default function IncomingBidsScreen() {
 
   const visible = filter ? bids.filter((b) => b.status === filter) : bids;
   const pending = counts.PENDING || 0;
+  // The escrow explainer under every pending card gets noisy — show it once, on the first.
+  const firstPendingId = visible.find((b) => b.status === 'PENDING')?.id;
 
   return (
     <View style={styles.flex}>
@@ -132,7 +139,7 @@ export default function IncomingBidsScreen() {
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 10 }}>
             {visible.map((b) => (
-              <BidRow key={b.id} bid={b} onChanged={load} />
+              <BidRow key={b.id} bid={b} showExplainer={b.id === firstPendingId} onChanged={load} />
             ))}
           </View>
         )}
@@ -141,7 +148,7 @@ export default function IncomingBidsScreen() {
   );
 }
 
-function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }) {
+function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: boolean; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showCounter, setShowCounter] = useState(false);
   const [counter, setCounter] = useState('');
@@ -188,7 +195,7 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
             {bid.listing?.cropName ?? 'Listing'}{bid.listing?.cropVariety ? ` · ${bid.listing.cropVariety}` : ''}
           </Text>
         </View>
-        <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{STATUS_WORD[bid.status] ?? bid.status.toLowerCase()}</StatusPill>
+        <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{statusWord(bid.status)}</StatusPill>
       </View>
 
       <Text style={styles.sub}>
@@ -229,10 +236,12 @@ function BidRow({ bid, onChanged }: { bid: Bid; onChanged: () => Promise<void> }
               )}
             </Pressable>
           </View>
-          <Text style={styles.explain}>
-            If you accept, the deal is fixed. The buyer pays first — the money is kept safe and
-            comes to you after the crop is delivered.
-          </Text>
+          {showExplainer ? (
+            <Text style={styles.explain}>
+              If you accept, the deal is fixed. The buyer pays first — the money is kept safe and
+              comes to you after the crop is delivered.
+            </Text>
+          ) : null}
 
           {showCounter ? (
             <View style={styles.counterRow}>

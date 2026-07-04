@@ -31,12 +31,17 @@ const STATUS_TONE: Record<ListingStatus, 'sage' | 'ember' | 'paper'> = {
 };
 
 // Plain words for each status so a farmer knows at a glance what's happening.
-const STATUS_WORD: Record<ListingStatus, string> = {
+const STATUS_WORD: Record<string, string> = {
   ACTIVE: 'on sale',
   IN_AUCTION: 'in auction',
   SOLD: 'sold',
   EXPIRED: 'expired',
 };
+
+// Statuses the API adds later still need readable text, not raw strings like "IN_REVIEW".
+function statusWord(status: string) {
+  return STATUS_WORD[status] ?? status.toLowerCase().replace(/_/g, ' ');
+}
 
 export default function MyListingsScreen() {
   const insets = useSafeAreaInsets();
@@ -150,7 +155,7 @@ export default function MyListingsScreen() {
                         <Text style={styles.crop} numberOfLines={1}>
                           {l.cropName}{l.cropVariety ? ` · ${l.cropVariety}` : ''}
                         </Text>
-                        <StatusPill tone={STATUS_TONE[l.status]}>{STATUS_WORD[l.status] ?? l.status.toLowerCase()}</StatusPill>
+                        <StatusPill tone={STATUS_TONE[l.status] ?? 'paper'}>{statusWord(l.status)}</StatusPill>
                       </View>
                       <Text style={styles.meta} numberOfLines={1}>
                         Grade {l.qualityGrade}{l.organic ? ' · Organic' : ''} · {l.location}, {l.state}
