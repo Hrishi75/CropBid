@@ -170,8 +170,11 @@ export default function BriefScreen() {
           : 'Auto-accept price must be at or below your price ceiling',
       );
     }
+    // "0" would pass the regex but tell the agent to match nothing at all.
     const dist = editDistance.trim();
-    if (dist && !/^\d+$/.test(dist)) return setError('Enter a valid distance in km');
+    if (dist && (!/^\d+$/.test(dist) || parseInt(dist, 10) <= 0)) {
+      return setError('Enter a valid distance in km');
+    }
 
     setError(null);
     setSaving(true);
