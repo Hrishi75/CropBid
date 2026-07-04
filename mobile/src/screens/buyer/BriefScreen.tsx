@@ -93,10 +93,12 @@ export default function BriefScreen() {
 
   // Refetch whenever the tab regains focus — tab screens stay mounted, so a
   // mount-only fetch would show yesterday's guardrails after a web-side edit.
+  // Paused while calibrating: a background refetch would wipe a validation
+  // error and desync the form fields from the refreshed config.
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      if (!editing) load();
+    }, [load, editing]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -159,6 +161,15 @@ export default function BriefScreen() {
     if (price.error) return setError(price.error);
     const accept = parseAmount(editAccept, 'auto-accept price');
     if (accept.error) return setError(accept.error);
+    // Auto-accept must sit on the safe side of the price guard, or the agent
+    // would auto-accept deals the guard exists to block.
+    if (price.value != null && accept.value != null && (isFarmer ? accept.value < price.value : accept.value > price.value)) {
+      return setError(
+        isFarmer
+          ? 'Auto-accept price must be at or above your floor price'
+          : 'Auto-accept price must be at or below your price ceiling',
+      );
+    }
     const dist = editDistance.trim();
     if (dist && !/^\d+$/.test(dist)) return setError('Enter a valid distance in km');
 
