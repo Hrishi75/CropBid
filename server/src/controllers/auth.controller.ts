@@ -13,14 +13,19 @@ import { z } from 'zod';
 import * as authService from '../services/auth.service';
 
 // --- Zod Schemas for input validation ---
+
+// One password policy, shared by signup / reset / change so the rules can
+// never drift apart.
+const passwordSchema = z.string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one number');
+
 const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.string().email('Invalid email address'),
-  password: z.string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-    .regex(/[0-9]/, 'Password must contain at least one number'),
+  password: passwordSchema,
   role: z.enum(['FARMER', 'BUYER']),
   phone: z.string().max(20).optional(),
   country: z.string().max(60).optional(),
@@ -33,16 +38,46 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
-// PATCH /api/auth/me — a farmer editing their own account + farm details.
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Reset token is required'),
+  password: passwordSchema,
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: passwordSchema,
+});
+
+// PATCH /api/auth/me — a user editing their own account + role profile.
 // Every field is optional; the service writes only the keys that are present.
-const updateFarmerProfileSchema = z.object({
+// The account fields are shared; the role-specific fields live in per-role
+// schemas and the handler picks the right one from req.user.role.
+const accountFields = {
   name: z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
   phone: z.string().max(20).nullable().optional(),
   location: z.string().max(120).nullable().optional(),
+};
+
+const updateFarmerProfileSchema = z.object({
+  ...accountFields,
   farmSizeAcres: z.number().positive('Farm size must be greater than zero').optional(),
   cropsGrown: z.array(z.string().min(1)).min(1, 'Pick at least one crop').optional(),
   state: z.string().min(1, 'Enter your state / region').max(60).optional(),
 });
+
+const updateBuyerProfileSchema = z.object({
+  ...accountFields,
+  companyName: z.string().min(2, 'Company name must be at least 2 characters').max(120).optional(),
+  companyType: z.enum(['PROCESSOR', 'FMCG', 'RESTAURANT', 'EXPORTER', 'RETAILER']).optional(),
+  taxId: z.string().max(40).nullable().optional(),
+  annualProcurementVolume: z.string().max(60).nullable().optional(),
+});
+
+const updateAccountBasicsSchema = z.object(accountFields);
 
 // Cookie options for the refresh token
 // WHY THESE OPTIONS?
@@ -201,18 +236,103 @@ export async function getMeHandler(req: Request, res: Response) {
 // ---------------------------------------------------------------------------
 // PATCH /api/auth/me
 // ---------------------------------------------------------------------------
-// Farmer edits their account + farm details after onboarding. Returns the same
-// { user } shape as GET /me so the client can drop it straight into state.
+// Any signed-in user edits their account (+ role profile) after onboarding.
+// Returns the same { user } shape as GET /me so the client can drop it
+// straight into state. The role decides which schema + service run.
 export async function updateProfileHandler(req: Request, res: Response) {
-  const parsed = updateFarmerProfileSchema.safeParse(req.body);
+  const role = req.user!.role;
+  const schema =
+    role === 'FARMER' ? updateFarmerProfileSchema :
+    role === 'BUYER' ? updateBuyerProfileSchema :
+    updateAccountBasicsSchema;
+
+  const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     const firstError = parsed.error.issues[0]?.message || 'Invalid input';
     res.status(400).json({ error: true, message: firstError });
     return;
   }
 
-  const user = await authService.updateFarmerProfile(req.user!.userId, parsed.data);
+  const userId = req.user!.userId;
+  const user =
+    role === 'FARMER' ? await authService.updateFarmerProfile(userId, parsed.data) :
+    role === 'BUYER' ? await authService.updateBuyerProfile(userId, parsed.data) :
+    await authService.updateAccountBasics(userId, parsed.data);
+
   res.json({ user });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/forgot-password
+// ---------------------------------------------------------------------------
+// Always answers 200 with the same message whether or not the email has an
+// account — see requestPasswordReset for why (email enumeration).
+export async function forgotPasswordHandler(req: Request, res: Response) {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  try {
+    await authService.requestPasswordReset(parsed.data.email);
+  } catch (err) {
+    // Still answer 200 — a bubbled 500 (e.g. SMTP down) only ever fires for
+    // real accounts (unknown emails return silently), which would hand
+    // attackers the enumeration signal this endpoint exists to hide.
+    console.error('[forgot-password] delivery error (non-fatal):', err);
+  }
+
+  res.json({
+    message: 'If an account exists for that email, a reset link is on its way.',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/reset-password
+// ---------------------------------------------------------------------------
+export async function resetPasswordHandler(req: Request, res: Response) {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  await authService.resetPassword(parsed.data.token, parsed.data.password);
+
+  res.json({ message: 'Password updated. You can now sign in with your new password.' });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/change-password
+// ---------------------------------------------------------------------------
+export async function changePasswordHandler(req: Request, res: Response) {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  const tokens = await authService.changePassword(
+    req.user!.userId,
+    parsed.data.currentPassword,
+    parsed.data.newPassword,
+  );
+
+  // The service rotated the refresh token to evict any stolen session; hand
+  // the new one back the same way login does so THIS session stays alive.
+  // Trusting X-Client here is fine: the caller just proved the password.
+  res.cookie('refreshToken', tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+
+  res.json({
+    message: 'Password changed successfully.',
+    ...(isMobileClient(req)
+      ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
+      : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

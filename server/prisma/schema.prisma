@@ -144,6 +144,12 @@ model User {
   // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
   refreshToken String?
 
+  // Password reset — we store only the SHA-256 hash of the emailed token, so a
+  // database leak can't be used to take over accounts. Single-use: both fields
+  // are cleared as soon as the reset succeeds. Expires after 1 hour.
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
