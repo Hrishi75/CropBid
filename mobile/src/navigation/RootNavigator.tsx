@@ -76,9 +76,9 @@ function FarmerTabs() {
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
       <FarmerTab.Screen name="Home" component={FarmerHomeScreen} options={{ title: 'Home' }} />
-      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'Listings' }} />
-      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Bids' }} />
-      <FarmerTab.Screen name="Agent" component={BriefScreen} options={{ title: 'Agent' }} />
+      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'My Crops' }} />
+      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Offers' }} />
+      <FarmerTab.Screen name="Agent" component={BriefScreen} options={{ title: 'Helper' }} />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
     </FarmerTab.Navigator>
   );

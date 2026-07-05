@@ -134,19 +134,19 @@ export default function CreateListingScreen({ route, navigation }: Props) {
     const maxN = Number(priceMax);
     const qtyN = Number(quantity);
     if (!cropName || !location || !stateName) {
-      Alert.alert('Missing details', 'Crop, location and state are required.');
+      Alert.alert('Some details missing', 'Please pick your crop and fill in where it is (village and state).');
       return;
     }
     if (!(qtyN > 0)) {
-      Alert.alert('Invalid quantity', 'Enter a quantity greater than zero.');
+      Alert.alert('Check the quantity', 'Enter how much you are selling.');
       return;
     }
     if (!(minN > 0) || !(maxN > 0)) {
-      Alert.alert('Invalid price', 'Enter a floor and ideal price.');
+      Alert.alert('Price missing', 'Enter your lowest price and your hoped price.');
       return;
     }
     if (minN > maxN) {
-      Alert.alert('Invalid price', 'Floor price cannot exceed the ideal price.');
+      Alert.alert('Check your price', 'Your lowest price cannot be more than your hoped price.');
       return;
     }
 
@@ -156,12 +156,12 @@ export default function CreateListingScreen({ route, navigation }: Props) {
     const msp = mspForCrop(cropName, unit);
     if (msp != null && currency.toUpperCase() === 'INR' && minN < msp) {
       Alert.alert(
-        'Floor below government MSP',
-        `The government MSP for ${cropName} is ${money(msp, currency)}/${unitLabel(unit)}. ` +
-          `Your floor of ${money(minN, currency)}/${unitLabel(unit)} is below it — you may sell under the support price.`,
+        'Your price is below the government rate',
+        `The government minimum support price (MSP) for ${cropName} is ${money(msp, currency)} per ${unitLabel(unit)}. ` +
+          `Your lowest price of ${money(minN, currency)} is less than that — you could earn less than the government rate.`,
         [
-          { text: 'Edit price', style: 'cancel' },
-          { text: 'List anyway', style: 'destructive', onPress: save },
+          { text: 'Change my price', style: 'cancel' },
+          { text: 'Sell anyway', style: 'destructive', onPress: save },
         ],
       );
       return;
@@ -250,10 +250,10 @@ export default function CreateListingScreen({ route, navigation }: Props) {
             <View style={{ transform: [{ rotate: '180deg' }] }}>
               <IconChevR size={15} stroke={design.ink2} />
             </View>
-            <Text style={styles.backText}>  Listings</Text>
+            <Text style={styles.backText}>  My crops</Text>
           </Pressable>
-          <Text style={styles.h1}>{isEdit ? 'Edit listing' : 'List a crop'}</Text>
-          <Text style={styles.lede}>Set crop, grade, and your floor/ideal price. Your agent takes it from there.</Text>
+          <Text style={styles.h1}>{isEdit ? 'Edit crop' : 'Sell a crop'}</Text>
+          <Text style={styles.lede}>Tell buyers what you're selling, how much, and your price. Takes 2 minutes.</Text>
         </View>
 
         {/* Crop */}
@@ -271,7 +271,7 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         </Section>
 
         {/* Volume & grade */}
-        <Section title="Volume & grade">
+        <Section title="How much & quality">
           <View style={styles.row2}>
             <Field label="Quantity" style={{ flex: 1 }}>
               <TextInput
@@ -301,10 +301,10 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         </Section>
 
         {/* Price */}
-        <Section title="Price · per unit">
-          <Text style={styles.hint}>Floor = won't sell below. Ideal = your target price.</Text>
+        <Section title="Your price · per unit">
+          <Text style={styles.hint}>You will never sell below your lowest price. Hoped price = what you want to get.</Text>
           <View style={styles.row2}>
-            <Field label="Floor" style={{ flex: 1 }}>
+            <Field label="Lowest price" style={{ flex: 1 }}>
               <TextInput
                 style={styles.input}
                 value={priceMin}
@@ -314,7 +314,7 @@ export default function CreateListingScreen({ route, navigation }: Props) {
                 placeholderTextColor={design.ink3}
               />
             </Field>
-            <Field label="Ideal" style={{ flex: 1 }}>
+            <Field label="Hoped price" style={{ flex: 1 }}>
               <TextInput
                 style={styles.input}
                 value={priceMax}
@@ -333,8 +333,8 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         </Section>
 
         {/* Logistics */}
-        <Section title="Logistics">
-          <Field label="Location (city)">
+        <Section title="Where is the crop?">
+          <Field label="Village / town">
             <TextInput
               style={styles.input}
               value={location}
@@ -426,7 +426,7 @@ export default function CreateListingScreen({ route, navigation }: Props) {
             <ActivityIndicator color="#f4f1ea" size="small" />
           ) : (
             <>
-              <Text style={styles.submitText}>{isEdit ? 'Save changes' : 'Publish lot'} </Text>
+              <Text style={styles.submitText}>{isEdit ? 'Save changes' : 'Put on sale'} </Text>
               <IconArrow size={14} stroke="#f4f1ea" />
             </>
           )}
