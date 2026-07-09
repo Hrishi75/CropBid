@@ -60,19 +60,33 @@ describe('signup', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('maps a unique-constraint race (P2002) to the same 409', async () => {
+  it('maps a unique-constraint race on email (P2002) to the same 409', async () => {
     mockFindUnique.mockResolvedValue(null); // pre-check passed…
     mockCreate.mockRejectedValue(
       // …but a concurrent signup won the unique index race.
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed on email', {
         code: 'P2002',
         clientVersion: '0.0.0',
+        meta: { target: ['email'] },
       }),
     );
 
     await expect(signup(input)).rejects.toMatchObject(
       new ApiError(409, 'An account with this email already exists'),
     );
+  });
+
+  it('lets a P2002 on a different unique column bubble instead of claiming the email exists', async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockCreate.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed on passwordResetToken', {
+        code: 'P2002',
+        clientVersion: '0.0.0',
+        meta: { target: ['passwordResetToken'] },
+      }),
+    );
+
+    await expect(signup(input)).rejects.toThrow('Unique constraint failed on passwordResetToken');
   });
 
   it('lets other database errors bubble unchanged', async () => {

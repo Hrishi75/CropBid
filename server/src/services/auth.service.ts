@@ -72,7 +72,13 @@ export async function signup(input: SignupInput) {
     })
     .catch((err) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ApiError(409, 'An account with this email already exists');
+        // meta.target names the offending columns (or the index, depending on
+        // the connector) — only claim "email exists" when email is the culprit.
+        const target = err.meta?.target;
+        const onEmail = Array.isArray(target)
+          ? target.includes('email')
+          : String(target ?? '').includes('email');
+        if (onEmail) throw new ApiError(409, 'An account with this email already exists');
       }
       throw err;
     });
