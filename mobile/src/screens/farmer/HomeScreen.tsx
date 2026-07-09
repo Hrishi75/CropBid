@@ -182,7 +182,7 @@ export default function FarmerHomeScreen() {
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <StatusPill tone={agent.active ? 'sage' : 'paper'}>{agent.active ? 'working' : 'paused'}</StatusPill>
-                <Mono style={styles.agentLots}>{agent.minPrice != null ? `min ${money(agent.minPrice, currency)}` : 'no min price set'}</Mono>
+                <Mono style={styles.agentLots}>{agent.minPrice != null ? `lowest ${money(agent.minPrice, currency)}` : 'no lowest price set'}</Mono>
               </View>
             </Pressable>
           ) : (
