@@ -49,6 +49,16 @@ export async function notifyBidCountered(buyerId: string, cropName: string, coun
   });
 }
 
+export async function notifyDirectPurchase(farmerId: string, buyerName: string, cropName: string, quantity: number, unit: string, listingId: string, bidId: string) {
+  await createNotification({
+    userId: farmerId,
+    type: 'DIRECT_PURCHASE',
+    title: `${cropName} sold directly`,
+    message: `${buyerName} bought ${quantity} ${unit} of your ${cropName} at your listed retail price`,
+    data: { listingId, bidId },
+  });
+}
+
 // --- Negotiation Events ---
 
 export async function notifyNegotiationResult(userId: string, cropName: string, outcome: string, finalPrice: number | null, currency: string, unit: string, negotiationId: string) {

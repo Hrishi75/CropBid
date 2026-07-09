@@ -19,7 +19,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
-import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered } from './notification.helpers';
+import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
 
 // --- Input types ---
@@ -28,6 +28,11 @@ interface PlaceBidInput {
   bidPricePerUnit: number;
   quantity: number;
   message?: string;
+}
+
+interface DirectPurchaseInput {
+  listingId: string;
+  quantity: number;
 }
 
 // =============================================================================
@@ -110,6 +115,78 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
     input.bidPricePerUnit, listing.currency, listing.unit,
     listing.id, bid.id
   ).catch(() => {}); // Fire and forget
+
+  return bid;
+}
+
+// =============================================================================
+// DIRECT PURCHASE — Consumer instant-buys a fixed-price quantity, no bidding
+// =============================================================================
+// A CONSUMER account skips the negotiate/accept dance entirely: the listing must
+// opt into directSaleEnabled with a retailPricePerUnit, and the purchase creates
+// an already-ACCEPTED bid so it can flow through the exact same
+// createTransaction/payment/shipment pipeline as a negotiated deal.
+export async function createDirectPurchase(consumerId: string, input: DirectPurchaseInput) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: input.listingId },
+    include: { farmer: true },
+  });
+
+  if (!listing) throw new ApiError(404, 'Listing not found');
+  if (!listing.directSaleEnabled || listing.retailPricePerUnit == null) {
+    throw new ApiError(400, 'This listing is not available for direct purchase');
+  }
+  if (listing.farmer.userId === consumerId) {
+    throw new ApiError(400, 'You cannot buy from your own listing');
+  }
+
+  const retailPrice = listing.retailPricePerUnit;
+  const totalAmount = retailPrice * input.quantity;
+
+  // Same conditional-claim pattern as acceptBid below: only decrement stock if
+  // enough remains and the listing is still active, closing the same TOCTOU
+  // race two concurrent purchases could otherwise hit.
+  const bid = await prisma.$transaction(async (tx) => {
+    const claim = await tx.listing.updateMany({
+      where: { id: listing.id, status: 'ACTIVE', remainingQuantity: { gte: input.quantity } },
+      data: { remainingQuantity: { decrement: input.quantity } },
+    });
+    if (claim.count === 0) {
+      throw new ApiError(409, 'Not enough stock available for this purchase.');
+    }
+
+    const updatedListing = await tx.listing.findUniqueOrThrow({ where: { id: listing.id } });
+    if (updatedListing.remainingQuantity <= 0) {
+      await tx.listing.update({ where: { id: listing.id }, data: { status: 'SOLD' } });
+    }
+
+    return tx.bid.create({
+      data: {
+        listingId: listing.id,
+        buyerId: consumerId,
+        bidPricePerUnit: retailPrice,
+        quantity: input.quantity,
+        totalAmount,
+        currency: listing.currency,
+        isAgentBid: false,
+        isDirectPurchase: true,
+        status: 'ACCEPTED',
+      },
+      include: {
+        listing: true,
+        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      },
+    });
+  });
+
+  // Create transaction (escrow/payment/shipment pipeline) and notify the farmer
+  createTransaction(bid.id).catch((err) => {
+    console.error(`Failed to create transaction for direct purchase ${bid.id}:`, err);
+  });
+  notifyDirectPurchase(
+    listing.farmer.userId, bid.buyer!.name, listing.cropName,
+    input.quantity, listing.unit, listing.id, bid.id
+  ).catch(() => {});
 
   return bid;
 }

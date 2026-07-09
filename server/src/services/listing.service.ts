@@ -34,6 +34,8 @@ interface CreateListingInput {
   location: string;
   country?: string;
   state: string;
+  directSaleEnabled?: boolean;
+  retailPricePerUnit?: number;
 }
 
 interface UpdateListingInput {
@@ -54,6 +56,8 @@ interface UpdateListingInput {
   location?: string;
   country?: string;
   state?: string;
+  directSaleEnabled?: boolean;
+  retailPricePerUnit?: number;
   // NOTE: `status` is deliberately NOT editable here. Listing status is owned by
   // the bid/auction/expiry flows; allowing a direct write would bypass the sale
   // state machine (e.g. flipping a live IN_AUCTION listing to SOLD).
@@ -90,12 +94,17 @@ export async function createListing(userId: string, input: CreateListingInput) {
     throw new ApiError(400, 'Price must be greater than zero');
   }
 
+  if (input.directSaleEnabled && !(input.retailPricePerUnit && input.retailPricePerUnit > 0)) {
+    throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
+  }
+
   const listing = await prisma.listing.create({
     data: {
       farmerId: farmerProfile.id,
       cropName: input.cropName,
       cropVariety: input.cropVariety || null,
       quantity: input.quantity,
+      remainingQuantity: input.quantity,
       unit: (input.unit as any) || 'KG',
       qualityGrade: input.qualityGrade as any,
       pricePerUnitMin: input.pricePerUnitMin,
@@ -110,6 +119,8 @@ export async function createListing(userId: string, input: CreateListingInput) {
       location: input.location,
       country: input.country || 'India',
       state: input.state,
+      directSaleEnabled: input.directSaleEnabled || false,
+      retailPricePerUnit: input.directSaleEnabled ? input.retailPricePerUnit : null,
     },
     include: {
       farmer: {
@@ -241,6 +252,12 @@ export async function updateListing(listingId: string, userId: string, input: Up
     throw new ApiError(400, 'Minimum price cannot exceed maximum price');
   }
 
+  const directSaleEnabled = input.directSaleEnabled ?? listing.directSaleEnabled;
+  const retailPrice = input.retailPricePerUnit ?? listing.retailPricePerUnit;
+  if (directSaleEnabled && !(retailPrice && retailPrice > 0)) {
+    throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
+  }
+
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
@@ -261,6 +278,8 @@ export async function updateListing(listingId: string, userId: string, input: Up
       ...(input.location && { location: input.location }),
       ...(input.country && { country: input.country }),
       ...(input.state && { state: input.state }),
+      ...(input.directSaleEnabled !== undefined && { directSaleEnabled: input.directSaleEnabled }),
+      ...(input.retailPricePerUnit !== undefined && { retailPricePerUnit: input.retailPricePerUnit }),
     },
     include: {
       farmer: {

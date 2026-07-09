@@ -86,11 +86,14 @@ export async function createTransaction(bidId: string) {
 // GET MY TRANSACTIONS — List transactions for a user
 // =============================================================================
 export async function getMyTransactions(userId: string, role: string) {
+  // BUYER and CONSUMER both sit on the buyer side of a transaction. Only ADMIN
+  // sees everything — any other/unknown role must NOT fall through to {}, or
+  // it would leak every transaction on the platform to that user.
   const where = role === 'FARMER'
     ? { farmerId: userId }
-    : role === 'BUYER'
-      ? { buyerId: userId }
-      : {}; // Admin sees all
+    : role === 'ADMIN'
+      ? {}
+      : { buyerId: userId };
 
   const transactions = await prisma.transaction.findMany({
     where,
