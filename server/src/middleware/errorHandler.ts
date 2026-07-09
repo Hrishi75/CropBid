@@ -67,6 +67,17 @@ export function errorHandler(
     return;
   }
 
+  // Malformed JSON body — express.json() throws a SyntaxError with the
+  // offending `body` attached. Bad input from the client, not a bug: 400.
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({
+      error: true,
+      message: 'Invalid JSON in request body',
+      statusCode: 400,
+    });
+    return;
+  }
+
   // For unexpected errors (bugs), log the full error but send a generic message
   // NEVER send error.stack or internal details to the client in production
   console.error('❌ Unexpected error:', err);
