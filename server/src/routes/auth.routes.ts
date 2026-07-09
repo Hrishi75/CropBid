@@ -16,6 +16,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
+import { uploadAvatar, processAvatar } from '../middleware/upload';
 import {
   signupHandler,
   loginHandler,
@@ -23,6 +24,7 @@ import {
   logoutHandler,
   getMeHandler,
   updateProfileHandler,
+  updateAvatarHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
   changePasswordHandler,
@@ -47,6 +49,8 @@ router.post('/logout', authenticate, logoutHandler);
 router.get('/me', authenticate, getMeHandler);
 // PATCH /me is role-aware inside the controller (farmer / buyer / admin)
 router.patch('/me', authenticate, updateProfileHandler);
+// Profile photo — multipart field "avatar"; Multer saves, Sharp squares it
+router.post('/me/avatar', authenticate, uploadAvatar.single('avatar'), processAvatar, updateAvatarHandler);
 router.post('/change-password', authenticate, changePasswordHandler);
 
 // Onboarding (must be logged in + correct role)

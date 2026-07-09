@@ -1,109 +1,373 @@
-// Profile tab — shows the signed-in user's identity/role summary and sign-out.
-// Farmers also see their farm details and an "Edit profile" entry point.
+// Profile tab ("You") — identity card with a tappable profile photo (camera or
+// gallery via expo-image-picker, uploaded to POST /auth/me/avatar), a trust
+// meter, detail cards, and pressable rows for edit / activity / sign-out.
+// Farmer copy stays in plain words; buyers keep the neutral vocabulary.
 
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import { Eyebrow, Mono, StatusPill } from '../components/buyerKit';
+import { IconChevR } from '../components/icons';
+import { colors, design, font } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { Button, Card } from '../components/ui';
-import { colors, radius, spacing } from '../theme';
-import type { FarmerStackParamList } from '../navigation/types';
+import { uploadAvatar } from '../api/endpoints';
+import { errorMessage, mediaUrl } from '../api/client';
 
 export default function ProfileScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<FarmerStackParamList>>();
-  const { user, signOut } = useAuth();
+  const insets = useSafeAreaInsets();
+  const nav = useNavigation<any>();
+  const { user, refreshUser, applyUser, signOut } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   if (!user) return null;
 
   const isFarmer = user.role === 'FARMER';
-  const profile = user.farmerProfile;
-
+  const farm = user.farmerProfile;
+  const photo = mediaUrl(user.avatar);
+  const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
   const subtitle = isFarmer
-    ? profile?.state ?? 'Farmer'
+    ? `Farmer${farm?.state ? ` · ${farm.state}` : ''}`
     : user.buyerProfile?.companyName ?? 'Buyer';
 
-  async function onSignOut() {
-    setSigningOut(true);
+  async function onRefresh() {
+    setRefreshing(true);
     try {
-      await signOut();
+      await refreshUser();
     } finally {
-      setSigningOut(false);
+      setRefreshing(false);
     }
   }
 
+  function onAvatarPress() {
+    if (uploading) return;
+    Alert.alert('Profile photo', undefined, [
+      { text: 'Take a photo', onPress: () => pickPhoto('camera') },
+      { text: 'Choose from gallery', onPress: () => pickPhoto('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
+  async function pickPhoto(source: 'camera' | 'library') {
+    const perm =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Permission needed',
+        source === 'camera' ? 'Allow camera access to take your photo.' : 'Allow photo access to pick your photo.',
+      );
+      return;
+    }
+
+    const options: ImagePicker.ImagePickerOptions = {
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    };
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync(options)
+        : await ImagePicker.launchImageLibraryAsync(options);
+    const asset = result.canceled ? null : result.assets[0];
+    if (!asset) return;
+
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('avatar', {
+        uri: asset.uri,
+        name: asset.fileName ?? 'avatar.jpg',
+        type: asset.mimeType ?? 'image/jpeg',
+      } as unknown as Blob);
+      applyUser(await uploadAvatar(form));
+    } catch (e) {
+      Alert.alert('Could not save photo', errorMessage(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function onSignOutPress() {
+    Alert.alert('Log out?', isFarmer ? 'You can come back any time.' : undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          try {
+            await signOut();
+          } finally {
+            setSigningOut(false);
+          }
+        },
+      },
+    ]);
+  }
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{user.name[0]?.toUpperCase()}</Text>
-      </View>
-      <Text style={styles.name}>{user.name}</Text>
-      <Text style={styles.subtitle}>
-        {user.role} · {subtitle}
-      </Text>
+    <View style={styles.flex}>
+      <ScrollView
+        contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: 32 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
+      >
+        <View style={styles.headerPad}>
+          <View style={styles.rowBetween}>
+            <Eyebrow>Your account</Eyebrow>
+            <StatusPill tone="sage">{isFarmer ? 'farmer' : 'buyer'}</StatusPill>
+          </View>
+          <Text style={styles.h1}>
+            {isFarmer ? <>Everything about <Text style={styles.h1Serif}>you.</Text></> : <>Your <Text style={styles.h1Serif}>account.</Text></>}
+          </Text>
+        </View>
 
-      <Card style={styles.card}>
-        <Field label="Email" value={user.email} />
-        <Field label="Phone" value={user.phone ?? '—'} />
-        {isFarmer ? <Field label="Village / town" value={user.location ?? '—'} /> : null}
-        <Field label="Country" value={user.country} />
-        <Field label="Trust score" value={String(user.trustScore)} />
-      </Card>
+        {/* identity card */}
+        <View style={styles.sidePad}>
+          <View style={styles.card}>
+            <View style={styles.identityRow}>
+              <Pressable onPress={onAvatarPress} hitSlop={6} style={styles.avatarWrap}>
+                {photo ? (
+                  <Image source={{ uri: photo }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarEmpty]}>
+                    <Text style={styles.avatarLetter}>{user.name[0]?.toUpperCase()}</Text>
+                  </View>
+                )}
+                {uploading ? (
+                  <View style={styles.avatarBusy}>
+                    <ActivityIndicator color="#f4f1ea" />
+                  </View>
+                ) : null}
+                <View style={styles.avatarBadge}>
+                  <Text style={styles.avatarBadgeText}>+</Text>
+                </View>
+              </Pressable>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
+                <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+                <Text style={styles.photoHint}>Tap the photo to change it</Text>
+              </View>
+            </View>
 
-      {isFarmer ? (
-        <Card style={styles.card}>
-          <Text style={styles.cardTitle}>Farm details</Text>
-          <Field
-            label="Farm size"
-            value={profile?.farmSizeAcres != null ? `${profile.farmSizeAcres} acres` : '—'}
+            {/* trust meter */}
+            <View style={styles.trustBlock}>
+              <View style={styles.rowBetween}>
+                <Mono style={styles.trustLabel}>{isFarmer ? 'BUYERS TRUST YOU' : 'TRUST SCORE'}</Mono>
+                <Mono style={styles.trustVal}>{trust} / 100</Mono>
+              </View>
+              <View style={styles.track}>
+                <View style={[styles.trackFill, { width: `${Math.max(trust, 2)}%` }]} />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* details */}
+        <View style={[styles.sectionHead, styles.sidePadHead]}>
+          <Eyebrow>{isFarmer ? 'Your details' : 'Account details'}</Eyebrow>
+        </View>
+        <View style={styles.sidePad}>
+          <View style={styles.card}>
+            <Field label="EMAIL" value={user.email} />
+            <View style={styles.divider} />
+            <Field label="PHONE" value={user.phone ?? 'not set'} />
+            {isFarmer ? (
+              <>
+                <View style={styles.divider} />
+                <Field label="VILLAGE / TOWN" value={user.location ?? 'not set'} />
+              </>
+            ) : null}
+            <View style={styles.divider} />
+            <Field label="COUNTRY" value={user.country} />
+          </View>
+        </View>
+
+        {/* farm card (farmer) / company card (buyer) */}
+        {isFarmer ? (
+          <>
+            <View style={[styles.sectionHead, styles.sidePadHead]}>
+              <Eyebrow>Your farm</Eyebrow>
+              {farm?.organicCertified ? <StatusPill tone="sage">organic</StatusPill> : null}
+            </View>
+            <View style={styles.sidePad}>
+              <View style={styles.card}>
+                <Field label="FARM SIZE" value={farm?.farmSizeAcres != null ? `${farm.farmSizeAcres} acres` : 'not set'} />
+                <View style={styles.divider} />
+                <Field label="STATE" value={farm?.state ?? 'not set'} />
+                {farm?.cropsGrown?.length ? (
+                  <>
+                    <View style={styles.divider} />
+                    <Mono style={styles.cropsLabel}>YOUR CROPS</Mono>
+                    <View style={styles.chipWrap}>
+                      {farm.cropsGrown.map((c) => (
+                        <View key={c} style={styles.chip}>
+                          <Text style={styles.chipText}>{c}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+              </View>
+            </View>
+          </>
+        ) : user.buyerProfile ? (
+          <>
+            <View style={[styles.sectionHead, styles.sidePadHead]}>
+              <Eyebrow>Company</Eyebrow>
+            </View>
+            <View style={styles.sidePad}>
+              <View style={styles.card}>
+                <Field label="COMPANY" value={user.buyerProfile.companyName ?? 'not set'} />
+                <View style={styles.divider} />
+                <Field label="TYPE" value={user.buyerProfile.companyType ?? 'not set'} />
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {/* actions */}
+        <View style={[styles.sectionHead, styles.sidePadHead]}>
+          <Eyebrow>{isFarmer ? 'Do something' : 'Actions'}</Eyebrow>
+        </View>
+        <View style={[styles.sidePad, { gap: 10 }]}>
+          {isFarmer ? (
+            <Row
+              label="Change your details"
+              hint="Name, phone, village and farm"
+              onPress={() => nav.navigate('EditProfile')}
+            />
+          ) : null}
+          <Row
+            label={isFarmer ? 'See what happened' : 'Activity'}
+            hint={isFarmer ? 'Offers, deals and payments' : 'Notifications and updates'}
+            onPress={() => nav.navigate('Notifications')}
           />
-          <Field label="State / region" value={profile?.state ?? '—'} />
-          <Field
-            label="Crops grown"
-            value={profile?.cropsGrown?.length ? profile.cropsGrown.join(', ') : '—'}
+          {isFarmer ? (
+            <Row label="Your sales" hint="Deals and payments so far" onPress={() => nav.navigate('Contracts')} />
+          ) : null}
+          <Row
+            label="Log out"
+            hint={isFarmer ? 'You can come back any time' : undefined}
+            danger
+            loading={signingOut}
+            onPress={onSignOutPress}
           />
-          <Field
-            label="Organic certified"
-            value={profile?.organicCertified ? 'Yes' : 'No'}
-          />
-        </Card>
-      ) : null}
-
-      {isFarmer ? (
-        <Button label="Edit profile" onPress={() => navigation.navigate('EditProfile')} />
-      ) : null}
-
-      <Button label="Log out" variant="outline" onPress={onSignOut} loading={signingOut} />
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.fieldRow}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Text style={styles.fieldValue}>{value}</Text>
+      <Mono style={styles.fieldLabel}>{label}</Mono>
+      <Text style={styles.fieldValue} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
+function Row({
+  label,
+  hint,
+  onPress,
+  danger,
+  loading,
+}: {
+  label: string;
+  hint?: string;
+  onPress: () => void;
+  danger?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={loading}
+      style={({ pressed }) => [styles.row, pressed && { opacity: 0.85 }]}
+    >
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={[styles.rowLabel, danger && { color: colors.ember }]}>{label}</Text>
+        {hint ? <Text style={styles.rowHint}>{hint}</Text> : null}
+      </View>
+      {loading ? (
+        <ActivityIndicator size="small" color={danger ? colors.ember : colors.forest} />
+      ) : (
+        <IconChevR stroke={danger ? colors.ember : design.ink3} />
+      )}
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: { padding: spacing.xl, alignItems: 'center', gap: spacing.md, backgroundColor: colors.surfaceAlt, flexGrow: 1 },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: radius.pill,
-    backgroundColor: colors.forest,
-    alignItems: 'center',
-    justifyContent: 'center',
+  flex: { flex: 1, backgroundColor: design.bg },
+  headerPad: { paddingHorizontal: 20, paddingBottom: 14 },
+  sidePad: { paddingHorizontal: 16 },
+  sidePadHead: { paddingHorizontal: 20 },
+  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  h1: { marginTop: 8, fontFamily: font.sansMed, fontSize: 26, letterSpacing: -0.65, color: design.ink },
+  h1Serif: { fontFamily: font.serifItalic, fontSize: 29, color: colors.forest },
+
+  card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingBottom: 8 },
+
+  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  avatarWrap: { width: 84, height: 84 },
+  avatar: { width: 84, height: 84, borderRadius: 999, backgroundColor: design.paper2 },
+  avatarEmpty: { backgroundColor: colors.forest, alignItems: 'center', justifyContent: 'center' },
+  avatarLetter: { fontFamily: font.sansMed, fontSize: 34, color: '#f4f1ea' },
+  avatarBusy: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 999,
+    backgroundColor: 'rgba(31,45,24,0.45)', alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontSize: 34, fontWeight: '800', color: colors.textInverse },
-  name: { fontSize: 22, fontWeight: '800', color: colors.text },
-  subtitle: { fontSize: 14, color: colors.textMuted, marginBottom: spacing.md },
-  card: { width: '100%', gap: spacing.sm, marginBottom: spacing.lg },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  fieldRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  fieldLabel: { color: colors.textMuted, fontSize: 14 },
-  fieldValue: { color: colors.text, fontSize: 14, fontWeight: '600', flexShrink: 1, textAlign: 'right' },
+  avatarBadge: {
+    position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 999,
+    backgroundColor: colors.ember, borderWidth: 2, borderColor: design.paper,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarBadgeText: { fontFamily: font.sansMed, fontSize: 16, lineHeight: 19, color: '#f4f1ea' },
+  name: { fontFamily: font.sansMed, fontSize: 18, letterSpacing: -0.3, color: design.ink },
+  subtitle: { fontFamily: font.sans, fontSize: 13.5, color: design.ink2, marginTop: 2 },
+  photoHint: { fontFamily: font.sans, fontSize: 12, color: design.ink3, marginTop: 6 },
+
+  trustBlock: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: design.lineLight },
+  trustLabel: { fontSize: 10.5, letterSpacing: 0.6, color: design.ink3 },
+  trustVal: { fontFamily: font.monoSemi, fontSize: 13, color: design.ink },
+  track: { height: 6, backgroundColor: design.paper2, borderRadius: 3, marginTop: 8, overflow: 'hidden' },
+  trackFill: { height: '100%', borderRadius: 3, backgroundColor: colors.forest },
+
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 11 },
+  fieldLabel: { fontSize: 10.5, letterSpacing: 0.6, color: design.ink3 },
+  fieldValue: { fontFamily: font.sansMed, fontSize: 14, color: design.ink, flexShrink: 1, textAlign: 'right' },
+  divider: { borderTopWidth: 1, borderTopColor: design.lineLight },
+
+  cropsLabel: { fontSize: 10.5, letterSpacing: 0.6, color: design.ink3, paddingTop: 12 },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 10 },
+  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line },
+  chipText: { fontFamily: font.sansMed, fontSize: 12.5, color: design.ink2 },
+
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line,
+    borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16,
+  },
+  rowLabel: { fontFamily: font.sansMed, fontSize: 15, letterSpacing: -0.15, color: design.ink },
+  rowHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
 });

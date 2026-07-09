@@ -337,6 +337,31 @@ export async function changePassword(userId: string, currentPassword: string, ne
 }
 
 // ---------------------------------------------------------------------------
+// Update Avatar — persist the path of a photo uploaded via POST /me/avatar
+// ---------------------------------------------------------------------------
+// The upload middleware has already validated, squared, and stored the image;
+// this just points the user at it. Returns the same shape as getCurrentUser.
+export async function updateAvatar(userId: string, avatarPath: string) {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { avatar: avatarPath },
+    include: {
+      farmerProfile: true,
+      buyerProfile: true,
+    },
+  });
+
+  const {
+    password: _,
+    refreshToken: __,
+    passwordResetToken: ___,
+    passwordResetExpires: ____,
+    ...userWithoutSensitiveData
+  } = user;
+  return userWithoutSensitiveData;
+}
+
+// ---------------------------------------------------------------------------
 // Get Current User — Return full profile data
 // ---------------------------------------------------------------------------
 export async function getCurrentUser(userId: string) {
