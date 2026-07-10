@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -53,6 +54,7 @@ export default function LoginScreen() {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
+        <Image source={require('../../assets/cropbid-logo.png')} style={styles.logo} resizeMode="contain" />
         <Text style={styles.brand}>CropBid</Text>
         <Text style={styles.tagline}>AI-powered crop trading</Text>
 
@@ -106,6 +108,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
   container: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
+  logo: { width: 88, height: 70, alignSelf: 'center', marginBottom: spacing.sm },
   brand: { fontSize: 40, fontWeight: '800', color: colors.forest, textAlign: 'center' },
   tagline: {
     fontSize: 15,
