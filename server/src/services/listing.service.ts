@@ -98,6 +98,12 @@ export async function createListing(userId: string, input: CreateListingInput) {
     throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
   }
 
+  // Retail can't undercut the bid floor — otherwise consumers could buy below a
+  // price the normal bid path (and MSP guidance) would reject.
+  if (input.directSaleEnabled && input.retailPricePerUnit! < input.pricePerUnitMin) {
+    throw new ApiError(400, `Retail price cannot be below your floor price (${input.pricePerUnitMin})`);
+  }
+
   const listing = await prisma.listing.create({
     data: {
       farmerId: farmerProfile.id,
@@ -257,13 +263,24 @@ export async function updateListing(listingId: string, userId: string, input: Up
   if (directSaleEnabled && !(retailPrice && retailPrice > 0)) {
     throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
   }
+  // Retail can't undercut the (possibly just-updated) bid floor.
+  if (directSaleEnabled && retailPrice! < minPrice) {
+    throw new ApiError(400, `Retail price cannot be below your floor price (${minPrice})`);
+  }
+
+  // Reconcile direct-sale stock when the total quantity changes: preserve the
+  // units already sold (quantity - remainingQuantity) and recompute what's left,
+  // so remainingQuantity never drifts from the real available stock.
+  const soldQuantity = listing.quantity - listing.remainingQuantity;
+  const reconciledRemaining =
+    input.quantity !== undefined ? Math.max(0, input.quantity - soldQuantity) : undefined;
 
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
       ...(input.cropName && { cropName: input.cropName }),
       ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
-      ...(input.quantity && { quantity: input.quantity }),
+      ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
       ...(input.unit && { unit: input.unit as any }),
       ...(input.qualityGrade && { qualityGrade: input.qualityGrade as any }),
       ...(input.pricePerUnitMin !== undefined && { pricePerUnitMin: input.pricePerUnitMin }),

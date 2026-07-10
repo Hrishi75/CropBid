@@ -65,8 +65,11 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   }
 
   // Rule: Quantity can't exceed available
-  if (input.quantity > listing.quantity) {
-    throw new ApiError(400, `Only ${listing.quantity} ${listing.unit} available`);
+  // Validate against remainingQuantity, not the original quantity: direct-sale
+  // consumer purchases decrement remainingQuantity, so this is the real stock a
+  // bulk bid can still claim (and equals quantity for listings with no direct sales).
+  if (input.quantity > listing.remainingQuantity) {
+    throw new ApiError(400, `Only ${listing.remainingQuantity} ${listing.unit} available`);
   }
 
   // Rule: One active bid per buyer per listing
@@ -294,13 +297,22 @@ export async function acceptBid(bidId: string, farmerId: string) {
   // status pre-check above, then both write ACCEPTED. With the conditional claim,
   // the second transaction blocks on the row lock, re-evaluates against the now
   // committed SOLD row, gets count 0, and bails — so only one bid can win.
+  //
+  // The claim also requires remainingQuantity >= bid.quantity so a bid can't be
+  // accepted for more stock than is actually left after direct-sale consumer
+  // purchases (which decrement remainingQuantity but leave the listing ACTIVE).
+  // Accepting sells the whole listing, so remainingQuantity drops to 0.
   const accepted = await prisma.$transaction(async (tx) => {
     const claim = await tx.listing.updateMany({
-      where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
-      data: { status: 'SOLD' },
+      where: {
+        id: bid.listingId,
+        status: { notIn: ['SOLD', 'EXPIRED'] },
+        remainingQuantity: { gte: bid.quantity },
+      },
+      data: { status: 'SOLD', remainingQuantity: 0 },
     });
     if (claim.count === 0) {
-      throw new ApiError(409, 'This listing is no longer available — another bid was just accepted.');
+      throw new ApiError(409, 'This listing is no longer available — its stock was reduced or another sale just went through.');
     }
 
     const claimedBid = await tx.bid.updateMany({
