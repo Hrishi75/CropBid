@@ -212,6 +212,7 @@ simulator. Leaving `EXPO_PUBLIC_API_URL` unset uses the deployed Render API.
 |------|-------|-------|
 | Farmer | `rajesh@cropbid.test` | Nashik · onion, tomato, grape |
 | Buyer | `vikram@cropbid.test` | Agri Foods Pvt Ltd (Processor) |
+| Consumer | `priya@cropbid.test` | Individual buyer · direct-to-consumer purchases |
 | Admin | `admin@cropbid.test` | Platform administrator |
 
 > To test a payment end-to-end: log in as a **buyer**, place a bid → log in as the **farmer**, accept it → back as the **buyer**, open the transaction and **Pay** with test card `4111 1111 1111 1111` (any future expiry + CVV).

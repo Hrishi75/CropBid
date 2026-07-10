@@ -765,6 +765,25 @@ async function main() {
   console.log(`  ✅ Created ${logisticsPartners.length} logistics partners`);
 
   // =========================================================================
+  // 13. Create Consumer Test Account (direct-to-consumer retail buyer)
+  // =========================================================================
+  // No profile needed — CONSUMER skips onboarding entirely (mobile RootNavigator).
+  console.log('  Creating consumer test account...');
+  await prisma.user.create({
+    data: {
+      name: 'Priya Sharma',
+      email: 'priya@cropbid.test',
+      password: hashedPassword,
+      role: 'CONSUMER',
+      phone: '+91-9123456789',
+      location: 'Pune',
+      country: 'India',
+      currency: 'INR',
+      trustScore: 50,
+    },
+  });
+
+  // =========================================================================
   // Summary
   // =========================================================================
   const counts = {
@@ -781,7 +800,7 @@ async function main() {
   };
 
   console.log('\n🌾 Seed completed! Database populated with:\n');
-  console.log(`  👤 Users:              ${counts.users} (1 admin, 20 farmers, 10 buyers)`);
+  console.log(`  👤 Users:              ${counts.users} (1 admin, 20 farmers, 10 buyers, 1 consumer)`);
   console.log(`  🧑‍🌾 Farmer Profiles:     ${counts.farmerProfiles}`);
   console.log(`  🏢 Buyer Profiles:      ${counts.buyerProfiles}`);
   console.log(`  📦 Listings:            ${counts.listings} (40 Indian + 10 global)`);
@@ -794,7 +813,8 @@ async function main() {
   console.log('\n  All test users password: password123');
   console.log('  Admin login: admin@cropbid.test / password123');
   console.log('  Sample farmer: rajesh@cropbid.test / password123');
-  console.log('  Sample buyer: vikram@cropbid.test / password123\n');
+  console.log('  Sample buyer: vikram@cropbid.test / password123');
+  console.log('  Sample consumer: priya@cropbid.test / password123\n');
 }
 
 // =============================================================================
