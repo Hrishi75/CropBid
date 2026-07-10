@@ -31,7 +31,7 @@ Once a deal is reached, money moves into **escrow via Razorpay**, the crop ships
 
 ## How the platform works
 
-### The two deal paths
+### The deal paths
 
 ```
                           ┌─────────────────────────────────────────────┐
@@ -65,6 +65,8 @@ Once a deal is reached, money moves into **escrow via Razorpay**, the crop ships
    │ (money held)       │            │                          │          │ farmer, trust +2 each  │
    └────────────────────┘            └──────────────────────────┘          └────────────────────────┘
 ```
+
+**Plus a direct-to-consumer path.** When a farmer enables the retail channel on a listing (`directSaleEnabled` + a `retailPricePerUnit`), a **CONSUMER** can instant-buy any quantity at that fixed price — no bidding, no negotiation. The purchase is created already `ACCEPTED`, atomically decrements the listing's `remainingQuantity` (flipping it to `SOLD` at zero), then joins the same escrow → ship → confirm pipeline above.
 
 ### Step by step
 
@@ -121,7 +123,9 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 - **Analytics Dashboards** — Recharts visualizations for farmer, buyer, admin
 - **Admin Panel** — platform stats, user management, transaction oversight, refunds
 - **Audit Log** — tamper-evident record of sensitive actions (accept, refund, payment, admin edits)
-- **Native Mobile Apps** — Expo / React Native apps for buyers and farmers: browse, place bids, live auctions, escrow checkout, manage listings, incoming bids, and ship/confirm delivery
+- **Direct-to-Consumer Sales** — a fixed-price retail channel that runs alongside bidding: a farmer flips on "sell directly to consumers" with a retail price, and the **CONSUMER** role instant-buys any quantity with no negotiation, decrementing the listing's stock
+- **Account Security** — password recovery (forgot / reset), in-app change password, and account settings across all roles
+- **Native Mobile Apps** — Expo / React Native apps for buyers, farmers, and consumers: browse, place bids, live auctions, escrow checkout, manage listings, incoming bids, direct retail purchases, and ship/confirm delivery
 - **MSP Price Floor (India)** — warns farmers and buyers when an INR listing is priced below the government Minimum Support Price, for catalogue crops that carry an official MSP (~11 of the ~23 nationally mandated crops)
 - **Dark Mode** + responsive mobile layout
 
@@ -245,6 +249,9 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | POST | `/api/auth/signup` | Create account |
 | POST | `/api/auth/login` | Login (access token + refresh cookie) |
 | POST | `/api/auth/refresh` | Rotate refresh token |
+| POST | `/api/auth/forgot-password` | Request a password-reset token |
+| POST | `/api/auth/reset-password` | Reset password with the emailed token |
+| POST | `/api/auth/change-password` | Change password while logged in |
 | POST | `/api/auth/logout` | Clear refresh token |
 | GET | `/api/auth/me` | Current user profile |
 | PATCH | `/api/auth/me` | Edit account + farm details — **farmer only** (partial update) |
@@ -264,6 +271,7 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | DELETE | `/api/listings/:id` | Delete listing |
 | GET | `/api/browse` | Browse with filters + smart-match scoring |
 | POST | `/api/bids` | Place a bid |
+| POST | `/api/bids/direct-purchase` | Instant-buy a fixed-price quantity — **consumer only** (no negotiation) |
 | GET | `/api/bids/my` | My bids (buyer) |
 | GET | `/api/bids/incoming` | Incoming bids (farmer) |
 | POST | `/api/bids/:id/accept` | Accept bid (creates transaction) |
@@ -376,8 +384,8 @@ CropBid/
 │       ├── components/     # UI kit, icons, Razorpay checkout
 │       ├── context/        # AuthContext (in-memory access + secure-store refresh)
 │       ├── lib/            # crops, MSP floor, price formatting, socket
-│       ├── navigation/     # RootNavigator + buyer/farmer tab bars
-│       └── screens/        # buyer/ farmer/ + shared auth & onboarding
+│       ├── navigation/     # RootNavigator + buyer/farmer/consumer tab bars
+│       └── screens/        # buyer/ farmer/ consumer/ + shared auth & onboarding
 │
 ├── render.yaml             # Render blueprint (API)
 ├── docker-compose.yml      # PostgreSQL 16 Alpine
