@@ -269,14 +269,20 @@ async function runNegotiation(
 
   // If deal was reached, accept the bid and mark listing as sold
   if (outcome === 'DEAL') {
-    // Conditionally claim the listing (status must still be sellable) so a
-    // negotiated deal can't double-sell a listing that a concurrent accept —
-    // a manual acceptBid or another negotiation — already took. If the claim
-    // loses the race, void this deal rather than create a second sale.
+    // Conditionally claim the listing (status must still be sellable AND enough
+    // stock must remain) so a negotiated deal can't double-sell a listing that a
+    // concurrent accept — a manual acceptBid or another negotiation — already
+    // took, nor oversell stock already bought directly by consumers (which
+    // decrements remainingQuantity). Mirrors the guard in bid.service.acceptBid.
+    // If the claim loses the race, void this deal rather than create a second sale.
     const claimed = await prisma.$transaction(async (tx) => {
       const claim = await tx.listing.updateMany({
-        where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
-        data: { status: 'SOLD' },
+        where: {
+          id: bid.listingId,
+          status: { notIn: ['SOLD', 'EXPIRED'] },
+          remainingQuantity: { gte: bid.quantity },
+        },
+        data: { status: 'SOLD', remainingQuantity: 0 },
       });
       if (claim.count === 0) return false;
 
