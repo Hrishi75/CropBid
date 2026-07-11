@@ -32,7 +32,7 @@ export interface SignupInput {
   name: string;
   email: string;
   password: string;
-  role: 'FARMER' | 'BUYER';
+  role: 'FARMER' | 'BUYER' | 'CONSUMER';
   phone?: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
@@ -115,6 +115,7 @@ export async function buyerOnboarding(input: BuyerOnboardingInput): Promise<void
 export async function browse(params?: {
   search?: string;
   page?: number;
+  directSale?: boolean;
 }): Promise<Paginated<Listing>> {
   const { data } = await api.get<Paginated<Listing>>('/browse', { params });
   return data;
@@ -172,6 +173,12 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
   const { data } = await api.get<Bid[]>('/bids/incoming', {
     params: status ? { status } : undefined,
   });
+  return data;
+}
+
+// --- Consumer direct purchase (instant-buy, no negotiation) ---
+export async function directPurchase(input: { listingId: string; quantity: number }): Promise<Bid> {
+  const { data } = await api.post<Bid>('/bids/direct-purchase', input);
   return data;
 }
 

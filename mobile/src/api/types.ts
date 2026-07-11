@@ -1,7 +1,7 @@
 // Subset of the API shapes the mobile app consumes.
 // Mirrors client/src/types/index.ts — only the fields the app reads.
 
-export type Role = 'FARMER' | 'BUYER' | 'ADMIN';
+export type Role = 'FARMER' | 'BUYER' | 'CONSUMER' | 'ADMIN';
 export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
 export type QualityGrade = 'A' | 'B' | 'C';
 export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED';
@@ -34,11 +34,14 @@ export interface Listing {
   cropName: string;
   cropVariety: string | null;
   quantity: number;
+  remainingQuantity: number;
   unit: Unit;
   qualityGrade: QualityGrade;
   pricePerUnitMin: number;
   pricePerUnitMax: number;
   currency: string;
+  directSaleEnabled: boolean;
+  retailPricePerUnit: number | null;
   description: string | null;
   images: string[];
   organic: boolean;
@@ -66,6 +69,7 @@ export interface Bid {
   status: BidStatus;
   counterPrice: number | null;
   isAgentBid?: boolean;
+  isDirectPurchase?: boolean;
   createdAt: string;
 }
 

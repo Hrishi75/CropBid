@@ -269,14 +269,20 @@ async function runNegotiation(
 
   // If deal was reached, accept the bid and mark listing as sold
   if (outcome === 'DEAL') {
-    // Conditionally claim the listing (status must still be sellable) so a
-    // negotiated deal can't double-sell a listing that a concurrent accept —
-    // a manual acceptBid or another negotiation — already took. If the claim
-    // loses the race, void this deal rather than create a second sale.
+    // Conditionally claim the listing (status must still be sellable AND enough
+    // stock must remain) so a negotiated deal can't double-sell a listing that a
+    // concurrent accept — a manual acceptBid or another negotiation — already
+    // took, nor oversell stock already bought directly by consumers (which
+    // decrements remainingQuantity). Mirrors the guard in bid.service.acceptBid.
+    // If the claim loses the race, void this deal rather than create a second sale.
     const claimed = await prisma.$transaction(async (tx) => {
       const claim = await tx.listing.updateMany({
-        where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
-        data: { status: 'SOLD' },
+        where: {
+          id: bid.listingId,
+          status: { notIn: ['SOLD', 'EXPIRED'] },
+          remainingQuantity: { gte: bid.quantity },
+        },
+        data: { status: 'SOLD', remainingQuantity: 0 },
       });
       if (claim.count === 0) return false;
 
@@ -298,16 +304,15 @@ async function runNegotiation(
         },
         data: { status: 'REJECTED' },
       });
+
+      // Spin up the escrow transaction for the agreed bid in the SAME tx, so a
+      // negotiated deal can never have a SOLD listing and ACCEPTED bid with
+      // nothing for the buyer to pay. Mirrors bid.service.acceptBid.
+      await createTransaction(bid.id, tx);
       return true;
     });
 
     if (claimed) {
-      // Spin up the escrow transaction for the agreed bid, mirroring the manual
-      // accept path (bid.service.acceptBid). Without this a negotiated deal would
-      // have a SOLD listing and ACCEPTED bid but nothing for the buyer to pay.
-      createTransaction(bid.id).catch((err) => {
-        console.error(`Failed to create transaction for negotiated bid ${bid.id}:`, err);
-      });
       notifyBoth('DEAL', currentPrice);
     } else {
       // Lost the race — the listing was already sold elsewhere. Void this bid,

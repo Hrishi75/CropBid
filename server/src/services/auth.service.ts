@@ -29,7 +29,7 @@ interface SignupInput {
   name: string;
   email: string;
   password: string;
-  role: 'FARMER' | 'BUYER';
+  role: 'FARMER' | 'BUYER' | 'CONSUMER';
   phone?: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';

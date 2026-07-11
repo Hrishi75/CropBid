@@ -34,6 +34,8 @@ interface CreateListingInput {
   location: string;
   country?: string;
   state: string;
+  directSaleEnabled?: boolean;
+  retailPricePerUnit?: number;
 }
 
 interface UpdateListingInput {
@@ -54,6 +56,8 @@ interface UpdateListingInput {
   location?: string;
   country?: string;
   state?: string;
+  directSaleEnabled?: boolean;
+  retailPricePerUnit?: number;
   // NOTE: `status` is deliberately NOT editable here. Listing status is owned by
   // the bid/auction/expiry flows; allowing a direct write would bypass the sale
   // state machine (e.g. flipping a live IN_AUCTION listing to SOLD).
@@ -90,12 +94,23 @@ export async function createListing(userId: string, input: CreateListingInput) {
     throw new ApiError(400, 'Price must be greater than zero');
   }
 
+  if (input.directSaleEnabled && !(input.retailPricePerUnit && input.retailPricePerUnit > 0)) {
+    throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
+  }
+
+  // Retail can't undercut the bid floor — otherwise consumers could buy below a
+  // price the normal bid path (and MSP guidance) would reject.
+  if (input.directSaleEnabled && input.retailPricePerUnit! < input.pricePerUnitMin) {
+    throw new ApiError(400, `Retail price cannot be below your floor price (${input.pricePerUnitMin})`);
+  }
+
   const listing = await prisma.listing.create({
     data: {
       farmerId: farmerProfile.id,
       cropName: input.cropName,
       cropVariety: input.cropVariety || null,
       quantity: input.quantity,
+      remainingQuantity: input.quantity,
       unit: (input.unit as any) || 'KG',
       qualityGrade: input.qualityGrade as any,
       pricePerUnitMin: input.pricePerUnitMin,
@@ -110,6 +125,8 @@ export async function createListing(userId: string, input: CreateListingInput) {
       location: input.location,
       country: input.country || 'India',
       state: input.state,
+      directSaleEnabled: input.directSaleEnabled || false,
+      retailPricePerUnit: input.directSaleEnabled ? input.retailPricePerUnit : null,
     },
     include: {
       farmer: {
@@ -241,12 +258,29 @@ export async function updateListing(listingId: string, userId: string, input: Up
     throw new ApiError(400, 'Minimum price cannot exceed maximum price');
   }
 
+  const directSaleEnabled = input.directSaleEnabled ?? listing.directSaleEnabled;
+  const retailPrice = input.retailPricePerUnit ?? listing.retailPricePerUnit;
+  if (directSaleEnabled && !(retailPrice && retailPrice > 0)) {
+    throw new ApiError(400, 'Set a retail price per unit to enable direct sale to consumers');
+  }
+  // Retail can't undercut the (possibly just-updated) bid floor.
+  if (directSaleEnabled && retailPrice! < minPrice) {
+    throw new ApiError(400, `Retail price cannot be below your floor price (${minPrice})`);
+  }
+
+  // Reconcile direct-sale stock when the total quantity changes: preserve the
+  // units already sold (quantity - remainingQuantity) and recompute what's left,
+  // so remainingQuantity never drifts from the real available stock.
+  const soldQuantity = listing.quantity - listing.remainingQuantity;
+  const reconciledRemaining =
+    input.quantity !== undefined ? Math.max(0, input.quantity - soldQuantity) : undefined;
+
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
       ...(input.cropName && { cropName: input.cropName }),
       ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
-      ...(input.quantity && { quantity: input.quantity }),
+      ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
       ...(input.unit && { unit: input.unit as any }),
       ...(input.qualityGrade && { qualityGrade: input.qualityGrade as any }),
       ...(input.pricePerUnitMin !== undefined && { pricePerUnitMin: input.pricePerUnitMin }),
@@ -261,6 +295,8 @@ export async function updateListing(listingId: string, userId: string, input: Up
       ...(input.location && { location: input.location }),
       ...(input.country && { country: input.country }),
       ...(input.state && { state: input.state }),
+      ...(input.directSaleEnabled !== undefined && { directSaleEnabled: input.directSaleEnabled }),
+      ...(input.retailPricePerUnit !== undefined && { retailPricePerUnit: input.retailPricePerUnit }),
     },
     include: {
       farmer: {

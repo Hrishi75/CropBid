@@ -53,7 +53,22 @@ export type FarmerStackParamList = {
   Notifications: undefined;
 };
 
-// ProfileScreen (the "You" tab) is mounted in both the buyer stack and the
-// farmer stack, so its navigation targets span both param lists. Role gates in
+// Consumer app — buy any quantity directly from a farmer, no bidding
+export type ConsumerTabParamList = {
+  Home: undefined;
+  Orders: undefined;
+  You: undefined;
+};
+
+export type ConsumerStackParamList = {
+  ConsumerTabs: undefined;
+  ListingDetail: { id: string; preview?: Listing };
+  Notifications: undefined;
+};
+
+// ProfileScreen (the "You" tab) is mounted in the buyer, farmer, and consumer
+// stacks, so its navigation targets span all three param lists. Role gates in
 // the screen decide which rows — and therefore which routes — are reachable.
-export type ProfileParamList = RootStackParamList & FarmerStackParamList;
+export type ProfileParamList = RootStackParamList &
+  FarmerStackParamList &
+  ConsumerStackParamList;

@@ -19,7 +19,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
-import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered } from './notification.helpers';
+import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
 
 // --- Input types ---
@@ -28,6 +28,11 @@ interface PlaceBidInput {
   bidPricePerUnit: number;
   quantity: number;
   message?: string;
+}
+
+interface DirectPurchaseInput {
+  listingId: string;
+  quantity: number;
 }
 
 // =============================================================================
@@ -60,8 +65,11 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   }
 
   // Rule: Quantity can't exceed available
-  if (input.quantity > listing.quantity) {
-    throw new ApiError(400, `Only ${listing.quantity} ${listing.unit} available`);
+  // Validate against remainingQuantity, not the original quantity: direct-sale
+  // consumer purchases decrement remainingQuantity, so this is the real stock a
+  // bulk bid can still claim (and equals quantity for listings with no direct sales).
+  if (input.quantity > listing.remainingQuantity) {
+    throw new ApiError(400, `Only ${listing.remainingQuantity} ${listing.unit} available`);
   }
 
   // Rule: One active bid per buyer per listing
@@ -110,6 +118,80 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
     input.bidPricePerUnit, listing.currency, listing.unit,
     listing.id, bid.id
   ).catch(() => {}); // Fire and forget
+
+  return bid;
+}
+
+// =============================================================================
+// DIRECT PURCHASE — Consumer instant-buys a fixed-price quantity, no bidding
+// =============================================================================
+// A CONSUMER account skips the negotiate/accept dance entirely: the listing must
+// opt into directSaleEnabled with a retailPricePerUnit, and the purchase creates
+// an already-ACCEPTED bid so it can flow through the exact same
+// createTransaction/payment/shipment pipeline as a negotiated deal.
+export async function createDirectPurchase(consumerId: string, input: DirectPurchaseInput) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: input.listingId },
+    include: { farmer: true },
+  });
+
+  if (!listing) throw new ApiError(404, 'Listing not found');
+  if (!listing.directSaleEnabled || listing.retailPricePerUnit == null) {
+    throw new ApiError(400, 'This listing is not available for direct purchase');
+  }
+  if (listing.farmer.userId === consumerId) {
+    throw new ApiError(400, 'You cannot buy from your own listing');
+  }
+
+  const retailPrice = listing.retailPricePerUnit;
+  const totalAmount = retailPrice * input.quantity;
+
+  // Same conditional-claim pattern as acceptBid below: only decrement stock if
+  // enough remains and the listing is still active, closing the same TOCTOU
+  // race two concurrent purchases could otherwise hit.
+  const bid = await prisma.$transaction(async (tx) => {
+    const claim = await tx.listing.updateMany({
+      where: { id: listing.id, status: 'ACTIVE', remainingQuantity: { gte: input.quantity } },
+      data: { remainingQuantity: { decrement: input.quantity } },
+    });
+    if (claim.count === 0) {
+      throw new ApiError(409, 'Not enough stock available for this purchase.');
+    }
+
+    const updatedListing = await tx.listing.findUniqueOrThrow({ where: { id: listing.id } });
+    if (updatedListing.remainingQuantity <= 0) {
+      await tx.listing.update({ where: { id: listing.id }, data: { status: 'SOLD' } });
+    }
+
+    const created = await tx.bid.create({
+      data: {
+        listingId: listing.id,
+        buyerId: consumerId,
+        bidPricePerUnit: retailPrice,
+        quantity: input.quantity,
+        totalAmount,
+        currency: listing.currency,
+        isAgentBid: false,
+        isDirectPurchase: true,
+        status: 'ACCEPTED',
+      },
+      include: {
+        listing: true,
+        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      },
+    });
+
+    // Create the escrow transaction in the SAME tx so the sale and its payable
+    // record commit (or roll back) together — no SOLD stock without a transaction.
+    await createTransaction(created.id, tx);
+    return created;
+  });
+
+  // Notify the farmer (best-effort — the sale is already committed above)
+  notifyDirectPurchase(
+    listing.farmer.userId, bid.buyer!.name, listing.cropName,
+    input.quantity, listing.unit, listing.id, bid.id
+  ).catch(() => {});
 
   return bid;
 }
@@ -217,13 +299,22 @@ export async function acceptBid(bidId: string, farmerId: string) {
   // status pre-check above, then both write ACCEPTED. With the conditional claim,
   // the second transaction blocks on the row lock, re-evaluates against the now
   // committed SOLD row, gets count 0, and bails — so only one bid can win.
+  //
+  // The claim also requires remainingQuantity >= bid.quantity so a bid can't be
+  // accepted for more stock than is actually left after direct-sale consumer
+  // purchases (which decrement remainingQuantity but leave the listing ACTIVE).
+  // Accepting sells the whole listing, so remainingQuantity drops to 0.
   const accepted = await prisma.$transaction(async (tx) => {
     const claim = await tx.listing.updateMany({
-      where: { id: bid.listingId, status: { notIn: ['SOLD', 'EXPIRED'] } },
-      data: { status: 'SOLD' },
+      where: {
+        id: bid.listingId,
+        status: { notIn: ['SOLD', 'EXPIRED'] },
+        remainingQuantity: { gte: bid.quantity },
+      },
+      data: { status: 'SOLD', remainingQuantity: 0 },
     });
     if (claim.count === 0) {
-      throw new ApiError(409, 'This listing is no longer available — another bid was just accepted.');
+      throw new ApiError(409, 'This listing is no longer available — its stock was reduced or another sale just went through.');
     }
 
     const claimedBid = await tx.bid.updateMany({
@@ -244,6 +335,10 @@ export async function acceptBid(bidId: string, farmerId: string) {
       data: { status: 'REJECTED' },
     });
 
+    // Create the escrow transaction in the SAME tx so an accepted sale always
+    // has a payable record — atomic, never fire-and-forget.
+    await createTransaction(bidId, tx);
+
     return tx.bid.findUniqueOrThrow({
       where: { id: bidId },
       include: {
@@ -253,10 +348,7 @@ export async function acceptBid(bidId: string, farmerId: string) {
     });
   });
 
-  // Create transaction and notify buyer
-  createTransaction(bidId).catch((err) => {
-    console.error(`Failed to create transaction for accepted bid ${bidId}:`, err);
-  });
+  // Notify buyer (best-effort — the sale is already committed above)
   notifyBidAccepted(
     bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
     bid.currency, bid.listing.unit, bid.listingId, bidId
