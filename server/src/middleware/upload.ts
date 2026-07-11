@@ -166,6 +166,11 @@ export async function processAvatar(req: Request, _res: Response, next: NextFunc
     (req as any).processedAvatar = `/uploads/avatars/${webpFilename}`;
     next();
   } catch (error) {
+    // Sharp failed — remove the raw file Multer already wrote, otherwise it
+    // lingers at a publicly-served path under uploads/avatars/.
+    if (req.file) {
+      fs.unlink(req.file.path, () => {});
+    }
     next(error);
   }
 }

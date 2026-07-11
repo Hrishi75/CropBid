@@ -17,17 +17,19 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
 import { Eyebrow, Mono, StatusPill } from '../components/buyerKit';
 import { IconChevR } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { useAuth } from '../context/AuthContext';
+import type { ProfileParamList } from '../navigation/types';
 import { uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
-  const nav = useNavigation<any>();
+  const nav = useNavigation<NativeStackNavigationProp<ProfileParamList>>();
   const { user, refreshUser, applyUser, signOut } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);

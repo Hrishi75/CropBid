@@ -52,3 +52,8 @@ export type FarmerStackParamList = {
   Contracts: undefined;
   Notifications: undefined;
 };
+
+// ProfileScreen (the "You" tab) is mounted in both the buyer stack and the
+// farmer stack, so its navigation targets span both param lists. Role gates in
+// the screen decide which rows — and therefore which routes — are reachable.
+export type ProfileParamList = RootStackParamList & FarmerStackParamList;

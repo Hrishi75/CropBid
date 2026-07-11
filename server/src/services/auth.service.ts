@@ -12,6 +12,8 @@
 // =============================================================================
 
 import bcrypt from 'bcryptjs';
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../lib/prisma';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
@@ -341,7 +343,24 @@ export async function changePassword(userId: string, currentPassword: string, ne
 // ---------------------------------------------------------------------------
 // The upload middleware has already validated, squared, and stored the image;
 // this just points the user at it. Returns the same shape as getCurrentUser.
+
+// uploads/ is served publicly via express.static, so replaced avatars must be
+// deleted from disk or they stay accessible (and accumulate) forever. Only
+// touch files under our own avatars folder — basename() guards against a
+// tampered DB value escaping the directory.
+const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
+
+function removeAvatarFile(avatarUrlPath: string) {
+  if (!avatarUrlPath.startsWith('/uploads/avatars/')) return;
+  fs.unlink(path.join(AVATARS_DIR, path.basename(avatarUrlPath)), () => {});
+}
+
 export async function updateAvatar(userId: string, avatarPath: string) {
+  const previous = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { avatar: true },
+  });
+
   const user = await prisma.user.update({
     where: { id: userId },
     data: { avatar: avatarPath },
@@ -350,6 +369,11 @@ export async function updateAvatar(userId: string, avatarPath: string) {
       buyerProfile: true,
     },
   });
+
+  // DB write succeeded — the old file is orphaned now; clean it up.
+  if (previous?.avatar && previous.avatar !== avatarPath) {
+    removeAvatarFile(previous.avatar);
+  }
 
   const {
     password: _,
