@@ -16,6 +16,7 @@ export interface User {
   location?: string | null;
   country: string;
   currency: string;
+  avatar?: string | null;
   trustScore: number;
   farmerProfile?: {
     farmSizeAcres?: number;

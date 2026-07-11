@@ -69,6 +69,14 @@ export async function updateFarmerProfile(input: UpdateFarmerProfileInput): Prom
   return data.user;
 }
 
+// Profile photo — multipart field "avatar". Returns the fresh user.
+export async function uploadAvatar(form: FormData): Promise<User> {
+  const { data } = await api.post<{ user: User }>('/auth/me/avatar', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data.user;
+}
+
 export async function logout(): Promise<void> {
   try {
     await api.post('/auth/logout');

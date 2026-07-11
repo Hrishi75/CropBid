@@ -263,6 +263,22 @@ export async function updateProfileHandler(req: Request, res: Response) {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/me/avatar
+// ---------------------------------------------------------------------------
+// Multer + Sharp (middleware/upload.ts) have already validated, squared, and
+// stored the photo; here we just persist its path. Same { user } shape as /me.
+export async function updateAvatarHandler(req: Request, res: Response) {
+  const avatarPath = (req as any).processedAvatar as string | undefined;
+  if (!avatarPath) {
+    res.status(400).json({ error: true, message: 'Attach an image in the "avatar" field' });
+    return;
+  }
+
+  const user = await authService.updateAvatar(req.user!.userId, avatarPath);
+  res.json({ user });
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/forgot-password
 // ---------------------------------------------------------------------------
 // Always answers 200 with the same message whether or not the email has an
