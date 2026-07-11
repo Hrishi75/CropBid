@@ -269,15 +269,18 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | GET | `/api/listings/:id` | Listing detail |
 | PATCH | `/api/listings/:id` | Update listing |
 | DELETE | `/api/listings/:id` | Delete listing |
-| GET | `/api/browse` | Browse with filters + smart-match scoring |
+| GET | `/api/browse` | Browse listings with filters |
+| GET | `/api/browse/filters` | Available filter options |
+| GET | `/api/browse/smart-match` | AI-scored listing recommendations |
 | POST | `/api/bids` | Place a bid |
 | POST | `/api/bids/direct-purchase` | Instant-buy a fixed-price quantity — **consumer only** (no negotiation) |
 | GET | `/api/bids/my` | My bids (buyer) |
 | GET | `/api/bids/incoming` | Incoming bids (farmer) |
-| POST | `/api/bids/:id/accept` | Accept bid (creates transaction) |
-| POST | `/api/bids/:id/reject` | Reject bid |
-| POST | `/api/bids/:id/counter` | Counter with new price |
-| PATCH | `/api/bids/:id` | Update bid |
+| GET | `/api/bids/listing/:id` | Bids on a listing (farmer) |
+| PUT | `/api/bids/:id/accept` | Accept bid (creates transaction) |
+| PUT | `/api/bids/:id/reject` | Reject bid |
+| PUT | `/api/bids/:id/counter` | Counter with new price |
+| PUT | `/api/bids/:id/update` | Update bid |
 | DELETE | `/api/bids/:id` | Withdraw bid |
 </details>
 
@@ -286,10 +289,12 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/agent` | Get agent config |
-| PUT | `/api/agent` | Update agent config |
+| GET | `/api/agent/config` | Get agent config |
+| PUT | `/api/agent/config` | Update agent config |
+| POST | `/api/agent/toggle` | Enable / disable the agent |
 | POST | `/api/negotiations/start` | Start AI negotiation on a bid |
 | GET | `/api/negotiations` | My negotiations |
+| GET | `/api/negotiations/bid/:bidId` | Negotiation for a bid |
 | GET | `/api/negotiations/:id` | Negotiation detail (round-by-round) |
 | POST | `/api/auctions/start` | Start live auction (farmer) |
 | GET | `/api/auctions` | List active auctions |
@@ -316,6 +321,12 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | GET | `/api/logistics/shipment/:id` | Shipment + tracking |
 | GET | `/api/logistics/transaction/:transactionId` | Shipment by transaction |
 | PUT | `/api/logistics/shipment/:id/status` | Update shipment status |
+| PUT | `/api/logistics/shipment/:id/driver` | Assign driver details |
+| PUT | `/api/logistics/shipment/:id/proof` | Upload proof of delivery |
+| GET | `/api/logistics/admin/partners` | List logistics partners (admin) |
+| POST | `/api/logistics/admin/partners` | Add a logistics partner (admin) |
+| PUT | `/api/logistics/admin/partners/:id` | Update a partner (admin) |
+| PUT | `/api/logistics/admin/partners/:id/toggle` | Activate / deactivate a partner (admin) |
 </details>
 
 <details>
