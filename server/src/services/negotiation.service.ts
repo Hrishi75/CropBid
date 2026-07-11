@@ -304,16 +304,15 @@ async function runNegotiation(
         },
         data: { status: 'REJECTED' },
       });
+
+      // Spin up the escrow transaction for the agreed bid in the SAME tx, so a
+      // negotiated deal can never have a SOLD listing and ACCEPTED bid with
+      // nothing for the buyer to pay. Mirrors bid.service.acceptBid.
+      await createTransaction(bid.id, tx);
       return true;
     });
 
     if (claimed) {
-      // Spin up the escrow transaction for the agreed bid, mirroring the manual
-      // accept path (bid.service.acceptBid). Without this a negotiated deal would
-      // have a SOLD listing and ACCEPTED bid but nothing for the buyer to pay.
-      createTransaction(bid.id).catch((err) => {
-        console.error(`Failed to create transaction for negotiated bid ${bid.id}:`, err);
-      });
       notifyBoth('DEAL', currentPrice);
     } else {
       // Lost the race — the listing was already sold elsewhere. Void this bid,

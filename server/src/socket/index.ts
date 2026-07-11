@@ -347,31 +347,39 @@ async function endAuction(listingId: string) {
       return;
     }
 
-    // Create a bid record for the winner
-    const winningBid = await prisma.bid.create({
-      data: {
-        listingId,
-        buyerId: auction.currentWinner,
-        bidPricePerUnit: auction.currentPrice,
-        quantity: listing.quantity,
-        totalAmount: auction.currentPrice * listing.quantity,
-        currency: auction.currency as any,
-        message: `Won via live auction (${auction.bids.length} bids)`,
-        isAgentBid: false,
-        status: 'ACCEPTED',
-      },
-    });
-
-    // Mark listing as SOLD
-    await prisma.listing.update({
-      where: { id: listingId },
-      data: { status: 'SOLD' },
-    });
-
-    // Auto-create transaction for the winning bid
-    createTransaction(winningBid.id).catch((err) => {
-      console.error(`Failed to auto-create transaction for auction bid ${winningBid.id}:`, err);
-    });
+    // Persist the winning sale (winning bid + SOLD listing) and its escrow
+    // transaction ATOMICALLY, so a settled auction can never leave a SOLD
+    // listing with no payable transaction. Wrapped in try/catch because
+    // endAuction runs from a setTimeout with no caller to handle a rejection.
+    const winnerId = auction.currentWinner; // narrowed to string by the if above
+    let winningBid;
+    try {
+      winningBid = await prisma.$transaction(async (tx) => {
+        const wb = await tx.bid.create({
+          data: {
+            listingId,
+            buyerId: winnerId,
+            bidPricePerUnit: auction.currentPrice,
+            quantity: listing.quantity,
+            totalAmount: auction.currentPrice * listing.quantity,
+            currency: auction.currency as any,
+            message: `Won via live auction (${auction.bids.length} bids)`,
+            isAgentBid: false,
+            status: 'ACCEPTED',
+          },
+        });
+        await tx.listing.update({
+          where: { id: listingId },
+          data: { status: 'SOLD' },
+        });
+        await createTransaction(wb.id, tx);
+        return wb;
+      });
+    } catch (err) {
+      console.error(`Failed to settle auction ${listingId}:`, err);
+      activeAuctions.delete(listingId);
+      return;
+    }
 
     // Broadcast auction end with winner
     io.to(roomName).emit('auction:ended', {

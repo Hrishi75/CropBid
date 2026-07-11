@@ -163,7 +163,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
       await tx.listing.update({ where: { id: listing.id }, data: { status: 'SOLD' } });
     }
 
-    return tx.bid.create({
+    const created = await tx.bid.create({
       data: {
         listingId: listing.id,
         buyerId: consumerId,
@@ -180,12 +180,14 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
         buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
       },
     });
+
+    // Create the escrow transaction in the SAME tx so the sale and its payable
+    // record commit (or roll back) together — no SOLD stock without a transaction.
+    await createTransaction(created.id, tx);
+    return created;
   });
 
-  // Create transaction (escrow/payment/shipment pipeline) and notify the farmer
-  createTransaction(bid.id).catch((err) => {
-    console.error(`Failed to create transaction for direct purchase ${bid.id}:`, err);
-  });
+  // Notify the farmer (best-effort — the sale is already committed above)
   notifyDirectPurchase(
     listing.farmer.userId, bid.buyer!.name, listing.cropName,
     input.quantity, listing.unit, listing.id, bid.id
@@ -333,6 +335,10 @@ export async function acceptBid(bidId: string, farmerId: string) {
       data: { status: 'REJECTED' },
     });
 
+    // Create the escrow transaction in the SAME tx so an accepted sale always
+    // has a payable record — atomic, never fire-and-forget.
+    await createTransaction(bidId, tx);
+
     return tx.bid.findUniqueOrThrow({
       where: { id: bidId },
       include: {
@@ -342,10 +348,7 @@ export async function acceptBid(bidId: string, farmerId: string) {
     });
   });
 
-  // Create transaction and notify buyer
-  createTransaction(bidId).catch((err) => {
-    console.error(`Failed to create transaction for accepted bid ${bidId}:`, err);
-  });
+  // Notify buyer (best-effort — the sale is already committed above)
   notifyBidAccepted(
     bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
     bid.currency, bid.listing.unit, bid.listingId, bidId
