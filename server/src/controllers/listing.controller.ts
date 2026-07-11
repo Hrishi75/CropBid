@@ -42,6 +42,8 @@ const updateListingSchema = z.object({
   location: z.string().min(1).max(200).optional(),
   country: z.string().max(100).optional(),
   state: z.string().min(1).max(100).optional(),
+  directSaleEnabled: z.coerce.boolean().optional(),
+  retailPricePerUnit: z.coerce.number().positive().optional(),
 });
 
 // POST /api/listings — Create a new listing
@@ -58,6 +60,8 @@ export async function createListing(req: Request, res: Response, next: NextFunct
       pricePerUnitMin: parseFloat(body.pricePerUnitMin),
       pricePerUnitMax: parseFloat(body.pricePerUnitMax),
       organic: body.organic === 'true',
+      directSaleEnabled: body.directSaleEnabled === 'true' || body.directSaleEnabled === true,
+      retailPricePerUnit: body.retailPricePerUnit ? parseFloat(body.retailPricePerUnit) : undefined,
       images,
     });
 

@@ -68,6 +68,8 @@ export default function CreateListingScreen({ route, navigation }: Props) {
   const [qualityGrade, setQualityGrade] = useState('A');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
+  const [directSaleEnabled, setDirectSaleEnabled] = useState(false);
+  const [retailPrice, setRetailPrice] = useState('');
   const [harvestDate, setHarvestDate] = useState('');
   const [description, setDescription] = useState('');
   const [organic, setOrganic] = useState(false);
@@ -93,6 +95,8 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         setQualityGrade(l.qualityGrade || 'A');
         setPriceMin(String(l.pricePerUnitMin ?? ''));
         setPriceMax(String(l.pricePerUnitMax ?? ''));
+        setDirectSaleEnabled(l.directSaleEnabled || false);
+        setRetailPrice(l.retailPricePerUnit != null ? String(l.retailPricePerUnit) : '');
         setHarvestDate(l.harvestDate ? l.harvestDate.split('T')[0] : '');
         setDescription(l.description || '');
         setOrganic(l.organic || false);
@@ -149,6 +153,10 @@ export default function CreateListingScreen({ route, navigation }: Props) {
       Alert.alert('Check your price', 'Your lowest price cannot be more than your hoped price.');
       return;
     }
+    if (directSaleEnabled && !(Number(retailPrice) > 0)) {
+      Alert.alert('Retail price missing', 'Set a price per unit for consumers buying directly.');
+      return;
+    }
 
     // Government MSP guard — warn (but don't block) when the floor is below the
     // official support price. MSP is an India-only price in ₹, so only applies
@@ -192,6 +200,8 @@ export default function CreateListingScreen({ route, navigation }: Props) {
           location,
           country: user?.country || 'India',
           state: stateName,
+          directSaleEnabled,
+          retailPricePerUnit: directSaleEnabled ? Number(retailPrice) : undefined,
         });
       } else {
         const form = new FormData();
@@ -209,6 +219,8 @@ export default function CreateListingScreen({ route, navigation }: Props) {
         form.append('location', location);
         form.append('country', user?.country || 'India');
         form.append('state', stateName);
+        form.append('directSaleEnabled', String(directSaleEnabled));
+        if (directSaleEnabled) form.append('retailPricePerUnit', retailPrice);
         picked.forEach((asset, i) => {
           form.append('images', {
             uri: asset.uri,
@@ -329,6 +341,34 @@ export default function CreateListingScreen({ route, navigation }: Props) {
             <Text style={styles.previewPrice}>
               {money(minN, currency)} – {money(maxN, currency)} / {unit.toLowerCase()}
             </Text>
+          ) : null}
+        </Section>
+
+        {/* Direct-to-consumer */}
+        <Section title="Sell directly to consumers">
+          <Text style={styles.hint}>
+            Let people buy any amount straight from you at a fixed price — no bidding, no waiting.
+          </Text>
+          <View style={styles.organicRow}>
+            <Text style={styles.organicLabel}>Enable direct sale</Text>
+            <Switch
+              value={directSaleEnabled}
+              onValueChange={setDirectSaleEnabled}
+              trackColor={{ true: colors.sage, false: design.line }}
+              thumbColor="#fff"
+            />
+          </View>
+          {directSaleEnabled ? (
+            <Field label={`Retail price per ${unit.toLowerCase()}`}>
+              <TextInput
+                style={styles.input}
+                value={retailPrice}
+                onChangeText={setRetailPrice}
+                keyboardType="numeric"
+                placeholder="e.g. 45"
+                placeholderTextColor={design.ink3}
+              />
+            </Field>
           ) : null}
         </Section>
 

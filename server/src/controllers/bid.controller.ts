@@ -38,6 +38,11 @@ const updateBidSchema = z.object({
   bidPricePerUnit: z.number().positive('bidPricePerUnit must be positive'),
 });
 
+const directPurchaseSchema = z.object({
+  listingId: z.string().min(1),
+  quantity: z.number().positive('Quantity must be positive'),
+});
+
 // POST /api/bids — Place a bid
 export async function placeBid(req: Request, res: Response, next: NextFunction) {
   try {
@@ -50,6 +55,33 @@ export async function placeBid(req: Request, res: Response, next: NextFunction) 
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
     const bid = await bidService.placeBid(req.user!.userId, parsed.data);
+    res.status(201).json(bid);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/bids/direct-purchase — Consumer instant-buys a fixed-price quantity
+export async function createDirectPurchase(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = directPurchaseSchema.safeParse({
+      ...req.body,
+      quantity: Number(req.body.quantity),
+    });
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
+    const bid = await bidService.createDirectPurchase(req.user!.userId, parsed.data);
+    await auditFromRequest(req, {
+      action: 'bid.direct_purchase',
+      entityType: 'Bid',
+      entityId: bid.id,
+      metadata: {
+        listingId: parsed.data.listingId,
+        quantity: parsed.data.quantity,
+        totalAmount: (bid as any)?.totalAmount ?? null,
+      },
+    });
     res.status(201).json(bid);
   } catch (error) {
     next(error);

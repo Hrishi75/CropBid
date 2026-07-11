@@ -52,3 +52,16 @@ export type FarmerStackParamList = {
   Contracts: undefined;
   Notifications: undefined;
 };
+
+// Consumer app — buy any quantity directly from a farmer, no bidding
+export type ConsumerTabParamList = {
+  Home: undefined;
+  Orders: undefined;
+  You: undefined;
+};
+
+export type ConsumerStackParamList = {
+  ConsumerTabs: undefined;
+  ListingDetail: { id: string; preview?: Listing };
+  Notifications: undefined;
+};

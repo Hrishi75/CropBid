@@ -126,14 +126,14 @@ export default function SignupScreen() {
         <View style={styles.form}>
           <Text style={styles.label}>I'm a</Text>
           <View style={styles.pillRow}>
-            {(['FARMER', 'BUYER'] as const).map((r) => (
+            {(['FARMER', 'BUYER', 'CONSUMER'] as const).map((r) => (
               <Pressable
                 key={r}
                 onPress={() => setRole(r)}
                 style={[styles.pill, role === r && styles.pillActive]}
               >
                 <Text style={[styles.pillText, role === r && styles.pillTextActive]}>
-                  {r === 'FARMER' ? 'Farmer' : 'Buyer'}
+                  {r === 'FARMER' ? 'Farmer' : r === 'BUYER' ? 'Buyer' : 'Consumer'}
                 </Text>
               </Pressable>
             ))}

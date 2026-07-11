@@ -3,6 +3,7 @@
 // =============================================================================
 // ROUTE DESIGN:
 //   POST   /api/bids                → Place a bid (BUYER only)
+//   POST   /api/bids/direct-purchase → Instant-buy a fixed-price quantity (CONSUMER only)
 //   GET    /api/bids/my             → Buyer's own bids
 //   GET    /api/bids/incoming       → Farmer's incoming bids across all listings
 //   GET    /api/bids/listing/:id    → Bids on a specific listing (FARMER only)
@@ -28,6 +29,9 @@ router.post('/', requireRole('BUYER'), bidController.placeBid);
 router.get('/my', requireRole('BUYER'), bidController.getMyBids);
 router.put('/:id/update', requireRole('BUYER'), bidController.updateBid);
 router.delete('/:id', requireRole('BUYER'), bidController.withdrawBid);
+
+// Consumer actions
+router.post('/direct-purchase', requireRole('CONSUMER'), bidController.createDirectPurchase);
 
 // Farmer actions
 router.get('/incoming', requireRole('FARMER'), bidController.getIncomingBids);
