@@ -26,7 +26,7 @@ const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.string().email('Invalid email address'),
   password: passwordSchema,
-  role: z.enum(['FARMER', 'BUYER']),
+  role: z.enum(['FARMER', 'BUYER', 'CONSUMER']),
   phone: z.string().max(20).optional(),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
@@ -259,6 +259,22 @@ export async function updateProfileHandler(req: Request, res: Response) {
     role === 'BUYER' ? await authService.updateBuyerProfile(userId, parsed.data) :
     await authService.updateAccountBasics(userId, parsed.data);
 
+  res.json({ user });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/me/avatar
+// ---------------------------------------------------------------------------
+// Multer + Sharp (middleware/upload.ts) have already validated, squared, and
+// stored the photo; here we just persist its path. Same { user } shape as /me.
+export async function updateAvatarHandler(req: Request, res: Response) {
+  const avatarPath = (req as any).processedAvatar as string | undefined;
+  if (!avatarPath) {
+    res.status(400).json({ error: true, message: 'Attach an image in the "avatar" field' });
+    return;
+  }
+
+  const user = await authService.updateAvatar(req.user!.userId, avatarPath);
   res.json({ user });
 }
 

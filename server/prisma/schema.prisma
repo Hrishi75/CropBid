@@ -39,6 +39,7 @@ datasource db {
 enum Role {
   FARMER
   BUYER
+  CONSUMER // Individual end-user buying any quantity directly from a farmer, no bidding
   ADMIN
 }
 
@@ -242,16 +243,23 @@ model Listing {
   // Crop details
   cropName       String        // e.g., "Rice", "Wheat", "Cotton"
   cropVariety    String?       // e.g., "Basmati", "Sharbati", "Shankar-6"
-  quantity       Float         // How much is available
+  quantity       Float         // Total quantity on offer (fixed at creation)
+  remainingQuantity Float      // Stock left for direct sale — decremented on each consumer purchase
   unit           Unit          @default(KG)
   qualityGrade   QualityGrade
 
-  // Pricing — farmer sets a range
+  // Pricing — farmer sets a range for bidding
   // pricePerUnitMin = floor price (won't sell below this)
   // pricePerUnitMax = ideal price (what farmer hopes to get)
   pricePerUnitMin Float
   pricePerUnitMax Float
   currency       Currency      @default(INR)
+
+  // Direct-to-consumer retail sale — a separate fixed-price channel that runs
+  // alongside bidding. When enabled, consumers can instant-buy any quantity up
+  // to remainingQuantity at retailPricePerUnit, no negotiation involved.
+  directSaleEnabled  Boolean   @default(false)
+  retailPricePerUnit Float?
 
   // Dates
   harvestDate    DateTime?     // When the crop was/will be harvested
@@ -348,6 +356,10 @@ model Bid {
 
   // Was this bid placed by the AI agent or manually by the user?
   isAgentBid      Boolean   @default(false)
+
+  // True for a consumer's instant fixed-price purchase (no negotiation) —
+  // created directly with status ACCEPTED, skipping the PENDING bid flow.
+  isDirectPurchase Boolean  @default(false)
 
   status          BidStatus @default(PENDING)
   counterPrice    Float?    // If farmer counters, this is their price

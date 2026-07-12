@@ -24,6 +24,7 @@ interface BrowseQuery {
   quality?: string;
   organic?: boolean;
   search?: string;
+  directSale?: boolean; // Only listings open for consumer instant-buy, with stock left
   // Pagination
   page?: number;
   limit?: number;
@@ -66,6 +67,11 @@ export async function browseListings(query: BrowseQuery) {
 
   if (query.organic !== undefined) {
     where.organic = query.organic;
+  }
+
+  if (query.directSale) {
+    where.directSaleEnabled = true;
+    where.remainingQuantity = { gt: 0 };
   }
 
   // Price range filter — matches if the listing's price range overlaps

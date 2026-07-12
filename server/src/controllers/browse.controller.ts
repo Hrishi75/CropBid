@@ -27,6 +27,7 @@ export async function browseListings(req: Request, res: Response, next: NextFunc
       quality: req.query.quality as string,
       organic: req.query.organic === 'true' ? true : req.query.organic === 'false' ? false : undefined,
       search: req.query.search as string,
+      directSale: req.query.directSale === 'true',
       page: Number(req.query.page) || undefined,
       limit: Number(req.query.limit) || undefined,
       sort: req.query.sort as string,

@@ -20,6 +20,7 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
+import { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../utils/ApiError';
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
 
@@ -28,14 +29,19 @@ const PLATFORM_FEE_PERCENT = 2.0;
 // =============================================================================
 // CREATE TRANSACTION — Called when a bid is accepted
 // =============================================================================
-export async function createTransaction(bidId: string) {
+// Pass the sale's Prisma transaction client (`tx`) so the escrow record is
+// created ATOMICALLY with the sale that produced the accepted bid. If anything
+// in the sale rolls back, so does this — a committed sale can never be left
+// without a payable transaction. Defaults to the top-level client for any
+// standalone call.
+export async function createTransaction(bidId: string, client: Prisma.TransactionClient = prisma) {
   // Check if transaction already exists for this bid
-  const existing = await prisma.transaction.findUnique({
+  const existing = await client.transaction.findUnique({
     where: { bidId },
   });
   if (existing) return existing;
 
-  const bid = await prisma.bid.findUnique({
+  const bid = await client.bid.findUnique({
     where: { id: bidId },
     include: {
       listing: {
@@ -55,7 +61,7 @@ export async function createTransaction(bidId: string) {
   const totalAmount = bid.bidPricePerUnit * bid.quantity;
   const platformFeeAmount = totalAmount * (PLATFORM_FEE_PERCENT / 100);
 
-  const transaction = await prisma.transaction.create({
+  const transaction = await client.transaction.create({
     data: {
       listingId: bid.listingId,
       bidId: bid.id,
@@ -86,11 +92,14 @@ export async function createTransaction(bidId: string) {
 // GET MY TRANSACTIONS — List transactions for a user
 // =============================================================================
 export async function getMyTransactions(userId: string, role: string) {
+  // BUYER and CONSUMER both sit on the buyer side of a transaction. Only ADMIN
+  // sees everything — any other/unknown role must NOT fall through to {}, or
+  // it would leak every transaction on the platform to that user.
   const where = role === 'FARMER'
     ? { farmerId: userId }
-    : role === 'BUYER'
-      ? { buyerId: userId }
-      : {}; // Admin sees all
+    : role === 'ADMIN'
+      ? {}
+      : { buyerId: userId };
 
   const transactions = await prisma.transaction.findMany({
     where,
