@@ -14,6 +14,7 @@
 import bcrypt from 'bcryptjs';
 import fs from 'fs';
 import path from 'path';
+import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
@@ -51,23 +52,38 @@ export async function signup(input: SignupInput) {
   // fast enough not to annoy users
   const hashedPassword = await bcrypt.hash(input.password, 12);
 
-  // 3. Create the user
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      password: hashedPassword,
-      role: input.role,
-      phone: input.phone || null,
-      country: input.country || 'India',
-      currency: input.currency || 'INR',
-      language: input.language || 'EN',
-    },
-    include: {
-      farmerProfile: true,
-      buyerProfile: true,
-    },
-  });
+  // 3. Create the user. Two concurrent signups can both pass the pre-check
+  // above; the unique index on email decides the race, so map the loser's
+  // P2002 to the same 409 instead of letting it surface as a 500.
+  const user = await prisma.user
+    .create({
+      data: {
+        name: input.name,
+        email: input.email,
+        password: hashedPassword,
+        role: input.role,
+        phone: input.phone || null,
+        country: input.country || 'India',
+        currency: input.currency || 'INR',
+        language: input.language || 'EN',
+      },
+      include: {
+        farmerProfile: true,
+        buyerProfile: true,
+      },
+    })
+    .catch((err) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        // meta.target names the offending columns (or the index, depending on
+        // the connector) — only claim "email exists" when email is the culprit.
+        const target = err.meta?.target;
+        const onEmail = Array.isArray(target)
+          ? target.includes('email')
+          : String(target ?? '').includes('email');
+        if (onEmail) throw new ApiError(409, 'An account with this email already exists');
+      }
+      throw err;
+    });
 
   // 4. Generate JWT tokens
   const tokens = generateTokens(user.id, user.role);
