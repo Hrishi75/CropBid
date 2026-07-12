@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { fetchListing, placeBid } from '../api/endpoints';
+import { directPurchase, fetchListing, placeBid } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
@@ -48,6 +48,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
 
   const img = mediaUrl(listing.images?.[0]);
   const isBuyer = user?.role === 'BUYER';
+  const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
 
   return (
@@ -67,14 +68,24 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           {listing.organic ? <Badge status="ORGANIC" /> : null}
         </View>
 
-        <Text style={styles.price}>
-          {money(listing.pricePerUnitMin, listing.currency)}–
-          {money(listing.pricePerUnitMax, listing.currency)}
-          <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
-        </Text>
+        {isConsumer && listing.directSaleEnabled && listing.retailPricePerUnit != null ? (
+          <Text style={styles.price}>
+            {money(listing.retailPricePerUnit, listing.currency)}
+            <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.price}>
+            {money(listing.pricePerUnitMin, listing.currency)}–
+            {money(listing.pricePerUnitMax, listing.currency)}
+            <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
+          </Text>
+        )}
 
         <Card style={styles.specs}>
-          <Spec label="Quantity" value={`${listing.quantity} ${unitLabel(listing.unit)}`} />
+          <Spec
+            label={listing.directSaleEnabled ? 'In stock' : 'Quantity'}
+            value={`${(listing.directSaleEnabled ? listing.remainingQuantity : listing.quantity).toLocaleString('en-IN')} ${unitLabel(listing.unit)}`}
+          />
           <Spec label="Quality" value={`Grade ${listing.qualityGrade}`} />
           <Spec label="Location" value={`${listing.location}, ${listing.state}`} />
           <Spec
@@ -91,10 +102,16 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {isBuyer && !isOwner ? (
-          <BidForm listing={listing} onDone={() => navigation.goBack()} />
-        ) : isOwner ? (
+        {isOwner ? (
           <Text style={styles.note}>This is your listing.</Text>
+        ) : isBuyer ? (
+          <BidForm listing={listing} onDone={() => navigation.goBack()} />
+        ) : isConsumer ? (
+          listing.directSaleEnabled ? (
+            <DirectBuyForm listing={listing} onDone={() => navigation.goBack()} />
+          ) : (
+            <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
+          )
         ) : (
           <Text style={styles.note}>Only buyers can place bids.</Text>
         )}
@@ -207,6 +224,64 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <Button label="Submit bid" onPress={submit} loading={submitting} />
+    </Card>
+  );
+}
+
+function DirectBuyForm({ listing, onDone }: { listing: Listing; onDone: () => void }) {
+  const [qty, setQty] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const qtyNum = Number(qty);
+  const price = listing.retailPricePerUnit ?? 0;
+  const total = qtyNum > 0 ? qtyNum * price : 0;
+  const inStock = listing.remainingQuantity;
+
+  async function submit() {
+    if (!(qtyNum > 0)) {
+      setError('Enter how much you want to buy');
+      return;
+    }
+    if (qtyNum > inStock) {
+      setError(`Only ${inStock} ${unitLabel(listing.unit)} left in stock`);
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await directPurchase({ listingId: listing.id, quantity: qtyNum });
+      Alert.alert(
+        'Order placed',
+        `Pay ${money(total, listing.currency)} from the Orders tab to complete your purchase.`,
+        [{ text: 'OK', onPress: onDone }],
+      );
+    } catch (e) {
+      setError(errorMessage(e, 'Could not place order'));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card style={styles.bidCard}>
+      <Text style={styles.bidTitle}>Buy this crop</Text>
+
+      <Text style={styles.label}>How much ({unitLabel(listing.unit)}) · {inStock.toLocaleString('en-IN')} available</Text>
+      <TextInput
+        style={styles.input}
+        value={qty}
+        onChangeText={setQty}
+        keyboardType="numeric"
+        placeholder={`e.g. 30`}
+        placeholderTextColor={colors.textMuted}
+      />
+
+      <Text style={styles.total}>Total: {money(total, listing.currency)}</Text>
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <Button label="Buy now" onPress={submit} loading={submitting} />
     </Card>
   );
 }

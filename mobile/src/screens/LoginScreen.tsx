@@ -95,7 +95,8 @@ export default function LoginScreen() {
 
         {__DEV__ ? (
           <Text style={styles.hint}>
-            Demo: rajesh@cropbid.test / vikram@cropbid.test · password123
+            Demo: rajesh@cropbid.test (farmer) · vikram@cropbid.test (buyer){'\n'}
+            priya@cropbid.test (consumer) · password123
           </Text>
         ) : null}
       </ScrollView>

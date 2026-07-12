@@ -1,7 +1,8 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
 // restoring the session, the LoginScreen when signed out, and — once signed in —
 // the tab navigator for the user's role: farmers get Home/Listings/Bids/Agent/You,
-// buyers get Home/Market/Agents/Contracts/Auction + Profile.
+// buyers get Home/Market/Agents/Contracts/Auction + Profile, consumers (instant-buy
+// any quantity, no bidding) get a lean Home/Orders/You.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -25,9 +26,11 @@ import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
+import ConsumerHomeScreen from '../screens/consumer/HomeScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
-import type { AuthStackParamList, BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
+import ConsumerTabBar from './ConsumerTabBar';
+import type { AuthStackParamList, BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
 import type { User } from '../api/types';
 
 // --- Buyer ---
@@ -105,6 +108,40 @@ function FarmerNavigator() {
   );
 }
 
+// --- Consumer ---
+const ConsumerTab = createBottomTabNavigator<ConsumerTabParamList>();
+function ConsumerTabs() {
+  return (
+    <ConsumerTab.Navigator
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => <ConsumerTabBar {...props} />}
+    >
+      <ConsumerTab.Screen name="Home" component={ConsumerHomeScreen} options={{ title: 'Home' }} />
+      <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: 'Orders' }} />
+      <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
+    </ConsumerTab.Navigator>
+  );
+}
+
+const ConsumerStack = createNativeStackNavigator<ConsumerStackParamList>();
+function ConsumerNavigator() {
+  return (
+    <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
+      <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
+      <ConsumerStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen as React.ComponentType<any>}
+        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="Notifications"
+        component={ActivityScreen}
+        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+      />
+    </ConsumerStack.Navigator>
+  );
+}
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 function AuthNavigator() {
   return (
@@ -119,7 +156,7 @@ function AuthNavigator() {
 function needsOnboarding(user: User): boolean {
   if (user.role === 'FARMER') return !user.farmerProfile;
   if (user.role === 'BUYER') return !user.buyerProfile;
-  return false; // admins have no onboarding step
+  return false; // consumers and admins have no onboarding step
 }
 
 export default function RootNavigator() {
@@ -133,6 +170,8 @@ export default function RootNavigator() {
         <OnboardingScreen />
       ) : user.role === 'FARMER' ? (
         <FarmerNavigator />
+      ) : user.role === 'CONSUMER' ? (
+        <ConsumerNavigator />
       ) : (
         <BuyerNavigator />
       )}

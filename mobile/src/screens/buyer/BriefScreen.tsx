@@ -39,11 +39,20 @@ const CROPS = [
   'Soybean', 'Maize', 'Chili', 'Turmeric', 'Banana', 'Mango', 'Groundnut', 'Coffee',
 ];
 
-const STYLES: { value: NegotiationStyle; label: string; desc: string }[] = [
-  { value: 'AGGRESSIVE', label: 'Aggressive', desc: 'push hard' },
-  { value: 'BALANCED', label: 'Balanced', desc: 'meet fair' },
-  { value: 'CONSERVATIVE', label: 'Cautious', desc: 'close fast' },
+// Farmers get everyday words ("Aggressive"/"Balanced"/"Cautious" read like a
+// form); buyers keep the trading vocabulary.
+const STYLES: { value: NegotiationStyle; label: string; desc: string; farmerLabel: string; farmerDesc: string }[] = [
+  { value: 'AGGRESSIVE', label: 'Aggressive', desc: 'push hard', farmerLabel: 'Push hard', farmerDesc: 'asks for more' },
+  { value: 'BALANCED', label: 'Balanced', desc: 'meet fair', farmerLabel: 'Middle way', farmerDesc: 'fair for both' },
+  { value: 'CONSERVATIVE', label: 'Cautious', desc: 'close fast', farmerLabel: 'Sell fast', farmerDesc: 'quick deal' },
 ];
+
+// Plain words for the style shown on the read-mode tag.
+const FARMER_STYLE_WORD: Record<string, string> = {
+  AGGRESSIVE: 'PUSHES HARD',
+  BALANCED: 'MIDDLE WAY',
+  CONSERVATIVE: 'SELLS FAST',
+};
 
 function GuardRow({ label, val, bar, hot }: { label: string; val: string; bar: number; hot?: boolean }) {
   const accent = hot ? colors.ember : colors.forest;
@@ -157,16 +166,16 @@ export default function BriefScreen() {
   async function onSave() {
     if (saving || !config) return;
 
-    const price = parseAmount(editPrice, isFarmer ? 'floor price' : 'price ceiling');
+    const price = parseAmount(editPrice, isFarmer ? 'lowest price' : 'price ceiling');
     if (price.error) return setError(price.error);
-    const accept = parseAmount(editAccept, 'auto-accept price');
+    const accept = parseAmount(editAccept, isFarmer ? 'say-yes price' : 'auto-accept price');
     if (accept.error) return setError(accept.error);
     // Auto-accept must sit on the safe side of the price guard, or the agent
     // would auto-accept deals the guard exists to block.
     if (price.value != null && accept.value != null && (isFarmer ? accept.value < price.value : accept.value > price.value)) {
       return setError(
         isFarmer
-          ? 'Auto-accept price must be at or above your floor price'
+          ? 'The say-yes price cannot be lower than your lowest price'
           : 'Auto-accept price must be at or below your price ceiling',
       );
     }
@@ -190,7 +199,7 @@ export default function BriefScreen() {
       setConfig(updated);
       setEditing(false);
     } catch (e) {
-      setError(errorMessage(e, 'Could not save your agent brief'));
+      setError(errorMessage(e, isFarmer ? 'Could not save. Please try again.' : 'Could not save your agent brief'));
     } finally {
       setSaving(false);
     }
@@ -265,7 +274,11 @@ export default function BriefScreen() {
             {/* brief card */}
             <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
               <View style={styles.card}>
-                <Mono style={styles.briefTag}>● BRIEF · {config?.negotiationStyle ?? 'BALANCED'}</Mono>
+                <Mono style={styles.briefTag}>
+                  ● {isFarmer
+                    ? `MY HELPER · ${FARMER_STYLE_WORD[config?.negotiationStyle ?? 'BALANCED'] ?? 'MIDDLE WAY'}`
+                    : `BRIEF · ${config?.negotiationStyle ?? 'BALANCED'}`}
+                </Mono>
                 <Text style={styles.briefBody}>{briefText}</Text>
               </View>
             </View>
@@ -293,7 +306,7 @@ export default function BriefScreen() {
                 />
                 <View style={styles.divider} />
                 <GuardRow
-                  label="MAX DISTANCE"
+                  label={isFarmer ? 'HOW FAR TO SELL' : 'MAX DISTANCE'}
                   val={distance != null ? `${distance} km` : 'anywhere'}
                   bar={distance != null ? Math.min(distance / 1000, 1) : 0.98}
                 />
@@ -309,7 +322,7 @@ export default function BriefScreen() {
 
             {/* preferred crops */}
             <View style={[styles.sectionHead, { paddingTop: 20 }]}>
-              <Eyebrow>Preferred crops</Eyebrow>
+              <Eyebrow>{isFarmer ? 'Crops it sells for you' : 'Preferred crops'}</Eyebrow>
             </View>
             <View style={styles.chipWrap}>
               {crops.length > 0 ? (
@@ -343,8 +356,8 @@ export default function BriefScreen() {
                     onPress={() => setEditStyle(s.value)}
                     style={[styles.styleCell, sel && styles.styleCellActive]}
                   >
-                    <Text style={[styles.styleLabel, sel && { color: colors.forest }]}>{s.label}</Text>
-                    <Mono style={styles.styleDesc}>{s.desc}</Mono>
+                    <Text style={[styles.styleLabel, sel && { color: colors.forest }]}>{isFarmer ? s.farmerLabel : s.label}</Text>
+                    <Mono style={styles.styleDesc}>{isFarmer ? s.farmerDesc : s.desc}</Mono>
                   </Pressable>
                 );
               })}
@@ -381,7 +394,9 @@ export default function BriefScreen() {
                   placeholderTextColor={design.ink3}
                 />
 
-                <Text style={styles.inputLabel}>Max distance in km (blank = anywhere)</Text>
+                <Text style={styles.inputLabel}>
+                  {isFarmer ? 'How far can buyers be? (km, blank = anywhere)' : 'Max distance in km (blank = anywhere)'}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={editDistance}
@@ -410,7 +425,9 @@ export default function BriefScreen() {
 
             {/* crop picker */}
             <View style={[styles.sectionHead, { paddingTop: 20 }]}>
-              <Eyebrow>Preferred crops · {editCrops.length} selected</Eyebrow>
+              <Eyebrow>
+                {isFarmer ? `Pick your crops · ${editCrops.length} picked` : `Preferred crops · ${editCrops.length} selected`}
+              </Eyebrow>
             </View>
             <View style={styles.chipWrap}>
               {cropOptions.map((crop) => {
