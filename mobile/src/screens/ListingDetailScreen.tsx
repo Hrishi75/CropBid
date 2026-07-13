@@ -69,10 +69,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         </View>
 
         {isConsumer && listing.directSaleEnabled && listing.retailPricePerUnit != null ? (
-          <Text style={styles.price}>
-            {money(listing.retailPricePerUnit, listing.currency)}
-            <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
-          </Text>
+          <ConsumerPrice listing={listing} />
         ) : (
           <Text style={styles.price}>
             {money(listing.pricePerUnitMin, listing.currency)}–
@@ -117,6 +114,30 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         )}
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+// Blinkit-style price block for the direct-buy flow: green selling price with
+// the wholesale ceiling as a struck-through anchor and a "% OFF" tag when the
+// farmer's retail price sits meaningfully below it.
+function ConsumerPrice({ listing }: { listing: Listing }) {
+  const retail = listing.retailPricePerUnit ?? 0;
+  const pct = retail < listing.pricePerUnitMax ? Math.round((1 - retail / listing.pricePerUnitMax) * 100) : 0;
+  return (
+    <View style={styles.consumerPriceRow}>
+      <Text style={styles.consumerPrice}>
+        {money(retail, listing.currency)}
+        <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
+      </Text>
+      {pct >= 5 ? (
+        <>
+          <Text style={styles.mrp}>{money(listing.pricePerUnitMax, listing.currency)}</Text>
+          <View style={styles.offTag}>
+            <Text style={styles.offTagText}>{pct}% OFF</Text>
+          </View>
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -294,6 +315,11 @@ const styles = StyleSheet.create({
   crop: { flex: 1, fontSize: 24, fontWeight: '800', color: colors.text },
   price: { fontSize: 20, fontWeight: '700', color: colors.forest },
   priceUnit: { fontSize: 14, fontWeight: '500', color: colors.textMuted },
+  consumerPriceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  consumerPrice: { fontSize: 20, fontWeight: '800', color: colors.forest },
+  mrp: { fontSize: 14, color: colors.textMuted, textDecorationLine: 'line-through' },
+  offTag: { backgroundColor: colors.ember, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  offTagText: { fontSize: 10.5, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
   specs: { gap: spacing.sm },
   specRow: { flexDirection: 'row', justifyContent: 'space-between' },
   specLabel: { color: colors.textMuted, fontSize: 14 },

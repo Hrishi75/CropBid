@@ -36,12 +36,13 @@ export type RootStackParamList = {
   Notifications: undefined;
 };
 
-// Farmer app
+// Farmer app. The AI helper is not a tab — it's pushed from the Home strip and
+// the Profile row — so the bar has room for the open-market Market tab.
 export type FarmerTabParamList = {
   Home: undefined;
   Listings: undefined;
   Bids: undefined;
-  Agent: undefined;
+  Market: undefined;
   You: undefined;
 };
 
@@ -50,6 +51,8 @@ export type FarmerStackParamList = {
   CreateListing: { id?: string } | undefined;
   EditProfile: undefined;
   Contracts: undefined;
+  Helper: undefined;
+  ListingDetail: { id: string; preview?: Listing };
   Notifications: undefined;
 };
 

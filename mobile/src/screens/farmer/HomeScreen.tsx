@@ -161,13 +161,13 @@ export default function FarmerHomeScreen() {
         {/* agent strip */}
         <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
           <Eyebrow>Your AI helper</Eyebrow>
-          <Pressable onPress={() => nav.navigate('Agent')}>
+          <Pressable onPress={() => nav.navigate('Helper')}>
             <Text style={styles.manage}>Open</Text>
           </Pressable>
         </View>
         <View style={styles.sidePad}>
           {agent ? (
-            <Pressable style={styles.agentRow} onPress={() => nav.navigate('Agent')}>
+            <Pressable style={styles.agentRow} onPress={() => nav.navigate('Helper')}>
               <View style={styles.agentIcon}>
                 {(() => {
                   const Mark = MARKS['sprout'];
@@ -186,9 +186,9 @@ export default function FarmerHomeScreen() {
               </View>
             </Pressable>
           ) : (
-            <View style={styles.emptyCard}>
+            <Pressable style={styles.emptyCard} onPress={() => nav.navigate('Helper')}>
               <Text style={styles.emptyText}>Turn on your AI helper — it replies to offers for you, even while you're in the field.</Text>
-            </View>
+            </Pressable>
           )}
         </View>
 

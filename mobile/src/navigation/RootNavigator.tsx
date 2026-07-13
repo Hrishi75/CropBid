@@ -1,6 +1,7 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
 // restoring the session, the LoginScreen when signed out, and — once signed in —
-// the tab navigator for the user's role: farmers get Home/Listings/Bids/Agent/You,
+// the tab navigator for the user's role: farmers get Home/My Crops/Offers/Market/You
+// (their AI helper is pushed from the Home strip and Profile, not a tab),
 // buyers get Home/Market/Agents/Contracts/Auction + Profile, consumers (instant-buy
 // any quantity, no bidding) get a lean Home/Orders/You.
 
@@ -27,6 +28,7 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import ConsumerHomeScreen from '../screens/consumer/HomeScreen';
+import BrowseScreen from '../screens/BrowseScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
@@ -81,7 +83,7 @@ function FarmerTabs() {
       <FarmerTab.Screen name="Home" component={FarmerHomeScreen} options={{ title: 'Home' }} />
       <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'My Crops' }} />
       <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Offers' }} />
-      <FarmerTab.Screen name="Agent" component={BriefScreen} options={{ title: 'Helper' }} />
+      <FarmerTab.Screen name="Market" component={BrowseScreen} options={{ title: 'Market' }} />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
     </FarmerTab.Navigator>
   );
@@ -99,6 +101,12 @@ function FarmerNavigator() {
         options={{ headerShown: true, title: 'Edit profile', presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <FarmerStack.Screen name="Helper" component={BriefScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <FarmerStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen as React.ComponentType<any>}
+        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
       <FarmerStack.Screen
         name="Notifications"
         component={ActivityScreen}
