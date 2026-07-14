@@ -4,14 +4,14 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { IconBell, IconDoc, IconHome, IconMarket, IconUser, IcoProps } from '../components/icons';
+import { IconBell, IconBolt, IconDoc, IconHome, IconUser, IcoProps } from '../components/icons';
 import { colors, design, font } from '../theme';
 
 const ICONS: Record<string, React.ComponentType<IcoProps>> = {
   Home: IconHome,
   Listings: IconDoc,
   Bids: IconBell,
-  Market: IconMarket,
+  Farm: IconBolt,
   You: IconUser,
 };
 

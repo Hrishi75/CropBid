@@ -5,10 +5,7 @@
 // for farmers: its buy/bid actions are role-gated to buyers and consumers.
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
-  Image,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -21,6 +18,7 @@ import { browse } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import type { Listing } from '../api/types';
 import { Mono } from '../components/buyerKit';
+import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { money, timeAgo, unitLabel } from '../lib/format';
 
@@ -36,6 +34,7 @@ export default function BrowseScreen() {
   const load = useCallback(async (query?: string) => {
     try {
       const res = await browse({ search: query?.trim() || undefined });
+      glide();
       setListings(res.listings ?? []);
       setError(null);
     } catch (e) {
@@ -87,7 +86,17 @@ export default function BrowseScreen() {
         }
         ListEmptyComponent={
           loading ? (
-            <ActivityIndicator color={colors.forest} style={{ marginTop: 40 }} />
+            <View style={styles.skelWrap}>
+              {[0, 1, 2, 3].map((i) => (
+                <View key={i} style={styles.skelCard}>
+                  <Pulse style={styles.skelPhoto} />
+                  <View style={{ padding: 10, gap: 8 }}>
+                    <Pulse style={styles.skelLine} />
+                    <Pulse style={[styles.skelLine, { width: '55%' }]} />
+                  </View>
+                </View>
+              ))}
+            </View>
           ) : (
             <Text style={styles.emptyText}>{error ?? 'Nothing on sale right now — pull down to check again.'}</Text>
           )
@@ -103,35 +112,36 @@ export default function BrowseScreen() {
 function ListingCard({ listing, onPress }: { listing: Listing; onPress: () => void }) {
   const img = mediaUrl(listing.images?.[0]);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}>
-      {img ? (
-        <Image source={{ uri: img }} style={styles.photo} />
-      ) : (
-        <View style={[styles.photo, styles.photoEmpty]}>
-          <Text style={styles.photoLetter}>{listing.cropName[0]}</Text>
-        </View>
-      )}
-      <View style={styles.pillRow}>
-        <View style={styles.pill}>
-          <Mono style={styles.pillText}>{listing.quantity.toLocaleString('en-IN')} {unitLabel(listing.unit).toUpperCase()}</Mono>
-        </View>
-        <View style={styles.pill}>
-          <Mono style={styles.pillText}>GRADE {listing.qualityGrade}</Mono>
+    <PressScale onPress={onPress} style={styles.cardSlot} cardStyle={styles.card}>
+      <View>
+        {img ? (
+          <FadeInImage uri={img} style={styles.photo} />
+        ) : (
+          <View style={[styles.photo, styles.photoEmpty]}>
+            <Text style={styles.photoLetter}>{listing.cropName[0]}</Text>
+          </View>
+        )}
+        {/* grade chip overlaid on the photo, matching the web storefront card */}
+        <View style={styles.gradeChip}>
+          <Mono style={styles.gradeChipText}>{listing.organic ? 'ORGANIC' : `GRADE ${listing.qualityGrade}`}</Mono>
         </View>
       </View>
-      <Text style={styles.crop} numberOfLines={1}>
-        {listing.cropName}
-        {listing.cropVariety ? ` · ${listing.cropVariety}` : ''}
-      </Text>
-      <Text style={styles.meta} numberOfLines={1}>
-        {listing.organic ? 'Organic · ' : ''}{listing.location}, {listing.state}
-      </Text>
-      <Text style={styles.price} numberOfLines={1}>
-        {money(listing.pricePerUnitMin, listing.currency)}–{money(listing.pricePerUnitMax, listing.currency)}
-        <Text style={styles.perUnit}> /{unitLabel(listing.unit)}</Text>
-      </Text>
-      <Mono style={styles.time}>{timeAgo(listing.createdAt)}</Mono>
-    </Pressable>
+      <View style={styles.cardBody}>
+        <Mono style={styles.qty}>{listing.quantity.toLocaleString('en-IN')} {unitLabel(listing.unit).toUpperCase()}</Mono>
+        <Text style={styles.crop} numberOfLines={1}>
+          {listing.cropName}
+          {listing.cropVariety ? ` · ${listing.cropVariety}` : ''}
+        </Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {listing.location}, {listing.state}
+        </Text>
+        <Text style={styles.price} numberOfLines={1}>
+          {money(listing.pricePerUnitMin, listing.currency)}–{money(listing.pricePerUnitMax, listing.currency)}
+          <Text style={styles.perUnit}> /{unitLabel(listing.unit)}</Text>
+        </Text>
+        <Mono style={styles.time}>{timeAgo(listing.createdAt)}</Mono>
+      </View>
+    </PressScale>
   );
 }
 
@@ -157,24 +167,50 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3, textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
 
   gridRow: { paddingHorizontal: 16, gap: 10 },
-  card: {
+  cardSlot: {
     flex: 1,
     // A lone card in the last FlatList row would otherwise stretch full-width.
     maxWidth: '48.5%',
+    marginBottom: 10,
+  },
+  card: {
     backgroundColor: design.paper,
     borderWidth: 1,
     borderColor: design.line,
     borderRadius: 14,
-    padding: 9,
-    marginBottom: 10,
+    overflow: 'hidden',
   },
-  photo: { width: '100%', height: 104, borderRadius: 10, backgroundColor: design.paper2 },
+  cardBody: { padding: 10 },
+  gradeChip: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    backgroundColor: 'rgba(251,249,243,0.92)',
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  gradeChipText: { fontSize: 8.5, letterSpacing: 0.5, color: design.ink2 },
+  qty: { fontSize: 9, letterSpacing: 0.5, color: design.ink3 },
+
+  // skeleton loading grid
+  skelWrap: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10 },
+  skelCard: {
+    width: '48%',
+    backgroundColor: design.paper,
+    borderWidth: 1,
+    borderColor: design.lineLight,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  skelPhoto: { width: '100%', height: 112, backgroundColor: design.paper2 },
+  skelLine: { width: '80%', height: 11, borderRadius: 6, backgroundColor: design.paper2 },
+  photo: { width: '100%', height: 112, backgroundColor: design.paper2 },
   photoEmpty: { backgroundColor: design.mint, alignItems: 'center', justifyContent: 'center' },
   photoLetter: { fontFamily: font.sansBold, fontSize: 26, color: colors.forest },
-  pillRow: { flexDirection: 'row', gap: 4, marginTop: 8 },
-  pill: { backgroundColor: design.paper2, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2 },
-  pillText: { fontSize: 8.5, letterSpacing: 0.4, color: design.ink2 },
-  crop: { fontFamily: font.sansSemi, fontSize: 13.5, color: design.ink, marginTop: 5 },
+  crop: { fontFamily: font.sansSemi, fontSize: 13.5, color: design.ink, marginTop: 4 },
   meta: { fontFamily: font.sans, fontSize: 11, color: design.ink3, marginTop: 2 },
   price: { fontFamily: font.sansBold, fontSize: 13.5, color: design.ink, marginTop: 5 },
   perUnit: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3 },

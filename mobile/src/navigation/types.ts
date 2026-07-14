@@ -20,10 +20,11 @@ export type TabParamList = {
   Profile: undefined;
 };
 
-// Buyer-agent app (iOS design screens)
+// Buyer-agent app. Home is the shared storefront; the KPI dashboard has its
+// own tab.
 export type BuyerTabParamList = {
   Home: undefined;
-  Market: undefined;
+  Dashboard: undefined;
   Agents: undefined;
   Contracts: undefined;
   You: undefined;
@@ -36,13 +37,14 @@ export type RootStackParamList = {
   Notifications: undefined;
 };
 
-// Farmer app. The AI helper is not a tab — it's pushed from the Home strip and
-// the Profile row — so the bar has room for the open-market Market tab.
+// Farmer app. Home is the shared storefront (the open market); the farm
+// dashboard (KPIs, agent strip, quick actions) lives on the Farm tab. The AI
+// helper is not a tab — it's pushed from the dashboard strip and Profile row.
 export type FarmerTabParamList = {
   Home: undefined;
   Listings: undefined;
   Bids: undefined;
-  Market: undefined;
+  Farm: undefined;
   You: undefined;
 };
 

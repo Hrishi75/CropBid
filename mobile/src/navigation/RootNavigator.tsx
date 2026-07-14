@@ -1,9 +1,11 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
 // restoring the session, the LoginScreen when signed out, and — once signed in —
-// the tab navigator for the user's role: farmers get Home/My Crops/Offers/Market/You
-// (their AI helper is pushed from the Home strip and Profile, not a tab),
-// buyers get Home/Market/Agents/Contracts/Auction + Profile, consumers (instant-buy
-// any quantity, no bidding) get a lean Home/Orders/You.
+// the tab navigator for the user's role. Every role's HOME tab is the shared
+// StorefrontHomeScreen (the web homepage mirrored on mobile); the old farmer
+// and buyer dashboards live on their own tabs (My Farm / Dashboard). Farmers
+// get Home/My Crops/Offers/Farm/You (their AI helper is pushed from Profile),
+// buyers get Home/Dashboard/Agents/Contracts/You + Auction in the stack,
+// consumers (instant-buy any quantity, no bidding) get a lean Home/Orders/You.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -15,8 +17,7 @@ import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import ActivityScreen from '../screens/ActivityScreen';
-import HomeScreen from '../screens/buyer/HomeScreen';
-import MarketScreen from '../screens/buyer/MarketScreen';
+import BuyerDashboardScreen from '../screens/buyer/HomeScreen';
 import BriefScreen from '../screens/buyer/BriefScreen';
 import SettleScreen from '../screens/buyer/SettleScreen';
 import AuctionScreen from '../screens/buyer/AuctionScreen';
@@ -27,8 +28,7 @@ import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
-import ConsumerHomeScreen from '../screens/consumer/HomeScreen';
-import BrowseScreen from '../screens/BrowseScreen';
+import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
@@ -43,8 +43,8 @@ function BuyerTabs() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BuyerTabBar {...props} />}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
-      <Tab.Screen name="Market" component={MarketScreen} options={{ title: 'Market' }} />
+      <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
+      <Tab.Screen name="Dashboard" component={BuyerDashboardScreen} options={{ title: 'Dashboard' }} />
       <Tab.Screen name="Agents" component={BriefScreen} options={{ title: 'Agents' }} />
       <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: 'Contracts' }} />
       <Tab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
@@ -80,10 +80,10 @@ function FarmerTabs() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
-      <FarmerTab.Screen name="Home" component={FarmerHomeScreen} options={{ title: 'Home' }} />
+      <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
       <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'My Crops' }} />
       <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Offers' }} />
-      <FarmerTab.Screen name="Market" component={BrowseScreen} options={{ title: 'Market' }} />
+      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: 'My Farm' }} />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
     </FarmerTab.Navigator>
   );
@@ -124,7 +124,7 @@ function ConsumerTabs() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <ConsumerTabBar {...props} />}
     >
-      <ConsumerTab.Screen name="Home" component={ConsumerHomeScreen} options={{ title: 'Home' }} />
+      <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
       <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: 'Orders' }} />
       <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
     </ConsumerTab.Navigator>
