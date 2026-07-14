@@ -9,6 +9,16 @@ export type AuthStackParamList = {
   Signup: undefined;
 };
 
+// Signed-out guest stack. The storefront is open to everyone — guests browse
+// the full market and open listings freely; Login/Signup are pushed only when
+// they try to act (buy, bid, sell, open the profile).
+export type GuestStackParamList = {
+  GuestHome: undefined;
+  ListingDetail: { id: string; preview?: Listing };
+  Login: undefined;
+  Signup: undefined;
+};
+
 export type BrowseStackParamList = {
   BrowseList: undefined;
   ListingDetail: { id: string; preview?: Listing };

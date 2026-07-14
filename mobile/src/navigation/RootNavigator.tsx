@@ -1,11 +1,14 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
-// restoring the session, the LoginScreen when signed out, and — once signed in —
-// the tab navigator for the user's role. Every role's HOME tab is the shared
-// StorefrontHomeScreen (the web homepage mirrored on mobile); the old farmer
-// and buyer dashboards live on their own tabs (My Farm / Dashboard). Farmers
-// get Home/My Crops/Offers/Farm/You (their AI helper is pushed from Profile),
-// buyers get Home/Dashboard/Agents/Contracts/You + Auction in the stack,
-// consumers (instant-buy any quantity, no bidding) get a lean Home/Orders/You.
+// restoring the session, then — signed out — the GUEST storefront, not a login
+// wall: guests land straight on StorefrontHomeScreen, browse the market and
+// open listings, and only hit Login/Signup when they try to act (buy, bid,
+// sell, profile). Once signed in, the tab navigator for the user's role.
+// Every role's HOME tab is the shared StorefrontHomeScreen (the web homepage
+// mirrored on mobile); the old farmer and buyer dashboards live on their own
+// tabs (My Farm / Dashboard). Farmers get Home/My Crops/Offers/Farm/You (their
+// AI helper is pushed from Profile), buyers get Home/Dashboard/Agents/
+// Contracts/You + Auction in the stack, consumers (instant-buy any quantity,
+// no bidding) get a lean Home/Orders/You.
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -32,7 +35,7 @@ import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
-import type { AuthStackParamList, BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, RootStackParamList } from './types';
+import type { BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, GuestStackParamList, RootStackParamList } from './types';
 import type { User } from '../api/types';
 
 // --- Buyer ---
@@ -150,13 +153,29 @@ function ConsumerNavigator() {
   );
 }
 
-const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-function AuthNavigator() {
+// --- Guest (signed out) ---
+// Show the market first; ask for an account only at the point of action.
+const GuestStack = createNativeStackNavigator<GuestStackParamList>();
+function GuestNavigator() {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-      <AuthStack.Screen name="Login" component={LoginScreen} />
-      <AuthStack.Screen name="Signup" component={SignupScreen} options={{ animation: 'slide_from_right' }} />
-    </AuthStack.Navigator>
+    <GuestStack.Navigator screenOptions={{ headerShown: false }}>
+      <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
+      <GuestStack.Screen
+        name="ListingDetail"
+        component={ListingDetailScreen as React.ComponentType<any>}
+        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="Login"
+        component={LoginScreen}
+        options={{ headerShown: true, title: 'Log in', presentation: 'card', animation: 'slide_from_bottom' }}
+      />
+      <GuestStack.Screen
+        name="Signup"
+        component={SignupScreen}
+        options={{ headerShown: true, title: 'Create account', animation: 'slide_from_right' }}
+      />
+    </GuestStack.Navigator>
   );
 }
 
@@ -173,7 +192,7 @@ export default function RootNavigator() {
   return (
     <NavigationContainer>
       {!user ? (
-        <AuthNavigator />
+        <GuestNavigator />
       ) : needsOnboarding(user) ? (
         <OnboardingScreen />
       ) : user.role === 'FARMER' ? (

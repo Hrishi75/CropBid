@@ -1,5 +1,5 @@
 // Storefront Home — the Home tab for ALL THREE roles (farmer, buyer,
-// consumer): an exact mobile mirror of the WEB homepage
+// consumer) AND the signed-out guest landing: an exact mobile mirror of the WEB homepage
 // (client/src/pages/LandingPage.tsx): forest price ticker, cream header with
 // wordmark + rotating-hint search + category chips, the mandi-photo hero
 // banner, promo trio, category tiles, then EVERY listing below in the same
@@ -13,6 +13,9 @@
 // is role-gated there (consumer buy bar / buyer bid form / farmer read-only);
 // bidding never happens on this page. Selling is farmer-only: farmers get a
 // "List your harvest" CTA, everyone else is told to register as a farmer.
+// Guests (no session) browse everything freely — the avatar becomes a "Log in"
+// pill and the sell CTA routes them to Signup; the actual buy/bid gate lives
+// on ListingDetail.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -191,6 +194,15 @@ export default function StorefrontHomeScreen() {
   const onSell = () => {
     if (isFarmer) {
       nav.navigate('CreateListing');
+    } else if (!user) {
+      Alert.alert(
+        'Sell on CropBid',
+        'Create a free farmer account to list your harvest — it goes live to buyers and homes across the country.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Create account', onPress: () => nav.navigate('Signup') },
+        ],
+      );
     } else {
       Alert.alert(
         'Sell on CropBid',
@@ -209,13 +221,19 @@ export default function StorefrontHomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Wordmark size={19} />
-          <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
-            {user?.avatar ? (
-              <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
-            ) : (
-              <Text style={styles.avatarLetter}>{(user?.name?.[0] ?? '·').toUpperCase()}</Text>
-            )}
-          </PressScale>
+          {user ? (
+            <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
+              {user.avatar ? (
+                <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarLetter}>{(user.name?.[0] ?? '·').toUpperCase()}</Text>
+              )}
+            </PressScale>
+          ) : (
+            <PressScale onPress={() => nav.navigate('Login')} cardStyle={styles.loginPill}>
+              <Text style={styles.loginPillText}>Log in</Text>
+            </PressScale>
+          )}
         </View>
 
         <View style={styles.searchBar}>
@@ -586,6 +604,13 @@ const styles = StyleSheet.create({
   },
   avatarImg: { width: 36, height: 36, borderRadius: 18 },
   avatarLetter: { fontFamily: font.sansBold, fontSize: 14, color: colors.forest },
+  loginPill: {
+    backgroundColor: colors.forest,
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+  },
+  loginPillText: { fontFamily: font.sansBold, fontSize: 12.5, color: colors.textInverse },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
