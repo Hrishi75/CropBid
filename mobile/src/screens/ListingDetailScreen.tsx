@@ -4,15 +4,16 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { directPurchase, fetchListing, placeBid } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
@@ -20,9 +21,10 @@ import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
+import { FadeInImage, PressScale } from '../components/motion';
 import { money, unitLabel } from '../lib/format';
 import { mspForCrop } from '../lib/msp';
-import { colors, radius, spacing } from '../theme';
+import { colors, design, font, radius, spacing } from '../theme';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'ListingDetail'>;
 
@@ -46,10 +48,12 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
     );
   }
 
-  const img = mediaUrl(listing.images?.[0]);
+  const imgs = (listing.images ?? []).map((i) => mediaUrl(i)).filter((u): u is string => !!u);
   const isBuyer = user?.role === 'BUYER';
   const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
+  const canDirectBuy =
+    isConsumer && !isOwner && listing.directSaleEnabled && listing.retailPricePerUnit != null;
 
   return (
     <KeyboardAvoidingView
@@ -57,8 +61,11 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        {img ? <Image source={{ uri: img }} style={styles.hero} /> : null}
+      <ScrollView
+        contentContainerStyle={[styles.container, canDirectBuy && { paddingBottom: 130 }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        {imgs.length > 0 ? <ImagePager images={imgs} /> : null}
 
         <View style={styles.titleRow}>
           <Text style={styles.crop}>
@@ -69,10 +76,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         </View>
 
         {isConsumer && listing.directSaleEnabled && listing.retailPricePerUnit != null ? (
-          <Text style={styles.price}>
-            {money(listing.retailPricePerUnit, listing.currency)}
-            <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
-          </Text>
+          <ConsumerPrice listing={listing} />
         ) : (
           <Text style={styles.price}>
             {money(listing.pricePerUnitMin, listing.currency)}–
@@ -106,17 +110,70 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           <Text style={styles.note}>This is your listing.</Text>
         ) : isBuyer ? (
           <BidForm listing={listing} onDone={() => navigation.goBack()} />
-        ) : isConsumer ? (
-          listing.directSaleEnabled ? (
-            <DirectBuyForm listing={listing} onDone={() => navigation.goBack()} />
-          ) : (
-            <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
-          )
-        ) : (
+        ) : isConsumer && !canDirectBuy ? (
+          <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
+        ) : !isConsumer ? (
           <Text style={styles.note}>Only buyers can place bids.</Text>
-        )}
+        ) : null}
       </ScrollView>
+
+      {/* Blinkit-style sticky buy bar — quantity stepper + total + Buy now */}
+      {canDirectBuy ? <BuyBar listing={listing} onDone={() => navigation.goBack()} /> : null}
     </KeyboardAvoidingView>
+  );
+}
+
+// Swipeable photo pager with position dots, grocery-app style. Falls back to a
+// single image (no dots) when there's only one photo.
+function ImagePager({ images }: { images: string[] }) {
+  const [idx, setIdx] = useState(0);
+  const [w, setW] = useState(0);
+  return (
+    <View style={styles.pagerWrap} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      {w > 0 ? (
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / w))}
+        >
+          {images.map((uri) => (
+            <FadeInImage key={uri} uri={uri} style={{ width: w, height: 230, backgroundColor: colors.surfaceHover }} />
+          ))}
+        </ScrollView>
+      ) : null}
+      {images.length > 1 ? (
+        <View style={styles.dots}>
+          {images.map((_, i) => (
+            <View key={i} style={[styles.dot, i === idx && styles.dotOn]} />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// Blinkit-style price block for the direct-buy flow: green selling price with
+// the wholesale ceiling as a struck-through anchor and a "% OFF" tag when the
+// farmer's retail price sits meaningfully below it.
+function ConsumerPrice({ listing }: { listing: Listing }) {
+  const retail = listing.retailPricePerUnit ?? 0;
+  const pct = retail < listing.pricePerUnitMax ? Math.round((1 - retail / listing.pricePerUnitMax) * 100) : 0;
+  return (
+    <View style={styles.consumerPriceRow}>
+      <Text style={styles.consumerPrice}>
+        {money(retail, listing.currency)}
+        <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
+      </Text>
+      {pct >= 5 ? (
+        <>
+          <Text style={styles.mrp}>{money(listing.pricePerUnitMax, listing.currency)}</Text>
+          <View style={styles.offTag}>
+            <Text style={styles.offTagText}>{pct}% OFF</Text>
+          </View>
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -228,8 +285,12 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
   );
 }
 
-function DirectBuyForm({ listing, onDone }: { listing: Listing; onDone: () => void }) {
-  const [qty, setQty] = useState('');
+// Sticky bottom purchase bar: − / + quantity stepper, live total, and a Buy
+// button — the quick-commerce "Add to cart" bar, adapted for loose produce
+// where the consumer picks how many kg/quintals they want.
+function BuyBar({ listing, onDone }: { listing: Listing; onDone: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [qty, setQty] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -237,6 +298,14 @@ function DirectBuyForm({ listing, onDone }: { listing: Listing; onDone: () => vo
   const price = listing.retailPricePerUnit ?? 0;
   const total = qtyNum > 0 ? qtyNum * price : 0;
   const inStock = listing.remainingQuantity;
+  const unit = unitLabel(listing.unit);
+  const valid = qtyNum > 0 && qtyNum <= inStock;
+
+  const bump = (d: number) => {
+    const next = Math.min(Math.max((Number(qty) || 0) + d, 1), inStock);
+    setError(null);
+    setQty(String(next));
+  };
 
   async function submit() {
     if (!(qtyNum > 0)) {
@@ -244,7 +313,7 @@ function DirectBuyForm({ listing, onDone }: { listing: Listing; onDone: () => vo
       return;
     }
     if (qtyNum > inStock) {
-      setError(`Only ${inStock} ${unitLabel(listing.unit)} left in stock`);
+      setError(`Only ${inStock.toLocaleString('en-IN')} ${unit} left in stock`);
       return;
     }
     setError(null);
@@ -264,25 +333,38 @@ function DirectBuyForm({ listing, onDone }: { listing: Listing; onDone: () => vo
   }
 
   return (
-    <Card style={styles.bidCard}>
-      <Text style={styles.bidTitle}>Buy this crop</Text>
-
-      <Text style={styles.label}>How much ({unitLabel(listing.unit)}) · {inStock.toLocaleString('en-IN')} available</Text>
-      <TextInput
-        style={styles.input}
-        value={qty}
-        onChangeText={setQty}
-        keyboardType="numeric"
-        placeholder={`e.g. 30`}
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.total}>Total: {money(total, listing.currency)}</Text>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Button label="Buy now" onPress={submit} loading={submitting} />
-    </Card>
+    <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      {error ? <Text style={styles.buyBarError}>{error}</Text> : null}
+      <View style={styles.buyBarRow}>
+        <View style={styles.stepper}>
+          <Pressable onPress={() => bump(-1)} hitSlop={8} style={styles.stepBtn}>
+            <Text style={styles.stepBtnText}>−</Text>
+          </Pressable>
+          <TextInput
+            style={styles.stepInput}
+            value={qty}
+            onChangeText={(t) => { setError(null); setQty(t.replace(/[^0-9]/g, '')); }}
+            keyboardType="numeric"
+            maxLength={6}
+          />
+          <Pressable onPress={() => bump(1)} hitSlop={8} style={styles.stepBtn}>
+            <Text style={styles.stepBtnText}>+</Text>
+          </Pressable>
+        </View>
+        <View style={styles.buyTotals}>
+          <Text style={styles.buyTotal}>{money(total, listing.currency)}</Text>
+          <Text style={styles.buyTotalSub} numberOfLines={1}>
+            {qtyNum > 0 ? `${qtyNum.toLocaleString('en-IN')} ${unit} · farmer's price` : `${money(price, listing.currency)}/${unit}`}
+          </Text>
+        </View>
+        <PressScale
+          onPress={submitting || !valid ? undefined : submit}
+          cardStyle={[styles.buyBtn, (submitting || !valid) && styles.buyBtnDim]}
+        >
+          <Text style={styles.buyBtnText}>{submitting ? 'Placing…' : 'Buy now'}</Text>
+        </PressScale>
+      </View>
+    </View>
   );
 }
 
@@ -294,6 +376,11 @@ const styles = StyleSheet.create({
   crop: { flex: 1, fontSize: 24, fontWeight: '800', color: colors.text },
   price: { fontSize: 20, fontWeight: '700', color: colors.forest },
   priceUnit: { fontSize: 14, fontWeight: '500', color: colors.textMuted },
+  consumerPriceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  consumerPrice: { fontSize: 20, fontWeight: '800', color: colors.forest },
+  mrp: { fontSize: 14, color: colors.textMuted, textDecorationLine: 'line-through' },
+  offTag: { backgroundColor: colors.ember, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  offTagText: { fontSize: 10.5, fontWeight: '800', color: '#fff', letterSpacing: 0.2 },
   specs: { gap: spacing.sm },
   specRow: { flexDirection: 'row', justifyContent: 'space-between' },
   specLabel: { color: colors.textMuted, fontSize: 14 },
@@ -317,4 +404,62 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 72, textAlignVertical: 'top' },
   total: { fontSize: 16, fontWeight: '700', color: colors.text, marginVertical: spacing.md },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
+
+  // image pager
+  pagerWrap: { borderRadius: radius.lg, overflow: 'hidden', backgroundColor: colors.surfaceHover },
+  dots: {
+    position: 'absolute',
+    bottom: 10,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 5,
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.55)' },
+  dotOn: { backgroundColor: '#fff', width: 14 },
+
+  // sticky buy bar
+  buyBar: {
+    backgroundColor: design.paper,
+    borderTopWidth: 1,
+    borderTopColor: design.line,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 10,
+  },
+  buyBarError: { color: colors.error, fontFamily: font.sansMed, fontSize: 12.5, marginBottom: 8 },
+  buyBarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.3,
+    borderColor: colors.forest,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  stepBtn: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: design.mint },
+  stepBtnText: { fontFamily: font.sansBold, fontSize: 16, lineHeight: 18, color: colors.forest },
+  stepInput: {
+    minWidth: 44,
+    textAlign: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    fontFamily: font.sansBold,
+    fontSize: 15,
+    color: design.ink,
+  },
+  buyTotals: { flex: 1, minWidth: 0 },
+  buyTotal: { fontFamily: font.sansBold, fontSize: 17, letterSpacing: -0.3, color: design.ink },
+  buyTotalSub: { fontFamily: font.sansMed, fontSize: 11, color: design.ink3, marginTop: 1 },
+  buyBtn: {
+    backgroundColor: colors.forest,
+    borderRadius: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 13,
+  },
+  buyBtnDim: { opacity: 0.55 },
+  buyBtnText: { fontFamily: font.sansBold, fontSize: 14.5, color: colors.textInverse, letterSpacing: 0.2 },
 });

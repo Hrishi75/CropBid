@@ -2,11 +2,12 @@
 // Filter chips narrow by quality grade / organic; tapping a lot opens
 // ListingDetail where a bid can be placed.
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { IconSearch } from '../../components/icons';
 import { MiniChart, Mono } from '../../components/buyerKit';
+import { PressScale, Pulse, glide } from '../../components/motion';
 import { colors, design, font } from '../../theme';
 import { browse } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
@@ -34,6 +35,7 @@ export default function MarketScreen() {
   const load = useCallback(async () => {
     try {
       const data = await browse();
+      glide();
       setListings(data.listings ?? []);
       setTotal(data.pagination?.total ?? data.listings?.length ?? 0);
       setError(null);
@@ -96,7 +98,7 @@ export default function MarketScreen() {
           {FILTERS.map((f) => {
             const active = f === filter;
             return (
-              <Pressable key={f} onPress={() => setFilter(f)} style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}>
+              <Pressable key={f} onPress={() => { glide(); setFilter(f); }} style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}>
                 <Text style={[styles.chipText, { color: active ? colors.textInverse : design.ink2 }]}>{f}</Text>
               </Pressable>
             );
@@ -105,7 +107,15 @@ export default function MarketScreen() {
 
         {/* lot cards */}
         {loading ? (
-          <ActivityIndicator color={colors.forest} style={{ marginTop: 40 }} />
+          <View style={{ paddingHorizontal: 16, gap: 10 }}>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={styles.skelCard}>
+                <Pulse style={[styles.skelLine, { width: '45%' }]} />
+                <Pulse style={[styles.skelLine, { width: '70%' }]} />
+                <Pulse style={styles.skelBlock} />
+              </View>
+            ))}
+          </View>
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : visible.length === 0 ? (
@@ -117,9 +127,10 @@ export default function MarketScreen() {
               const c = pos ? POS : NEG;
               const bidCount = l._count?.bids ?? 0;
               return (
-                <Pressable
+                <PressScale
                   key={l.id}
-                  style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
+                  cardStyle={styles.card}
+                  scaleTo={0.98}
                   onPress={() => nav.navigate('ListingDetail', { id: l.id, preview: l })}
                 >
                   <View style={styles.cardTop}>
@@ -153,7 +164,7 @@ export default function MarketScreen() {
                       <Text style={styles.bid}>Bid →</Text>
                     </View>
                   </View>
-                </Pressable>
+                </PressScale>
               );
             })}
           </View>
@@ -190,4 +201,16 @@ const styles = StyleSheet.create({
   footRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   closes: { fontSize: 11.5, color: colors.ember },
   bid: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
+
+  // skeleton loading rows
+  skelCard: {
+    backgroundColor: design.paper,
+    borderWidth: 1,
+    borderColor: design.lineLight,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  skelLine: { height: 12, borderRadius: 6, backgroundColor: design.paper2 },
+  skelBlock: { height: 34, borderRadius: 8, backgroundColor: design.paper2, marginTop: 4 },
 });

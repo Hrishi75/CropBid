@@ -1,768 +1,507 @@
 // =============================================================================
-// Landing Page — global, currency-aware
+// Landing Page — grocery-style storefront (public homepage)
 // =============================================================================
-// STATIC marketing page (the public homepage). All numbers come from the
-// baked-in constants below (STATIC_STATS + STATIC_MARKET) — no API calls. A
-// country dropdown in the nav drives display currency: prices/GMV/example deals
-// are converted from each row's native currency to the viewer's currency via
-// FX_TO_USD. Selection persists in localStorage. Live /api/stats/landing wiring
-// comes in a later pass.
+// Blinkit-pattern homepage: the store IS the page. Sticky search header with a
+// rotating placeholder, category chips, promo banner, category tiles, and
+// horizontally scrolling product rails of live lots. Everything else (how it
+// works, buyer agents, pricing) lives on /how-it-works, linked from the header
+// and footer.
+//
+// STATIC demo data — no API calls. Prices are ₹-native (mandi bands at or
+// above 2025-26 MSP where applicable) and converted to the viewer's currency
+// via the shared FX table. Product photos load from /products/<slug>.jpg and
+// fall back to an emoji tile until the real images are uploaded.
 // =============================================================================
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  type Country, type CurrencyCode, type UnitCode,
+  UNIT_LABEL, formatUnitPrice,
+  loadCountry, saveCountry, CountrySelector,
+  ArcMark, ArrowIcon, ChevronIcon, SearchIcon, CBFooter,
+} from './landing/shared';
 
-type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
-type UnitCode = 'KG' | 'QUINTAL' | 'TONNE';
+// =============================================================================
+// Catalog — static demo lots
+// =============================================================================
 
-interface Country {
-  code: string;
+type RailId = 'veg' | 'fruits' | 'grains' | 'spices';
+
+interface Produce {
+  slug: string;          // image filename: /products/<slug>.jpg
   name: string;
-  flag: string;
-  currency: CurrencyCode;
-}
-
-const COUNTRIES: Country[] = [
-  { code: 'US', name: 'United States', flag: '🇺🇸', currency: 'USD' },
-  { code: 'IN', name: 'India',         flag: '🇮🇳', currency: 'INR' },
-  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧', currency: 'GBP' },
-  { code: 'EU', name: 'European Union', flag: '🇪🇺', currency: 'EUR' },
-  { code: 'BR', name: 'Brazil',        flag: '🇧🇷', currency: 'USD' },
-  { code: 'AU', name: 'Australia',     flag: '🇦🇺', currency: 'USD' },
-  { code: 'KE', name: 'Kenya',         flag: '🇰🇪', currency: 'USD' },
-  { code: 'AE', name: 'UAE',           flag: '🇦🇪', currency: 'USD' },
-];
-
-// USD-anchored FX. Used both to combine multi-currency GMV and to convert
-// per-listing prices to the viewer's currency. Replace with a daily feed once
-// treasury wires one in.
-const FX_TO_USD: Record<CurrencyCode, number> = {
-  INR: 0.0105, // ~₹95/USD (Jun 2026)
-  USD: 1,
-  EUR: 1.16,   // EUR/USD ~1.16 (Jun 2026)
-  GBP: 1.35,   // GBP/USD ~1.35 (Jun 2026)
-};
-
-const CURRENCY_SYMBOL: Record<CurrencyCode, string> = {
-  INR: '₹', USD: '$', EUR: '€', GBP: '£',
-};
-
-const UNIT_LABEL: Record<UnitCode, string> = {
-  KG: 'kg', QUINTAL: 'qtl', TONNE: 'MT',
-};
-
-function convert(amount: number, from: CurrencyCode, to: CurrencyCode): number {
-  if (from === to) return amount;
-  const usd = amount * FX_TO_USD[from];
-  return usd / FX_TO_USD[to];
-}
-
-// =============================================================================
-// Static copy — global agri trade
-// =============================================================================
-
-const NAV_LINKS = [
-  ['How it works', '#how'],
-  ['For buyers',   '#buyers'],
-  ['For farmers',  '#farmers'],
-  ['Marketplace',  '#marketplace'],
-  ['Pricing',      '#pricing'],
-  ['Resources',    '#resources'],
-] as const;
-
-const LOGO_STRIP = ['CARGILL', 'ADM', 'BUNGE', 'OLAM', 'ITC FOODS', 'COFCO', 'LOUIS DREYFUS', 'NESTLÉ'] as const;
-
-const PILLARS = [
-  ['01', 'List your crop — stay on your farm', 'Crop, grade, volume, location, and your floor price. Any language, any units. No mandi trips, no middlemen, no travel.'],
-  ['02', 'Buyers bid in the open', 'Verified buyers across 20+ countries bid in transparent rounds. You see every offer — including the ones you turn down — with the full spread surfaced, never hidden.'],
-  ['03', 'We verify, transport, and settle', 'CropBid inspects every lot for authenticity and grade, arranges third-party logistics farm-to-buyer, and releases escrow on confirmed delivery.'],
-] as const;
-
-const GUARDRAILS = [
-  ['Guardrails',   'Price floors, volume ceilings, counterparty allowlists. Hard-stops the agent will not cross.'],
-  ['Provenance',   'Every listing tied to a USDA, EU-RED, GLOBALG.A.P., APMC, or NPOP credential on chain.'],
-  ['Auditability', 'Replayable bid logs. Every counter, every accept, every walk-away — exportable for compliance.'],
-] as const;
-
-// Example deal — values stored in USD/MT; rendered in the viewer's currency.
-// HRW wheat 12.5% protein, FOB Gulf — Jun 2026 market band (~$258–274/MT).
-const DIAGRAM_BASE = {
-  currency: 'USD' as CurrencyCode,
-  unit: 'MT' as const,
-  floor: 258,
-  ceiling: 272,
-  walkAway: 274,
-  qtyLow: 4500,
-  qtyHigh: 5500,
-  protein: '12.5%',
-  delivery: 'Oct 15 – Oct 30 · FOB Gulf',
-};
-
-const SPARK_POS = [3, 5, 4, 6, 5, 8, 7, 9, 11, 10, 12];
-const SPARK_NEG = [10, 9, 11, 8, 9, 7, 8, 6, 5, 7, 5];
-
-// Negotiation panel base values — USD/MT, converted at render.
-// HRW wheat 12.5% protein, FOB Gulf — anchored to CBOT + Gulf basis, Jun 2026.
-const NEG_BASE = {
-  currency: 'USD' as CurrencyCode,
-  unit: 'MT' as const,
-  spotRef: 264.5,
-  open: 258.0,
-  counter1: 271.5,
-  counter2: 265.0,
-  final: 267.5,
-  competing: 266.0,
-  qty: 5000,
-  savings: 16050, // ~1.2% of 5,000 MT × $267.5 saved vs broker spread
-};
-
-// How-it-works trace — USD/MT base values per row.
-const HOW_BASE = [
-  { t: '+00:00', evt: 'Brief accepted',       counter: '—',                  price: null, spread: null, qty: null,  mark: '✓' as const },
-  { t: '+00:12', evt: 'Invite sent',          counter: '14 sellers',         price: null, spread: null, qty: 5000,  mark: '✓' as const },
-  { t: '+01:03', evt: 'Bids opened',          counter: '11 received',        price: [258, 274] as [number, number], spread: 16, qty: 5000, mark: '✓' as const },
-  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Hartmann Farms',     price: 271.5, spread: 4.0, qty: 5000,  mark: '✓' as const },
-  { t: '+01:38', evt: 'Round 3 counter',      counter: 'Hartmann Farms',     price: 267.5, spread: 0.8, qty: 5000,  mark: '✓' as const },
-  { t: '+01:41', evt: 'Match · contract drafted', counter: 'Hartmann Farms', price: 267.5, spread: null, qty: 5000, mark: '●' as const },
-];
-
-const FOOTER_COLS = [
-  { title: 'Product',     items: ['How it works', 'For buyers', 'For farmers', 'Marketplace', 'Pricing', 'Security'] },
-  { title: 'Commodities', items: ['Wheat & barley', 'Corn & soy', 'Rice', 'Coffee & cocoa', 'Spices', 'See all'] },
-  { title: 'Company',     items: ['About', 'Careers', 'Press', 'Blog', 'Contact'] },
-  { title: 'Resources',   items: ['Documentation', 'Trust center', 'Status', 'Reports', 'Glossary', 'API'] },
-];
-
-// =============================================================================
-// Live data types + fallbacks
-// =============================================================================
-
-type MarketRow = {
-  id: string;
-  crop: string;
-  variety: string | null;
-  grade: 'A' | 'B' | 'C';
-  organic: boolean;
+  variety: string;
+  emoji: string;         // fallback tile until the photo is uploaded
+  cat: RailId;
+  unit: UnitCode;
+  priceMin: number;      // ₹ per unit — farmer's floor (what you pay today)
+  priceMax: number;      // ₹ per unit — wholesale ceiling (anchor price)
+  qty: number;           // available, in `unit`
   location: string;
   state: string;
-  country: string;
-  unit: UnitCode;
-  currency: CurrencyCode;
-  pricePerUnitMin: number;
-  pricePerUnitMax: number;
-  quantity: number;
-  bidCount: number;
-  trustScore: number;
-  farmerName: string;
-  tone: 'pos' | 'neg';
-  deltaPct: number;
-  spark: number[];
-};
+  bids: number;
+  grade: 'A' | 'B';
+  organic?: boolean;
+}
 
-type LandingStats = {
-  totals: {
-    activeListings: number;
-    farmers: number;
-    buyers: number;
-    gmvByCurrency: Record<CurrencyCode, number>;
-    completedDeals: number;
-    activeAuctions: number;
-    countries: number;
-  };
-  marketplace: MarketRow[];
-};
+const PRODUCTS: Produce[] = [
+  // Fresh vegetables — ₹/kg
+  { slug: 'tomato',       name: 'Tomato',        variety: 'Hybrid',             emoji: '🍅', cat: 'veg', unit: 'KG', priceMin: 26,  priceMax: 34,  qty: 1200, location: 'Nashik',    state: 'Maharashtra',      bids: 4, grade: 'A' },
+  { slug: 'onion',        name: 'Onion',         variety: 'Nashik Red',         emoji: '🧅', cat: 'veg', unit: 'KG', priceMin: 18,  priceMax: 24,  qty: 2500, location: 'Lasalgaon', state: 'Maharashtra',      bids: 6, grade: 'A' },
+  { slug: 'potato',       name: 'Potato',        variety: 'Kufri Jyoti',        emoji: '🥔', cat: 'veg', unit: 'KG', priceMin: 14,  priceMax: 19,  qty: 3000, location: 'Agra',      state: 'Uttar Pradesh',    bids: 3, grade: 'B' },
+  { slug: 'okra',         name: 'Okra (Bhindi)', variety: 'Arka Anamika',       emoji: '🌿', cat: 'veg', unit: 'KG', priceMin: 28,  priceMax: 38,  qty: 450,  location: 'Vadodara',  state: 'Gujarat',          bids: 2, grade: 'A' },
+  { slug: 'cauliflower',  name: 'Cauliflower',   variety: 'Snowball',           emoji: '🥦', cat: 'veg', unit: 'KG', priceMin: 22,  priceMax: 30,  qty: 800,  location: 'Pune',      state: 'Maharashtra',      bids: 3, grade: 'A' },
+  { slug: 'brinjal',      name: 'Brinjal',       variety: 'Bharta',             emoji: '🍆', cat: 'veg', unit: 'KG', priceMin: 18,  priceMax: 26,  qty: 600,  location: 'Kolar',     state: 'Karnataka',        bids: 2, grade: 'B' },
+  { slug: 'green-chilli', name: 'Green Chilli',  variety: 'G4',                 emoji: '🌶️', cat: 'veg', unit: 'KG', priceMin: 45,  priceMax: 60,  qty: 350,  location: 'Guntur',    state: 'Andhra Pradesh',   bids: 5, grade: 'A' },
+  { slug: 'spinach',      name: 'Spinach',       variety: 'All Green',          emoji: '🥬', cat: 'veg', unit: 'KG', priceMin: 15,  priceMax: 22,  qty: 300,  location: 'Indore',    state: 'Madhya Pradesh',   bids: 1, grade: 'A', organic: true },
 
-// Static platform totals — demo traction figures shown on the marketing page.
-const STATIC_STATS: Omit<LandingStats, 'marketplace'> = {
-  totals: {
-    activeListings: 540,
-    farmers: 1240,
-    buyers: 410,
-    gmvByCurrency: { INR: 0, USD: 8_400_000, EUR: 0, GBP: 0 },
-    completedDeals: 312,
-    activeAuctions: 0,
-    countries: 24,
-  },
-};
+  // Seasonal fruits — ₹/kg
+  { slug: 'mango',        name: 'Mango',         variety: 'Kesar',              emoji: '🥭', cat: 'fruits', unit: 'KG', priceMin: 90,  priceMax: 140, qty: 900,  location: 'Junagadh',  state: 'Gujarat',          bids: 8, grade: 'A' },
+  { slug: 'banana',       name: 'Banana',        variety: 'G9 Cavendish',       emoji: '🍌', cat: 'fruits', unit: 'KG', priceMin: 28,  priceMax: 38,  qty: 2000, location: 'Jalgaon',   state: 'Maharashtra',      bids: 4, grade: 'A' },
+  { slug: 'pomegranate',  name: 'Pomegranate',   variety: 'Bhagwa',             emoji: '🍒', cat: 'fruits', unit: 'KG', priceMin: 110, priceMax: 160, qty: 700,  location: 'Solapur',   state: 'Maharashtra',      bids: 5, grade: 'A' },
+  { slug: 'grapes',       name: 'Grapes',        variety: 'Thompson Seedless',  emoji: '🍇', cat: 'fruits', unit: 'KG', priceMin: 70,  priceMax: 95,  qty: 1100, location: 'Nashik',    state: 'Maharashtra',      bids: 3, grade: 'A' },
+  { slug: 'guava',        name: 'Guava',         variety: 'Allahabad Safeda',   emoji: '🍐', cat: 'fruits', unit: 'KG', priceMin: 40,  priceMax: 60,  qty: 500,  location: 'Prayagraj', state: 'Uttar Pradesh',    bids: 2, grade: 'A' },
+  { slug: 'papaya',       name: 'Papaya',        variety: 'Red Lady',           emoji: '🍈', cat: 'fruits', unit: 'KG', priceMin: 25,  priceMax: 35,  qty: 850,  location: 'Coimbatore', state: 'Tamil Nadu',      bids: 2, grade: 'B' },
+  { slug: 'apple',        name: 'Apple',         variety: 'Royal Delicious',    emoji: '🍎', cat: 'fruits', unit: 'KG', priceMin: 120, priceMax: 170, qty: 1500, location: 'Shimla',    state: 'Himachal Pradesh', bids: 6, grade: 'A' },
+  { slug: 'watermelon',   name: 'Watermelon',    variety: 'Sugar Baby',         emoji: '🍉', cat: 'fruits', unit: 'KG', priceMin: 12,  priceMax: 18,  qty: 4000, location: 'Kurnool',   state: 'Andhra Pradesh',   bids: 3, grade: 'B' },
 
-// Marketplace snapshot — real Indian crops, ₹/quintal, with floors anchored at
-// or above the 2025-26 government MSP (see utils/msp.ts). Prices reflect actual
-// mandi bands so the figures are credible to growers and investors alike.
-const STATIC_MARKET: MarketRow[] = [
-  { id: 'f1', crop: 'Wheat',     variety: 'Sharbati',   grade: 'A', organic: false, location: 'Sehore',  state: 'Madhya Pradesh', country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 2480, pricePerUnitMax: 2760, quantity: 320, bidCount: 9,  trustScore: 88, farmerName: 'Rajesh Patidar', tone: 'pos', deltaPct: 0.9,  spark: SPARK_POS },
-  { id: 'f2', crop: 'Cotton',    variety: 'Shankar-6',  grade: 'A', organic: false, location: 'Rajkot',  state: 'Gujarat',        country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 7800, pricePerUnitMax: 8350, quantity: 140, bidCount: 12, trustScore: 84, farmerName: 'Patel Agro FPO', tone: 'neg', deltaPct: -0.5, spark: SPARK_NEG },
-  { id: 'f3', crop: 'Soybean',   variety: 'JS-335',     grade: 'A', organic: false, location: 'Latur',   state: 'Maharashtra',    country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 5420, pricePerUnitMax: 5880, quantity: 260, bidCount: 7,  trustScore: 90, farmerName: 'Sahyadri FPO',   tone: 'pos', deltaPct: 1.3,  spark: SPARK_POS },
-  { id: 'f4', crop: 'Chana Dal', variety: 'Desi gram',  grade: 'A', organic: true,  location: 'Kota',    state: 'Rajasthan',      country: 'India', unit: 'QUINTAL', currency: 'INR', pricePerUnitMin: 5720, pricePerUnitMax: 6180, quantity: 180, bidCount: 6,  trustScore: 86, farmerName: 'Meena Lal',      tone: 'pos', deltaPct: 0.7,  spark: SPARK_POS },
+  // Grains & pulses — ₹/quintal
+  { slug: 'wheat',        name: 'Wheat',         variety: 'Sharbati',           emoji: '🌾', cat: 'grains', unit: 'QUINTAL', priceMin: 2480,  priceMax: 2760,  qty: 320, location: 'Sehore',     state: 'Madhya Pradesh', bids: 3, grade: 'A' },
+  { slug: 'basmati-rice', name: 'Basmati Paddy', variety: 'Pusa 1509',          emoji: '🍚', cat: 'grains', unit: 'QUINTAL', priceMin: 3600,  priceMax: 4200,  qty: 210, location: 'Karnal',     state: 'Haryana',        bids: 5, grade: 'A' },
+  { slug: 'maize',        name: 'Maize',         variety: 'Yellow Dent',        emoji: '🌽', cat: 'grains', unit: 'QUINTAL', priceMin: 2100,  priceMax: 2350,  qty: 400, location: 'Davangere',  state: 'Karnataka',      bids: 2, grade: 'B' },
+  { slug: 'bajra',        name: 'Bajra',         variety: 'HHB-67',             emoji: '🌾', cat: 'grains', unit: 'QUINTAL', priceMin: 2350,  priceMax: 2600,  qty: 180, location: 'Jodhpur',    state: 'Rajasthan',      bids: 1, grade: 'A' },
+  { slug: 'chana',        name: 'Chana',         variety: 'Desi Gram',          emoji: '🫘', cat: 'grains', unit: 'QUINTAL', priceMin: 5720,  priceMax: 6180,  qty: 180, location: 'Kota',       state: 'Rajasthan',      bids: 4, grade: 'A', organic: true },
+  { slug: 'tur-dal',      name: 'Tur (Arhar)',   variety: 'Maruti',             emoji: '🫘', cat: 'grains', unit: 'QUINTAL', priceMin: 7400,  priceMax: 7900,  qty: 150, location: 'Kalaburagi', state: 'Karnataka',      bids: 3, grade: 'A' },
+  { slug: 'moong',        name: 'Moong',         variety: 'SML-668',            emoji: '🫘', cat: 'grains', unit: 'QUINTAL', priceMin: 8200,  priceMax: 8700,  qty: 120, location: 'Merta',      state: 'Rajasthan',      bids: 2, grade: 'A' },
+  { slug: 'masoor',       name: 'Masoor',        variety: 'KLS-218',            emoji: '🫘', cat: 'grains', unit: 'QUINTAL', priceMin: 6400,  priceMax: 6800,  qty: 140, location: 'Sagar',      state: 'Madhya Pradesh', bids: 1, grade: 'B' },
+
+  // Spices & oilseeds — ₹/quintal
+  { slug: 'turmeric',       name: 'Turmeric',       variety: 'Salem',        emoji: '🫚', cat: 'spices', unit: 'QUINTAL', priceMin: 13800, priceMax: 15200, qty: 90,  location: 'Erode',     state: 'Tamil Nadu',     bids: 6, grade: 'A' },
+  { slug: 'red-chilli',     name: 'Red Chilli',     variety: 'Teja S17',     emoji: '🌶️', cat: 'spices', unit: 'QUINTAL', priceMin: 15500, priceMax: 17800, qty: 110, location: 'Guntur',    state: 'Andhra Pradesh', bids: 7, grade: 'A' },
+  { slug: 'cumin',          name: 'Cumin (Jeera)',  variety: 'GC-4',         emoji: '🌱', cat: 'spices', unit: 'QUINTAL', priceMin: 24500, priceMax: 27000, qty: 60,  location: 'Unjha',     state: 'Gujarat',        bids: 4, grade: 'A' },
+  { slug: 'coriander-seed', name: 'Coriander Seed', variety: 'Eagle',        emoji: '🌿', cat: 'spices', unit: 'QUINTAL', priceMin: 6800,  priceMax: 7600,  qty: 130, location: 'Kota',      state: 'Rajasthan',      bids: 2, grade: 'A' },
+  { slug: 'soybean',        name: 'Soybean',        variety: 'JS-335',       emoji: '🫘', cat: 'spices', unit: 'QUINTAL', priceMin: 5420,  priceMax: 5880,  qty: 260, location: 'Latur',     state: 'Maharashtra',    bids: 2, grade: 'A' },
+  { slug: 'mustard',        name: 'Mustard',        variety: 'Pusa Bold',    emoji: '🌼', cat: 'spices', unit: 'QUINTAL', priceMin: 5650,  priceMax: 6050,  qty: 220, location: 'Bharatpur', state: 'Rajasthan',      bids: 3, grade: 'A' },
+  { slug: 'groundnut',      name: 'Groundnut',      variety: 'Bold 40/50',   emoji: '🥜', cat: 'spices', unit: 'QUINTAL', priceMin: 6400,  priceMax: 6900,  qty: 190, location: 'Rajkot',    state: 'Gujarat',        bids: 4, grade: 'A' },
+  { slug: 'cotton',         name: 'Cotton',         variety: 'Shankar-6',    emoji: '☁️', cat: 'spices', unit: 'QUINTAL', priceMin: 7800,  priceMax: 8350,  qty: 140, location: 'Rajkot',    state: 'Gujarat',        bids: 4, grade: 'A' },
 ];
 
+const RAILS: Array<{ id: RailId; eyebrow: string; title: string }> = [
+  { id: 'veg',    eyebrow: 'Farm-fresh · picked this week', title: 'Fresh Vegetables' },
+  { id: 'fruits', eyebrow: 'In season now',                 title: 'Seasonal Fruits' },
+  { id: 'grains', eyebrow: 'MSP-anchored floors',           title: 'Grains & Pulses' },
+  { id: 'spices', eyebrow: 'Straight from origin mandis',   title: 'Spices & Oilseeds' },
+];
+
+// Extra search terms per rail so "dal" or "masala" find things.
+const CAT_KEYWORDS: Record<RailId, string> = {
+  veg: 'vegetable sabzi fresh',
+  fruits: 'fruit fresh',
+  grains: 'grain cereal pulse dal rice paddy',
+  spices: 'spice masala oilseed fibre',
+};
+
+const CATEGORY_TILES: Array<{ label: string; target: RailId; img: string; emoji: string }> = [
+  { label: 'Fresh Vegetables', target: 'veg',    img: 'tomato',       emoji: '🍅' },
+  { label: 'Seasonal Fruits',  target: 'fruits', img: 'mango',        emoji: '🥭' },
+  { label: 'Grains & Cereals', target: 'grains', img: 'wheat',        emoji: '🌾' },
+  { label: 'Pulses & Dal',     target: 'grains', img: 'chana',        emoji: '🫘' },
+  { label: 'Rice & Paddy',     target: 'grains', img: 'basmati-rice', emoji: '🍚' },
+  { label: 'Spices',           target: 'spices', img: 'turmeric',     emoji: '🫚' },
+  { label: 'Oilseeds',         target: 'spices', img: 'mustard',      emoji: '🌼' },
+  { label: 'Cotton & Fibre',   target: 'spices', img: 'cotton',       emoji: '☁️' },
+];
+
+const CHIPS: Array<[label: string, target: RailId | 'top']> = [
+  ['All', 'top'],
+  ['Vegetables', 'veg'],
+  ['Fruits', 'fruits'],
+  ['Grains & Pulses', 'grains'],
+  ['Spices & Oilseeds', 'spices'],
+];
+
+const SEARCH_WORDS = ['tomatoes', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
+
+// Top ticker — crop, ₹ floor price, day-over-day move.
+const TICKER: Array<{ p: Produce; delta: number }> = [
+  { p: PRODUCTS.find((x) => x.slug === 'wheat')!,        delta: 0.9 },
+  { p: PRODUCTS.find((x) => x.slug === 'onion')!,        delta: -1.2 },
+  { p: PRODUCTS.find((x) => x.slug === 'mango')!,        delta: 2.1 },
+  { p: PRODUCTS.find((x) => x.slug === 'chana')!,        delta: 0.7 },
+  { p: PRODUCTS.find((x) => x.slug === 'turmeric')!,     delta: 1.4 },
+  { p: PRODUCTS.find((x) => x.slug === 'cotton')!,       delta: -0.5 },
+  { p: PRODUCTS.find((x) => x.slug === 'soybean')!,      delta: 1.3 },
+  { p: PRODUCTS.find((x) => x.slug === 'tomato')!,       delta: 0.8 },
+  { p: PRODUCTS.find((x) => x.slug === 'basmati-rice')!, delta: 0.6 },
+  { p: PRODUCTS.find((x) => x.slug === 'cumin')!,        delta: -0.9 },
+];
+
+function formatQty(p: Produce): string {
+  if (p.unit === 'KG' && p.qty >= 1000) return `${(p.qty / 1000).toFixed(1)} tonnes`;
+  return `${p.qty.toLocaleString('en-IN')} ${UNIT_LABEL[p.unit]}`;
+}
+
+function pctOff(p: Produce): number {
+  return Math.round((1 - p.priceMin / p.priceMax) * 100);
+}
+
 // =============================================================================
-// Currency formatting
+// Hooks
 // =============================================================================
 
-function formatMoney(amount: number, currency: CurrencyCode, opts: { compact?: boolean; decimals?: number } = {}): string {
-  const { compact = false, decimals = 0 } = opts;
-  const sym = CURRENCY_SYMBOL[currency];
-  const abs = Math.abs(amount);
-
-  if (compact) {
-    // INR groups by lakh/crore; others use K/M/B.
-    if (currency === 'INR') {
-      if (abs >= 1e7) return `${sym}${(amount / 1e7).toFixed(amount >= 1e8 ? 0 : 1)} Cr`;
-      if (abs >= 1e5) return `${sym}${(amount / 1e5).toFixed(amount >= 1e6 ? 0 : 1)} L`;
-      if (abs >= 1e3) return `${sym}${(amount / 1e3).toFixed(0)}K`;
-      return `${sym}${amount.toFixed(0)}`;
+// Fade-up sections as they enter the viewport (reduced-motion users see them
+// static — the CSS transition is disabled there, not the class).
+function useReveal<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      el.classList.add('is-in');
+      return;
     }
-    if (abs >= 1e9) return `${sym}${(amount / 1e9).toFixed(1)}B`;
-    if (abs >= 1e6) return `${sym}${(amount / 1e6).toFixed(1)}M`;
-    if (abs >= 1e3) return `${sym}${(amount / 1e3).toFixed(0)}K`;
-    return `${sym}${amount.toFixed(0)}`;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add('is-in');
+          io.disconnect();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return ref;
+}
+
+// =============================================================================
+// Images — /products/<slug>.jpg with emoji fallback until photos are uploaded
+// =============================================================================
+
+function ProduceImg({ slug, emoji, alt }: { slug: string; emoji: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="st-img-fb" role="img" aria-label={alt}>
+        <span>{emoji}</span>
+      </div>
+    );
   }
-
-  const locale = currency === 'INR' ? 'en-IN' : 'en-US';
-  return `${sym}${amount.toLocaleString(locale, { maximumFractionDigits: decimals, minimumFractionDigits: decimals })}`;
+  return <img src={`/products/${slug}.jpg`} alt={alt} loading="lazy" onError={() => setFailed(true)} />;
 }
 
-function formatCount(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K+`;
-  if (n >= 100) return `${Math.floor(n / 10) * 10}+`;
-  return `${n}`;
-}
-
-function totalGmvInDisplay(byCurrency: Record<CurrencyCode, number>, display: CurrencyCode): number {
-  return (Object.keys(byCurrency) as CurrencyCode[]).reduce(
-    (acc, c) => acc + convert(byCurrency[c] ?? 0, c, display),
-    0,
-  );
-}
-
-function formatMarketPrice(row: MarketRow, display: CurrencyCode): string {
-  const mid = (row.pricePerUnitMin + row.pricePerUnitMax) / 2;
-  const converted = convert(mid, row.currency, display);
-  // Per-unit prices: never use K/M compaction — exact figures matter.
-  return formatMoney(converted, display, { decimals: converted >= 1000 ? 0 : 2 });
-}
-
-function formatQuantity(row: MarketRow): string {
-  const unit = UNIT_LABEL[row.unit];
-  if (row.quantity >= 1000) return `${(row.quantity / 1000).toFixed(1)}K ${unit}`;
-  return `${Math.round(row.quantity)} ${unit}`;
-}
-
-// =============================================================================
-// SVG icons + chart
-// =============================================================================
-
-function ArrowIcon({ size = 14 }: { size?: number }) {
+function BannerImg() {
+  const [src, setSrc] = useState('/products/banner-hero.jpg');
   return (
-    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <path d="M3 7h8M7 3l4 4-4 4" />
-    </svg>
-  );
-}
-function ArrowSmIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <path d="M3 6h6M6 3l3 3-3 3" />
-    </svg>
-  );
-}
-function PlayIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-      <path d="M3 1l8 5-8 5z" />
-    </svg>
-  );
-}
-function ChevronIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-      <path d="M2.5 4l2.5 2.5L7.5 4" />
-    </svg>
-  );
-}
-function ArcMark({ size = 27, accent = '#c8602b' }: { size?: number; accent?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
-      <path d="M5 30C5 17 10 8 20 8s15 9 15 22" stroke="currentColor" strokeWidth="3" strokeLinecap="round" fill="none" />
-      <circle cx="5" cy="30" r="3.6" fill="currentColor" />
-      <circle cx="35" cy="30" r="3.6" fill="currentColor" />
-      <circle cx="20" cy="8" r="2.6" fill={accent} />
-    </svg>
-  );
-}
-
-function MiniChart({ data, color }: { data: number[]; color: string }) {
-  const W = 170, H = 36;
-  const max = Math.max(...data), min = Math.min(...data);
-  const rng = (max - min) || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * (W - 2) + 1;
-    const y = H - 2 - ((v - min) / rng) * (H - 4);
-    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
-  }).join(' ');
-  const fill = `${pts} L${W - 1} ${H} L1 ${H} Z`;
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
-      <path d={fill} fill={color} opacity="0.12" />
-      <path d={pts} stroke={color} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <img
+      src={src}
+      alt="Fresh produce arriving from CropBid farms"
+      onError={() => { if (src !== '/mandi.jpg') setSrc('/mandi.jpg'); }}
+    />
   );
 }
 
 // =============================================================================
-// Country selector
+// Header — ticker, sticky search bar, category chips
 // =============================================================================
 
-function CountrySelector({ country, onChange }: { country: Country; onChange: (c: Country) => void }) {
-  const [open, setOpen] = useState(false);
-
+function Ticker({ currency }: { currency: CurrencyCode }) {
+  // Two copies of the list = seamless -50% marquee loop.
+  const items = [...TICKER, ...TICKER];
   return (
-    <div style={{ position: 'relative' }}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
-        className="nav-signin"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          padding: '4px 8px', borderRadius: 6,
-        }}
-      >
-        <span style={{ fontSize: 16, lineHeight: 1 }}>{country.flag}</span>
-        <span>{country.currency}</span>
-        <ChevronIcon />
-      </button>
-      {open && (
-        <ul
-          role="listbox"
-          style={{
-            position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 30,
-            minWidth: 220, listStyle: 'none', margin: 0, padding: 6,
-            background: 'var(--cb-paper, #fff)', color: 'var(--cb-ink)',
-            border: '1px solid var(--cb-line)', borderRadius: 10,
-            boxShadow: '0 12px 28px rgba(0,0,0,0.08)',
-            maxHeight: 320, overflowY: 'auto',
-          }}
-        >
-          {COUNTRIES.map((c) => {
-            const selected = c.code === country.code;
-            return (
-              <li key={c.code}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    onChange(c);
-                    setOpen(false);
-                  }}
-                  style={{
-                    width: '100%', textAlign: 'left',
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 10px', borderRadius: 6,
-                    background: selected ? 'rgba(20,20,15,0.06)' : 'transparent',
-                    border: 'none', cursor: 'pointer', font: 'inherit',
-                    color: 'inherit',
-                  }}
-                >
-                  <span style={{ fontSize: 18, lineHeight: 1 }}>{c.flag}</span>
-                  <span style={{ flex: 1 }}>{c.name}</span>
-                  <span className="cb-mono" style={{ fontSize: 12, opacity: 0.7 }}>{c.currency}</span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+    <div className="st-ticker" aria-hidden="true">
+      <div className="st-ticker-track">
+        {items.map(({ p, delta }, i) => (
+          <span key={`${p.slug}-${i}`} className="st-tick">
+            <span className="n">{p.name}</span>
+            <span className="v">{formatUnitPrice(p.priceMin, 'INR', currency)}/{UNIT_LABEL[p.unit]}</span>
+            <span className={`d ${delta >= 0 ? 'pos' : 'neg'}`}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%</span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
-// =============================================================================
-// Sections
-// =============================================================================
+function StoreHeader({
+  country, onChangeCountry, query, onQuery, onJump,
+}: {
+  country: Country;
+  onChangeCountry: (c: Country) => void;
+  query: string;
+  onQuery: (q: string) => void;
+  onJump: (target: RailId | 'top') => void;
+}) {
+  const [scrolled, setScrolled] = useState(false);
+  const [wordIdx, setWordIdx] = useState(0);
+  const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
 
-function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: (c: Country) => void }) {
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
+  useEffect(() => {
+    const t = setInterval(() => setWordIdx((i) => (i + 1) % SEARCH_WORDS.length), 2400);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <header className="nav">
-      <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
-        <ArcMark />
-        <span className="wordmark-text">CropBid</span>
-      </Link>
-      <nav className="nav-links" aria-label="Primary">
-        {NAV_LINKS.map(([label, href]) => (
-          <a key={label} href={href}>{label}</a>
-        ))}
-      </nav>
-      <div className="nav-actions">
-        <CountrySelector country={country} onChange={onChangeCountry} />
-        <Link to="/login" className="nav-signin">Sign in</Link>
-        <Link to="/signup" className="cb-btn cb-btn-primary">
-          <span className="cb-btn-label">Request a buyer agent</span>
-          <span className="cb-btn-label-short">Get agent</span>
-          <ArrowIcon />
+    <header className={`st-header${scrolled ? ' scrolled' : ''}`}>
+      <div className="st-header-row">
+        <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
+          <ArcMark />
+          <span className="wordmark-text">CropBid</span>
         </Link>
+
+        <div className="st-source">
+          <span className="cb-tiny st-source-l">Sourcing from</span>
+          <CountrySelector country={country} onChange={onChangeCountry} />
+        </div>
+
+        <div className="st-search">
+          <SearchIcon />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => onQuery(e.target.value)}
+            aria-label="Search crops, fruits and vegetables"
+          />
+          {query === '' && (
+            <span className="st-search-ph">
+              Search&nbsp;“<span key={wordIdx} className="st-roll-word">{SEARCH_WORDS[wordIdx]}</span>”
+            </span>
+          )}
+        </div>
+
+        <nav className="st-header-links" aria-label="Primary">
+          <Link to="/how-it-works" className="st-header-link">How it works</Link>
+          <Link to="/login" className="nav-signin">Sign in</Link>
+          <Link to="/signup" className="cb-btn cb-btn-primary">
+            Start selling
+            <ArrowIcon />
+          </Link>
+        </nav>
+      </div>
+
+      <div className="st-chips" role="tablist" aria-label="Categories">
+        {CHIPS.map(([label, target]) => (
+          <button
+            key={label}
+            type="button"
+            className={`st-chip${activeChip === target ? ' active' : ''}`}
+            onClick={() => { setActiveChip(target); onJump(target); }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </header>
   );
 }
 
-function Hero({ stats, currency }: { stats: LandingStats; currency: CurrencyCode }) {
-  const gmv = totalGmvInDisplay(stats.totals.gmvByCurrency, currency);
-  const heroStats: ReadonlyArray<readonly [string, string]> = [
-    [gmv > 0 ? formatMoney(gmv, currency, { compact: true }) : '—', 'GMV settled on-platform'],
-    [formatCount(stats.totals.farmers), 'verified growers & FPOs'],
-    [stats.totals.activeAuctions > 0 ? `${stats.totals.activeAuctions}` : '—', 'auctions clearing now'],
-  ];
+// =============================================================================
+// Store sections
+// =============================================================================
 
+function HeroBanner({ onShop }: { onShop: () => void }) {
   return (
-    <section className="hero">
-      <div className="hero-inner">
-        <div>
-          <span className="cb-chip cb-chip-sage" style={{ marginBottom: 22 }}>
-            <span className="cb-live-dot sm" />
-            Now contracting · {new Date().getFullYear()} wheat, corn, soy &amp; coffee
-          </span>
-          <h1 className="cb-h0 hero-title">
-            Your buyer agent<br />
-            <span className="italic">never sleeps,</span><br />
-            never overpays.
-          </h1>
-          <p className="cb-body hero-lede">
-            CropBid gives procurement teams an autonomous agent that finds growers, negotiates terms, and closes
-            forward contracts on bulk commodities — without brokers, without phone trees, without margin leakage.
-          </p>
-          <div className="hero-actions">
-            <Link to="/signup" className="cb-btn cb-btn-primary">
-              Deploy a buyer agent
-              <ArrowIcon />
-            </Link>
-            <a href="#marketplace" className="cb-btn cb-btn-ghost">
-              <PlayIcon />
-              Watch a live auction
-            </a>
-          </div>
-          <div className="hero-stats">
-            {heroStats.map(([n, l]) => (
-              <div key={l}>
-                <div className="hero-stat-n">{n}</div>
-                <div className="cb-tiny hero-stat-l">{l}</div>
-              </div>
-            ))}
-          </div>
+    <section className="st-banner">
+      <div className="st-banner-grid-bg" />
+      <div className="st-banner-copy">
+        <span className="cb-chip cb-chip-sage" style={{ marginBottom: 18 }}>
+          <span className="cb-live-dot sm" />
+          Live now · 42 lots from 100+ verified farms
+        </span>
+        <h1 className="st-banner-title">
+          Farm-fresh crops,<br />
+          <span className="italic">farmer-fair</span> prices.
+        </h1>
+        <p className="st-banner-lede">
+          Buy vegetables, fruits, grains and spices straight from the grower —
+          any quantity, no brokers, escrow-settled, delivered farm to door.
+        </p>
+        <div className="st-banner-actions">
+          <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
+            Shop the market
+            <ArrowIcon />
+          </button>
+          <Link to="/signup" className="cb-btn st-btn-outline">Sell your harvest</Link>
         </div>
-        <NegotiationPanel currency={currency} />
+        <div className="st-banner-ticks">
+          <span>✓ Every lot inspected</span>
+          <span>✓ Escrow settlement</span>
+          <span>✓ Farm-to-door logistics</span>
+        </div>
+      </div>
+      <div className="st-banner-media">
+        <BannerImg />
       </div>
     </section>
   );
 }
 
-function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
-  const total = NEG_BASE.final * NEG_BASE.qty;
-  const totalDisplay = formatMoney(convert(total, NEG_BASE.currency, currency), currency, { compact: true });
-  const savingsDisplay = formatMoney(convert(NEG_BASE.savings, NEG_BASE.currency, currency), currency, { compact: true });
+const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string }> = [
+  { tone: 'sage',  emoji: '🔨', title: 'Live auctions',        desc: 'Verified buyers bid in open rounds — watch prices climb in real time.', ctaLabel: 'Start bidding',  to: '/signup' },
+  { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Any quantity, at the farmer’s listed price. From one sack to a season’s supply.', ctaLabel: 'Shop direct', to: '/signup' },
+  { tone: 'ember', emoji: '🚚', title: 'Verified & delivered',  desc: 'We inspect every lot, arrange transport, and release escrow on delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
+];
+
+function PromoTrio() {
+  const ref = useReveal<HTMLDivElement>();
+  return (
+    <div className="st-promos st-reveal" ref={ref}>
+      {PROMOS.map((p) => (
+        <Link key={p.title} to={p.to} className={`st-promo ${p.tone}`}>
+          <span className="st-promo-emoji" aria-hidden="true">{p.emoji}</span>
+          <span className="st-promo-t">{p.title}</span>
+          <span className="st-promo-d">{p.desc}</span>
+          <span className="st-promo-link">{p.ctaLabel} <ArrowIcon size={12} /></span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function CategoryGrid({ onJump }: { onJump: (target: RailId) => void }) {
+  const ref = useReveal<HTMLElement>();
+  return (
+    <section className="st-cats st-reveal" ref={ref}>
+      <h2 className="st-rail-title">Shop by category</h2>
+      <div className="st-cats-grid">
+        {CATEGORY_TILES.map((c) => (
+          <button key={c.label} type="button" className="st-cat" onClick={() => onJump(c.target)}>
+            <span className="st-cat-img">
+              <ProduceImg slug={c.img} emoji={c.emoji} alt={c.label} />
+            </span>
+            <span className="st-cat-l">{c.label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProduceCard({ p, currency }: { p: Produce; currency: CurrencyCode }) {
+  const off = pctOff(p);
+  return (
+    <div className="st-card">
+      <Link to="/signup" className="st-card-img" aria-label={`${p.name} — ${p.variety}`}>
+        <ProduceImg slug={p.slug} emoji={p.emoji} alt={`${p.name} (${p.variety})`} />
+        {off >= 5 && <span className="st-off">{off}% OFF</span>}
+        <span className="st-grade">{p.organic ? 'Organic' : `Grade ${p.grade}`}</span>
+      </Link>
+      <div className="st-card-body">
+        <div className="st-bids"><span className="st-live-dot" />{p.bids} {p.bids === 1 ? 'bid' : 'bids'} · live</div>
+        <div className="st-name">{p.name}</div>
+        <div className="st-meta">{p.variety} · {p.location}, {p.state}</div>
+        <div className="st-qty">{formatQty(p)} available</div>
+        <div className="st-price-row">
+          <div>
+            <div className="st-price">
+              {formatUnitPrice(p.priceMin, 'INR', currency)}
+              <span className="st-unit">/{UNIT_LABEL[p.unit]}</span>
+            </div>
+            {off >= 5 && <div className="st-mrp">{formatUnitPrice(p.priceMax, 'INR', currency)}</div>}
+          </div>
+          <Link to="/signup" className="st-add">{p.unit === 'KG' ? 'BUY' : 'BID'}</Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Rail({ rail, currency }: { rail: (typeof RAILS)[number]; currency: CurrencyCode }) {
+  const revealRef = useReveal<HTMLElement>();
+  const track = useRef<HTMLDivElement | null>(null);
+  const items = PRODUCTS.filter((p) => p.cat === rail.id);
+
+  const nudge = (dir: 1 | -1) => {
+    const el = track.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
+  };
 
   return (
-    <div className="neg-wrap">
-      <div className="cb-card neg-card">
-        <div className="neg-header">
-          <div className="neg-header-left">
-            <span className="cb-live-dot" />
-            <span className="cb-mono neg-header-id">AUCTION #B-22841 · LIVE</span>
-          </div>
-          <span className="cb-mono neg-header-time">03:47 remaining</span>
+    <section id={rail.id} className="st-rail st-reveal" ref={revealRef}>
+      <div className="st-rail-head">
+        <div>
+          <span className="cb-eyebrow">{rail.eyebrow}</span>
+          <h2 className="st-rail-title">{rail.title}</h2>
         </div>
-
-        <div className="neg-lot">
-          <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Lot</div>
-          <div className="neg-lot-row">
-            <div>
-              <div className="neg-lot-title">Hard Red Winter Wheat · 12.5% protein</div>
-              <div className="cb-small neg-lot-meta">5,000 MT · FOB origin · Delivery Oct 15–30</div>
-            </div>
-            <div className="neg-lot-ref">
-              <div className="cb-tiny">Spot ref</div>
-              <div className="cb-mono neg-lot-ref-val">{fmt(NEG_BASE.spotRef)}/MT</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="neg-msgs">
-          <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:01">
-            Opening at <b>{fmt(NEG_BASE.open)}/MT</b>. Looking for 5,000 MT HRW 12.5% protein, FOB origin, Oct 15–30 delivery, std contract.
-          </Msg>
-          <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:04">
-            Counter <b>{fmt(NEG_BASE.counter1)}/MT</b>. Can do 5,000 MT clean — 13.1% protein, falling number 320+. Need 50% L/C on signing.
-          </Msg>
-          <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:11">
-            Premium acknowledged for protein. <b>{fmt(NEG_BASE.counter2)}/MT</b>, 30% L/C, balance NET-15 post-discharge. Confirm origin certs.
-          </Msg>
-          <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:15">
-            <b>{fmt(NEG_BASE.final)}/MT</b> — final. USDA-FGIS certs attached, EU-RED traceable. Will release lot on signature.
-          </Msg>
-          <Msg side="system" name="Settlement engine" time="14:22:19">
-            Match found. Drafting contract — ETA 11s.
-          </Msg>
-        </div>
-
-        <div className="neg-settle">
-          <div>
-            <div className="cb-mono neg-settle-label">SETTLEMENT</div>
-            <div className="neg-settle-val">{fmt(NEG_BASE.final)}/MT · {totalDisplay} total</div>
-          </div>
-          <button type="button" className="cb-btn">
-            Review contract
-            <ArrowSmIcon />
+        <div className="st-rail-nav">
+          <Link to="/signup" className="st-seeall">see all <ArrowIcon size={12} /></Link>
+          <button type="button" className="st-rail-btn prev" aria-label={`Scroll ${rail.title} back`} onClick={() => nudge(-1)}>
+            <ChevronIcon />
+          </button>
+          <button type="button" className="st-rail-btn next" aria-label={`Scroll ${rail.title} forward`} onClick={() => nudge(1)}>
+            <ChevronIcon />
           </button>
         </div>
       </div>
-
-      <div className="cb-card neg-float bid">
-        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Competing bid</div>
-        <div className="cb-mono neg-float-bid-val">ADM-12 · {fmt(NEG_BASE.competing)}/MT</div>
-        <div className="cb-tiny" style={{ marginTop: 4 }}>Outbid 1.4s ago</div>
-      </div>
-
-      <div className="cb-card neg-float savings">
-        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Savings vs. broker</div>
-        <div className="neg-float-sv-n">+{savingsDisplay}</div>
-        <div className="cb-tiny" style={{ marginTop: 2 }}>1.2% over benchmark</div>
-      </div>
-    </div>
-  );
-}
-
-function Msg({
-  side, name, time, children,
-}: {
-  side: 'buyer' | 'seller' | 'system';
-  name: string;
-  time: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className={`msg msg-${side}`}>
-      <div className="msg-head">
-        <span className={`msg-dot ${side}`} />
-        <span className="cb-mono msg-name">{name}</span>
-        <span className="cb-mono msg-time">{time}</span>
-      </div>
-      <div className={side === 'system' ? 'msg-body-system' : undefined}>{children}</div>
-    </div>
-  );
-}
-
-function LogoStrip() {
-  return (
-    <div className="logo-strip">
-      <div className="logo-strip-inner">
-        <span className="cb-eyebrow">Procurement teams at</span>
-        <div className="logo-strip-names">
-          {LOGO_STRIP.map((n) => <span key={n}>{n}</span>)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Pillars() {
-  return (
-    <section id="how" className="pillars">
-      <div className="pillars-inner">
-        <div className="pillars-head">
-          <span className="cb-eyebrow">How CropBid works</span>
-          <h2 className="cb-h1">From your field to the buyer —<br />without leaving home.</h2>
-        </div>
-        <div className="pillars-grid">
-          {PILLARS.map(([n, title, body]) => (
-            <div key={n} className="pillar">
-              <span className="cb-mono pillar-eyebrow">{n}</span>
-              <h3 className="cb-h3">{title}</h3>
-              <p className="cb-body">{body}</p>
-            </div>
-          ))}
-        </div>
+      <div className="st-rail-track" ref={track}>
+        {items.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} />)}
       </div>
     </section>
   );
 }
 
-function AgentAnatomy({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, DIAGRAM_BASE.currency, currency), currency, { decimals: 2 });
-
-  const rows = [
-    { label: 'PRICE FLOOR',   val: `${fmt(DIAGRAM_BASE.floor)} / MT`,   bar: 55, hot: false },
-    { label: 'PRICE CEILING', val: `${fmt(DIAGRAM_BASE.ceiling)} / MT`, bar: 92, hot: true  },
-    { label: 'VOLUME RANGE',  val: `${DIAGRAM_BASE.qtyLow.toLocaleString('en-US')} – ${DIAGRAM_BASE.qtyHigh.toLocaleString('en-US')} MT`, bar: 75, hot: false },
-    { label: 'PROTEIN MIN',   val: DIAGRAM_BASE.protein,                bar: 62, hot: false },
-    { label: 'DELIVERY',      val: DIAGRAM_BASE.delivery,                bar: 45, hot: false },
-    { label: 'WALK-AWAY',     val: `${fmt(DIAGRAM_BASE.walkAway)} / MT`, bar: 98, hot: true  },
-  ];
-
-  const openDelta = DIAGRAM_BASE.floor + 7;
-  const closeDelta = DIAGRAM_BASE.ceiling - 4;
-  const strategy = `Open at floor + ${fmt(7)}, accept at ceiling − ${fmt(4)}. Match competing bids within 0.5%.`;
-  void openDelta; void closeDelta;
+function SearchResults({ query, currency }: { query: string; currency: CurrencyCode }) {
+  const q = query.trim().toLowerCase();
+  const matches = PRODUCTS.filter((p) =>
+    [p.name, p.variety, p.location, p.state, CAT_KEYWORDS[p.cat]].join(' ').toLowerCase().includes(q),
+  );
 
   return (
-    <section id="buyers" className="anatomy">
-      <div className="anatomy-inner">
+    <section className="st-results">
+      <div className="st-rail-head">
         <div>
-          <span className="cb-eyebrow">Inside the agent</span>
-          <h2 className="cb-h2">Negotiation, not chatter.</h2>
-          <p className="cb-body anatomy-lede">
-            CropBid agents are deterministic at the edges: hard price floors, hard volume ceilings, cryptographic
-            identity. The negotiation in between uses a value model calibrated on 18 years of physical commodity
-            settlements across 20+ countries.
-          </p>
-          <ul className="anatomy-list">
-            {GUARDRAILS.map(([t, d]) => (
-              <li key={t}>
-                <span className="t">{t}</span>
-                <span className="d">{d}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="cb-card diagram cb-grid-bg">
-          <div className="diagram-head">
-            <span className="cb-eyebrow">Agent: Cargill-04</span>
-            <span className="diagram-active">● ACTIVE · 12 lots</span>
-          </div>
-          <div className="diagram-rows">
-            {rows.map((r) => (
-              <div key={r.label} className="diagram-row">
-                <span className="lbl">{r.label}</span>
-                <div className={`diagram-bar${r.hot ? ' hot' : ''}`}>
-                  <div style={{ width: `${r.bar}%` }} />
-                </div>
-                <span className="val">{r.val}</span>
-              </div>
-            ))}
-          </div>
-          <div className="diagram-strategy">
-            <div className="head">STRATEGY</div>
-            <div className="body">{strategy}</div>
-          </div>
+          <span className="cb-eyebrow">{matches.length} {matches.length === 1 ? 'lot' : 'lots'} found</span>
+          <h2 className="st-rail-title">Results for “{query.trim()}”</h2>
         </div>
       </div>
+      {matches.length > 0 ? (
+        <div className="st-results-grid">
+          {matches.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} />)}
+        </div>
+      ) : (
+        <div className="st-empty">
+          <span className="st-empty-emoji" aria-hidden="true">🌾</span>
+          <p className="cb-body">No crops match “{query.trim()}” yet.</p>
+          <p className="cb-small">Try “tomato”, “wheat”, “mango”, “dal” — or list it yourself and let buyers come to you.</p>
+        </div>
+      )}
     </section>
   );
 }
 
-function MarketSnapshot({ rows, activeCount, currency }: { rows: MarketRow[]; activeCount: number; currency: CurrencyCode }) {
-  const display = rows.length > 0 ? rows : STATIC_MARKET;
-  const headline = activeCount > 0 ? `${activeCount} auctions clearing right now.` : 'Live marketplace.';
+const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
+  ['01', 'Farmers list from the field', 'Crop, grade, quantity, floor price — in any language, without leaving the farm.'],
+  ['02', 'You buy or bid', 'Pay the listed price for any quantity, or join a live auction for bulk lots.'],
+  ['03', 'We verify & deliver', 'Every lot inspected, transport arranged, escrow released on delivery.'],
+];
 
+function HowStrip() {
+  const ref = useReveal<HTMLElement>();
   return (
-    <section id="marketplace" className="market">
-      <div className="market-inner">
-        <div className="market-head">
-          <div>
-            <span className="cb-eyebrow">Marketplace · live</span>
-            <h2 className="cb-h2">{headline}</h2>
-          </div>
-          <Link to="/buyer/browse" className="cb-btn cb-btn-ghost">
-            Open marketplace
-            <ArrowIcon />
-          </Link>
+    <section className="st-how st-reveal" ref={ref}>
+      <div className="st-rail-head">
+        <div>
+          <span className="cb-eyebrow">Simple by design</span>
+          <h2 className="st-rail-title">How CropBid works</h2>
         </div>
-        <div className="market-grid">
-          {display.map((row) => {
-            const color = row.tone === 'pos' ? '#9bc97a' : '#e07a3f';
-            const deltaLabel = `${row.deltaPct >= 0 ? '+' : ''}${row.deltaPct.toFixed(1)}%`;
-            return (
-              <div key={row.id} className="market-cell">
-                <div className="market-row">
-                  <span className="market-name">{row.crop}</span>
-                  <span className={`market-d ${row.tone}`}>{deltaLabel}</span>
-                </div>
-                <div className="cb-tiny market-grade">
-                  {row.variety ? `${row.variety} · ` : ''}Grade {row.grade}{row.organic ? ' · Organic' : ''} · {row.state}, {row.country}
-                </div>
-                <div className="market-price">{formatMarketPrice(row, currency)}<span className="cb-tiny" style={{ marginLeft: 6, opacity: 0.6 }}>/{UNIT_LABEL[row.unit]}</span></div>
-                <MiniChart data={row.spark} color={color} />
-                <div className="market-foot">
-                  <span className="cb-tiny market-vol">{formatQuantity(row)}</span>
-                  <span className="market-closing">● {row.bidCount} bids</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <Link to="/how-it-works" className="st-seeall">the full story <ArrowIcon size={12} /></Link>
       </div>
-    </section>
-  );
-}
-
-function HowItWorks({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
-
-  return (
-    <section id="farmers" className="how">
-      <div className="how-inner">
-        <div className="how-head">
-          <div>
-            <span className="cb-eyebrow">Transparent by construction</span>
-            <h2 className="cb-h1">You see every bid.<br /><span className="italic">Including the ones you lost.</span></h2>
-          </div>
-          <p className="cb-body">
-            Brokers hide spread. CropBid surfaces it. Every counterparty quote, every counter, every walk-away
-            decision is timestamped and exportable. Compliance gets a clean audit trail; trading gets feedback
-            loops that compound across seasons.
-          </p>
-        </div>
-
-        <div className="cb-card how-table">
-          <div className="how-row head">
-            <span>T+</span><span>Event</span><span>Counter</span><span>Price</span><span>Vol (MT)</span><span>Spread</span><span>—</span>
-          </div>
-          {HOW_BASE.map((row, i) => {
-            const isMatch = i === HOW_BASE.length - 1;
-            const priceCell = row.price === null
-              ? '—'
-              : Array.isArray(row.price)
-                ? `${fmt(row.price[0])} – ${fmt(row.price[1])}`
-                : fmt(row.price);
-            const spreadCell = row.spread === null ? '—' : fmt(row.spread);
-            return (
-              <div key={row.t} className={`how-row${isMatch ? ' match' : ''}`}>
-                <span className="t">{row.t}</span>
-                <span>{row.evt}</span>
-                <span className="counter">{row.counter}</span>
-                <span className="price">{priceCell}</span>
-                <span className="vol">{row.qty === null ? '—' : row.qty.toLocaleString('en-US')}</span>
-                <span className="spread">{spreadCell}</span>
-                <span className={isMatch ? 'match-mark' : 'ok'}>{row.mark}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Proof({ stats }: { stats: LandingStats }) {
-  const items: ReadonlyArray<readonly [string, string, string]> = [
-    ['1.6%', 'avg. price improvement', 'vs. broker-mediated benchmark on identical lots'],
-    ['14×',  'faster to bind',         'median 41s vs. 9 minutes by phone or terminal'],
-    [`${stats.totals.farmers + stats.totals.buyers}`, 'verified counterparties', 'KYC + USDA / EU-RED / GAFTA / APMC credentialed'],
-    [`${stats.totals.countries || 23}`, 'origin countries', 'CONAB, USDA, ABARES, EU CAP, eNAM data ingested live'],
-  ];
-
-  return (
-    <section id="pricing" className="proof">
-      <div className="proof-grid">
-        {items.map(([n, l, d]) => (
-          <div key={l} className="proof-item">
-            <div className="proof-n">{n}</div>
-            <div className="proof-l">{l}</div>
-            <div className="cb-small proof-d">{d}</div>
+      <div className="st-how-grid">
+        {HOW_STEPS.map(([n, t, d]) => (
+          <div key={n} className="st-how-step">
+            <span className="cb-mono st-how-n">{n}</span>
+            <span className="st-how-t">{t}</span>
+            <span className="st-how-d">{d}</span>
           </div>
         ))}
       </div>
@@ -770,97 +509,32 @@ function Proof({ stats }: { stats: LandingStats }) {
   );
 }
 
-function Mission() {
+function SellCTA() {
+  const ref = useReveal<HTMLElement>();
   return (
-    <section className="testimonial">
-      <div className="testimonial-inner">
-        <div className="img-slot">grain markets · global trade</div>
-        <div>
-          <span className="cb-eyebrow">Why we built CropBid</span>
-          <p className="testimonial-quote">
-            “Every harvest, growers lose margin to opaque pricing and a chain of middlemen.
-            CropBid runs transparent, auditable auctions, verifies every lot ourselves, and
-            handles transport farm-to-buyer — so farmers get fair prices without ever leaving
-            the field.”
-          </p>
-          <div className="testimonial-attribution">
-            <div className="name">The CropBid team</div>
-            <div className="cb-small">Building fair price discovery for agriculture</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CTA() {
-  return (
-    <section className="cta">
+    <section className="cta st-reveal" ref={ref}>
       <div className="cta-card">
         <div className="cta-grid-bg" />
         <div className="cta-inner">
           <div>
-            <h2 className="cb-h1">Stop calling brokers.<br />Start running auctions.</h2>
+            <h2 className="cb-h1">Grow it? <span className="italic">Sell it here.</span></h2>
             <p className="cb-body cta-lede">
-              Spin up a buyer agent in under a day. Bring your own commodity, your own guardrails,
-              your own counterparty list. Or use ours.
+              List your harvest in two minutes and let verified buyers bid it up.
+              No mandi trips, no middlemen — you keep the margin.
             </p>
           </div>
           <div className="cta-actions">
             <Link to="/signup" className="cb-btn cta-primary">
-              Deploy a buyer agent
+              Start selling free
               <ArrowIcon />
             </Link>
-            <a href="#resources" className="cb-btn cta-ghost">
-              Talk to our trading team
-            </a>
+            <Link to="/how-it-works" className="cb-btn cta-ghost">
+              See how it works
+            </Link>
           </div>
         </div>
       </div>
     </section>
-  );
-}
-
-function CBFooter() {
-  return (
-    <footer id="resources" className="cb-footer">
-      <div className="cb-footer-inner">
-        <div className="cb-footer-cols">
-          <div>
-            <Link to="/" className="wordmark" style={{ color: '#f4f1ea' }}>
-              <ArcMark size={28} />
-              <span className="wordmark-text" style={{ fontSize: 20 }}>CropBid</span>
-            </Link>
-            <p className="cb-footer-blurb">
-              The autonomous procurement layer for global crop trading. Built for growers, FPOs, and procurement teams across 20+ countries.
-            </p>
-            <div className="cb-footer-badges">
-              {['SOC 2', 'GAFTA', 'ISO 27001'].map((b) => (
-                <span key={b} className="cb-chip">{b}</span>
-              ))}
-            </div>
-          </div>
-
-          {FOOTER_COLS.map((c) => (
-            <div key={c.title} className="cb-footer-col">
-              <div className="cb-footer-col-title">{c.title}</div>
-              <ul>
-                {c.items.map((i) => <li key={i}><a href={i === 'Contact' ? 'mailto:hrishikeshborkar94@gmail.com' : '#'}>{i}</a></li>)}
-              </ul>
-            </div>
-          ))}
-        </div>
-
-        <div className="cb-footer-bottom">
-          <span>© {new Date().getFullYear()} CropBid, Inc.  ·  All rights reserved</span>
-          <span className="cb-footer-bottom-links">
-            <a href="#">Terms</a>
-            <a href="#">Privacy</a>
-            <a href="#">Disclosures</a>
-          </span>
-        </div>
-      </div>
-    </footer>
   );
 }
 
@@ -868,48 +542,55 @@ function CBFooter() {
 // Page
 // =============================================================================
 
-const LS_KEY = 'cb-landing-country';
-
-const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.code === 'IN') ?? COUNTRIES[0];
-
-function loadCountry(): Country {
-  if (typeof window === 'undefined') return DEFAULT_COUNTRY;
-  const code = window.localStorage.getItem(LS_KEY);
-  return COUNTRIES.find((c) => c.code === code) ?? DEFAULT_COUNTRY;
-}
-
 export function LandingPage() {
   const [country, setCountry] = useState<Country>(loadCountry);
-
-  // Static content only — no API. Live stats wiring comes in a later pass.
-  const stats: LandingStats = { ...STATIC_STATS, marketplace: STATIC_MARKET };
-
+  const [query, setQuery] = useState('');
   const currency = country.currency;
 
-  const handleChangeCountry = useMemo(
-    () => (next: Country) => {
-      setCountry(next);
-      try {
-        window.localStorage.setItem(LS_KEY, next.code);
-      } catch {
-        // ignore storage errors (private mode, quota)
+  const handleChangeCountry = (next: Country) => {
+    setCountry(next);
+    saveCountry(next);
+  };
+
+  // Chips & category tiles jump to a rail; clear any active search first so
+  // the rails are actually on screen to scroll to.
+  const jumpTo = (target: RailId | 'top') => {
+    setQuery('');
+    requestAnimationFrame(() => {
+      if (target === 'top') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    },
-    [],
-  );
+    });
+  };
+
+  const searching = query.trim() !== '';
 
   return (
-    <div className="cb-landing">
-      <Nav country={country} onChangeCountry={handleChangeCountry} />
-      <Hero stats={stats} currency={currency} />
-      <LogoStrip />
-      <Pillars />
-      <AgentAnatomy currency={currency} />
-      <MarketSnapshot rows={stats.marketplace} activeCount={stats.totals.activeAuctions} currency={currency} />
-      <HowItWorks currency={currency} />
-      <Proof stats={stats} />
-      <Mission />
-      <CTA />
+    <div className="cb-landing st-store">
+      <Ticker currency={currency} />
+      <StoreHeader
+        country={country}
+        onChangeCountry={handleChangeCountry}
+        query={query}
+        onQuery={setQuery}
+        onJump={jumpTo}
+      />
+      <main className="st-main">
+        {searching ? (
+          <SearchResults query={query} currency={currency} />
+        ) : (
+          <>
+            <HeroBanner onShop={() => jumpTo('veg')} />
+            <PromoTrio />
+            <CategoryGrid onJump={jumpTo} />
+            {RAILS.map((rail) => <Rail key={rail.id} rail={rail} currency={currency} />)}
+            <HowStrip />
+            <SellCTA />
+          </>
+        )}
+      </main>
       <CBFooter />
     </div>
   );
