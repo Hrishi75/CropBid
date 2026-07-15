@@ -335,6 +335,7 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <Link to="/rates" className="st-header-link">Live rates</Link>
+          <Link to="/schemes" className="st-header-link">Yojana</Link>
           <Link to="/how-it-works" className="st-header-link">How it works</Link>
           <Link to="/login" className="nav-signin">Sign in</Link>
           <Link to="/signup" className="cb-btn cb-btn-primary">
@@ -399,7 +400,7 @@ function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: Ra
         </div>
         <div className="st-banner-ticks">
           <span>✓ Live govt mandi rates</span>
-          <span>✓ Every lot inspected</span>
+          <span>✓ Open bidding &amp; auctions</span>
           <span>✓ Escrow settlement</span>
           <span>✓ Farm-to-door logistics</span>
         </div>
@@ -423,11 +424,13 @@ function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: Ra
 
 // Today's rates, front and centre — the shared price anchor every deal on
 // CropBid negotiates around. Live from the govt feed, honest about fallback.
+// NOTE: no st-reveal here — this section mounts empty (null) and only renders
+// once rates arrive, so a mount-time IntersectionObserver would never see it
+// and it would sit invisible at opacity 0, leaving a blank gap in the page.
 function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; currency: CurrencyCode }) {
-  const ref = useReveal<HTMLElement>();
   if (!board) return null;
   return (
-    <section className="st-rates st-reveal" ref={ref}>
+    <section className="st-rates">
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
@@ -463,7 +466,7 @@ function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; cur
 const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string }> = [
   { tone: 'sage',  emoji: '🔨', title: 'Live auctions',        desc: 'Verified buyers bid in open rounds — watch prices climb in real time.', ctaLabel: 'Start bidding',  to: '/signup' },
   { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Any quantity, at the farmer’s listed price. From one sack to a season’s supply.', ctaLabel: 'Shop direct', to: '/signup' },
-  { tone: 'ember', emoji: '🚚', title: 'Verified & delivered',  desc: 'We inspect every lot, arrange transport, and release escrow on delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
+  { tone: 'ember', emoji: '🛡️', title: 'Escrow protected',  desc: 'Money stays held on-platform and releases only when you confirm delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
 ];
 
 function PromoTrio() {
@@ -596,7 +599,7 @@ function SearchResults({ query, currency }: { query: string; currency: CurrencyC
 const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
   ['01', 'Farmers list from the field', 'Crop, grade, quantity, floor price — in any language, without leaving the farm.'],
   ['02', 'You buy or bid', 'Pay the listed price for any quantity, or join a live auction for bulk lots.'],
-  ['03', 'We verify & deliver', 'Every lot inspected, transport arranged, escrow released on delivery.'],
+  ['03', 'Escrow keeps it safe', 'Money held on-platform, tracked paid → shipped → delivered, released when you confirm.'],
 ];
 
 function HowStrip() {

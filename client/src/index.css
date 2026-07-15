@@ -1329,6 +1329,50 @@ body * {
   .rp-state select { min-width: 100%; }
 }
 
+/* =============================================================================
+   Schemes page (.sy-*) — /schemes · Sarkari Yojana (shares the .rp shell)
+   ============================================================================= */
+.sy-search {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-radius: 14px; padding: 13px 16px; margin-top: 18px;
+  color: var(--cb-ink-3);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.sy-search:focus-within { border-color: rgba(31,45,24,0.35); box-shadow: 0 0 0 3px rgba(107,142,78,0.12); }
+.sy-search input {
+  flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+  font: inherit; font-size: 15px; color: var(--cb-ink);
+}
+.sy-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.sy-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+.sy-grid { margin-top: 20px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.sy-hindi { font-size: 12px; color: var(--cb-ink-3); margin-top: 1px; }
+.sy-tagline { font-size: 12.5px; line-height: 1.45; color: var(--cb-ink-2); margin-top: 7px; }
+
+.sy-detail {
+  margin-top: 16px; background: var(--cb-paper);
+  border: 1px solid var(--cb-forest); border-radius: 16px;
+  padding: 20px;
+}
+.sy-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sy-detail-emoji { font-size: 34px; }
+.sy-detail-name { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.sy-detail-name .sy-hindi { font-size: 14px; font-weight: 400; }
+.sy-apply { margin-left: auto; }
+.sy-detail-grid {
+  display: grid; gap: 16px; margin-top: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.sy-block {
+  background: var(--cb-bg); border: 1px solid var(--cb-line);
+  border-radius: 12px; padding: 14px;
+}
+.sy-block p { margin-top: 8px; font-size: 13.5px; line-height: 1.55; color: var(--cb-ink-2); }
+@media (max-width: 720px) {
+  .sy-apply { margin-left: 0; width: 100%; justify-content: center; }
+}
+
 /* --- promo trio --- */
 .st-promos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
 .st-promo {

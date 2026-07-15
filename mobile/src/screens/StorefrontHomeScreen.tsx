@@ -320,7 +320,7 @@ export default function StorefrontHomeScreen() {
                   <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
                 </Text>
                 <View style={styles.bannerTicks}>
-                  <Text style={styles.bannerTick}>✓ Every lot inspected</Text>
+                  <Text style={styles.bannerTick}>✓ Open bidding & auctions</Text>
                   <Text style={styles.bannerTick}>✓ Escrow settlement</Text>
                   <Text style={styles.bannerTick}>✓ Farm to door</Text>
                 </View>
@@ -332,9 +332,10 @@ export default function StorefrontHomeScreen() {
 
             {/* promo trio — the web's sage/paper/ember cards as a rail */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
-              <PromoCard tone="sage" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
+              <PromoCard tone="sage" emoji="🏛️" title="Sarkari Yojana" desc="PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed." onPress={() => nav.navigate('Schemes')} />
+              <PromoCard tone="paper" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
               <PromoCard tone="paper" emoji="🚜" title="Straight from the grower" desc="A shorter chain means fairer prices — for the farm and for you." />
-              <PromoCard tone="ember" emoji="🚚" title="Verified & delivered" desc="Inspected lots, escrow held until it reaches you." />
+              <PromoCard tone="ember" emoji="🛡️" title="Escrow protected" desc="Money stays held on-platform until the crop reaches you." />
             </ScrollView>
 
             {/* shop by category — web's tile row */}
@@ -375,7 +376,7 @@ export default function StorefrontHomeScreen() {
               {[
                 ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
                 ['02', 'You buy at their price', 'Any quantity, no bidding — the price you see is the farmer\'s own.'],
-                ['03', 'We verify & deliver', 'Every lot inspected; escrow released on delivery.'],
+                ['03', 'Escrow keeps it safe', 'Money held on-platform; released when you confirm delivery.'],
               ].map(([n, t, d]) => (
                 <View key={n} style={styles.howStep}>
                   <Mono style={styles.howN}>{n}</Mono>
@@ -553,19 +554,26 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
 }
 
 function PromoCard({
-  tone, emoji, title, desc,
+  tone, emoji, title, desc, onPress,
 }: {
   tone: 'sage' | 'paper' | 'ember';
   emoji: string;
   title: string;
   desc: string;
+  onPress?: () => void;
 }) {
-  return (
+  const body = (
     <View style={[styles.promo, styles[`promo_${tone}`]]}>
       <Text style={styles.promoEmoji}>{emoji}</Text>
       <Text style={styles.promoTitle}>{title}</Text>
       <Text style={styles.promoDesc}>{desc}</Text>
     </View>
+  );
+  if (!onPress) return body;
+  return (
+    <PressScale onPress={onPress} scaleTo={0.96}>
+      {body}
+    </PressScale>
   );
 }
 
