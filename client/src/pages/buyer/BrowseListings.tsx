@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { ListingCard } from '../../components/listings/ListingCard';
 import { ListingFilters } from '../../components/listings/ListingFilters';
+import { RatesBoard } from '../../components/listings/RatesBoard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
@@ -80,7 +81,11 @@ export function BrowseListings() {
         <span className="cb-italic">20+ origins.</span>
       </h1>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 28, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ marginTop: 28 }}>
+        <RatesBoard state={filters.state || undefined} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div className="cb-pill-group">
           <button type="button" className={`cb-pill ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>Grid</button>
           <button type="button" className={`cb-pill ${view === 'row' ? 'active' : ''}`} onClick={() => setView('row')}>Table</button>

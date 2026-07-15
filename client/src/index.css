@@ -1073,6 +1073,7 @@ body * {
 .st-tick .v { color: #f4f1ea; }
 .st-tick .d.pos { color: #9bc97a; }
 .st-tick .d.neg { color: #e07a3f; }
+.st-tick .d.flat { color: rgba(244,241,234,0.5); }
 
 /* --- sticky header + search --- */
 .st-header {
@@ -1175,6 +1176,68 @@ body * {
 .st-banner-media::before {
   content: ''; position: absolute; inset: 0; z-index: 1;
   background: linear-gradient(to right, var(--cb-forest), transparent 42%);
+}
+
+/* --- floating live-price chips over the hero photo --- */
+.st-float-chip {
+  position: absolute; z-index: 2;
+  display: inline-flex; align-items: center; gap: 9px;
+  background: rgba(244,241,234,0.95); color: var(--cb-ink);
+  border: 1px solid rgba(20,20,15,0.08); border-radius: 14px;
+  padding: 8px 13px;
+  box-shadow: 0 12px 30px rgba(20,20,15,0.22);
+  animation: st-float 5.4s ease-in-out infinite;
+}
+.st-float-chip .e { font-size: 17px; }
+.st-float-chip .t { display: flex; flex-direction: column; line-height: 1.2; }
+.st-float-chip .n { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--cb-ink-3); }
+.st-float-chip .v { font-size: 13px; font-weight: 700; }
+.st-float-chip .d { font-family: var(--cb-font-mono); font-size: 10px; }
+.st-float-chip .d.pos { color: #3f6d2a; }
+.st-float-chip .d.neg { color: #c25e2a; }
+.st-float-chip.c0 { top: 14%; right: 28px; }
+.st-float-chip.c1 { top: 48%; left: 38%; animation-delay: 1.7s; }
+.st-float-chip.c2 { bottom: 13%; right: 54px; animation-delay: 3.2s; }
+@keyframes st-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-9px); }
+}
+
+/* --- live mandi rates board --- */
+.st-rates {
+  margin-top: 14px;
+  border: 1px solid var(--cb-line); border-radius: 16px;
+  background: var(--cb-paper);
+  padding: 16px 18px 10px;
+}
+.st-rates-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.st-rates-title { display: inline-flex; align-items: center; gap: 8px; }
+.st-rates-src { font-size: 10px; letter-spacing: 0.06em; color: var(--cb-ink-3); }
+.st-rates-track {
+  display: flex; gap: 10px;
+  overflow-x: auto; padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.st-rate {
+  flex: 0 0 auto; min-width: 134px;
+  border: 1px solid var(--cb-line); border-radius: 12px;
+  padding: 10px 12px; background: var(--cb-bg);
+}
+.st-rate-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.st-rate-emoji { font-size: 18px; }
+.st-rate .d { font-family: var(--cb-font-mono); font-size: 10px; }
+.st-rate .d.pos { color: #3f6d2a; }
+.st-rate .d.neg { color: #c25e2a; }
+.st-rate .d.flat { color: var(--cb-ink-3); }
+.st-rate-n { font-size: 13px; font-weight: 600; margin-top: 6px; color: var(--cb-ink); }
+.st-rate-v { font-size: 15px; font-weight: 700; margin-top: 2px; color: var(--cb-ink); }
+.st-rate-v .u { font-size: 10px; font-weight: 400; color: var(--cb-ink-3); }
+.st-rate-band { font-size: 10.5px; color: var(--cb-ink-3); margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .st-float-chip { animation: none; }
 }
 
 /* --- promo trio --- */

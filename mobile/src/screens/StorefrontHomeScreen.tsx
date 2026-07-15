@@ -37,7 +37,7 @@ import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { browse } from '../api/endpoints';
-import { errorMessage, mediaUrl } from '../api/client';
+import api, { errorMessage, mediaUrl } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
 import { money, unitLabel } from '../lib/format';
@@ -47,6 +47,39 @@ import {
 } from '../lib/catalog';
 
 const SEARCH_HINTS = ['tomato', 'fresh mango', 'wheat', 'onion', 'dal', 'turmeric'];
+
+// ---------------------------------------------------------------------------
+// Live mandi rates — /rates/board (Govt Agmarknet, public, daily)
+// ---------------------------------------------------------------------------
+
+interface LiveRate {
+  commodity: string;
+  label: string;
+  emoji: string;
+  unit: 'KG' | 'QUINTAL';
+  modal: number;       // ₹ per unit — today's clearing price
+  min: number;
+  max: number;
+  usual: number;       // the crop's usual reference price
+  changePct: number;   // today vs usual, % — the price signal
+  market: string | null;
+  state: string | null;
+  source: 'market' | 'state' | 'national' | 'reference';
+}
+
+interface RatesBoardData { date: string; live: boolean; rates: LiveRate[]; }
+
+function useLiveRates(): RatesBoardData | null {
+  const [board, setBoard] = useState<RatesBoardData | null>(null);
+  useEffect(() => {
+    let on = true;
+    api.get('/rates/board')
+      .then(({ data }) => { if (on && data?.rates?.length) setBoard(data); })
+      .catch(() => { /* ticker & rail fall back to static reference prices */ });
+    return () => { on = false; };
+  }, []);
+  return board;
+}
 
 // One card on the storefront — either a live API listing or a static demo lot
 // from the shared catalog, normalised to what the card renders.
@@ -108,6 +141,7 @@ export default function StorefrontHomeScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<RailId | null>(null);
+  const board = useLiveRates();
 
   const role = user?.role;
   const isFarmer = role === 'FARMER';
@@ -216,7 +250,7 @@ export default function StorefrontHomeScreen() {
       {/* fixed top block — ticker + wordmark + search + chips, like the web's
           sticky header */}
       <View style={{ paddingTop: insets.top, backgroundColor: colors.forest }}>
-        <TickerStrip />
+        <TickerStrip board={board} />
       </View>
       <View style={styles.header}>
         <View style={styles.headerRow}>
@@ -293,10 +327,13 @@ export default function StorefrontHomeScreen() {
               </View>
             </View>
 
+            {/* today's live mandi rates — the shared price anchor, up front */}
+            <RatesRail board={board} />
+
             {/* promo trio — the web's sage/paper/ember cards as a rail */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
               <PromoCard tone="sage" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
-              <PromoCard tone="paper" emoji="🚜" title="Straight from the grower" desc="The broker's margin stays with the farm — and you." />
+              <PromoCard tone="paper" emoji="🚜" title="Straight from the grower" desc="A shorter chain means fairer prices — for the farm and for you." />
               <PromoCard tone="ember" emoji="🚚" title="Verified & delivered" desc="Inspected lots, escrow held until it reaches you." />
             </ScrollView>
 
@@ -337,7 +374,7 @@ export default function StorefrontHomeScreen() {
             <View style={styles.howWrap}>
               {[
                 ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
-                ['02', 'You buy at their price', 'Any quantity, no bidding, no brokers in between.'],
+                ['02', 'You buy at their price', 'Any quantity, no bidding — the price you see is the farmer\'s own.'],
                 ['03', 'We verify & deliver', 'Every lot inspected; escrow released on delivery.'],
               ].map(([n, t, d]) => (
                 <View key={n} style={styles.howStep}>
@@ -354,8 +391,8 @@ export default function StorefrontHomeScreen() {
               </Text>
               <Text style={styles.sellDesc}>
                 {isFarmer
-                  ? 'List your harvest in two minutes and keep the margin — no mandi trips, no middlemen.'
-                  : 'Registered farmers list in two minutes and keep the margin — no mandi trips, no middlemen.'}
+                  ? 'List your harvest in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'
+                  : 'Registered farmers list in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'}
               </Text>
               <PressScale onPress={onSell} cardStyle={styles.sellBtn}>
                 <Text style={styles.sellBtnText}>{isFarmer ? 'List your harvest' : 'Become a seller'}</Text>
@@ -389,7 +426,7 @@ export default function StorefrontHomeScreen() {
 
 // Forest marquee of mandi prices — the web storefront's top ticker, from the
 // same static list. Two copies of the row scroll left in a seamless loop.
-function TickerStrip() {
+function TickerStrip({ board }: { board: RatesBoardData | null }) {
   const [w, setW] = useState(0);
   const x = useRef(new Animated.Value(0)).current;
 
@@ -403,6 +440,11 @@ function TickerStrip() {
     return () => anim.stop();
   }, [w, x]);
 
+  // Live govt rates when the API answered; static reference prices otherwise.
+  const ticks = board
+    ? board.rates.map((r) => ({ name: r.label, price: r.modal, unit: r.unit, delta: r.changePct }))
+    : TICKER;
+
   return (
     <View style={styles.ticker}>
       <Animated.View style={{ flexDirection: 'row', transform: [{ translateX: x }] }}>
@@ -412,18 +454,57 @@ function TickerStrip() {
             style={styles.tickerRow}
             onLayout={copy === 0 ? (e) => setW(e.nativeEvent.layout.width) : undefined}
           >
-            {TICKER.map((t) => (
+            {ticks.map((t) => (
               <View key={`${copy}-${t.name}`} style={styles.tick}>
                 <Mono style={styles.tickName}>{t.name.toUpperCase()}</Mono>
                 <Mono style={styles.tickPrice}>{money(t.price)}/{unitLabel(t.unit)}</Mono>
-                <Mono style={[styles.tickDelta, { color: t.delta >= 0 ? design.leaf : colors.ember2 }]}>
-                  {t.delta >= 0 ? '▲' : '▼'} {Math.abs(t.delta).toFixed(1)}%
-                </Mono>
+                {Math.abs(t.delta) >= 0.1 && (
+                  <Mono style={[styles.tickDelta, { color: t.delta >= 0 ? design.leaf : colors.ember2 }]}>
+                    {t.delta >= 0 ? '▲' : '▼'} {Math.abs(t.delta).toFixed(1)}%
+                  </Mono>
+                )}
               </View>
             ))}
           </View>
         ))}
       </Animated.View>
+    </View>
+  );
+}
+
+// Today's mandi rates — the shared price anchor, as a horizontal rail right
+// under the hero. Live govt numbers with a "vs usual" signal per crop.
+function RatesRail({ board }: { board: RatesBoardData | null }) {
+  if (!board) return null;
+  return (
+    <View>
+      <View style={styles.ratesHead}>
+        {board.live ? <Pulse style={styles.liveDot} /> : null}
+        <Text style={styles.ratesTitle}>Today's mandi rates</Text>
+        <Mono style={styles.ratesSrc}>GOVT · {board.date}</Mono>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ratesPad}>
+        {board.rates.map((r) => (
+          <View key={r.commodity} style={styles.rateCard}>
+            <View style={styles.rateTop}>
+              <Text style={styles.rateEmoji}>{r.emoji}</Text>
+              {Math.abs(r.changePct) >= 0.1 ? (
+                <Mono style={[styles.rateDelta, { color: r.changePct >= 0 ? colors.forest : colors.ember2 }]}>
+                  {r.changePct >= 0 ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}%
+                </Mono>
+              ) : (
+                <Mono style={styles.rateSteady}>steady</Mono>
+              )}
+            </View>
+            <Text style={styles.rateName}>{r.label}</Text>
+            <Text style={styles.rateValue}>
+              {money(r.modal)}
+              <Text style={styles.rateUnit}>/{unitLabel(r.unit)}</Text>
+            </Text>
+            <Mono style={styles.rateBand}>{money(r.min)}–{money(r.max)}</Mono>
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -696,6 +777,35 @@ const styles = StyleSheet.create({
   bannerTick: { fontFamily: font.sansMed, fontSize: 11, color: 'rgba(244,241,234,0.85)' },
 
   // promo trio — web .st-promo washes
+  // live mandi rates rail
+  ratesHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginTop: 22,
+    marginBottom: 10,
+  },
+  ratesTitle: { fontFamily: font.sansSemi, fontSize: 17, letterSpacing: -0.3, color: design.ink },
+  ratesSrc: { marginLeft: 'auto', fontSize: 9, letterSpacing: 0.6, color: design.ink3 },
+  ratesPad: { paddingHorizontal: 16, gap: 10 },
+  rateCard: {
+    width: 128,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 14,
+    padding: 12,
+    backgroundColor: design.paper,
+  },
+  rateTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  rateEmoji: { fontSize: 18 },
+  rateDelta: { fontSize: 9.5 },
+  rateSteady: { fontSize: 9.5, color: design.ink3 },
+  rateName: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink, marginTop: 6 },
+  rateValue: { fontFamily: font.sansSemi, fontSize: 15, color: design.ink, marginTop: 2 },
+  rateUnit: { fontFamily: font.sans, fontSize: 10, color: design.ink3 },
+  rateBand: { fontSize: 10, color: design.ink3, marginTop: 3 },
+
   promoPad: { paddingHorizontal: 16, gap: 10, marginTop: 12 },
   promo: { width: 200, borderRadius: 16, borderWidth: 1, borderColor: design.line, padding: 14 },
   promo_sage: { backgroundColor: 'rgba(107,142,78,0.14)' },
