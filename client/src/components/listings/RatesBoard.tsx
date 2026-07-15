@@ -56,9 +56,9 @@ export function RatesBoard({ state }: { state?: string }) {
 
   useEffect(() => {
     // Cancellation flag: if the state filter changes while a fetch is in
-    // flight, the stale response must not overwrite the newer board.
+    // flight, the stale response must not overwrite the newer board. On
+    // refetches the previous board stays visible until the new one lands.
     let on = true;
-    setLoading(true);
     const params = state ? `?state=${encodeURIComponent(state)}` : '';
     api.get(`/rates/board${params}`)
       .then(({ data }) => { if (on) setBoard(data); })
