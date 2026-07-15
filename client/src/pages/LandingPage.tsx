@@ -334,6 +334,7 @@ function StoreHeader({
         </div>
 
         <nav className="st-header-links" aria-label="Primary">
+          <Link to="/rates" className="st-header-link">Live rates</Link>
           <Link to="/how-it-works" className="st-header-link">How it works</Link>
           <Link to="/login" className="nav-signin">Sign in</Link>
           <Link to="/signup" className="cb-btn cb-btn-primary">
@@ -433,6 +434,7 @@ function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; cur
           <span className="cb-eyebrow">Today's mandi rates{board.live ? ' · live' : ''} · {board.date}</span>
         </div>
         <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
+        <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
       </div>
       <div className="st-rates-track">
         {board.rates.map((r) => (

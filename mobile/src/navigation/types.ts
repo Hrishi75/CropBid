@@ -15,6 +15,7 @@ export type AuthStackParamList = {
 export type GuestStackParamList = {
   GuestHome: undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
   Login: undefined;
   Signup: undefined;
 };
@@ -44,6 +45,7 @@ export type RootStackParamList = {
   Tabs: undefined;
   Auction: { listingId?: string } | undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
   Notifications: undefined;
 };
 
@@ -65,6 +67,7 @@ export type FarmerStackParamList = {
   Contracts: undefined;
   Helper: undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
   Notifications: undefined;
 };
 
@@ -78,6 +81,7 @@ export type ConsumerTabParamList = {
 export type ConsumerStackParamList = {
   ConsumerTabs: undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
   Notifications: undefined;
 };
 

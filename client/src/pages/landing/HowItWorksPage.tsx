@@ -333,6 +333,10 @@ function PriceEngine() {
 
         <div className="cb-app" style={{ background: 'transparent', padding: 0 }}>
           <RatesBoard />
+          <Link to="/rates" className="cb-btn cb-btn-ghost" style={{ marginTop: 4 }}>
+            Full board — every mandi, every state
+            <ArrowIcon />
+          </Link>
         </div>
       </div>
     </section>

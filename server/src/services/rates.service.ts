@@ -257,6 +257,66 @@ export async function getRateForCrop(
 }
 
 // -----------------------------------------------------------------------------
+// getMarketBreakdown — every reporting mandi for one crop (the full-detail
+// view behind the rates page: market, district, state, variety, grade, band)
+// -----------------------------------------------------------------------------
+export interface MarketRate {
+  market: string;
+  district: string;
+  state: string;
+  variety: string;
+  grade: string;
+  date: string;   // arrival_date as reported (DD/MM/YYYY)
+  modal: number;  // ₹ per display unit
+  min: number;
+  max: number;
+}
+
+export interface MarketBreakdown {
+  commodity: string;
+  label: string;
+  emoji: string;
+  unit: Unit;
+  count: number;
+  records: MarketRate[];
+}
+
+export async function getMarketBreakdown(commodity: string, state?: string): Promise<MarketBreakdown> {
+  const item = BOARD_BY_COMMODITY.get(commodity.toLowerCase());
+  const meta: BoardItem = item ?? {
+    commodity, label: commodity, emoji: '🌱', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 0,
+  };
+
+  let records = await fetchRecords(meta.commodity, state);
+  // A state-scoped fetch can come back empty (feed quirk); fall back to
+  // filtering the national records locally so the view degrades gracefully.
+  if (records.length === 0 && state) {
+    records = (await fetchRecords(meta.commodity)).filter(
+      (r) => r.state?.toLowerCase() === state.toLowerCase()
+    );
+  }
+
+  const rows: MarketRate[] = records
+    .map((r) => ({
+      market: r.market ?? '—',
+      district: r.district ?? '—',
+      state: r.state ?? '—',
+      variety: r.variety ?? '—',
+      grade: r.grade ?? '—',
+      date: r.arrival_date,
+      modal: toUnit(num(r.modal_price), meta.unit),
+      min: toUnit(num(r.min_price), meta.unit),
+      max: toUnit(num(r.max_price), meta.unit),
+    }))
+    .sort((a, b) => a.state.localeCompare(b.state) || a.market.localeCompare(b.market));
+
+  return {
+    commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit,
+    count: rows.length, records: rows,
+  };
+}
+
+// -----------------------------------------------------------------------------
 // getBoard — today's rates for the whole curated set (for the storefront board)
 // -----------------------------------------------------------------------------
 export async function getBoard(state?: string): Promise<{ date: string; live: boolean; rates: CropRate[] }> {

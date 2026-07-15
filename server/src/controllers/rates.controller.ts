@@ -23,6 +23,25 @@ export async function getBoard(req: Request, res: Response, next: NextFunction) 
   }
 }
 
+// GET /api/rates/markets?crop=Tomato&state=Maharashtra — every reporting mandi
+// for one crop today: market, district, state, variety, grade, price band.
+export async function getMarkets(req: Request, res: Response, next: NextFunction) {
+  try {
+    const crop = req.query.crop as string;
+    if (!crop) {
+      return res.status(400).json({ error: 'crop query param is required' });
+    }
+    const data = await ratesService.getMarketBreakdown(
+      crop,
+      (req.query.state as string) || undefined
+    );
+    res.set('Cache-Control', 'public, max-age=1800');
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/rates?crop=Tomato&state=Maharashtra&market=Nashik — one crop's anchor
 export async function getRate(req: Request, res: Response, next: NextFunction) {
   try {

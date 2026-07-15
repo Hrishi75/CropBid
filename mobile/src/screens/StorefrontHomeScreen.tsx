@@ -328,7 +328,7 @@ export default function StorefrontHomeScreen() {
             </View>
 
             {/* today's live mandi rates — the shared price anchor, up front */}
-            <RatesRail board={board} />
+            <RatesRail board={board} onSeeAll={() => nav.navigate('Rates')} />
 
             {/* promo trio — the web's sage/paper/ember cards as a rail */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
@@ -477,15 +477,18 @@ function TickerStrip({ board }: { board: RatesBoardData | null }) {
 }
 
 // Today's mandi rates — the shared price anchor, as a horizontal rail right
-// under the hero. Live govt numbers with a "vs usual" signal per crop.
-function RatesRail({ board }: { board: RatesBoardData | null }) {
+// under the hero. Live govt numbers with a "vs usual" signal per crop; the
+// "see all" opens the dedicated Rates screen with the market-wise breakdown.
+function RatesRail({ board, onSeeAll }: { board: RatesBoardData | null; onSeeAll: () => void }) {
   if (!board) return null;
   return (
     <View>
       <View style={styles.ratesHead}>
         {board.live ? <Pulse style={styles.liveDot} /> : null}
         <Text style={styles.ratesTitle}>Today's mandi rates</Text>
-        <Mono style={styles.ratesSrc}>GOVT · {board.date}</Mono>
+        <PressScale onPress={onSeeAll} scaleTo={0.94} cardStyle={styles.ratesSeeAll}>
+          <Text style={styles.ratesSeeAllText}>see all →</Text>
+        </PressScale>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ratesPad}>
         {board.rates.map((r) => (
@@ -791,7 +794,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   ratesTitle: { fontFamily: font.sansSemi, fontSize: 17, letterSpacing: -0.3, color: design.ink },
-  ratesSrc: { marginLeft: 'auto', fontSize: 9, letterSpacing: 0.6, color: design.ink3 },
+  ratesSeeAll: { marginLeft: 'auto' },
+  ratesSeeAllText: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.sage },
   ratesPad: { paddingHorizontal: 16, gap: 10 },
   rateCard: {
     width: 128,

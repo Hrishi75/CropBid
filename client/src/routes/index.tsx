@@ -52,6 +52,7 @@ import { BookTransport } from '../pages/shared/BookTransport';
 import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
 import { LandingPage } from '../pages/LandingPage';
 import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
+import { RatesPage } from '../pages/RatesPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
 
@@ -100,6 +101,7 @@ export function AppRoutes() {
 
       {/* Public marketing routes */}
       <Route path="/how-it-works" element={<HowItWorksPage />} />
+      <Route path="/rates" element={<RatesPage />} />
 
       {/* Public auth routes */}
       <Route path="/login" element={<LoginPage />} />
