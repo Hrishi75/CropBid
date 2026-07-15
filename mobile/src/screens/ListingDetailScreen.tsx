@@ -311,7 +311,7 @@ function GuestBar({ listing, onLogin }: { listing: Listing; onLogin: () => void 
             <Text style={styles.buyTotalSub}> /{unitLabel(listing.unit)}</Text>
           </Text>
           <Text style={styles.buyTotalSub} numberOfLines={1}>
-            farmer's price · no brokers
+            farmer's price · fully transparent
           </Text>
         </View>
         <PressScale onPress={onLogin} cardStyle={styles.buyBtn}>

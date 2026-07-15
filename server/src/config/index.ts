@@ -46,6 +46,16 @@ export const config = {
   // Google Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
+  // data.gov.in — daily mandi (Agmarknet) commodity prices. Defaults to the
+  // public demo key data.gov.in ships for testing, so live rates work out of
+  // the box; set your own key for higher rate limits. Blank/unreachable → the
+  // rates service falls back to static reference prices (board never empty).
+  dataGov: {
+    apiKey: process.env.DATA_GOV_API_KEY || '579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b',
+    // Resource id for "Current Daily Price of Various Commodities from Markets (Mandi)"
+    resourceId: process.env.DATA_GOV_MANDI_RESOURCE || '9ef84268-d588-465a-a308-a864a43d0070',
+  },
+
   // Razorpay (capture-only payments). In dev use TEST keys (rzp_test_...).
   // Leave blank to run with payments disabled — the API returns 503 on pay attempts.
   razorpay: {

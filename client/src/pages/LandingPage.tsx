@@ -7,14 +7,17 @@
 // works, buyer agents, pricing) lives on /how-it-works, linked from the header
 // and footer.
 //
-// STATIC demo data — no API calls. Prices are ₹-native (mandi bands at or
-// above 2025-26 MSP where applicable) and converted to the viewer's currency
-// via the shared FX table. Product photos load from /products/<slug>.jpg and
-// fall back to an emoji tile until the real images are uploaded.
+// Product catalogue is STATIC demo data; the price layer is LIVE — the top
+// ticker, hero floating chips, and the mandi rates board all pull today's
+// real wholesale prices from /api/rates/board (Govt Agmarknet feed) and fall
+// back to static reference numbers if the API is unreachable. Prices are
+// ₹-native and converted to the viewer's currency via the shared FX table.
+// Product photos load from /products/<slug>.jpg with an emoji-tile fallback.
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../lib/axios';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
@@ -137,6 +140,51 @@ const TICKER: Array<{ p: Produce; delta: number }> = [
   { p: PRODUCTS.find((x) => x.slug === 'cumin')!,        delta: -0.9 },
 ];
 
+// =============================================================================
+// Live mandi rates — /api/rates/board (Govt Agmarknet, daily)
+// =============================================================================
+
+interface LiveRate {
+  commodity: string;
+  label: string;
+  emoji: string;
+  unit: UnitCode;
+  cat: RailId;
+  modal: number;       // ₹ per unit — today's clearing price
+  min: number;
+  max: number;
+  usual: number;       // the crop's usual reference price
+  changePct: number;   // today vs usual, % — the price signal
+  market: string | null;
+  state: string | null;
+  source: 'market' | 'state' | 'national' | 'reference';
+}
+
+interface RatesBoardData { date: string; live: boolean; rates: LiveRate[]; }
+
+function useLiveRates(): RatesBoardData | null {
+  const [board, setBoard] = useState<RatesBoardData | null>(null);
+  useEffect(() => {
+    let on = true;
+    api.get('/rates/board')
+      .then(({ data }) => { if (on && data?.rates?.length) setBoard(data); })
+      .catch(() => { /* ticker & board fall back to static reference prices */ });
+    return () => { on = false; };
+  }, []);
+  return board;
+}
+
+function Delta({ pct, flatLabel }: { pct: number; flatLabel?: string }) {
+  if (Math.abs(pct) < 0.1) {
+    return flatLabel ? <span className="d flat">{flatLabel}</span> : null;
+  }
+  return (
+    <span className={`d ${pct >= 0 ? 'pos' : 'neg'}`}>
+      {pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
+
 function formatQty(p: Produce): string {
   if (p.unit === 'KG' && p.qty >= 1000) return `${(p.qty / 1000).toFixed(1)} tonnes`;
   return `${p.qty.toLocaleString('en-IN')} ${UNIT_LABEL[p.unit]}`;
@@ -207,17 +255,23 @@ function BannerImg() {
 // Header — ticker, sticky search bar, category chips
 // =============================================================================
 
-function Ticker({ currency }: { currency: CurrencyCode }) {
+function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoardData | null }) {
+  // Live govt rates when the API answered; static reference prices otherwise.
+  // Reference entries carry a "ref" marker so a mixed board never passes a
+  // fallback number off as a live one.
+  const ticks = board
+    ? board.rates.map((r) => ({ key: r.commodity, name: r.label, price: r.modal, unit: r.unit, delta: r.changePct, ref: r.source === 'reference' }))
+    : TICKER.map(({ p, delta }) => ({ key: p.slug, name: p.name, price: p.priceMin, unit: p.unit, delta, ref: true }));
   // Two copies of the list = seamless -50% marquee loop.
-  const items = [...TICKER, ...TICKER];
+  const items = [...ticks, ...ticks];
   return (
     <div className="st-ticker" aria-hidden="true">
       <div className="st-ticker-track">
-        {items.map(({ p, delta }, i) => (
-          <span key={`${p.slug}-${i}`} className="st-tick">
-            <span className="n">{p.name}</span>
-            <span className="v">{formatUnitPrice(p.priceMin, 'INR', currency)}/{UNIT_LABEL[p.unit]}</span>
-            <span className={`d ${delta >= 0 ? 'pos' : 'neg'}`}>{delta >= 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%</span>
+        {items.map((t, i) => (
+          <span key={`${t.key}-${i}`} className="st-tick">
+            <span className="n">{t.name}</span>
+            <span className="v">{formatUnitPrice(t.price, 'INR', currency)}/{UNIT_LABEL[t.unit]}</span>
+            {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} />}
           </span>
         ))}
       </div>
@@ -309,14 +363,23 @@ function StoreHeader({
 // Store sections
 // =============================================================================
 
-function HeroBanner({ onShop }: { onShop: () => void }) {
+const FLOAT_CHIP_PICKS = ['Tomato', 'Wheat', 'Mango'];
+
+function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode }) {
+  // Floating live-price chips over the hero photo — today's real numbers
+  // only; reference fallbacks never float as if they were live.
+  const chips = board
+    ? FLOAT_CHIP_PICKS
+        .map((label) => board.rates.find((r) => r.label === label))
+        .filter((r): r is LiveRate => r !== undefined && r.source !== 'reference')
+    : [];
   return (
     <section className="st-banner">
       <div className="st-banner-grid-bg" />
       <div className="st-banner-copy">
         <span className="cb-chip cb-chip-sage" style={{ marginBottom: 18 }}>
           <span className="cb-live-dot sm" />
-          Live now · 42 lots from 100+ verified farms
+          {board?.live ? `Live govt mandi rates · ${board.date}` : 'Live now · 42 lots from 100+ verified farms'}
         </span>
         <h1 className="st-banner-title">
           Farm-fresh crops,<br />
@@ -324,7 +387,7 @@ function HeroBanner({ onShop }: { onShop: () => void }) {
         </h1>
         <p className="st-banner-lede">
           Buy vegetables, fruits, grains and spices straight from the grower —
-          any quantity, no brokers, escrow-settled, delivered farm to door.
+          today's real mandi price on every lot, escrow-settled, delivered farm to door.
         </p>
         <div className="st-banner-actions">
           <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
@@ -334,6 +397,7 @@ function HeroBanner({ onShop }: { onShop: () => void }) {
           <Link to="/signup" className="cb-btn st-btn-outline">Sell your harvest</Link>
         </div>
         <div className="st-banner-ticks">
+          <span>✓ Live govt mandi rates</span>
           <span>✓ Every lot inspected</span>
           <span>✓ Escrow settlement</span>
           <span>✓ Farm-to-door logistics</span>
@@ -341,6 +405,54 @@ function HeroBanner({ onShop }: { onShop: () => void }) {
       </div>
       <div className="st-banner-media">
         <BannerImg />
+        {chips.map((r, i) => (
+          <div key={r.commodity} className={`st-float-chip c${i}`}>
+            <span className="e" aria-hidden="true">{r.emoji}</span>
+            <span className="t">
+              <span className="n">{r.label}</span>
+              <span className="v">{formatUnitPrice(r.modal, 'INR', currency)}/{UNIT_LABEL[r.unit]}</span>
+            </span>
+            <Delta pct={r.changePct} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// Today's rates, front and centre — the shared price anchor every deal on
+// CropBid negotiates around. Live from the govt feed, honest about fallback.
+function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; currency: CurrencyCode }) {
+  const ref = useReveal<HTMLElement>();
+  if (!board) return null;
+  return (
+    <section className="st-rates st-reveal" ref={ref}>
+      <div className="st-rates-head">
+        <div className="st-rates-title">
+          {board.live && <span className="st-live-dot" />}
+          <span className="cb-eyebrow">Today's mandi rates{board.live ? ' · live' : ''} · {board.date}</span>
+        </div>
+        <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
+      </div>
+      <div className="st-rates-track">
+        {board.rates.map((r) => (
+          <div key={r.commodity} className="st-rate" title={r.market ? `${r.market}${r.state ? ', ' + r.state : ''}` : r.state ?? 'National average'}>
+            <div className="st-rate-top">
+              <span className="st-rate-emoji" aria-hidden="true">{r.emoji}</span>
+              {/* reference cards say "ref", not "steady" — the board never
+                  pretends a fallback number is a live one */}
+              <Delta pct={r.changePct} flatLabel={r.source === 'reference' ? 'ref' : 'steady'} />
+            </div>
+            <div className="st-rate-n">{r.label}</div>
+            <div className="st-rate-v">
+              {formatUnitPrice(r.modal, 'INR', currency)}
+              <span className="u">/{UNIT_LABEL[r.unit]}</span>
+            </div>
+            <div className="cb-mono st-rate-band">
+              {formatUnitPrice(r.min, 'INR', currency)}–{formatUnitPrice(r.max, 'INR', currency)}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -520,7 +632,7 @@ function SellCTA() {
             <h2 className="cb-h1">Grow it? <span className="italic">Sell it here.</span></h2>
             <p className="cb-body cta-lede">
               List your harvest in two minutes and let verified buyers bid it up.
-              No mandi trips, no middlemen — you keep the margin.
+              No mandi trips, no guesswork — you keep the margin.
             </p>
           </div>
           <div className="cta-actions">
@@ -546,6 +658,7 @@ export function LandingPage() {
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
+  const board = useLiveRates();
 
   const handleChangeCountry = (next: Country) => {
     setCountry(next);
@@ -569,7 +682,7 @@ export function LandingPage() {
 
   return (
     <div className="cb-landing st-store">
-      <Ticker currency={currency} />
+      <Ticker currency={currency} board={board} />
       <StoreHeader
         country={country}
         onChangeCountry={handleChangeCountry}
@@ -582,7 +695,8 @@ export function LandingPage() {
           <SearchResults query={query} currency={currency} />
         ) : (
           <>
-            <HeroBanner onShop={() => jumpTo('veg')} />
+            <HeroBanner onShop={() => jumpTo('veg')} board={board} currency={currency} />
+            <LiveRatesBoard board={board} currency={currency} />
             <PromoTrio />
             <CategoryGrid onJump={jumpTo} />
             {RAILS.map((rail) => <Rail key={rail.id} rail={rail} currency={currency} />)}

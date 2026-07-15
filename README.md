@@ -2,9 +2,9 @@
 
 <img src="client/public/cropbid.png" alt="CropBid" width="140" />
 
-# CropBid — AI-Powered Agricultural Marketplace
+# CropBid — The AI-Powered Crop Exchange
 
-**B2B crop trading where AI agents negotiate deals between farmers and buyers — with escrow payments, live auctions, and logistics built in.**
+**One crop exchange for everyone — farmers, processors, retailers and consumers trade on the same platform, with AI-agent negotiation, escrow payments, live auctions, live mandi rates, and logistics built in.**
 
 [![Live Demo](https://img.shields.io/badge/live-cropbid.in-2f6b3a?style=flat-square)](https://cropbid.in)
 &nbsp;
@@ -18,9 +18,9 @@
 
 ## What is CropBid?
 
-CropBid is a full-stack agricultural marketplace built for India (and adaptable globally). Farmers list crops; buyers (processors, FMCG, exporters, retailers, restaurants) discover and buy them. Every deal can be struck **two ways**:
+CropBid is a full-stack crop exchange built for India (and adaptable globally). Sellers list crops; buyers of every size — processors, FMCG, exporters, retailers, restaurants, and everyday consumers — discover and buy them, with the government's live mandi rates as a shared fair-price anchor. Every deal can be struck **two ways**:
 
-1. **Manually** — buyers place bids, farmers accept / reject / counter.
+1. **Manually** — buyers place bids, sellers accept / reject / counter.
 2. **Via AI agents** — each user configures an agent (Google Gemini) that negotiates on their behalf, round by round, within price limits they set.
 
 Once a deal is reached, money moves into **escrow via Razorpay**, the crop ships through a **logistics partner**, and on delivery confirmation the payment releases to the farmer. Trust scores grow with every completed deal.

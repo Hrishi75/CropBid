@@ -3,12 +3,14 @@
 // =============================================================================
 // The former single-page landing content, moved off the homepage (which is now
 // a grocery-style storefront). Pitch sections for buyers, farmers, and
-// consumers: hero with a live negotiation panel, pillars, agent anatomy, the
-// transparent bid trace, proof stats, mission, and CTA. STATIC copy — no API.
+// consumers: hero with a live negotiation panel, pillars, the live price
+// engine (govt mandi rates), the transparent bid trace, proof stats, mission,
+// and CTA. Copy is static; the price engine section renders live rates.
 // =============================================================================
 
 import { type ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { RatesBoard } from '../../components/listings/RatesBoard';
 import {
   type Country, type CurrencyCode,
   convert, formatMoney, formatCount,
@@ -23,7 +25,7 @@ import {
 // Marketplace lives on the homepage now; everything else anchors on this page.
 const NAV_LINKS = [
   ['How it works', '#how'],
-  ['For buyers',   '#buyers'],
+  ['Live rates',   '#rates'],
   ['For farmers',  '#farmers'],
   ['Buy direct',   '#consumers'],
   ['Pricing',      '#pricing'],
@@ -32,15 +34,16 @@ const NAV_LINKS = [
 const LOGO_STRIP = ['CARGILL', 'ADM', 'BUNGE', 'OLAM', 'ITC FOODS', 'COFCO', 'LOUIS DREYFUS', 'NESTLÉ'] as const;
 
 const PILLARS = [
-  ['01', 'List your crop — stay on your farm', 'Crop, grade, volume, location, and your floor price. Any language, any units. No mandi trips, no middlemen, no travel.'],
+  ['01', 'List your crop — stay on your farm', 'Crop, grade, volume, location, and your floor price. Any language, any units. No mandi trips, no travel, no guessing what it\'s worth.'],
   ['02', 'Buyers bid in the open', 'Verified buyers across 20+ countries bid in transparent rounds. You see every offer — including the ones you turn down — with the full spread surfaced, never hidden.'],
   ['03', 'We verify, transport, and settle', 'CropBid inspects every lot for authenticity and grade, arranges third-party logistics farm-to-buyer, and releases escrow on confirmed delivery.'],
 ] as const;
 
-const GUARDRAILS = [
-  ['Guardrails',   'Price floors, volume ceilings, counterparty allowlists. Hard-stops the agent will not cross.'],
-  ['Provenance',   'Every listing tied to a USDA, EU-RED, GLOBALG.A.P., APMC, or NPOP credential on chain.'],
-  ['Auditability', 'Replayable bid logs. Every counter, every accept, every walk-away — exportable for compliance.'],
+// The price engine — how CropBid anchors every deal to a real, live number.
+const PRICE_POINTS = [
+  ['Live govt feed',  'Rates from Agmarknet — 4,600+ regulated mandis reporting daily wholesale prices. The same numbers the trade reads.'],
+  ['Local first',     'Nearest mandi → state average → national average — every rate labelled with exactly how local it is. Never a black box.'],
+  ['Price signals',   "Today's rate vs the crop's usual band, at a glance — see whether it's a strong day to sell or a day to hold."],
 ] as const;
 
 // Consumer path — individuals buying any quantity directly from a farmer, no
@@ -50,19 +53,6 @@ const CONSUMER_POINTS = [
   ['No bidding, just buy', 'Skip the negotiation entirely. See the farmer’s listed price, place your order, and it’s yours.'],
   ['Straight from the grower', 'The same verified farmers and trust scores that power our auctions — the margin brokers used to take stays with the farmer, and with you.'],
 ] as const;
-
-// Example deal — values stored in USD/MT; rendered in the viewer's currency.
-// HRW wheat 12.5% protein, FOB Gulf — Jun 2026 market band (~$258–274/MT).
-const DIAGRAM_BASE = {
-  currency: 'USD' as CurrencyCode,
-  floor: 258,
-  ceiling: 272,
-  walkAway: 274,
-  qtyLow: 4500,
-  qtyHigh: 5500,
-  protein: '12.5%',
-  delivery: 'Oct 15 – Oct 30 · FOB Gulf',
-};
 
 // Negotiation panel base values — USD/MT, converted at render.
 // HRW wheat 12.5% protein, FOB Gulf — anchored to CBOT + Gulf basis, Jun 2026.
@@ -127,8 +117,8 @@ function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: 
         <CountrySelector country={country} onChange={onChangeCountry} />
         <Link to="/login" className="nav-signin">Sign in</Link>
         <Link to="/signup" className="cb-btn cb-btn-primary">
-          <span className="cb-btn-label">Request a buyer agent</span>
-          <span className="cb-btn-label-short">Get agent</span>
+          <span className="cb-btn-label">Start trading free</span>
+          <span className="cb-btn-label-short">Trade</span>
           <ArrowIcon />
         </Link>
       </div>
@@ -153,17 +143,18 @@ function Hero({ currency }: { currency: CurrencyCode }) {
             Now contracting · {new Date().getFullYear()} wheat, corn, soy &amp; coffee
           </span>
           <h1 className="cb-h0 hero-title">
-            Your buyer agent<br />
-            <span className="italic">never sleeps,</span><br />
-            never overpays.
+            Today's mandi price,<br />
+            <span className="italic">on every listing,</span><br />
+            before you deal.
           </h1>
           <p className="cb-body hero-lede">
-            CropBid gives procurement teams an autonomous agent that finds growers, negotiates terms, and closes
-            forward contracts on bulk commodities — without brokers, without phone trees, without margin leakage.
+            CropBid anchors every lot to the Government of India's live mandi feed — 4,600+ regulated
+            markets — so sellers and buyers negotiate around the real number, not a guess. Open bidding,
+            escrow settlement, tracked delivery.
           </p>
           <div className="hero-actions">
             <Link to="/signup" className="cb-btn cb-btn-primary">
-              Deploy a buyer agent
+              Start trading free
               <ArrowIcon />
             </Link>
             <Link to="/" className="cb-btn cb-btn-ghost">
@@ -254,7 +245,7 @@ function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
       </div>
 
       <div className="cb-card neg-float savings">
-        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Savings vs. broker</div>
+        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Saved vs. spot benchmark</div>
         <div className="neg-float-sv-n">+{savingsDisplay}</div>
         <div className="cb-tiny" style={{ marginTop: 2 }}>1.2% over benchmark</div>
       </div>
@@ -317,33 +308,21 @@ function Pillars() {
   );
 }
 
-function AgentAnatomy({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, DIAGRAM_BASE.currency, currency), currency, { decimals: 2 });
-
-  const rows = [
-    { label: 'PRICE FLOOR',   val: `${fmt(DIAGRAM_BASE.floor)} / MT`,   bar: 55, hot: false },
-    { label: 'PRICE CEILING', val: `${fmt(DIAGRAM_BASE.ceiling)} / MT`, bar: 92, hot: true  },
-    { label: 'VOLUME RANGE',  val: `${DIAGRAM_BASE.qtyLow.toLocaleString('en-US')} – ${DIAGRAM_BASE.qtyHigh.toLocaleString('en-US')} MT`, bar: 75, hot: false },
-    { label: 'PROTEIN MIN',   val: DIAGRAM_BASE.protein,                bar: 62, hot: false },
-    { label: 'DELIVERY',      val: DIAGRAM_BASE.delivery,                bar: 45, hot: false },
-    { label: 'WALK-AWAY',     val: `${fmt(DIAGRAM_BASE.walkAway)} / MT`, bar: 98, hot: true  },
-  ];
-
-  const strategy = `Open at floor + ${fmt(7)}, accept at ceiling − ${fmt(4)}. Match competing bids within 0.5%.`;
-
+function PriceEngine() {
   return (
-    <section id="buyers" className="anatomy">
+    <section id="rates" className="anatomy">
       <div className="anatomy-inner">
         <div>
-          <span className="cb-eyebrow">Inside the agent</span>
-          <h2 className="cb-h2">Negotiation, not chatter.</h2>
+          <span className="cb-eyebrow">Inside the price engine</span>
+          <h2 className="cb-h2">The fair price, surfaced.</h2>
           <p className="cb-body anatomy-lede">
-            CropBid agents are deterministic at the edges: hard price floors, hard volume ceilings, cryptographic
-            identity. The negotiation in between uses a value model calibrated on 18 years of physical commodity
-            settlements across 20+ countries.
+            Every negotiation on CropBid is anchored to the Government of India's live mandi feed —
+            so neither side starts from a guess. Today's rate, the min–max wholesale band, and a
+            simple signal for where the price sits against usual. That's the whole trick: when both
+            sides see the same real number, the deal is fair by construction.
           </p>
           <ul className="anatomy-list">
-            {GUARDRAILS.map(([t, d]) => (
+            {PRICE_POINTS.map(([t, d]) => (
               <li key={t}>
                 <span className="t">{t}</span>
                 <span className="d">{d}</span>
@@ -352,26 +331,8 @@ function AgentAnatomy({ currency }: { currency: CurrencyCode }) {
           </ul>
         </div>
 
-        <div className="cb-card diagram cb-grid-bg">
-          <div className="diagram-head">
-            <span className="cb-eyebrow">Agent: Cargill-04</span>
-            <span className="diagram-active">● ACTIVE · 12 lots</span>
-          </div>
-          <div className="diagram-rows">
-            {rows.map((r) => (
-              <div key={r.label} className="diagram-row">
-                <span className="lbl">{r.label}</span>
-                <div className={`diagram-bar${r.hot ? ' hot' : ''}`}>
-                  <div style={{ width: `${r.bar}%` }} />
-                </div>
-                <span className="val">{r.val}</span>
-              </div>
-            ))}
-          </div>
-          <div className="diagram-strategy">
-            <div className="head">STRATEGY</div>
-            <div className="body">{strategy}</div>
-          </div>
+        <div className="cb-app" style={{ background: 'transparent', padding: 0 }}>
+          <RatesBoard />
         </div>
       </div>
     </section>
@@ -390,7 +351,7 @@ function ForConsumers() {
           </h2>
           <p className="cb-body consumers-lede">
             You don’t have to be a processor or an exporter. Anyone can buy any quantity directly
-            from the farmers on CropBid — no bidding, no brokers, no minimums. Fresh from the field,
+            from the farmers on CropBid — no bidding, no minimums, no markups. Fresh from the field,
             at a price that’s fair to the person who grew it.
           </p>
           <Link to="/" className="cb-btn cb-btn-primary">
@@ -423,9 +384,9 @@ function HowItWorks({ currency }: { currency: CurrencyCode }) {
             <h2 className="cb-h1">You see every bid.<br /><span className="italic">Including the ones you lost.</span></h2>
           </div>
           <p className="cb-body">
-            Brokers hide spread. CropBid surfaces it. Every counterparty quote, every counter, every walk-away
-            decision is timestamped and exportable. Compliance gets a clean audit trail; trading gets feedback
-            loops that compound across seasons.
+            Old-school trades hide the spread. CropBid surfaces it. Every counterparty quote, every counter,
+            every walk-away decision is timestamped and exportable. Compliance gets a clean audit trail;
+            trading gets feedback loops that compound across seasons.
           </p>
         </div>
 
@@ -461,7 +422,7 @@ function HowItWorks({ currency }: { currency: CurrencyCode }) {
 
 function Proof() {
   const items: ReadonlyArray<readonly [string, string, string]> = [
-    ['1.6%', 'avg. price improvement', 'vs. broker-mediated benchmark on identical lots'],
+    ['1.6%', 'avg. price improvement', 'vs. offline benchmark on identical lots'],
     ['14×',  'faster to bind',         'median 41s vs. 9 minutes by phone or terminal'],
     [`${STATIC_TOTALS.farmers + STATIC_TOTALS.buyers}`, 'verified counterparties', 'KYC + USDA / EU-RED / GAFTA / APMC credentialed'],
     [`${STATIC_TOTALS.countries || 23}`, 'origin countries', 'CONAB, USDA, ABARES, EU CAP, eNAM data ingested live'],
@@ -492,7 +453,7 @@ function Mission() {
         <div>
           <span className="cb-eyebrow">Why we built CropBid</span>
           <p className="testimonial-quote">
-            “Every harvest, growers lose margin to opaque pricing and a chain of middlemen.
+            “Every harvest, growers lose margin to prices they never get to see.
             CropBid runs transparent, auditable auctions, verifies every lot ourselves, and
             handles transport farm-to-buyer — so farmers get fair prices without ever leaving
             the field.”
@@ -514,15 +475,15 @@ function CTA() {
         <div className="cta-grid-bg" />
         <div className="cta-inner">
           <div>
-            <h2 className="cb-h1">Stop calling brokers.<br />Start running auctions.</h2>
+            <h2 className="cb-h1">Stop guessing prices.<br />Start running auctions.</h2>
             <p className="cb-body cta-lede">
-              Spin up a buyer agent in under a day. Bring your own commodity, your own guardrails,
-              your own counterparty list. Or use ours.
+              List your first lot or place your first bid in minutes. Live mandi rates, open
+              bidding, escrow settlement — bring your crop, we'll bring the market.
             </p>
           </div>
           <div className="cta-actions">
             <Link to="/signup" className="cb-btn cta-primary">
-              Deploy a buyer agent
+              Start trading free
               <ArrowIcon />
             </Link>
             <a href="#resources" className="cb-btn cta-ghost">
@@ -554,7 +515,7 @@ export function HowItWorksPage() {
       <Hero currency={currency} />
       <LogoStrip />
       <Pillars />
-      <AgentAnatomy currency={currency} />
+      <PriceEngine />
       <ForConsumers />
       <HowItWorks currency={currency} />
       <Proof />
