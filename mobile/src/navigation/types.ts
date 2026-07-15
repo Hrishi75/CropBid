@@ -9,6 +9,18 @@ export type AuthStackParamList = {
   Signup: undefined;
 };
 
+// Signed-out guest stack. The storefront is open to everyone — guests browse
+// the full market and open listings freely; Login/Signup are pushed only when
+// they try to act (buy, bid, sell, open the profile).
+export type GuestStackParamList = {
+  GuestHome: undefined;
+  ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
+  Schemes: undefined;
+  Login: undefined;
+  Signup: undefined;
+};
+
 export type BrowseStackParamList = {
   BrowseList: undefined;
   ListingDetail: { id: string; preview?: Listing };
@@ -20,10 +32,11 @@ export type TabParamList = {
   Profile: undefined;
 };
 
-// Buyer-agent app (iOS design screens)
+// Buyer-agent app. Home is the shared storefront; the KPI dashboard has its
+// own tab.
 export type BuyerTabParamList = {
   Home: undefined;
-  Market: undefined;
+  Dashboard: undefined;
   Agents: undefined;
   Contracts: undefined;
   You: undefined;
@@ -33,15 +46,19 @@ export type RootStackParamList = {
   Tabs: undefined;
   Auction: { listingId?: string } | undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
+  Schemes: undefined;
   Notifications: undefined;
 };
 
-// Farmer app
+// Farmer app. Home is the shared storefront (the open market); the farm
+// dashboard (KPIs, agent strip, quick actions) lives on the Farm tab. The AI
+// helper is not a tab — it's pushed from the dashboard strip and Profile row.
 export type FarmerTabParamList = {
   Home: undefined;
   Listings: undefined;
   Bids: undefined;
-  Agent: undefined;
+  Farm: undefined;
   You: undefined;
 };
 
@@ -50,6 +67,10 @@ export type FarmerStackParamList = {
   CreateListing: { id?: string } | undefined;
   EditProfile: undefined;
   Contracts: undefined;
+  Helper: undefined;
+  ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
+  Schemes: undefined;
   Notifications: undefined;
 };
 
@@ -63,6 +84,8 @@ export type ConsumerTabParamList = {
 export type ConsumerStackParamList = {
   ConsumerTabs: undefined;
   ListingDetail: { id: string; preview?: Listing };
+  Rates: undefined;
+  Schemes: undefined;
   Notifications: undefined;
 };
 

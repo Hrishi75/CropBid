@@ -264,6 +264,9 @@ export default function ProfileScreen() {
           {isFarmer ? (
             <Row label="Your sales" hint="Deals and payments so far" onPress={() => nav.navigate('Contracts')} />
           ) : null}
+          {isFarmer ? (
+            <Row label="Your AI helper" hint="Answers offers for you" onPress={() => nav.navigate('Helper')} />
+          ) : null}
           <Row
             label="Log out"
             hint={isFarmer ? 'You can come back any time' : undefined}

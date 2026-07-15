@@ -51,6 +51,9 @@ import { TransactionDetail } from '../pages/shared/TransactionDetail';
 import { BookTransport } from '../pages/shared/BookTransport';
 import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
 import { LandingPage } from '../pages/LandingPage';
+import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
+import { RatesPage } from '../pages/RatesPage';
+import { SchemesPage } from '../pages/SchemesPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
 
@@ -96,6 +99,11 @@ export function AppRoutes() {
     <Routes>
       {/* Root — smart redirect based on role */}
       <Route path="/" element={<RootRedirect />} />
+
+      {/* Public marketing routes */}
+      <Route path="/how-it-works" element={<HowItWorksPage />} />
+      <Route path="/rates" element={<RatesPage />} />
+      <Route path="/schemes" element={<SchemesPage />} />
 
       {/* Public auth routes */}
       <Route path="/login" element={<LoginPage />} />
