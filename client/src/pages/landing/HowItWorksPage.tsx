@@ -31,12 +31,12 @@ const NAV_LINKS = [
   ['Pricing',      '#pricing'],
 ] as const;
 
-const LOGO_STRIP = ['CARGILL', 'ADM', 'BUNGE', 'OLAM', 'ITC FOODS', 'COFCO', 'LOUIS DREYFUS', 'NESTLÉ'] as const;
+const LOGO_STRIP = ['TOMATO', 'ONION', 'POTATO', 'MANGO', 'WHEAT', 'PADDY', 'SOYBEAN', 'TURMERIC'] as const;
 
 const PILLARS = [
   ['01', 'List your crop — stay on your farm', 'Crop, grade, volume, location, and your floor price. Any language, any units. No mandi trips, no travel, no guessing what it\'s worth.'],
-  ['02', 'Buyers bid in the open', 'Verified buyers across 20+ countries bid in transparent rounds. You see every offer — including the ones you turn down — with the full spread surfaced, never hidden.'],
-  ['03', 'We verify, transport, and settle', 'CropBid inspects every lot for authenticity and grade, arranges third-party logistics farm-to-buyer, and releases escrow on confirmed delivery.'],
+  ['02', 'Buyers bid in the open', 'Verified buyers bid in transparent rounds around the live mandi rate. You see every offer — including the ones you turn down — with the full spread surfaced, never hidden.'],
+  ['03', 'Escrow settles it, end to end', 'The buyer pays into Razorpay escrow before anything moves. The deal is tracked paid → shipped → delivered, and the money releases only on confirmed delivery.'],
 ] as const;
 
 // The price engine — how CropBid anchors every deal to a real, live number.
@@ -51,31 +51,31 @@ const PRICE_POINTS = [
 const CONSUMER_POINTS = [
   ['Any quantity', 'From a single sack to a season’s supply. No minimum order and no auction to win — just buy what you actually need.'],
   ['No bidding, just buy', 'Skip the negotiation entirely. See the farmer’s listed price, place your order, and it’s yours.'],
-  ['Straight from the grower', 'The same verified farmers and trust scores that power our auctions — the margin brokers used to take stays with the farmer, and with you.'],
+  ['Straight from the grower', 'The same verified farmers and trust scores that power our auctions — a shorter chain means fairer prices for the farmer, and for you.'],
 ] as const;
 
-// Negotiation panel base values — USD/MT, converted at render.
-// HRW wheat 12.5% protein, FOB Gulf — anchored to CBOT + Gulf basis, Jun 2026.
+// Negotiation panel base values — ₹/quintal, converted at render.
+// Onion (Nashik Red, Grade A) — anchored to the live Agmarknet state modal.
 const NEG_BASE = {
-  currency: 'USD' as CurrencyCode,
-  spotRef: 264.5,
-  open: 258.0,
-  counter1: 271.5,
-  counter2: 265.0,
-  final: 267.5,
-  competing: 266.0,
-  qty: 5000,
-  savings: 16050, // ~1.2% of 5,000 MT × $267.5 saved vs broker spread
+  currency: 'INR' as CurrencyCode,
+  spotRef: 2400,
+  open: 2250,
+  counter1: 2650,
+  counter2: 2450,
+  final: 2525,
+  competing: 2510,
+  qty: 250, // quintals
+  savings: 31250, // ~5% vs the offline chain on 250 qtl × ₹2,525
 };
 
-// How-it-works trace — USD/MT base values per row.
+// How-it-works trace — ₹/quintal base values per row (onion lot above).
 const HOW_BASE = [
-  { t: '+00:00', evt: 'Brief accepted',       counter: '—',                  price: null, spread: null, qty: null,  mark: '✓' as const },
-  { t: '+00:12', evt: 'Invite sent',          counter: '14 sellers',         price: null, spread: null, qty: 5000,  mark: '✓' as const },
-  { t: '+01:03', evt: 'Bids opened',          counter: '11 received',        price: [258, 274] as [number, number], spread: 16, qty: 5000, mark: '✓' as const },
-  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Hartmann Farms',     price: 271.5, spread: 4.0, qty: 5000,  mark: '✓' as const },
-  { t: '+01:38', evt: 'Round 3 counter',      counter: 'Hartmann Farms',     price: 267.5, spread: 0.8, qty: 5000,  mark: '✓' as const },
-  { t: '+01:41', evt: 'Match · contract drafted', counter: 'Hartmann Farms', price: 267.5, spread: null, qty: 5000, mark: '●' as const },
+  { t: '+00:00', evt: 'Listing goes live',    counter: '—',                  price: null, spread: null, qty: null, mark: '✓' as const },
+  { t: '+00:12', evt: 'Buyers notified',      counter: '9 buyers',           price: null, spread: null, qty: 250,  mark: '✓' as const },
+  { t: '+01:03', evt: 'Bids opened',          counter: '6 received',         price: [2250, 2650] as [number, number], spread: 400, qty: 250, mark: '✓' as const },
+  { t: '+01:24', evt: 'Round 2 counter',      counter: 'Pune Fresh Mart',    price: 2450, spread: 200, qty: 250,  mark: '✓' as const },
+  { t: '+01:38', evt: 'Round 3 counter',      counter: 'R. Patil, Nashik',   price: 2525, spread: 75,  qty: 250,  mark: '✓' as const },
+  { t: '+01:41', evt: 'Deal · escrow created', counter: 'Pune Fresh Mart',   price: 2525, spread: null, qty: 250, mark: '●' as const },
 ];
 
 // Static platform totals — demo traction figures shown on the marketing page.
@@ -140,7 +140,7 @@ function Hero({ currency }: { currency: CurrencyCode }) {
         <div>
           <span className="cb-chip cb-chip-sage" style={{ marginBottom: 22 }}>
             <span className="cb-live-dot sm" />
-            Now contracting · {new Date().getFullYear()} wheat, corn, soy &amp; coffee
+            Live today · tomato, onion, wheat &amp; 13 more crops
           </span>
           <h1 className="cb-h0 hero-title">
             Today's mandi price,<br />
@@ -178,7 +178,7 @@ function Hero({ currency }: { currency: CurrencyCode }) {
 }
 
 function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
+  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 0 });
   const total = NEG_BASE.final * NEG_BASE.qty;
   const totalDisplay = formatMoney(convert(total, NEG_BASE.currency, currency), currency, { compact: true });
   const savingsDisplay = formatMoney(convert(NEG_BASE.savings, NEG_BASE.currency, currency), currency, { compact: true });
@@ -198,41 +198,41 @@ function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
           <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Lot</div>
           <div className="neg-lot-row">
             <div>
-              <div className="neg-lot-title">Hard Red Winter Wheat · 12.5% protein</div>
-              <div className="cb-small neg-lot-meta">5,000 MT · FOB origin · Delivery Oct 15–30</div>
+              <div className="neg-lot-title">Onion · Nashik Red, Grade A</div>
+              <div className="cb-small neg-lot-meta">250 qtl · ex-farm Nashik · ships within 5 days</div>
             </div>
             <div className="neg-lot-ref">
-              <div className="cb-tiny">Spot ref</div>
-              <div className="cb-mono neg-lot-ref-val">{fmt(NEG_BASE.spotRef)}/MT</div>
+              <div className="cb-tiny">Mandi rate today</div>
+              <div className="cb-mono neg-lot-ref-val">{fmt(NEG_BASE.spotRef)}/qtl</div>
             </div>
           </div>
         </div>
 
         <div className="neg-msgs">
-          <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:01">
-            Opening at <b>{fmt(NEG_BASE.open)}/MT</b>. Looking for 5,000 MT HRW 12.5% protein, FOB origin, Oct 15–30 delivery, std contract.
+          <Msg side="buyer" name="Buyer · Pune Fresh Mart" time="14:22:01">
+            Opening at <b>{fmt(NEG_BASE.open)}/qtl</b> for the full 250 qtl, Grade A, pickup ex-farm. Escrow on acceptance.
           </Msg>
-          <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:04">
-            Counter <b>{fmt(NEG_BASE.counter1)}/MT</b>. Can do 5,000 MT clean — 13.1% protein, falling number 320+. Need 50% L/C on signing.
+          <Msg side="seller" name="Seller · R. Patil, Nashik" time="14:22:04">
+            Counter <b>{fmt(NEG_BASE.counter1)}/qtl</b>. Freshly graded 55mm+, photos on the listing — mandi modal is {fmt(NEG_BASE.spotRef)} today, quality justifies the premium.
           </Msg>
-          <Msg side="buyer" name="Buyer · Cargill-04" time="14:22:11">
-            Premium acknowledged for protein. <b>{fmt(NEG_BASE.counter2)}/MT</b>, 30% L/C, balance NET-15 post-discharge. Confirm origin certs.
+          <Msg side="buyer" name="Buyer · Pune Fresh Mart" time="14:22:11">
+            Fair. <b>{fmt(NEG_BASE.counter2)}/qtl</b>, full quantity, payment into escrow today.
           </Msg>
-          <Msg side="seller" name="Seller · Hartmann Farms" time="14:22:15">
-            <b>{fmt(NEG_BASE.final)}/MT</b> — final. USDA-FGIS certs attached, EU-RED traceable. Will release lot on signature.
+          <Msg side="seller" name="Seller · R. Patil, Nashik" time="14:22:15">
+            <b>{fmt(NEG_BASE.final)}/qtl</b> — final. Ships within 24 hours of escrow confirmation.
           </Msg>
           <Msg side="system" name="Settlement engine" time="14:22:19">
-            Match found. Drafting contract — ETA 11s.
+            Deal struck. Escrow transaction created — buyer prompted to pay.
           </Msg>
         </div>
 
         <div className="neg-settle">
           <div>
             <div className="cb-mono neg-settle-label">SETTLEMENT</div>
-            <div className="neg-settle-val">{fmt(NEG_BASE.final)}/MT · {totalDisplay} total</div>
+            <div className="neg-settle-val">{fmt(NEG_BASE.final)}/qtl · {totalDisplay} total</div>
           </div>
           <button type="button" className="cb-btn">
-            Review contract
+            View the deal
             <ArrowSmIcon />
           </button>
         </div>
@@ -240,14 +240,14 @@ function NegotiationPanel({ currency }: { currency: CurrencyCode }) {
 
       <div className="cb-card neg-float bid">
         <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Competing bid</div>
-        <div className="cb-mono neg-float-bid-val">ADM-12 · {fmt(NEG_BASE.competing)}/MT</div>
+        <div className="cb-mono neg-float-bid-val">Mumbai Agro · {fmt(NEG_BASE.competing)}/qtl</div>
         <div className="cb-tiny" style={{ marginTop: 4 }}>Outbid 1.4s ago</div>
       </div>
 
       <div className="cb-card neg-float savings">
-        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Saved vs. spot benchmark</div>
+        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Seller nets extra</div>
         <div className="neg-float-sv-n">+{savingsDisplay}</div>
-        <div className="cb-tiny" style={{ marginTop: 2 }}>1.2% over benchmark</div>
+        <div className="cb-tiny" style={{ marginTop: 2 }}>~5% over today's mandi modal</div>
       </div>
     </div>
   );
@@ -277,7 +277,7 @@ function LogoStrip() {
   return (
     <div className="logo-strip">
       <div className="logo-strip-inner">
-        <span className="cb-eyebrow">Procurement teams at</span>
+        <span className="cb-eyebrow">Live on the rates board</span>
         <div className="logo-strip-names">
           {LOGO_STRIP.map((n) => <span key={n}>{n}</span>)}
         </div>
@@ -377,7 +377,7 @@ function ForConsumers() {
 }
 
 function HowItWorks({ currency }: { currency: CurrencyCode }) {
-  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 2 });
+  const fmt = (v: number) => formatMoney(convert(v, NEG_BASE.currency, currency), currency, { decimals: 0 });
 
   return (
     <section id="farmers" className="how">
@@ -396,7 +396,7 @@ function HowItWorks({ currency }: { currency: CurrencyCode }) {
 
         <div className="cb-card how-table">
           <div className="how-row head">
-            <span>T+</span><span>Event</span><span>Counter</span><span>Price</span><span>Vol (MT)</span><span>Spread</span><span>—</span>
+            <span>T+</span><span>Event</span><span>Counter</span><span>Price</span><span>Qty (qtl)</span><span>Spread</span><span>—</span>
           </div>
           {HOW_BASE.map((row, i) => {
             const isMatch = i === HOW_BASE.length - 1;
@@ -426,10 +426,10 @@ function HowItWorks({ currency }: { currency: CurrencyCode }) {
 
 function Proof() {
   const items: ReadonlyArray<readonly [string, string, string]> = [
-    ['1.6%', 'avg. price improvement', 'vs. offline benchmark on identical lots'],
-    ['14×',  'faster to bind',         'median 41s vs. 9 minutes by phone or terminal'],
-    [`${STATIC_TOTALS.farmers + STATIC_TOTALS.buyers}`, 'verified counterparties', 'KYC + USDA / EU-RED / GAFTA / APMC credentialed'],
-    [`${STATIC_TOTALS.countries || 23}`, 'origin countries', 'CONAB, USDA, ABARES, EU CAP, eNAM data ingested live'],
+    ['4,600+', 'govt mandis, live', 'Agmarknet daily wholesale prices anchor every listing'],
+    ['16', 'crops on the rates board', 'veg, fruits, grains & spices — market-wise detail, every state'],
+    ['2%', 'flat settlement fee', 'money held in escrow, released only on confirmed delivery'],
+    ['12', 'schemes in the Yojana hub', 'PM-KISAN to KCC — searchable in English & Hindi'],
   ];
 
   return (
