@@ -62,7 +62,9 @@ export function RatesBoard({ state }: { state?: string }) {
     const params = state ? `?state=${encodeURIComponent(state)}` : '';
     api.get(`/rates/board${params}`)
       .then(({ data }) => { if (on) setBoard(data); })
-      .catch(() => {})
+      // On failure clear the board — never leave a previous state's rates
+      // on screen next to newly filtered listings.
+      .catch(() => { if (on) setBoard(null); })
       .finally(() => { if (on) setLoading(false); });
     return () => { on = false; };
   }, [state]);

@@ -257,9 +257,11 @@ function BannerImg() {
 
 function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoardData | null }) {
   // Live govt rates when the API answered; static reference prices otherwise.
+  // Reference entries carry a "ref" marker so a mixed board never passes a
+  // fallback number off as a live one.
   const ticks = board
-    ? board.rates.map((r) => ({ key: r.commodity, name: r.label, price: r.modal, unit: r.unit, delta: r.changePct }))
-    : TICKER.map(({ p, delta }) => ({ key: p.slug, name: p.name, price: p.priceMin, unit: p.unit, delta }));
+    ? board.rates.map((r) => ({ key: r.commodity, name: r.label, price: r.modal, unit: r.unit, delta: r.changePct, ref: r.source === 'reference' }))
+    : TICKER.map(({ p, delta }) => ({ key: p.slug, name: p.name, price: p.priceMin, unit: p.unit, delta, ref: true }));
   // Two copies of the list = seamless -50% marquee loop.
   const items = [...ticks, ...ticks];
   return (
@@ -269,7 +271,7 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
           <span key={`${t.key}-${i}`} className="st-tick">
             <span className="n">{t.name}</span>
             <span className="v">{formatUnitPrice(t.price, 'INR', currency)}/{UNIT_LABEL[t.unit]}</span>
-            <Delta pct={t.delta} />
+            {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} />}
           </span>
         ))}
       </div>
@@ -364,11 +366,12 @@ function StoreHeader({
 const FLOAT_CHIP_PICKS = ['Tomato', 'Wheat', 'Mango'];
 
 function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode }) {
-  // Floating live-price chips over the hero photo — today's real numbers.
+  // Floating live-price chips over the hero photo — today's real numbers
+  // only; reference fallbacks never float as if they were live.
   const chips = board
     ? FLOAT_CHIP_PICKS
         .map((label) => board.rates.find((r) => r.label === label))
-        .filter((r): r is LiveRate => r !== undefined)
+        .filter((r): r is LiveRate => r !== undefined && r.source !== 'reference')
     : [];
   return (
     <section className="st-banner">

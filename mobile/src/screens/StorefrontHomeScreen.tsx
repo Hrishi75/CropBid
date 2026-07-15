@@ -441,9 +441,11 @@ function TickerStrip({ board }: { board: RatesBoardData | null }) {
   }, [w, x]);
 
   // Live govt rates when the API answered; static reference prices otherwise.
+  // Reference entries carry a "ref" marker so a mixed board never passes a
+  // fallback number off as a live one.
   const ticks = board
-    ? board.rates.map((r) => ({ name: r.label, price: r.modal, unit: r.unit, delta: r.changePct }))
-    : TICKER;
+    ? board.rates.map((r) => ({ name: r.label, price: r.modal, unit: r.unit, delta: r.changePct, ref: r.source === 'reference' }))
+    : TICKER.map((t) => ({ ...t, ref: true }));
 
   return (
     <View style={styles.ticker}>
@@ -458,11 +460,13 @@ function TickerStrip({ board }: { board: RatesBoardData | null }) {
               <View key={`${copy}-${t.name}`} style={styles.tick}>
                 <Mono style={styles.tickName}>{t.name.toUpperCase()}</Mono>
                 <Mono style={styles.tickPrice}>{money(t.price)}/{unitLabel(t.unit)}</Mono>
-                {Math.abs(t.delta) >= 0.1 && (
+                {t.ref ? (
+                  <Mono style={[styles.tickDelta, { color: 'rgba(244,241,234,0.5)' }]}>ref</Mono>
+                ) : Math.abs(t.delta) >= 0.1 ? (
                   <Mono style={[styles.tickDelta, { color: t.delta >= 0 ? design.leaf : colors.ember2 }]}>
                     {t.delta >= 0 ? '▲' : '▼'} {Math.abs(t.delta).toFixed(1)}%
                   </Mono>
-                )}
+                ) : null}
               </View>
             ))}
           </View>
