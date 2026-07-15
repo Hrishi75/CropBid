@@ -106,9 +106,13 @@ interface AgmarkRecord {
   modal_price: string | number;
 }
 
-// date-keyed cache so we hit the feed at most once per commodity per day
+// date-keyed cache so we hit the feed at most once per commodity per day.
+// Empty results (feed down / no data) are retryable after a short window so a
+// transient upstream failure doesn't pin the board to reference prices all day.
+const EMPTY_RETRY_MS = 10 * 60 * 1000;
+interface CacheEntry { records: AgmarkRecord[]; at: number }
 let cacheDay = '';
-const recordCache = new Map<string, AgmarkRecord[]>();
+const recordCache = new Map<string, CacheEntry>();
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -128,7 +132,9 @@ async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRe
   resetCacheIfStale();
   const key = `${commodity.toLowerCase()}::${(state || '').toLowerCase()}`;
   const cached = recordCache.get(key);
-  if (cached) return cached;
+  if (cached && (cached.records.length > 0 || Date.now() - cached.at < EMPTY_RETRY_MS)) {
+    return cached.records;
+  }
 
   const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
   url.searchParams.set('api-key', config.dataGov.apiKey);
@@ -144,12 +150,15 @@ async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRe
     clearTimeout(timer);
     if (!res.ok) throw new Error(`data.gov.in ${res.status}`);
     const json = (await res.json()) as { records?: AgmarkRecord[] };
-    const records = json.records ?? [];
-    recordCache.set(key, records);
+    // Drop rows with a missing/zero modal price so malformed records can't
+    // distort the median.
+    const records = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
+    recordCache.set(key, { records, at: Date.now() });
     return records;
   } catch (err) {
-    // Cache the empty result too, so a dead feed doesn't get hammered all day.
-    recordCache.set(key, []);
+    // Cache the empty result briefly (EMPTY_RETRY_MS) — a dead feed isn't
+    // hammered on every request, but recovery is picked up within minutes.
+    recordCache.set(key, { records: [], at: Date.now() });
     return [];
   }
 }
@@ -191,8 +200,12 @@ export async function getRateForCrop(
 
   const build = (records: AgmarkRecord[], source: RateSource, market: string | null, state: string | null): CropRate => {
     const modalPerQ = median(records.map((r) => num(r.modal_price)));
-    const minPerQ = Math.min(...records.map((r) => num(r.min_price)));
-    const maxPerQ = Math.max(...records.map((r) => num(r.max_price)));
+    // min/max ignore malformed (zero) values; fall back to modal so a partial
+    // record can never render a ₹0 band edge.
+    const mins = records.map((r) => num(r.min_price)).filter((n) => n > 0);
+    const maxs = records.map((r) => num(r.max_price)).filter((n) => n > 0);
+    const minPerQ = mins.length ? Math.min(...mins) : modalPerQ;
+    const maxPerQ = maxs.length ? Math.max(...maxs) : modalPerQ;
     // Signal: how today's modal sits vs the crop's usual (static reference)
     // price. Honest and simple — not a forecast, a "strong/weak day" flag.
     const changePct = meta.fallbackPerQuintal > 0

@@ -436,7 +436,9 @@ function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; cur
           <div key={r.commodity} className="st-rate" title={r.market ? `${r.market}${r.state ? ', ' + r.state : ''}` : r.state ?? 'National average'}>
             <div className="st-rate-top">
               <span className="st-rate-emoji" aria-hidden="true">{r.emoji}</span>
-              <Delta pct={r.changePct} flatLabel="steady" />
+              {/* reference cards say "ref", not "steady" — the board never
+                  pretends a fallback number is a live one */}
+              <Delta pct={r.changePct} flatLabel={r.source === 'reference' ? 'ref' : 'steady'} />
             </div>
             <div className="st-rate-n">{r.label}</div>
             <div className="st-rate-v">

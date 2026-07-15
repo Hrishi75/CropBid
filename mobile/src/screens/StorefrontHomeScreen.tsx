@@ -493,7 +493,7 @@ function RatesRail({ board }: { board: RatesBoardData | null }) {
                   {r.changePct >= 0 ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}%
                 </Mono>
               ) : (
-                <Mono style={styles.rateSteady}>steady</Mono>
+                <Mono style={styles.rateSteady}>{r.source === 'reference' ? 'ref' : 'steady'}</Mono>
               )}
             </View>
             <Text style={styles.rateName}>{r.label}</Text>

@@ -55,11 +55,16 @@ export function RatesBoard({ state }: { state?: string }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Cancellation flag: if the state filter changes while a fetch is in
+    // flight, the stale response must not overwrite the newer board.
+    let on = true;
+    setLoading(true);
     const params = state ? `?state=${encodeURIComponent(state)}` : '';
     api.get(`/rates/board${params}`)
-      .then(({ data }) => setBoard(data))
+      .then(({ data }) => { if (on) setBoard(data); })
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => { if (on) setLoading(false); });
+    return () => { on = false; };
   }, [state]);
 
   if (loading) {
