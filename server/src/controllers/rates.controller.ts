@@ -35,6 +35,9 @@ export async function getMarkets(req: Request, res: Response, next: NextFunction
       crop,
       (req.query.state as string) || undefined
     );
+    if (!data) {
+      return res.status(404).json({ error: 'No rate available for this crop' });
+    }
     res.set('Cache-Control', 'public, max-age=1800');
     res.json(data);
   } catch (error) {

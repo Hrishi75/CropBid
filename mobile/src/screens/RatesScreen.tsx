@@ -67,12 +67,13 @@ const SOURCE_LABEL: Record<LiveRate['source'], string> = {
   reference: 'REFERENCE',
 };
 
-// Major agri states first — a mobile-friendly filter rail.
+// Complete state set accepted by the rates endpoint, ordered for a compact rail.
 const STATES = [
-  'Maharashtra', 'Uttar Pradesh', 'Madhya Pradesh', 'Karnataka', 'Gujarat',
-  'Rajasthan', 'Andhra Pradesh', 'Tamil Nadu', 'Punjab', 'Haryana',
-  'West Bengal', 'Bihar', 'Telangana', 'Odisha', 'Kerala',
-  'Chhattisgarh', 'Jharkhand', 'Assam', 'Himachal Pradesh', 'Uttarakhand', 'Delhi',
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
 ];
 
 // How many mandi rows to render in an expanded crop before truncating.
@@ -83,6 +84,7 @@ const MAX_ROWS = 40;
 function MarketList({ commodity, state, unit }: { commodity: string; state: string; unit: Unit }) {
   const [data, setData] = useState<Breakdown | null>(null);
   const [failed, setFailed] = useState(false);
+  const [visibleRows, setVisibleRows] = useState(MAX_ROWS);
 
   // Mounted with a key of crop+state, so a change remounts with fresh state —
   // no synchronous resets needed inside the effect.
@@ -102,7 +104,8 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
     return <Text style={styles.note}>No mandi reported this crop today{state ? ` in ${state}` : ''} — the price above is the reference level.</Text>;
   }
 
-  const rows = data.records.slice(0, MAX_ROWS);
+  const rows = data.records.slice(0, visibleRows);
+  const remainingRows = Math.max(data.count - rows.length, 0);
   return (
     <View style={styles.marketList}>
       <Mono style={styles.marketCount}>
@@ -122,8 +125,16 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
           </View>
         </View>
       ))}
-      {data.count > MAX_ROWS && (
-        <Text style={styles.note}>…and {data.count - MAX_ROWS} more mandis. Narrow by state to see them all.</Text>
+      {remainingRows > 0 && (
+        <PressScale
+          onPress={() => { glide(); setVisibleRows((n) => n + MAX_ROWS); }}
+          scaleTo={0.96}
+          cardStyle={styles.moreRows}
+        >
+          <Text style={styles.moreRowsText}>
+            Show {Math.min(MAX_ROWS, remainingRows)} more mandis
+          </Text>
+        </PressScale>
       )}
     </View>
   );
@@ -296,6 +307,12 @@ const styles = StyleSheet.create({
   marketRight: { alignItems: 'flex-end' },
   marketModal: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink },
   marketBand: { fontSize: 9.5, color: design.ink3, marginTop: 1 },
+  moreRows: {
+    marginTop: 9, alignSelf: 'flex-start',
+    borderWidth: 1, borderColor: design.line, borderRadius: 999,
+    paddingHorizontal: 12, paddingVertical: 7, backgroundColor: design.paper,
+  },
+  moreRowsText: { fontFamily: font.sansSemi, fontSize: 11.5, color: colors.sage },
 
   note: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, paddingHorizontal: 16, paddingVertical: 12 },
   foot: {
