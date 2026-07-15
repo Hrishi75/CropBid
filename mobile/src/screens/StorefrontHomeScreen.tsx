@@ -332,7 +332,8 @@ export default function StorefrontHomeScreen() {
 
             {/* promo trio — the web's sage/paper/ember cards as a rail */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
-              <PromoCard tone="sage" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
+              <PromoCard tone="sage" emoji="🏛️" title="Sarkari Yojana" desc="PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed." onPress={() => nav.navigate('Schemes')} />
+              <PromoCard tone="paper" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
               <PromoCard tone="paper" emoji="🚜" title="Straight from the grower" desc="A shorter chain means fairer prices — for the farm and for you." />
               <PromoCard tone="ember" emoji="🚚" title="Verified & delivered" desc="Inspected lots, escrow held until it reaches you." />
             </ScrollView>
@@ -553,19 +554,26 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
 }
 
 function PromoCard({
-  tone, emoji, title, desc,
+  tone, emoji, title, desc, onPress,
 }: {
   tone: 'sage' | 'paper' | 'ember';
   emoji: string;
   title: string;
   desc: string;
+  onPress?: () => void;
 }) {
-  return (
+  const body = (
     <View style={[styles.promo, styles[`promo_${tone}`]]}>
       <Text style={styles.promoEmoji}>{emoji}</Text>
       <Text style={styles.promoTitle}>{title}</Text>
       <Text style={styles.promoDesc}>{desc}</Text>
     </View>
+  );
+  if (!onPress) return body;
+  return (
+    <PressScale onPress={onPress} scaleTo={0.96}>
+      {body}
+    </PressScale>
   );
 }
 

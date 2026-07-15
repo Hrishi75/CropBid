@@ -335,6 +335,7 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <Link to="/rates" className="st-header-link">Live rates</Link>
+          <Link to="/schemes" className="st-header-link">Yojana</Link>
           <Link to="/how-it-works" className="st-header-link">How it works</Link>
           <Link to="/login" className="nav-signin">Sign in</Link>
           <Link to="/signup" className="cb-btn cb-btn-primary">
@@ -423,11 +424,13 @@ function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: Ra
 
 // Today's rates, front and centre — the shared price anchor every deal on
 // CropBid negotiates around. Live from the govt feed, honest about fallback.
+// NOTE: no st-reveal here — this section mounts empty (null) and only renders
+// once rates arrive, so a mount-time IntersectionObserver would never see it
+// and it would sit invisible at opacity 0, leaving a blank gap in the page.
 function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; currency: CurrencyCode }) {
-  const ref = useReveal<HTMLElement>();
   if (!board) return null;
   return (
-    <section className="st-rates st-reveal" ref={ref}>
+    <section className="st-rates">
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
