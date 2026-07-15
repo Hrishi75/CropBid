@@ -32,6 +32,8 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
+import RatesScreen from '../screens/RatesScreen';
+import SchemesScreen from '../screens/SchemesScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
@@ -65,6 +67,16 @@ function BuyerNavigator() {
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="Rates"
+        component={RatesScreen}
+        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="Schemes"
+        component={SchemesScreen}
+        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Notifications"
@@ -111,6 +123,16 @@ function FarmerNavigator() {
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
+        name="Rates"
+        component={RatesScreen}
+        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
+        name="Schemes"
+        component={SchemesScreen}
+        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
         name="Notifications"
         component={ActivityScreen}
         options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
@@ -145,6 +167,16 @@ function ConsumerNavigator() {
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
+        name="Rates"
+        component={RatesScreen}
+        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="Schemes"
+        component={SchemesScreen}
+        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
         name="Notifications"
         component={ActivityScreen}
         options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
@@ -164,6 +196,16 @@ function GuestNavigator() {
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
         options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="Rates"
+        component={RatesScreen}
+        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="Schemes"
+        component={SchemesScreen}
+        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Login"

@@ -126,8 +126,14 @@ function resetCacheIfStale() {
   }
 }
 
-// Fetch (and cache for the day) the recent records for one commodity, optionally
-// scoped to a state. Returns [] on any failure — callers fall back to reference.
+const PAGE_SIZE = 200;
+const MAX_PAGES = 25;
+
+// Fetch (and cache for the day) all recent records for one board commodity,
+// optionally scoped to a state. Returns [] on any failure — callers fall back
+// to reference. The data.gov feed is paginated, so keep walking until the feed
+// returns a short page; otherwise high-volume crops look artificially empty or
+// capped to the first page.
 async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRecord[]> {
   resetCacheIfStale();
   const key = `${commodity.toLowerCase()}::${(state || '').toLowerCase()}`;
@@ -136,24 +142,37 @@ async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRe
     return cached.records;
   }
 
-  const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
-  url.searchParams.set('api-key', config.dataGov.apiKey);
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('limit', '200');
-  url.searchParams.set('filters[commodity]', commodity);
-  if (state) url.searchParams.set('filters[state]', state);
-
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url.toString(), { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`data.gov.in ${res.status}`);
-    const json = (await res.json()) as { records?: AgmarkRecord[] };
-    // Drop rows with a missing/zero modal price so malformed records can't
-    // distort the median.
-    const records = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
-    recordCache.set(key, { records, at: Date.now() });
+    const records: AgmarkRecord[] = [];
+    let complete = true;
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+      const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
+      url.searchParams.set('api-key', config.dataGov.apiKey);
+      url.searchParams.set('format', 'json');
+      url.searchParams.set('limit', String(PAGE_SIZE));
+      url.searchParams.set('offset', String(page * PAGE_SIZE));
+      url.searchParams.set('filters[commodity]', commodity);
+      if (state) url.searchParams.set('filters[state]', state);
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const controller = new AbortController();
+        timer = setTimeout(() => controller.abort(), 8000);
+        const res = await fetch(url.toString(), { signal: controller.signal });
+        if (!res.ok) throw new Error(`data.gov.in ${res.status}`);
+        const json = (await res.json()) as { records?: AgmarkRecord[] };
+        const pageRecords = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
+        records.push(...pageRecords);
+        if ((json.records ?? []).length < PAGE_SIZE) break;
+      } catch (err) {
+        if (records.length === 0) throw err;
+        complete = false;
+        break;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    if (complete) recordCache.set(key, { records, at: Date.now() });
     return records;
   } catch (err) {
     // Cache the empty result briefly (EMPTY_RETRY_MS) — a dead feed isn't
@@ -190,9 +209,8 @@ export async function getRateForCrop(
   opts: { state?: string; market?: string } = {}
 ): Promise<CropRate | null> {
   const item = BOARD_BY_COMMODITY.get(commodity.toLowerCase());
-  const meta: BoardItem = item ?? {
-    commodity, label: commodity, emoji: '🌱', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 0,
-  };
+  if (!item) return null;
+  const meta = item;
 
   // Pull state-scoped records first (fewer, more local), then national.
   const stateRecords = opts.state ? await fetchRecords(commodity, opts.state) : [];
@@ -254,6 +272,65 @@ export async function getRateForCrop(
     };
   }
   return null;
+}
+
+// -----------------------------------------------------------------------------
+// getMarketBreakdown — every reporting mandi for one crop (the full-detail
+// view behind the rates page: market, district, state, variety, grade, band)
+// -----------------------------------------------------------------------------
+export interface MarketRate {
+  market: string;
+  district: string;
+  state: string;
+  variety: string;
+  grade: string;
+  date: string;   // arrival_date as reported (DD/MM/YYYY)
+  modal: number;  // ₹ per display unit
+  min: number;
+  max: number;
+}
+
+export interface MarketBreakdown {
+  commodity: string;
+  label: string;
+  emoji: string;
+  unit: Unit;
+  count: number;
+  records: MarketRate[];
+}
+
+export async function getMarketBreakdown(commodity: string, state?: string): Promise<MarketBreakdown | null> {
+  const item = BOARD_BY_COMMODITY.get(commodity.toLowerCase());
+  if (!item) return null;
+  const meta = item;
+
+  let records = await fetchRecords(meta.commodity, state);
+  // A state-scoped fetch can come back empty (feed quirk); fall back to
+  // filtering the national records locally so the view degrades gracefully.
+  if (records.length === 0 && state) {
+    records = (await fetchRecords(meta.commodity)).filter(
+      (r) => r.state?.toLowerCase() === state.toLowerCase()
+    );
+  }
+
+  const rows: MarketRate[] = records
+    .map((r) => ({
+      market: r.market ?? '—',
+      district: r.district ?? '—',
+      state: r.state ?? '—',
+      variety: r.variety ?? '—',
+      grade: r.grade ?? '—',
+      date: r.arrival_date,
+      modal: toUnit(num(r.modal_price), meta.unit),
+      min: toUnit(num(r.min_price), meta.unit),
+      max: toUnit(num(r.max_price), meta.unit),
+    }))
+    .sort((a, b) => a.state.localeCompare(b.state) || a.market.localeCompare(b.market));
+
+  return {
+    commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit,
+    count: rows.length, records: rows,
+  };
 }
 
 // -----------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import * as ratesController from '../controllers/rates.controller';
 const router = Router();
 
 router.get('/board', ratesController.getBoard);
+router.get('/markets', ratesController.getMarkets);
 router.get('/', ratesController.getRate);
 
 export default router;
