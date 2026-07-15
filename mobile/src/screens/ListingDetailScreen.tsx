@@ -1,5 +1,7 @@
 // Listing detail screen — full crop listing (photos, specs, price) loaded by id,
-// with an inline form for buyers to place a bid (placeBid).
+// with an inline form for buyers to place a bid (placeBid). Guests can view
+// everything; the sticky bottom bar becomes the login gate ("Log in to buy") —
+// browsing is free, acting needs an account.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -49,6 +51,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }
 
   const imgs = (listing.images ?? []).map((i) => mediaUrl(i)).filter((u): u is string => !!u);
+  const isGuest = !user;
   const isBuyer = user?.role === 'BUYER';
   const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
@@ -62,7 +65,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       keyboardVerticalOffset={90}
     >
       <ScrollView
-        contentContainerStyle={[styles.container, canDirectBuy && { paddingBottom: 130 }]}
+        contentContainerStyle={[styles.container, (canDirectBuy || isGuest) && { paddingBottom: 130 }]}
         keyboardShouldPersistTaps="handled"
       >
         {imgs.length > 0 ? <ImagePager images={imgs} /> : null}
@@ -106,7 +109,9 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {isOwner ? (
+        {isGuest ? (
+          <Text style={styles.note}>You're browsing as a guest — log in to buy this lot or place a bid.</Text>
+        ) : isOwner ? (
           <Text style={styles.note}>This is your listing.</Text>
         ) : isBuyer ? (
           <BidForm listing={listing} onDone={() => navigation.goBack()} />
@@ -117,8 +122,13 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         ) : null}
       </ScrollView>
 
-      {/* Blinkit-style sticky buy bar — quantity stepper + total + Buy now */}
-      {canDirectBuy ? <BuyBar listing={listing} onDone={() => navigation.goBack()} /> : null}
+      {/* Blinkit-style sticky buy bar — quantity stepper + total + Buy now.
+          Guests get the login gate here instead: price + "Log in to buy". */}
+      {canDirectBuy ? (
+        <BuyBar listing={listing} onDone={() => navigation.goBack()} />
+      ) : isGuest ? (
+        <GuestBar listing={listing} onLogin={() => (navigation as any).navigate('Login')} />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -282,6 +292,33 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
 
       <Button label="Submit bid" onPress={submit} loading={submitting} />
     </Card>
+  );
+}
+
+// Sticky login gate for guests — same silhouette as the buy bar (price on the
+// left, forest button on the right) so the transition after login feels like
+// the button simply "unlocked". Shows the direct-sale retail price when the
+// farmer set one, otherwise the floor of the wholesale band.
+function GuestBar({ listing, onLogin }: { listing: Listing; onLogin: () => void }) {
+  const insets = useSafeAreaInsets();
+  const price = listing.retailPricePerUnit ?? listing.pricePerUnitMin;
+  return (
+    <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.buyBarRow}>
+        <View style={styles.buyTotals}>
+          <Text style={styles.buyTotal}>
+            {money(price, listing.currency)}
+            <Text style={styles.buyTotalSub}> /{unitLabel(listing.unit)}</Text>
+          </Text>
+          <Text style={styles.buyTotalSub} numberOfLines={1}>
+            farmer's price · no brokers
+          </Text>
+        </View>
+        <PressScale onPress={onLogin} cardStyle={styles.buyBtn}>
+          <Text style={styles.buyBtnText}>Log in to buy</Text>
+        </PressScale>
+      </View>
+    </View>
   );
 }
 
