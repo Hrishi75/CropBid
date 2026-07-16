@@ -149,18 +149,54 @@ const roundPrice = (v: number, unit: 'KG' | 'QUINTAL') =>
 
 // -----------------------------------------------------------------------------
 // Platform activity — CropBid's own order book, by board crop.
-// Free-text listing cropNames ("Rice") are matched to board labels
-// ("Paddy (Rice)") by bidirectional contains. Any DB failure returns an empty
-// map: the engine keeps working on feed data alone.
+// Free-text listing cropNames ("Rice", "Soybean") are resolved to board
+// commodities by EXACT match against a canonical alias table — substring
+// matching is banned here because it conflates distinct crops ("Sweet Potato"
+// contains "Potato", "Custard Apple" contains "Apple"). A name that resolves
+// to nothing simply contributes no platform signal — the honest failure mode.
+// Any DB failure returns an empty list: the engine keeps working on feed data.
 // -----------------------------------------------------------------------------
 interface PlatformSignal { activeListings: number; listedQty: number; bids14d: number }
 
-function matchesCrop(cropName: string, pred: { label: string; commodity: string }): boolean {
-  const n = cropName.trim().toLowerCase();
-  if (n.length < 3) return false;
-  const l = pred.label.toLowerCase();
-  const c = pred.commodity.toLowerCase();
-  return l.includes(n) || n.includes(l) || c.includes(n) || n.includes(c);
+const EMPTY_SIGNAL: PlatformSignal = { activeListings: 0, listedQty: 0, bids14d: 0 };
+
+// Keyed by board commodity (Agmarknet spelling). Each list holds the spellings,
+// plurals and Hindi names farmers actually type; the commodity itself and the
+// display label are matched automatically.
+const CROP_ALIASES: Record<string, string[]> = {
+  'Tomato':               ['tomatoes', 'tamatar'],
+  'Onion':                ['onions', 'pyaz', 'kanda'],
+  'Potato':               ['potatoes', 'aloo', 'batata'],
+  'Green Chilli':         ['green chili', 'green chillies', 'green chilies', 'hari mirch', 'chilli', 'chili', 'mirchi'],
+  'Cauliflower':          ['gobi', 'phool gobi', 'phul gobi'],
+  'Brinjal':              ['eggplant', 'aubergine', 'baingan', 'baigan'],
+  'Banana':               ['bananas', 'kela'],
+  'Mango':                ['mangoes', 'mangos', 'aam', 'kesar mango', 'alphonso mango'],
+  'Pomegranate':          ['pomegranates', 'anar'],
+  'Grapes':               ['grape', 'angoor'],
+  'Apple':                ['apples', 'seb'],
+  'Wheat':                ['gehu', 'gehun', 'sharbati wheat'],
+  'Paddy(Dhan)(Common)':  ['paddy', 'rice', 'dhan', 'basmati', 'basmati paddy', 'basmati rice'],
+  'Maize':                ['corn', 'makka', 'makki', 'yellow maize', 'sweet corn'],
+  'Soyabean':             ['soybean', 'soya', 'soya bean', 'soy bean', 'soy'],
+  'Turmeric':             ['haldi', 'turmeric fingers'],
+};
+
+// "Paddy(Dhan)(Common)" → "paddy dhan common"; "  Soy Bean " → "soy bean"
+const normalizeCropName = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// normalized name → board commodity, built once at module load.
+const ALIAS_INDEX = new Map<string, string>();
+for (const [commodity, aliases] of Object.entries(CROP_ALIASES)) {
+  ALIAS_INDEX.set(normalizeCropName(commodity), commodity);
+  for (const alias of aliases) ALIAS_INDEX.set(normalizeCropName(alias), commodity);
+}
+// Display labels too ("Paddy (Rice)" → Paddy(Dhan)(Common), "Soybean" → Soyabean).
+ALIAS_INDEX.set(normalizeCropName('Paddy (Rice)'), 'Paddy(Dhan)(Common)');
+
+export function resolveCommodity(cropName: string): string | null {
+  return ALIAS_INDEX.get(normalizeCropName(cropName)) ?? null;
 }
 
 async function getPlatformSignals(): Promise<Array<{ cropName: string; listings: number; qty: number; bids: number }>> {
@@ -340,6 +376,20 @@ export async function getForecastBoard(): Promise<ForecastBoard> {
   const [board, platformRows] = await Promise.all([getBoard(), getPlatformSignals()]);
   const month = new Date().getMonth() + 1;
 
+  // Aggregate EVERY platform row that resolves to the same board crop —
+  // "Soybean" and "Soyabean" listings both count toward Soyabean. Names that
+  // resolve to no board crop are dropped rather than guessed at.
+  const platformByCommodity = new Map<string, PlatformSignal>();
+  for (const row of platformRows) {
+    const commodity = resolveCommodity(row.cropName);
+    if (!commodity) continue;
+    const agg = platformByCommodity.get(commodity) ?? { ...EMPTY_SIGNAL };
+    agg.activeListings += row.listings;
+    agg.listedQty += row.qty;
+    agg.bids14d += row.bids;
+    platformByCommodity.set(commodity, agg);
+  }
+
   const predictions = await Promise.all(
     board.rates.map(async (rate) => {
       // Breakdown reuses the day cache populated by getBoard — no extra fetch.
@@ -355,12 +405,7 @@ export async function getForecastBoard(): Promise<ForecastBoard> {
         dispersion = mean > 0 ? Math.sqrt(variance) / mean : 0;
       }
 
-      const platformRow = platformRows.find((p) => matchesCrop(p.cropName, rate));
-      const platform: PlatformSignal = {
-        activeListings: platformRow?.listings ?? 0,
-        listedQty: platformRow?.qty ?? 0,
-        bids14d: platformRow?.bids ?? 0,
-      };
+      const platform = platformByCommodity.get(rate.commodity) ?? EMPTY_SIGNAL;
 
       return predictCrop(rate, mandis, dispersion, platform, month);
     })
