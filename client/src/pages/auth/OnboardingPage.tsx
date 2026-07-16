@@ -219,7 +219,8 @@ export function OnboardingPage() {
       const { data } = await api.get('/auth/me');
       updateUser(data.user);
       toast.success('Profile activated');
-      navigate(user?.role === 'FARMER' ? '/farmer' : '/buyer');
+      // Home is the marketplace storefront for every role
+      navigate('/');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to save profile');
     } finally {

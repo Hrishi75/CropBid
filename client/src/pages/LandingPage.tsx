@@ -18,11 +18,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
+import { useAuth } from '../context/AuthContext';
+import type { User } from '../types';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
   loadCountry, saveCountry, CountrySelector,
-  ArcMark, ArrowIcon, ChevronIcon, SearchIcon, CBFooter,
+  ArcMark, ArrowIcon, ChevronIcon, SearchIcon, CBFooter, India2047Mark,
 } from './landing/shared';
 
 // =============================================================================
@@ -280,13 +282,14 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
 }
 
 function StoreHeader({
-  country, onChangeCountry, query, onQuery, onJump,
+  country, onChangeCountry, query, onQuery, onJump, user,
 }: {
   country: Country;
   onChangeCountry: (c: Country) => void;
   query: string;
   onQuery: (q: string) => void;
   onJump: (target: RailId | 'top') => void;
+  user: User | null;
 }) {
   const [scrolled, setScrolled] = useState(false);
   const [wordIdx, setWordIdx] = useState(0);
@@ -335,13 +338,36 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <Link to="/rates" className="st-header-link">Live rates</Link>
+          <Link to="/forecast" className="st-header-link">Forecast</Link>
           <Link to="/schemes" className="st-header-link">Yojana</Link>
-          <Link to="/how-it-works" className="st-header-link">How it works</Link>
-          <Link to="/login" className="nav-signin">Sign in</Link>
-          <Link to="/signup" className="cb-btn cb-btn-primary">
-            Start selling
-            <ArrowIcon />
-          </Link>
+          {user ? (
+            // Logged in: the store stays the home page; these are the doors
+            // into the app (dashboard + the role's main action).
+            <>
+              <Link
+                to={user.role === 'FARMER' ? '/farmer' : user.role === 'BUYER' ? '/buyer' : '/admin'}
+                className="nav-signin"
+              >
+                Dashboard
+              </Link>
+              <Link
+                to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
+                className="cb-btn cb-btn-primary"
+              >
+                {user.role === 'FARMER' ? 'Sell a crop' : 'Browse live lots'}
+                <ArrowIcon />
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link to="/how-it-works" className="st-header-link">How it works</Link>
+              <Link to="/login" className="nav-signin">Sign in</Link>
+              <Link to="/signup" className="cb-btn cb-btn-primary">
+                Start selling
+                <ArrowIcon />
+              </Link>
+            </>
+          )}
         </nav>
       </div>
 
@@ -367,7 +393,14 @@ function StoreHeader({
 
 const FLOAT_CHIP_PICKS = ['Tomato', 'Wheat', 'Mango'];
 
-function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode }) {
+function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
+  // Secondary hero action follows the viewer: guests are asked to join,
+  // farmers are sent to list a crop, buyers to their working bids.
+  const secondary = user?.role === 'FARMER'
+    ? { to: '/farmer/listings/new', label: 'List your harvest' }
+    : user?.role === 'BUYER'
+      ? { to: '/buyer/bids', label: 'My bids' }
+      : { to: '/signup', label: 'Sell your harvest' };
   // Floating live-price chips over the hero photo — today's real numbers
   // only; reference fallbacks never float as if they were live.
   const chips = board
@@ -396,7 +429,7 @@ function HeroBanner({ onShop, board, currency }: { onShop: () => void; board: Ra
             Shop the market
             <ArrowIcon />
           </button>
-          <Link to="/signup" className="cb-btn st-btn-outline">Sell your harvest</Link>
+          <Link to={secondary.to} className="cb-btn st-btn-outline">{secondary.label}</Link>
         </div>
         <div className="st-banner-ticks">
           <span>✓ Live govt mandi rates</span>
@@ -463,18 +496,78 @@ function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; cur
   );
 }
 
+// -----------------------------------------------------------------------------
+// Forecast strip — the prediction engine's storefront teaser.
+// /api/rates/predictions returns crops sorted by expected 7-day move; the strip
+// shows the biggest movers as pills and sends people to /forecast for the why.
+// Mounts empty and renders only once predictions arrive (same rule as the
+// rates board — no reveal animation on a section that starts as null).
+// -----------------------------------------------------------------------------
+
+interface StripPrediction {
+  commodity: string;
+  label: string;
+  emoji: string;
+  unit: UnitCode;
+  outlook: { direction: 'rise' | 'hold' | 'ease'; pct7d: number; low: number; high: number };
+}
+
+function useForecast(): StripPrediction[] {
+  const [rows, setRows] = useState<StripPrediction[]>([]);
+  useEffect(() => {
+    let on = true;
+    api.get('/rates/predictions')
+      .then(({ data }) => { if (on && data?.predictions?.length) setRows(data.predictions); })
+      .catch(() => { /* strip simply doesn't render if the engine is unreachable */ });
+    return () => { on = false; };
+  }, []);
+  return rows;
+}
+
+function ForecastStrip() {
+  const rows = useForecast();
+  if (rows.length === 0) return null;
+  return (
+    <section className="st-fc">
+      <div className="st-rates-head">
+        <div className="st-rates-title">
+          <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+        </div>
+        <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
+        <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
+      </div>
+      <div className="st-fc-track">
+        {rows.slice(0, 10).map((p) => {
+          const dir = p.outlook.direction;
+          const arrow = dir === 'rise' ? '▲' : dir === 'ease' ? '▼' : '▬';
+          const move = dir === 'hold' ? 'steady' : `${p.outlook.pct7d > 0 ? '+' : ''}${p.outlook.pct7d.toFixed(1)}% / 7d`;
+          return (
+            <Link key={p.commodity} to="/forecast" className="st-fc-pill">
+              <span aria-hidden="true">{p.emoji}</span>
+              <span className="n">{p.label}</span>
+              <span className={`d ${dir === 'rise' ? 'pos' : dir === 'ease' ? 'neg' : 'flat'}`}>
+                {arrow} {move}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string }> = [
   { tone: 'sage',  emoji: '🔨', title: 'Live auctions',        desc: 'Verified buyers bid in open rounds — watch prices climb in real time.', ctaLabel: 'Start bidding',  to: '/signup' },
   { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Any quantity, at the farmer’s listed price. From one sack to a season’s supply.', ctaLabel: 'Shop direct', to: '/signup' },
   { tone: 'ember', emoji: '🛡️', title: 'Escrow protected',  desc: 'Money stays held on-platform and releases only when you confirm delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
 ];
 
-function PromoTrio() {
+function PromoTrio({ shopHref }: { shopHref: string }) {
   const ref = useReveal<HTMLDivElement>();
   return (
     <div className="st-promos st-reveal" ref={ref}>
       {PROMOS.map((p) => (
-        <Link key={p.title} to={p.to} className={`st-promo ${p.tone}`}>
+        <Link key={p.title} to={p.to === '/signup' ? shopHref : p.to} className={`st-promo ${p.tone}`}>
           <span className="st-promo-emoji" aria-hidden="true">{p.emoji}</span>
           <span className="st-promo-t">{p.title}</span>
           <span className="st-promo-d">{p.desc}</span>
@@ -504,11 +597,11 @@ function CategoryGrid({ onJump }: { onJump: (target: RailId) => void }) {
   );
 }
 
-function ProduceCard({ p, currency }: { p: Produce; currency: CurrencyCode }) {
+function ProduceCard({ p, currency, shopHref }: { p: Produce; currency: CurrencyCode; shopHref: string }) {
   const off = pctOff(p);
   return (
     <div className="st-card">
-      <Link to="/signup" className="st-card-img" aria-label={`${p.name} — ${p.variety}`}>
+      <Link to={shopHref} className="st-card-img" aria-label={`${p.name} — ${p.variety}`}>
         <ProduceImg slug={p.slug} emoji={p.emoji} alt={`${p.name} (${p.variety})`} />
         {off >= 5 && <span className="st-off">{off}% OFF</span>}
         <span className="st-grade">{p.organic ? 'Organic' : `Grade ${p.grade}`}</span>
@@ -526,14 +619,14 @@ function ProduceCard({ p, currency }: { p: Produce; currency: CurrencyCode }) {
             </div>
             {off >= 5 && <div className="st-mrp">{formatUnitPrice(p.priceMax, 'INR', currency)}</div>}
           </div>
-          <Link to="/signup" className="st-add">{p.unit === 'KG' ? 'BUY' : 'BID'}</Link>
+          <Link to={shopHref} className="st-add">{p.unit === 'KG' ? 'BUY' : 'BID'}</Link>
         </div>
       </div>
     </div>
   );
 }
 
-function Rail({ rail, currency }: { rail: (typeof RAILS)[number]; currency: CurrencyCode }) {
+function Rail({ rail, currency, shopHref }: { rail: (typeof RAILS)[number]; currency: CurrencyCode; shopHref: string }) {
   const revealRef = useReveal<HTMLElement>();
   const track = useRef<HTMLDivElement | null>(null);
   const items = PRODUCTS.filter((p) => p.cat === rail.id);
@@ -551,7 +644,7 @@ function Rail({ rail, currency }: { rail: (typeof RAILS)[number]; currency: Curr
           <h2 className="st-rail-title">{rail.title}</h2>
         </div>
         <div className="st-rail-nav">
-          <Link to="/signup" className="st-seeall">see all <ArrowIcon size={12} /></Link>
+          <Link to={shopHref} className="st-seeall">see all <ArrowIcon size={12} /></Link>
           <button type="button" className="st-rail-btn prev" aria-label={`Scroll ${rail.title} back`} onClick={() => nudge(-1)}>
             <ChevronIcon />
           </button>
@@ -561,13 +654,13 @@ function Rail({ rail, currency }: { rail: (typeof RAILS)[number]; currency: Curr
         </div>
       </div>
       <div className="st-rail-track" ref={track}>
-        {items.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} />)}
+        {items.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} shopHref={shopHref} />)}
       </div>
     </section>
   );
 }
 
-function SearchResults({ query, currency }: { query: string; currency: CurrencyCode }) {
+function SearchResults({ query, currency, shopHref }: { query: string; currency: CurrencyCode; shopHref: string }) {
   const q = query.trim().toLowerCase();
   const matches = PRODUCTS.filter((p) =>
     [p.name, p.variety, p.location, p.state, CAT_KEYWORDS[p.cat]].join(' ').toLowerCase().includes(q),
@@ -583,7 +676,7 @@ function SearchResults({ query, currency }: { query: string; currency: CurrencyC
       </div>
       {matches.length > 0 ? (
         <div className="st-results-grid">
-          {matches.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} />)}
+          {matches.map((p) => <ProduceCard key={p.slug} p={p} currency={currency} shopHref={shopHref} />)}
         </div>
       ) : (
         <div className="st-empty">
@@ -626,8 +719,12 @@ function HowStrip() {
   );
 }
 
-function SellCTA() {
+function SellCTA({ user }: { user: User | null }) {
   const ref = useReveal<HTMLElement>();
+  // Marketing noise for a signed-in buyer — the block is farmer-targeted.
+  if (user?.role === 'BUYER') return null;
+  const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/signup';
+  const sellLabel = user?.role === 'FARMER' ? 'List your harvest' : 'Start selling free';
   return (
     <section className="cta st-reveal" ref={ref}>
       <div className="cta-card">
@@ -641,8 +738,8 @@ function SellCTA() {
             </p>
           </div>
           <div className="cta-actions">
-            <Link to="/signup" className="cb-btn cta-primary">
-              Start selling free
+            <Link to={sellHref} className="cb-btn cta-primary">
+              {sellLabel}
               <ArrowIcon />
             </Link>
             <Link to="/how-it-works" className="cb-btn cta-ghost">
@@ -655,15 +752,60 @@ function SellCTA() {
   );
 }
 
+// -----------------------------------------------------------------------------
+// Incubation credit — last thing on the page before the footer.
+// Tries the real logo at /india-2047-ventures.png (drop it in client/public);
+// falls back to the SVG recreation until the file exists.
+// -----------------------------------------------------------------------------
+
+function India2047Logo() {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <India2047Mark size={46} />;
+  return (
+    <img
+      src="/india-2047-ventures.png"
+      alt=""
+      width={46}
+      height={46}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function IncubatedBy() {
+  const ref = useReveal<HTMLElement>();
+  return (
+    <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
+      <span className="cb-eyebrow">Incubated by</span>
+      <div className="st-incub-brand">
+        <India2047Logo />
+        <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+      </div>
+      <p className="cb-small st-incub-line">
+        CropBid is built with the backing of India 2047 Ventures.
+      </p>
+    </section>
+  );
+}
+
 // =============================================================================
 // Page
 // =============================================================================
 
 export function LandingPage() {
+  const { user } = useAuth();
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
   const board = useLiveRates();
+
+  // Where every buy/bid CTA lands. The storefront catalogue is demo data, so
+  // signed-in users go to the real market (buyers browse live lots, farmers
+  // watch auctions); guests are asked to join first.
+  const shopHref = user?.role === 'BUYER' ? '/buyer/browse'
+    : user?.role === 'FARMER' ? '/auctions'
+    : '/signup';
 
   const handleChangeCountry = (next: Country) => {
     setCountry(next);
@@ -694,19 +836,22 @@ export function LandingPage() {
         query={query}
         onQuery={setQuery}
         onJump={jumpTo}
+        user={user}
       />
       <main className="st-main">
         {searching ? (
-          <SearchResults query={query} currency={currency} />
+          <SearchResults query={query} currency={currency} shopHref={shopHref} />
         ) : (
           <>
-            <HeroBanner onShop={() => jumpTo('veg')} board={board} currency={currency} />
+            <HeroBanner onShop={() => jumpTo('veg')} board={board} currency={currency} user={user} />
             <LiveRatesBoard board={board} currency={currency} />
-            <PromoTrio />
+            <ForecastStrip />
+            <PromoTrio shopHref={shopHref} />
             <CategoryGrid onJump={jumpTo} />
-            {RAILS.map((rail) => <Rail key={rail.id} rail={rail} currency={currency} />)}
+            {RAILS.map((rail) => <Rail key={rail.id} rail={rail} currency={currency} shopHref={shopHref} />)}
             <HowStrip />
-            <SellCTA />
+            <SellCTA user={user} />
+            <IncubatedBy />
           </>
         )}
       </main>

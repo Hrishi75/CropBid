@@ -10,6 +10,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import * as ratesService from '../services/rates.service';
+import * as predictionService from '../services/prediction.service';
 
 // GET /api/rates/board — whole board of today's rates
 export async function getBoard(req: Request, res: Response, next: NextFunction) {
@@ -17,6 +18,19 @@ export async function getBoard(req: Request, res: Response, next: NextFunction) 
     const state = (req.query.state as string) || undefined;
     const data = await ratesService.getBoard(state);
     res.set('Cache-Control', 'public, max-age=1800'); // 30 min
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/rates/predictions — demand & supply forecast for the whole board.
+// Deterministic model over today's feed + seasonality + platform activity;
+// see prediction.service.ts for the model and its weights.
+export async function getPredictions(req: Request, res: Response, next: NextFunction) {
+  try {
+    const data = await predictionService.getForecastBoard();
+    res.set('Cache-Control', 'public, max-age=1800'); // 30 min, same as the board
     res.json(data);
   } catch (error) {
     next(error);
