@@ -216,13 +216,14 @@ async function getPlatformSignals(): Promise<Array<{ cropName: string; listings:
     ]);
 
     const rows = new Map<string, { cropName: string; listings: number; qty: number; bids: number }>();
+    // Merge, don't replace: groupBy is case-sensitive, so "Rice" and "rice"
+    // arrive as separate groups that share a lowercase key here.
     for (const l of listings) {
-      rows.set(l.cropName.toLowerCase(), {
-        cropName: l.cropName,
-        listings: l._count._all,
-        qty: l._sum.remainingQuantity ?? 0,
-        bids: 0,
-      });
+      const key = l.cropName.toLowerCase();
+      const row = rows.get(key) ?? { cropName: l.cropName, listings: 0, qty: 0, bids: 0 };
+      row.listings += l._count._all;
+      row.qty += l._sum.remainingQuantity ?? 0;
+      rows.set(key, row);
     }
     for (const b of bids) {
       const key = b.listing.cropName.toLowerCase();
