@@ -152,6 +152,33 @@ export function SearchIcon() {
     </svg>
   );
 }
+// India 2047 Ventures mark — SVG recreation of the incubator's orbit logo
+// (two gradient rings, a heavy connecting arc, and two node circles). Drawn in
+// currentColor so it sits correctly on light and dark surfaces. Used as the
+// fallback behind /india-2047-ventures.png (drop the real PNG in client/public
+// to override).
+export function India2047Mark({ size = 44 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 140 140" fill="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="i47-outer" x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.65" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0.12" />
+        </linearGradient>
+        <linearGradient id="i47-inner" x1="0" y1="0.5" x2="1" y2="0.5">
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.75" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0.15" />
+        </linearGradient>
+      </defs>
+      <circle cx="70" cy="70" r="52" stroke="url(#i47-outer)" strokeWidth="7" />
+      <circle cx="70" cy="70" r="34" stroke="url(#i47-inner)" strokeWidth="7" />
+      <path d="M70 18 A52 52 0 0 1 70 122" stroke="currentColor" strokeWidth="10" strokeLinecap="round" />
+      <circle cx="70" cy="18" r="13" fill="var(--cb-paper, #fff)" stroke="currentColor" strokeWidth="8" />
+      <circle cx="70" cy="122" r="13" fill="var(--cb-paper, #fff)" stroke="currentColor" strokeWidth="8" />
+    </svg>
+  );
+}
+
 export function ArcMark({ size = 27, accent = '#c8602b' }: { size?: number; accent?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
@@ -245,9 +272,10 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
     title: 'Product',
     items: [
       ['Marketplace',  '/'],
+      ['Live mandi rates', '/rates'],
+      ['Price forecast',   '/forecast'],
       ['How it works', '/how-it-works#how'],
-      ['For buyers',   '/how-it-works#buyers'],
-      ['For farmers',  '/how-it-works#farmers'],
+      ['For farmers',  '/how-it-works#how'],
       ['Buy direct',   '/how-it-works#consumers'],
       ['Pricing',      '/how-it-works#pricing'],
     ],
@@ -296,10 +324,11 @@ export function CBFooter() {
               <span className="wordmark-text" style={{ fontSize: 20 }}>CropBid</span>
             </Link>
             <p className="cb-footer-blurb">
-              The autonomous procurement layer for global crop trading. Built for growers, FPOs, and procurement teams across 20+ countries.
+              Fair price discovery for agriculture — live govt mandi rates, open bidding,
+              escrow-settled deals, and farm-to-door logistics. Built in India, for farmers first.
             </p>
             <div className="cb-footer-badges">
-              {['SOC 2', 'GAFTA', 'ISO 27001'].map((b) => (
+              {['Govt Agmarknet data', 'Razorpay escrow', 'Made in India'].map((b) => (
                 <span key={b} className="cb-chip">{b}</span>
               ))}
             </div>

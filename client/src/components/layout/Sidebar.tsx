@@ -1,103 +1,27 @@
 // =============================================================================
-// Sidebar — Role-aware primary navigation
+// Sidebar — Mobile navigation drawer
 // =============================================================================
-// Builds the nav menu from the logged-in user's role (farmer / buyer / admin),
-// highlights the active route, shows optional pending-count badges, and holds
-// the user identity + sign-out at the bottom. On mobile it slides in via the
-// `mobile` prop; onNavigate closes it after a link tap.
+// Slide-in drawer for small screens only; desktop navigation lives in the
+// Navbar's top-of-page link row. Renders every nav section (menu + settings)
+// from the shared config in components/layout/nav.ts, plus the user identity
+// and sign-out at the bottom. onNavigate closes the drawer after a link tap.
 // =============================================================================
 
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-
-interface NavItem {
-  label: string;
-  path: string;
-  badge?: number;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
+import { getNavSections, isNavItemActive, type PendingCounts } from './nav';
 
 interface SidebarProps {
   mobile?: boolean;
   onNavigate?: () => void;
-  pendingCounts?: { bids?: number; negotiations?: number };
+  pendingCounts?: PendingCounts;
 }
 
 export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}) {
   const { user, logout } = useAuth();
   const location = useLocation();
 
-  const farmerSections: NavSection[] = [
-    {
-      title: 'Dashboard',
-      items: [
-        { label: 'Overview', path: '/farmer' },
-        { label: 'Listings', path: '/farmer/listings' },
-        { label: 'Bids', path: '/farmer/bids', badge: pendingCounts?.bids },
-        { label: 'Auctions', path: '/auctions' },
-        { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
-        { label: 'Transactions', path: '/transactions' },
-        { label: 'Analytics', path: '/farmer/analytics' },
-      ],
-    },
-    {
-      title: 'Settings',
-      items: [
-        { label: 'Agent', path: '/agent' },
-        { label: 'Account', path: '/settings' },
-      ],
-    },
-  ];
-
-  const buyerSections: NavSection[] = [
-    {
-      title: 'Dashboard',
-      items: [
-        { label: 'Overview', path: '/buyer' },
-        { label: 'Browse', path: '/buyer/browse' },
-        { label: 'Bids', path: '/buyer/bids', badge: pendingCounts?.bids },
-        { label: 'Auctions', path: '/auctions' },
-        { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
-        { label: 'Transactions', path: '/transactions' },
-        { label: 'Analytics', path: '/buyer/analytics' },
-      ],
-    },
-    {
-      title: 'Settings',
-      items: [
-        { label: 'Agent', path: '/agent' },
-        { label: 'Account', path: '/settings' },
-      ],
-    },
-  ];
-
-  const adminSections: NavSection[] = [
-    {
-      title: 'Admin',
-      items: [
-        { label: 'Overview', path: '/admin' },
-        { label: 'Users', path: '/admin/users' },
-        { label: 'Listings', path: '/admin/listings' },
-        { label: 'Transactions', path: '/admin/transactions' },
-        { label: 'Logistics', path: '/admin/logistics' },
-        { label: 'Analytics', path: '/admin/analytics' },
-      ],
-    },
-    {
-      title: 'Settings',
-      items: [
-        { label: 'Account', path: '/settings' },
-      ],
-    },
-  ];
-
-  const sections = user?.role === 'ADMIN' ? adminSections
-    : user?.role === 'FARMER' ? farmerSections
-    : buyerSections;
+  const sections = getNavSections(user?.role, pendingCounts);
 
   return (
     <aside
@@ -116,8 +40,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
         <div key={section.title} className="cb-sidebar-section">
           <div className="cb-sidebar-section-title">{section.title}</div>
           {section.items.map((item) => {
-            const isActive = location.pathname === item.path
-              || (item.path !== '/' && location.pathname.startsWith(item.path + '/'));
+            const isActive = isNavItemActive(location.pathname, item.path);
             return (
               <Link
                 key={item.path}

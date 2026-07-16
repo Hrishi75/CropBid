@@ -1,9 +1,10 @@
 // =============================================================================
 // DashboardLayout — Shell wrapper for all logged-in pages
 // =============================================================================
-// Provides the standard app chrome: a fixed Sidebar, a top Navbar, and the page
-// content area. Owns the mobile menu open/close state and renders a tap-to-close
-// backdrop when the sidebar is open on small screens. Pages render as children.
+// Provides the standard app chrome: the top Navbar (bar + horizontal nav links)
+// and the page content area. Navigation sits at the top of the page on desktop;
+// on small screens the hamburger opens the Sidebar as a slide-in drawer, with a
+// tap-to-close backdrop. Pages render as children.
 // =============================================================================
 
 import { useState, type ReactNode } from 'react';
@@ -19,25 +20,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="cb-app">
-      <div className="cb-shell">
-        <Sidebar mobile={mobileMenuOpen} onNavigate={() => setMobileMenuOpen(false)} />
+      <Sidebar mobile={mobileMenuOpen} onNavigate={() => setMobileMenuOpen(false)} />
 
-        {mobileMenuOpen && (
-          <div
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-              zIndex: 55,
-            }}
-            aria-hidden="true"
-          />
-        )}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+            zIndex: 55,
+          }}
+          aria-hidden="true"
+        />
+      )}
 
-        <div className="cb-main">
-          <Navbar onMenuClick={() => setMobileMenuOpen(true)} />
-          <main className="cb-page">{children}</main>
-        </div>
-      </div>
+      <Navbar onMenuClick={() => setMobileMenuOpen(true)} />
+      <main className="cb-page">{children}</main>
     </div>
   );
 }

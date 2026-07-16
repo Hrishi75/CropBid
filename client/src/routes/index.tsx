@@ -53,22 +53,24 @@ import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
 import { LandingPage } from '../pages/LandingPage';
 import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
 import { RatesPage } from '../pages/RatesPage';
+import { ForecastPage } from '../pages/ForecastPage';
 import { SchemesPage } from '../pages/SchemesPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
 
 /**
  * WHY a separate RootRedirect component?
- * The "/" route needs to send users to different dashboards based on
- * their role. We can't do this with a static <Navigate> because the
- * destination depends on runtime state (the logged-in user's role).
+ * The "/" route is role-dependent, so a static <Navigate> can't express it.
+ * Guests AND logged-in farmers/buyers get the marketplace storefront — the
+ * store is the home for everyone; the header adapts to who's looking at it.
+ * Only admins are redirected away (to the ops dashboard).
  */
 function RootRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
     // While the /auth/refresh check is in flight (slow when the API is cold):
-    //   - returning visitor (has a session hint) → spinner, then redirect to dashboard
+    //   - returning visitor (has a session hint) → spinner, then the right home
     //   - anonymous visitor (no hint) → render the static landing immediately,
     //     so a cold backend never blocks the public homepage.
     const hadSession = (() => {
@@ -84,14 +86,9 @@ function RootRedirect() {
     );
   }
 
-  if (!user) return <LandingPage />;
+  if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
 
-  switch (user.role) {
-    case 'FARMER': return <Navigate to="/farmer" replace />;
-    case 'BUYER':  return <Navigate to="/buyer" replace />;
-    case 'ADMIN':  return <Navigate to="/admin" replace />;
-    default:       return <Navigate to="/login" replace />;
-  }
+  return <LandingPage />;
 }
 
 export function AppRoutes() {
@@ -103,6 +100,7 @@ export function AppRoutes() {
       {/* Public marketing routes */}
       <Route path="/how-it-works" element={<HowItWorksPage />} />
       <Route path="/rates" element={<RatesPage />} />
+      <Route path="/forecast" element={<ForecastPage />} />
       <Route path="/schemes" element={<SchemesPage />} />
 
       {/* Public auth routes */}
