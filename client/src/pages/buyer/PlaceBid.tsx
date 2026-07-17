@@ -13,6 +13,7 @@ import { BidForm } from '../../components/bids/BidForm';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
+import { listingImage } from '../../utils/cropImages';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
@@ -83,8 +84,8 @@ export function PlaceBid() {
           <div className="cb-card">
             <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
               <div style={{ width: 56, height: 56, borderRadius: 8, background: 'var(--cb-paper-2)', overflow: 'hidden', flexShrink: 0 }}>
-                {listing.images?.length > 0 ? (
-                  <img src={listing.images[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {listingImage(listing) ? (
+                  <img src={listingImage(listing)!} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>🌾</div>
                 )}

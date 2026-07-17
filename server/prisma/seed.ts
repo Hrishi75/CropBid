@@ -19,6 +19,7 @@
 import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
+import { cropImageFor } from './cropImages';
 
 // Prisma v7 requires a driver adapter for direct database connections.
 // PrismaPg connects to PostgreSQL using the `pg` library under the hood.
@@ -407,7 +408,7 @@ async function main() {
         harvestDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000), // last 30 days
         expiryDate: new Date(Date.now() + (30 + Math.random() * 60) * 24 * 60 * 60 * 1000), // 30-90 days out
         description: l.description,
-        images: [],
+        images: cropImageFor(l.crop) ? [cropImageFor(l.crop)!] : [],
         organic: l.organic,
         location: farmerUser.location,
         country: 'India',
@@ -443,7 +444,7 @@ async function main() {
         harvestDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
         expiryDate: new Date(Date.now() + (30 + Math.random() * 60) * 24 * 60 * 60 * 1000),
         description: l.description,
-        images: [],
+        images: cropImageFor(l.crop) ? [cropImageFor(l.crop)!] : [],
         organic: l.organic,
         location: l.country === 'USA' ? (l.state === 'Iowa' ? 'Des Moines' : 'Sacramento') : l.state,
         country: l.country,

@@ -18,6 +18,7 @@ import { ImageUploader } from '../../components/listings/ImageUploader';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import { CROP_CATEGORIES, ALL_CROPS } from '../../utils/crops';
+import { cropImageFor } from '../../utils/cropImages';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -46,6 +47,10 @@ export function CreateListing() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [images, setImages] = useState<File[]>([]);
+  // 'standard' = use the built-in stock photo for the crop (no upload needed —
+  // every listing surface falls back to it automatically when images[] is empty).
+  // 'own' = farmer uploads their own photos.
+  const [photoMode, setPhotoMode] = useState<'standard' | 'own'>('standard');
 
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
@@ -92,16 +97,15 @@ export function CreateListing() {
       toast.error('Minimum price cannot exceed maximum price');
       return;
     }
-    // Government MSP guard — warn (but don't block) when the floor is below the
-    // official support price. MSP is an India-only price in ₹, so only applies
-    // to INR listings.
+    // Government MSP guard — warn (but don't block) when the floor is below
+    // the official support price. Listings are ₹-native (like the MSP and
+    // mandi anchors shown in this form), so the guard always applies.
     const msp = mspForCrop(cropName, unit);
     const floor = parseFloat(priceMin);
-    const cur = user?.currency || 'INR';
-    if (msp != null && cur.toUpperCase() === 'INR' && floor < msp) {
+    if (msp != null && floor < msp) {
       const proceed = window.confirm(
-        `The government MSP for ${cropName} is ${formatCurrency(msp, cur)} per ${unit.toLowerCase()}. ` +
-          `Your floor of ${formatCurrency(floor, cur)} is below it — you may sell under the support price.\n\nList anyway?`,
+        `The government MSP for ${cropName} is ${formatCurrency(msp, 'INR')} per ${unit.toLowerCase()}. ` +
+          `Your floor of ${formatCurrency(floor, 'INR')} is below it — you may sell under the support price.\n\nList anyway?`,
       );
       if (!proceed) return;
     }
@@ -115,14 +119,21 @@ export function CreateListing() {
       formData.append('qualityGrade', qualityGrade);
       formData.append('pricePerUnitMin', priceMin);
       formData.append('pricePerUnitMax', priceMax);
-      formData.append('currency', user?.currency || 'INR');
+      // Platform money is ₹-native: prices are typed against ₹ MSP/mandi
+      // anchors, so the lot is always stored in INR regardless of the
+      // account's display currency.
+      formData.append('currency', 'INR');
       if (harvestDate) formData.append('harvestDate', harvestDate);
       if (description) formData.append('description', description);
       formData.append('organic', String(organic));
       formData.append('location', location);
       formData.append('country', user?.country || 'India');
       formData.append('state', state);
-      images.forEach((file) => formData.append('images', file));
+      // Standard-photo mode uploads nothing: with images[] empty, every
+      // listing surface shows the crop's stock photo automatically.
+      if (photoMode === 'own') {
+        images.forEach((file) => formData.append('images', file));
+      }
 
       if (isEditMode) {
         await api.put(`/listings/${editId}`, {
@@ -133,7 +144,7 @@ export function CreateListing() {
           qualityGrade,
           pricePerUnitMin: parseFloat(priceMin),
           pricePerUnitMax: parseFloat(priceMax),
-          currency: user?.currency || 'INR',
+          currency: 'INR',
           harvestDate: harvestDate || undefined,
           description: description || undefined,
           organic,
@@ -153,7 +164,7 @@ export function CreateListing() {
     }
   }
 
-  const currency = user?.currency || 'INR';
+  const currency = 'INR'; // preview matches what will be stored
   const priceMinNum = parseFloat(priceMin) || 0;
   const priceMaxNum = parseFloat(priceMax) || 0;
   const previewPriceLabel = priceMinNum && priceMaxNum
@@ -316,8 +327,48 @@ export function CreateListing() {
               </label>
             </Section>
 
-            <Section title="Images">
-              <ImageUploader images={images} onChange={setImages} maxImages={5} />
+            <Section title="Photos">
+              {!isEditMode && (
+                <div className="cb-pill-group">
+                  <button
+                    type="button"
+                    className={`cb-pill ${photoMode === 'standard' ? 'active' : ''}`}
+                    onClick={() => setPhotoMode('standard')}
+                  >
+                    Standard crop photo
+                  </button>
+                  <button
+                    type="button"
+                    className={`cb-pill ${photoMode === 'own' ? 'active' : ''}`}
+                    onClick={() => setPhotoMode('own')}
+                  >
+                    Upload my own
+                  </button>
+                </div>
+              )}
+              {!isEditMode && photoMode === 'standard' ? (
+                cropImageFor(cropName) ? (
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    <img
+                      src={cropImageFor(cropName)!}
+                      alt={cropName}
+                      style={{ width: 96, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--cb-line)' }}
+                    />
+                    <p className="cb-field-hint" style={{ margin: 0 }}>
+                      Buyers will see this standard photo of {cropName}. No camera needed —
+                      switch to “Upload my own” anytime for better trust.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="cb-field-hint" style={{ margin: 0 }}>
+                    {cropName
+                      ? `No standard photo available for ${cropName} yet — buyers will see a placeholder. You can upload your own instead.`
+                      : 'Select a crop above to preview its standard photo.'}
+                  </p>
+                )
+              ) : (
+                <ImageUploader images={images} onChange={setImages} maxImages={5} />
+              )}
             </Section>
 
             <div style={{ display: 'flex', gap: 12, padding: '20px 0' }}>

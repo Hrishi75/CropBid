@@ -20,6 +20,7 @@ import { Eyebrow, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { deleteListing, myListings } from '../../api/endpoints';
 import { errorMessage, mediaUrl } from '../../api/client';
+import { cropImageFor } from '../../utils/cropImages';
 import type { Listing, ListingStatus } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 
@@ -139,7 +140,7 @@ export default function MyListingsScreen() {
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 10 }}>
             {listings.map((l) => {
-              const img = mediaUrl(l.images?.[0]);
+              const img = mediaUrl(l.images?.[0]) ?? cropImageFor(l.cropName);
               const bids = l._count?.bids ?? 0;
               return (
                 <Pressable

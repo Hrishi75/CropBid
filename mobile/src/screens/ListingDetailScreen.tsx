@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { directPurchase, fetchListing, placeBid } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
+import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
@@ -51,6 +52,10 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }
 
   const imgs = (listing.images ?? []).map((i) => mediaUrl(i)).filter((u): u is string => !!u);
+  if (imgs.length === 0) {
+    const stock = cropImageFor(listing.cropName);
+    if (stock) imgs.push(stock);
+  }
   const isGuest = !user;
   const isBuyer = user?.role === 'BUYER';
   const isConsumer = user?.role === 'CONSUMER';
