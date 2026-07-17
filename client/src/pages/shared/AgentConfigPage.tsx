@@ -59,7 +59,8 @@ export function AgentConfigPage() {
   const [maxDistanceKm, setMaxDistanceKm] = useState('');
 
   const isFarmer = user?.role === 'FARMER';
-  const currency = user?.currency || 'INR';
+  // Agent limits apply to ₹-native listings and bids — always label as ₹.
+  const currency = 'INR';
 
   useEffect(() => {
     fetchConfig();

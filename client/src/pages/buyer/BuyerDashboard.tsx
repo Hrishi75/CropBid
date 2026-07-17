@@ -62,7 +62,9 @@ export function BuyerDashboard() {
     fetchStats();
   }, []);
 
-  const currency = user?.currency || 'INR';
+  // KPI aggregates sum ₹-native records; labelling them with the account's
+  // display currency would mislabel the amounts (no FX conversion happens).
+  const currency = 'INR';
   const firstName = user?.name?.split(/\s+/)[0] || '';
 
   return (

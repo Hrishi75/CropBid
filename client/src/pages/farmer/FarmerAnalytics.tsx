@@ -12,7 +12,6 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 
@@ -48,11 +47,11 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 export function FarmerAnalytics() {
-  const { user } = useAuth();
   const [data, setData] = useState<FarmerData | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('SEASON');
-  const currency = user?.currency || 'INR';
+  // Analytics aggregate ₹-native records — always label them as ₹.
+  const currency = 'INR';
 
   useEffect(() => {
     async function fetch() {
