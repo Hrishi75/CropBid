@@ -40,6 +40,7 @@ Production demo stack — all free tier:
    | `JWT_SECRET` | first generated secret |
    | `JWT_REFRESH_SECRET` | second generated secret |
    | `GEMINI_API_KEY` | Gemini key (or leave blank) |
+   | `CLOUDINARY_URL` | `cloudinary://<key>:<secret>@<cloud_name>` from the [Cloudinary dashboard](https://console.cloudinary.com) (blank = uploads stored on Render's ephemeral disk and lost on redeploy) |
    | `CLIENT_URL` | leave as a placeholder for now (set in step 3) |
    | `RUN_SEED` | **`true`** for this first deploy only |
    | `SMTP_HOST` | SMTP server for transactional email, e.g. `smtp.resend.com` (blank = emails print to server logs) |
@@ -103,9 +104,9 @@ Production demo stack — all free tier:
 
 ## Known demo limitations
 
-- **Uploads are ephemeral** — Render's free filesystem resets on redeploy, so
-  user-uploaded listing images disappear after a deploy/restart. Seed data is
-  unaffected. For permanent uploads, move to S3/Cloudinary later.
+- **Uploads without Cloudinary are ephemeral** — with `CLOUDINARY_URL` unset,
+  images go to Render's free filesystem, which resets on redeploy. Set
+  `CLOUDINARY_URL` (free tier is plenty) and uploads persist on a CDN instead.
 - **Cold starts** — see the free-tier note at the top.
 - **Local dev** currently can't reach Neon on this machine (router DNS refuses
   `*.aws.neon.tech`). Production hosts resolve it fine. To dev locally, either set

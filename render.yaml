@@ -51,6 +51,11 @@ services:
         sync: false
       - key: RAZORPAY_WEBHOOK_SECRET
         sync: false
+      # --- Cloudinary (persistent image uploads). CLOUDINARY_URL from the
+      #     Cloudinary dashboard: cloudinary://<key>:<secret>@<cloud_name>
+      #     Blank → uploads go to local disk, which Render wipes on redeploy. ---
+      - key: CLOUDINARY_URL
+        sync: false
       # --- CORS / cookies: exact Vercel frontend origin, no trailing slash ---
       # e.g. https://cropbid.vercel.app  (set AFTER the Vercel deploy exists)
       - key: CLIENT_URL

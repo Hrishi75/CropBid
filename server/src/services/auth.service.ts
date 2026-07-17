@@ -12,8 +12,6 @@
 // =============================================================================
 
 import bcrypt from 'bcryptjs';
-import fs from 'fs';
-import path from 'path';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
@@ -21,6 +19,7 @@ import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/r
 import { ApiError } from '../utils/ApiError';
 import { sendPasswordResetEmail } from './email.service';
 import { recordAudit } from './audit.service';
+import { removeImage } from './imageStorage';
 import { config } from '../config';
 
 // ---------------------------------------------------------------------------
@@ -360,16 +359,8 @@ export async function changePassword(userId: string, currentPassword: string, ne
 // The upload middleware has already validated, squared, and stored the image;
 // this just points the user at it. Returns the same shape as getCurrentUser.
 
-// uploads/ is served publicly via express.static, so replaced avatars must be
-// deleted from disk or they stay accessible (and accumulate) forever. Only
-// touch files under our own avatars folder — basename() guards against a
-// tampered DB value escaping the directory.
-const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
-
-function removeAvatarFile(avatarUrlPath: string) {
-  if (!avatarUrlPath.startsWith('/uploads/avatars/')) return;
-  fs.unlink(path.join(AVATARS_DIR, path.basename(avatarUrlPath)), () => {});
-}
+// Replaced avatars stay publicly accessible (and accumulate) forever unless
+// deleted — removeImage handles both backends (local uploads/ and Cloudinary).
 
 export async function updateAvatar(userId: string, avatarPath: string) {
   const previous = await prisma.user.findUnique({
@@ -386,9 +377,10 @@ export async function updateAvatar(userId: string, avatarPath: string) {
     },
   });
 
-  // DB write succeeded — the old file is orphaned now; clean it up.
+  // DB write succeeded — the old image is orphaned now; clean it up.
+  // Fire-and-forget: removeImage never throws.
   if (previous?.avatar && previous.avatar !== avatarPath) {
-    removeAvatarFile(previous.avatar);
+    void removeImage(previous.avatar);
   }
 
   const {
