@@ -30,7 +30,10 @@ export default function MandiTabs({ active }: { active: 'rates' | 'forecast' }) 
   const Seg = ({ id, label }: { id: 'rates' | 'forecast'; label: string }) => {
     const on = active === id;
     return (
-      <PressScale onPress={() => go(id)} scaleTo={0.96} cardStyle={[styles.seg, on && styles.segOn]}>
+      // Layout must go on the Pressable itself (`style`) — flex inside
+      // `cardStyle` collapses to zero width because the Pressable wrapper
+      // sizes to content.
+      <PressScale onPress={() => go(id)} scaleTo={0.96} style={styles.segSlot} cardStyle={[styles.seg, on && styles.segOn]}>
         <Text style={[styles.segText, on && styles.segTextOn]}>{label}</Text>
       </PressScale>
     );
@@ -51,8 +54,9 @@ const styles = StyleSheet.create({
     backgroundColor: design.paper,
     borderBottomWidth: 1, borderBottomColor: design.line,
   },
+  segSlot: { flex: 1 },
   seg: {
-    flex: 1, alignItems: 'center',
+    alignItems: 'center',
     borderWidth: 1, borderColor: design.line, borderRadius: 999,
     paddingVertical: 8, backgroundColor: design.paper,
   },
