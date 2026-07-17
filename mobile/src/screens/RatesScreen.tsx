@@ -13,7 +13,6 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
-import MandiTabs from '../components/MandiTabs';
 import { PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { money, unitLabel } from '../lib/format';
@@ -189,7 +188,9 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
 
 // --- screen ---
 
-export default function RatesScreen() {
+// Rendered inside MandiScreen (the Mandi section: Live rates ⇄ Forecast) —
+// a body, not a standalone route.
+export function RatesBody() {
   const { t } = useTranslation();
   const [board, setBoard] = useState<Board | null>(null);
   const [failed, setFailed] = useState(false);
@@ -206,8 +207,6 @@ export default function RatesScreen() {
 
   return (
     <View style={styles.flex}>
-      <MandiTabs active="rates" />
-
       {/* state filter rail */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPad}>

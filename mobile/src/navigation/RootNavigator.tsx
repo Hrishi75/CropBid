@@ -33,8 +33,7 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
-import RatesScreen from '../screens/RatesScreen';
-import ForecastScreen from '../screens/ForecastScreen';
+import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
@@ -74,13 +73,8 @@ function BuyerNavigator() {
       />
       <RootStack.Screen
         name="Rates"
-        component={RatesScreen}
+        component={MandiScreen}
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <RootStack.Screen
-        name="Forecast"
-        component={ForecastScreen}
-        options={{ headerShown: true, title: t('Price forecast'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Schemes"
@@ -135,13 +129,8 @@ function FarmerNavigator() {
       />
       <FarmerStack.Screen
         name="Rates"
-        component={RatesScreen}
+        component={MandiScreen}
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <FarmerStack.Screen
-        name="Forecast"
-        component={ForecastScreen}
-        options={{ headerShown: true, title: t('Price forecast'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Schemes"
@@ -186,13 +175,8 @@ function ConsumerNavigator() {
       />
       <ConsumerStack.Screen
         name="Rates"
-        component={RatesScreen}
+        component={MandiScreen}
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Forecast"
-        component={ForecastScreen}
-        options={{ headerShown: true, title: t('Price forecast'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Schemes"
@@ -223,13 +207,8 @@ function GuestNavigator() {
       />
       <GuestStack.Screen
         name="Rates"
-        component={RatesScreen}
+        component={MandiScreen}
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <GuestStack.Screen
-        name="Forecast"
-        component={ForecastScreen}
-        options={{ headerShown: true, title: t('Price forecast'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Schemes"

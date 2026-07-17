@@ -13,7 +13,6 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
-import MandiTabs from '../components/MandiTabs';
 import { PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { money, unitLabel } from '../lib/format';
@@ -129,9 +128,11 @@ function PredictionCard({ p, open, onToggle }: { p: Prediction; open: boolean; o
   );
 }
 
-// --- screen ---
+// --- body ---
 
-export default function ForecastScreen() {
+// Rendered inside MandiScreen (the Mandi section: Live rates ⇄ Forecast) —
+// a body, not a standalone route.
+export function ForecastBody() {
   const { t } = useTranslation();
   const [board, setBoard] = useState<ForecastBoard | null>(null);
   const [failed, setFailed] = useState(false);
@@ -155,8 +156,6 @@ export default function ForecastScreen() {
 
   return (
     <View style={styles.flex}>
-      <MandiTabs active="forecast" />
-
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPad}>
         {/* source line */}
         <View style={styles.srcRow}>
