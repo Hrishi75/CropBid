@@ -19,7 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 import { Eyebrow, Mono, StatusPill } from '../components/buyerKit';
+import { LanguageChips } from '../components/LanguagePicker';
 import { IconChevR } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { useAuth } from '../context/AuthContext';
@@ -28,6 +30,7 @@ import { uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const nav = useNavigation<NativeStackNavigationProp<ProfileParamList>>();
   const { user, refreshUser, applyUser, signOut } = useAuth();
@@ -42,8 +45,8 @@ export default function ProfileScreen() {
   const photo = mediaUrl(user.avatar);
   const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
   const subtitle = isFarmer
-    ? `Farmer${farm?.state ? ` · ${farm.state}` : ''}`
-    : user.buyerProfile?.companyName ?? 'Buyer';
+    ? `${t('Farmer')}${farm?.state ? ` · ${farm.state}` : ''}`
+    : user.buyerProfile?.companyName ?? t('Buyer');
 
   async function onRefresh() {
     setRefreshing(true);
@@ -106,10 +109,10 @@ export default function ProfileScreen() {
   }
 
   function onSignOutPress() {
-    Alert.alert('Log out?', isFarmer ? 'You can come back any time.' : undefined, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Log out?'), isFarmer ? t('You can come back any time') : undefined, [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Log out',
+        text: t('Log out'),
         style: 'destructive',
         onPress: async () => {
           setSigningOut(true);
@@ -132,8 +135,8 @@ export default function ProfileScreen() {
       >
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
-            <Eyebrow>Your account</Eyebrow>
-            <StatusPill tone="sage">{isFarmer ? 'farmer' : 'buyer'}</StatusPill>
+            <Eyebrow>{t('Your account')}</Eyebrow>
+            <StatusPill tone="sage">{isFarmer ? t('farmer') : t('buyer')}</StatusPill>
           </View>
           <Text style={styles.h1}>
             {isFarmer ? <>Everything about <Text style={styles.h1Serif}>you.</Text></> : <>Your <Text style={styles.h1Serif}>account.</Text></>}
@@ -164,7 +167,7 @@ export default function ProfileScreen() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
                 <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
-                <Text style={styles.photoHint}>Tap the photo to change it</Text>
+                <Text style={styles.photoHint}>{t('Tap the photo to change it')}</Text>
               </View>
             </View>
 
@@ -181,9 +184,20 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* language */}
+        <View style={[styles.sectionHead, styles.sidePadHead]}>
+          <Eyebrow>{t('Language')} · भाषा</Eyebrow>
+        </View>
+        <View style={styles.sidePad}>
+          <View style={styles.card}>
+            <Text style={styles.langHint}>{t('Choose the language the app speaks')}</Text>
+            <LanguageChips />
+          </View>
+        </View>
+
         {/* details */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
-          <Eyebrow>{isFarmer ? 'Your details' : 'Account details'}</Eyebrow>
+          <Eyebrow>{isFarmer ? t('Your details') : t('Account details')}</Eyebrow>
         </View>
         <View style={styles.sidePad}>
           <View style={styles.card}>
@@ -205,7 +219,7 @@ export default function ProfileScreen() {
         {isFarmer ? (
           <>
             <View style={[styles.sectionHead, styles.sidePadHead]}>
-              <Eyebrow>Your farm</Eyebrow>
+              <Eyebrow>{t('Your farm')}</Eyebrow>
               {farm?.organicCertified ? <StatusPill tone="sage">organic</StatusPill> : null}
             </View>
             <View style={styles.sidePad}>
@@ -232,7 +246,7 @@ export default function ProfileScreen() {
         ) : user.buyerProfile ? (
           <>
             <View style={[styles.sectionHead, styles.sidePadHead]}>
-              <Eyebrow>Company</Eyebrow>
+              <Eyebrow>{t('Company')}</Eyebrow>
             </View>
             <View style={styles.sidePad}>
               <View style={styles.card}>
@@ -246,30 +260,30 @@ export default function ProfileScreen() {
 
         {/* actions */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
-          <Eyebrow>{isFarmer ? 'Do something' : 'Actions'}</Eyebrow>
+          <Eyebrow>{isFarmer ? t('Do something') : t('Actions')}</Eyebrow>
         </View>
         <View style={[styles.sidePad, { gap: 10 }]}>
           {isFarmer ? (
             <Row
-              label="Change your details"
-              hint="Name, phone, village and farm"
+              label={t('Change your details')}
+              hint={t('Name, phone, village and farm')}
               onPress={() => nav.navigate('EditProfile')}
             />
           ) : null}
           <Row
-            label={isFarmer ? 'See what happened' : 'Activity'}
-            hint={isFarmer ? 'Offers, deals and payments' : 'Notifications and updates'}
+            label={isFarmer ? t('See what happened') : t('Activity')}
+            hint={isFarmer ? t('Offers, deals and payments') : t('Notifications and updates')}
             onPress={() => nav.navigate('Notifications')}
           />
           {isFarmer ? (
-            <Row label="Your sales" hint="Deals and payments so far" onPress={() => nav.navigate('Contracts')} />
+            <Row label={t('Your sales')} hint={t('Deals and payments so far')} onPress={() => nav.navigate('Contracts')} />
           ) : null}
           {isFarmer ? (
-            <Row label="Your AI helper" hint="Answers offers for you" onPress={() => nav.navigate('Helper')} />
+            <Row label={t('Your AI helper')} hint={t('Answers offers for you')} onPress={() => nav.navigate('Helper')} />
           ) : null}
           <Row
-            label="Log out"
-            hint={isFarmer ? 'You can come back any time' : undefined}
+            label={t('Log out')}
+            hint={isFarmer ? t('You can come back any time') : undefined}
             danger
             loading={signingOut}
             onPress={onSignOutPress}
@@ -331,6 +345,7 @@ const styles = StyleSheet.create({
   h1Serif: { fontFamily: font.serifItalic, fontSize: 29, color: colors.forest },
 
   card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  langHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginBottom: 10 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingBottom: 8 },
 
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },

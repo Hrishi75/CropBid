@@ -10,8 +10,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
+import MandiTabs from '../components/MandiTabs';
 import { PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { money, unitLabel } from '../lib/format';
@@ -82,6 +84,7 @@ const MAX_ROWS = 40;
 // --- market-wise breakdown, loaded when a crop is expanded ---
 
 function MarketList({ commodity, state, unit }: { commodity: string; state: string; unit: Unit }) {
+  const { t } = useTranslation();
   const [data, setData] = useState<Breakdown | null>(null);
   const [failed, setFailed] = useState(false);
   const [visibleRows, setVisibleRows] = useState(MAX_ROWS);
@@ -98,10 +101,16 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
     return () => { on = false; };
   }, [commodity, state]);
 
-  if (failed) return <Text style={styles.note}>Could not load the market breakdown — try again in a moment.</Text>;
-  if (!data) return <Text style={styles.note}>Loading every reporting mandi…</Text>;
+  if (failed) return <Text style={styles.note}>{t('Could not load the market breakdown — try again in a moment.')}</Text>;
+  if (!data) return <Text style={styles.note}>{t('Loading every reporting mandi…')}</Text>;
   if (data.count === 0) {
-    return <Text style={styles.note}>No mandi reported this crop today{state ? ` in ${state}` : ''} — the price above is the reference level.</Text>;
+    return (
+      <Text style={styles.note}>
+        {state
+          ? t('No mandi reported this crop in {{state}} today — the price above is the reference level.', { state })
+          : t('No mandi reported this crop today — the price above is the reference level.')}
+      </Text>
+    );
   }
 
   const rows = data.records.slice(0, visibleRows);
@@ -109,7 +118,7 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
   return (
     <View style={styles.marketList}>
       <Mono style={styles.marketCount}>
-        {data.count} MANDIS REPORTING · ₹/{unitLabel(unit)}
+        {t('{{n}} MANDIS REPORTING', { n: data.count })} · ₹/{unitLabel(unit)}
       </Mono>
       {rows.map((r, i) => (
         <View key={`${r.market}-${r.variety}-${i}`} style={styles.marketRow}>
@@ -132,7 +141,7 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
           cardStyle={styles.moreRows}
         >
           <Text style={styles.moreRowsText}>
-            Show {Math.min(MAX_ROWS, remainingRows)} more mandis
+            {t('Show {{n}} more mandis', { n: Math.min(MAX_ROWS, remainingRows) })}
           </Text>
         </PressScale>
       )}
@@ -143,6 +152,7 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
 // --- one crop card (tap to expand the mandi list) ---
 
 function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; onToggle: () => void; state: string }) {
+  const { t } = useTranslation();
   const showSignal = r.source !== 'reference' && Math.abs(r.changePct) >= 0.1;
   return (
     <View style={[styles.card, open && styles.cardOpen]}>
@@ -163,14 +173,14 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
             </Text>
             {showSignal ? (
               <Mono style={[styles.cardDelta, { color: r.changePct >= 0 ? colors.forest : colors.ember2 }]}>
-                {r.changePct >= 0 ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}% vs usual
+                {r.changePct >= 0 ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}% {t('vs usual')}
               </Mono>
             ) : (
-              <Mono style={styles.cardSteady}>{r.source === 'reference' ? 'ref price' : 'steady'}</Mono>
+              <Mono style={styles.cardSteady}>{r.source === 'reference' ? t('ref price') : t('steady')}</Mono>
             )}
           </View>
         </View>
-        <Text style={styles.cardMore}>{open ? 'hide mandis ↑' : 'see every mandi ↓'}</Text>
+        <Text style={styles.cardMore}>{open ? t('hide mandis ↑') : t('see every mandi ↓')}</Text>
       </PressScale>
       {open && <MarketList key={`${r.commodity}::${state}`} commodity={r.commodity} state={state} unit={r.unit} />}
     </View>
@@ -180,6 +190,7 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
 // --- screen ---
 
 export default function RatesScreen() {
+  const { t } = useTranslation();
   const [board, setBoard] = useState<Board | null>(null);
   const [failed, setFailed] = useState(false);
   const [state, setState] = useState('');
@@ -195,6 +206,8 @@ export default function RatesScreen() {
 
   return (
     <View style={styles.flex}>
+      <MandiTabs active="rates" />
+
       {/* state filter rail */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPad}>
@@ -202,7 +215,7 @@ export default function RatesScreen() {
             const on = state === s;
             return (
               <PressScale key={s || 'all'} onPress={() => { glide(); setState(s); setOpen(null); }} scaleTo={0.94} cardStyle={[styles.chip, on && styles.chipOn]}>
-                <Text style={[styles.chipText, on && styles.chipTextOn]}>{s || 'All India'}</Text>
+                <Text style={[styles.chipText, on && styles.chipTextOn]}>{s || t('All India')}</Text>
               </PressScale>
             );
           })}
@@ -218,15 +231,15 @@ export default function RatesScreen() {
           </Mono>
         </View>
 
-        {failed && <Text style={styles.note}>Could not reach the rates service — pull back and try again.</Text>}
-        {!board && !failed && <Text style={styles.note}>Loading today's rates…</Text>}
+        {failed && <Text style={styles.note}>{t('Could not reach the rates service — pull back and try again.')}</Text>}
+        {!board && !failed && <Text style={styles.note}>{t("Loading today's rates…")}</Text>}
 
         {board && CATS.map((cat) => {
           const rates = board.rates.filter((r) => r.cat === cat.id);
           if (rates.length === 0) return null;
           return (
             <View key={cat.id}>
-              <Text style={styles.catTitle}>{cat.title}</Text>
+              <Text style={styles.catTitle}>{t(cat.title)}</Text>
               {rates.map((r) => (
                 <CropCard
                   key={r.commodity}
@@ -242,8 +255,7 @@ export default function RatesScreen() {
 
         {board && (
           <Text style={styles.foot}>
-            Wholesale ₹ as reported by each market committee. “vs usual” compares today's modal
-            price with the crop's typical level — a signal, not a forecast.
+            {t("Wholesale ₹ as reported by each market committee. “vs usual” compares today's modal price with the crop's typical level — a signal, not a forecast.")}
           </Text>
         )}
       </ScrollView>

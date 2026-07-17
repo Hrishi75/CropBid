@@ -31,13 +31,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { IconSearch } from '../components/icons';
 import { Mono } from '../components/buyerKit';
+import { LanguagePill } from '../components/LanguagePicker';
 import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { browse } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
+import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
 import { money, unitLabel } from '../lib/format';
@@ -113,7 +116,7 @@ function fromListing(l: Listing): CardVM {
     name: l.cropName,
     variety: l.cropVariety,
     emoji: null,
-    image: l.images?.[0] ?? null,
+    image: l.images?.[0] ?? cropImageFor(l.cropName),
     unit: l.unit,
     price: l.retailPricePerUnit ?? l.pricePerUnitMin,
     anchor: l.pricePerUnitMax,
@@ -133,6 +136,7 @@ function pctOff(vm: CardVM): number {
 }
 
 export default function StorefrontHomeScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
   const { user } = useAuth();
@@ -255,19 +259,22 @@ export default function StorefrontHomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Wordmark size={19} />
-          {user ? (
-            <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
-              {user.avatar ? (
-                <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
-              ) : (
-                <Text style={styles.avatarLetter}>{(user.name?.[0] ?? '·').toUpperCase()}</Text>
-              )}
-            </PressScale>
-          ) : (
-            <PressScale onPress={() => nav.navigate('Login')} cardStyle={styles.loginPill}>
-              <Text style={styles.loginPillText}>Log in</Text>
-            </PressScale>
-          )}
+          <View style={styles.headerRight}>
+            <LanguagePill />
+            {user ? (
+              <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
+                {user.avatar ? (
+                  <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarLetter}>{(user.name?.[0] ?? '·').toUpperCase()}</Text>
+                )}
+              </PressScale>
+            ) : (
+              <PressScale onPress={() => nav.navigate('Login')} cardStyle={styles.loginPill}>
+                <Text style={styles.loginPillText}>{t('Log in')}</Text>
+              </PressScale>
+            )}
+          </View>
         </View>
 
         <View style={styles.searchBar}>
@@ -320,9 +327,9 @@ export default function StorefrontHomeScreen() {
                   <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
                 </Text>
                 <View style={styles.bannerTicks}>
-                  <Text style={styles.bannerTick}>✓ Open bidding & auctions</Text>
-                  <Text style={styles.bannerTick}>✓ Escrow settlement</Text>
-                  <Text style={styles.bannerTick}>✓ Farm to door</Text>
+                  <Text style={styles.bannerTick}>✓ {t('Open bidding & auctions')}</Text>
+                  <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
+                  <Text style={styles.bannerTick}>✓ {t('Farm to door')}</Text>
                 </View>
               </View>
             </View>
@@ -330,16 +337,17 @@ export default function StorefrontHomeScreen() {
             {/* today's live mandi rates — the shared price anchor, up front */}
             <RatesRail board={board} onSeeAll={() => nav.navigate('Rates')} />
 
-            {/* promo trio — the web's sage/paper/ember cards as a rail */}
+            {/* promo rail — the web's sage/paper/ember cards */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
-              <PromoCard tone="sage" emoji="🏛️" title="Sarkari Yojana" desc="PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed." onPress={() => nav.navigate('Schemes')} />
-              <PromoCard tone="paper" emoji="🧺" title="Buy direct, no bidding" desc="Any quantity, at the farmer's listed price." />
-              <PromoCard tone="paper" emoji="🚜" title="Straight from the grower" desc="A shorter chain means fairer prices — for the farm and for you." />
-              <PromoCard tone="ember" emoji="🛡️" title="Escrow protected" desc="Money stays held on-platform until the crop reaches you." />
+              <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Forecast')} />
+              <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
+              <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t("Any quantity, at the farmer's listed price.")} />
+              <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for you.')} />
+              <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
             </ScrollView>
 
             {/* shop by category — web's tile row */}
-            <Text style={styles.sectionTitle}>Shop by category</Text>
+            <Text style={styles.sectionTitle}>{t('Shop by category')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
               {CATEGORY_TILES.map((c) => (
                 <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
@@ -481,14 +489,15 @@ function TickerStrip({ board }: { board: RatesBoardData | null }) {
 // under the hero. Live govt numbers with a "vs usual" signal per crop; the
 // "see all" opens the dedicated Rates screen with the market-wise breakdown.
 function RatesRail({ board, onSeeAll }: { board: RatesBoardData | null; onSeeAll: () => void }) {
+  const { t } = useTranslation();
   if (!board) return null;
   return (
     <View>
       <View style={styles.ratesHead}>
         {board.live ? <Pulse style={styles.liveDot} /> : null}
-        <Text style={styles.ratesTitle}>Today's mandi rates</Text>
+        <Text style={styles.ratesTitle}>{t("Today's mandi rates")}</Text>
         <PressScale onPress={onSeeAll} scaleTo={0.94} cardStyle={styles.ratesSeeAll}>
-          <Text style={styles.ratesSeeAllText}>see all →</Text>
+          <Text style={styles.ratesSeeAllText}>{t('see all →')}</Text>
         </PressScale>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ratesPad}>
@@ -687,6 +696,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 10,
   },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   avatar: {
     width: 36,
     height: 36,

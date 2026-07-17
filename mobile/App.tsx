@@ -2,6 +2,7 @@
 // Instrument Serif fonts, shows a loader until they're ready, then mounts the
 // provider tree: SafeAreaProvider → AuthProvider → RootNavigator.
 
+import './src/i18n'; // side-effect: init i18next + restore the saved language
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
