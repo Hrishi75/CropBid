@@ -32,6 +32,21 @@ import type { NegotiationContext } from '../utils/prompts';
 
 const MAX_ROUNDS = 6; // Max back-and-forth rounds
 
+// Counterparty-safe farmer shape: public display fields only — never the
+// private profile (bankDetails, apmcLicense, fpoName, farmSizeAcres).
+// Mirrors PUBLIC_FARMER_SELECT in listing/browse services, plus userId,
+// which involvement checks compare against (it equals the public user.id).
+const PUBLIC_FARMER_SELECT = {
+  id: true,
+  userId: true,
+  state: true,
+  country: true,
+  organicCertified: true,
+  certificationBody: true,
+  verified: true,
+  user: { select: { id: true, name: true, trustScore: true, avatar: true } },
+} as const;
+
 // =============================================================================
 // Round log entry — stored in the JSON `rounds` column
 // =============================================================================
@@ -54,9 +69,7 @@ export async function startNegotiation(bidId: string, userId: string) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true, trustScore: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       buyer: { select: { id: true, name: true, trustScore: true } },
@@ -240,9 +253,7 @@ async function runNegotiation(
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       bid: {
@@ -351,9 +362,7 @@ export async function getNegotiation(negotiationId: string, userId: string) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true, trustScore: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       bid: {
@@ -401,9 +410,7 @@ export async function getMyNegotiations(userId: string, role: string) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       bid: {
@@ -426,9 +433,7 @@ export async function getNegotiationByBid(bidId: string, userId: string) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true, trustScore: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       bid: {
