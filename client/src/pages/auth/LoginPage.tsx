@@ -2,8 +2,8 @@
 // LoginPage — Email/password sign-in
 // =============================================================================
 // Public page. Validates the email locally, calls AuthContext.login(), then
-// redirects to "/" (which RootRedirect sends to the role dashboard). Includes
-// one-tap "Quick login" chips for the seeded demo accounts and a marketing rail.
+// redirects to "/" (which RootRedirect sends to the role dashboard), with a
+// marketing rail alongside.
 // =============================================================================
 
 import { useState } from 'react';
@@ -15,12 +15,6 @@ import { Input } from '../../components/ui/Input';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import toast from 'react-hot-toast';
-
-const QUICK_ACCOUNTS = [
-  { label: 'Farmer', email: 'rajesh@cropbid.test' },
-  { label: 'Buyer', email: 'vikram@cropbid.test' },
-  { label: 'Admin', email: 'admin@cropbid.test' },
-];
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -128,26 +122,6 @@ export function LoginPage() {
                 <ArrowIcon />
               </Button>
             </form>
-
-            <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--cb-line)' }}>
-              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>{t('Quick login · test accounts')}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                {QUICK_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    className="cb-chip"
-                    style={{ cursor: 'pointer', justifyContent: 'center', padding: '6px 10px' }}
-                    onClick={() => {
-                      setEmail(acc.email);
-                      setPassword('password123');
-                    }}
-                  >
-                    {t(acc.label)}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <p className="cb-small" style={{ marginTop: 28, textAlign: 'center' }}>
               {t('No account on CropBid?')}{' '}
