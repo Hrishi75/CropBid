@@ -150,6 +150,8 @@ export interface Transaction {
   deliveryStatus: DeliveryStatus;
   razorpayOrderId?: string | null;
   razorpayPaymentId?: string | null;
+  // Present when /transactions is asked to include shipment state (Deliveries page)
+  shipment?: Shipment | null;
   createdAt: string;
 }
 
