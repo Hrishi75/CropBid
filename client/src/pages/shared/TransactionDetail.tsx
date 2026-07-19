@@ -220,12 +220,20 @@ export function TransactionDetail() {
           <div style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>SELLER</div>
             <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.farmer?.name}</div>
-            <div className="cb-tiny" style={{ marginTop: 2 }}>Trust {Math.round(transaction.farmer?.trustScore || 0)}</div>
+            <div className="cb-tiny" style={{ marginTop: 2 }}>
+              Trust {Math.round(transaction.farmer?.trustScore || 0)}
+              {transaction.farmer?.phone && <> · <a href={`tel:${transaction.farmer.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.farmer.phone}</a></>}
+            </div>
           </div>
           <div>
             <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>BUYER</div>
             <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.buyer?.name}{isBuyer && ' (YOU)'}</div>
-            <div className="cb-tiny" style={{ marginTop: 2 }}>Trust {Math.round(transaction.buyer?.trustScore || 0)}</div>
+            <div className="cb-tiny" style={{ marginTop: 2 }}>
+              Trust {Math.round(transaction.buyer?.trustScore || 0)}
+              {(transaction.bid?.contactPhone || transaction.buyer?.phone) && (
+                <> · <a href={`tel:${transaction.bid?.contactPhone || transaction.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.bid?.contactPhone || transaction.buyer?.phone}</a></>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -253,6 +261,12 @@ export function TransactionDetail() {
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Delivery</div>
           <SpecRow label="Status" value={DELIVERY_STEPS[currentStepIndex]?.label || 'PENDING'} />
+          {transaction.bid?.deliveryAddress && (
+            <SpecRow label="Deliver to" value={transaction.bid.deliveryAddress} />
+          )}
+          {transaction.bid?.deliveryTerms && (
+            <SpecRow label="Terms" value={[transaction.bid.paymentTerms, transaction.bid.deliveryTerms].filter(Boolean).join(' · ')} />
+          )}
           <SpecRow label="Carrier" value="—" />
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Link to={`/logistics/shipment/transaction/${id}`} className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5, justifyContent: 'flex-start' }}>

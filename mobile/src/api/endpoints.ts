@@ -166,6 +166,8 @@ export async function placeBid(input: {
   bidPricePerUnit: number;
   quantity: number;
   message?: string;
+  deliveryAddress?: string;
+  contactPhone?: string;
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids', input);
   return data;
@@ -184,7 +186,14 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
 }
 
 // --- Consumer direct purchase (instant-buy, no negotiation) ---
-export async function directPurchase(input: { listingId: string; quantity: number }): Promise<Bid> {
+// deliveryAddress/contactPhone are optional: when omitted the server snapshots
+// the consumer's profile phone/location onto the order for the seller.
+export async function directPurchase(input: {
+  listingId: string;
+  quantity: number;
+  deliveryAddress?: string;
+  contactPhone?: string;
+}): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids/direct-purchase', input);
   return data;
 }

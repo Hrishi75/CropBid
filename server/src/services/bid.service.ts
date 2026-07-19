@@ -28,11 +28,41 @@ interface PlaceBidInput {
   bidPricePerUnit: number;
   quantity: number;
   message?: string;
+  deliveryAddress?: string;
+  contactPhone?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
 }
 
 interface DirectPurchaseInput {
   listingId: string;
   quantity: number;
+  deliveryAddress?: string;
+  contactPhone?: string;
+}
+
+// The seller needs to know where to send the goods and whom to call. When the
+// order form didn't collect these (one-tap consumer buy, agent bids), snapshot
+// the buyer's profile phone/location instead of leaving the seller blind.
+async function orderContactDefaults(
+  buyerId: string,
+  input: { deliveryAddress?: string; contactPhone?: string },
+) {
+  // Whitespace-only values count as "not supplied" — otherwise they'd both
+  // skip the profile fallback and render as blank order details.
+  const deliveryAddress = input.deliveryAddress?.trim();
+  const contactPhone = input.contactPhone?.trim();
+  if (deliveryAddress && contactPhone) {
+    return { deliveryAddress, contactPhone };
+  }
+  const buyer = await prisma.user.findUnique({
+    where: { id: buyerId },
+    select: { phone: true, location: true },
+  });
+  return {
+    deliveryAddress: deliveryAddress || buyer?.location || null,
+    contactPhone: contactPhone || buyer?.phone || null,
+  };
 }
 
 // =============================================================================
@@ -88,6 +118,8 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   // Calculate total
   const totalAmount = input.bidPricePerUnit * input.quantity;
 
+  const contact = await orderContactDefaults(buyerId, input);
+
   const bid = await prisma.bid.create({
     data: {
       listingId: input.listingId,
@@ -97,6 +129,10 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
       totalAmount,
       currency: listing.currency,
       message: input.message || null,
+      deliveryAddress: contact.deliveryAddress,
+      contactPhone: contact.contactPhone,
+      paymentTerms: input.paymentTerms || null,
+      deliveryTerms: input.deliveryTerms || null,
       isAgentBid: false,
       status: 'PENDING',
     },
@@ -146,6 +182,19 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   const retailPrice = listing.retailPricePerUnit;
   const totalAmount = retailPrice * input.quantity;
 
+  const contact = await orderContactDefaults(consumerId, input);
+
+  // A retail order the seller can't deliver or follow up on is worthless —
+  // unlike a B2B bid, there's no negotiation step where logistics get sorted
+  // out later. Refuse until the consumer supplies (or their profile carries)
+  // both a destination and a phone number.
+  if (!contact.deliveryAddress || !contact.contactPhone) {
+    throw new ApiError(
+      400,
+      'Add a delivery address and phone number so the farmer can deliver your order — set them in your profile or include them with the purchase.',
+    );
+  }
+
   // Same conditional-claim pattern as acceptBid below: only decrement stock if
   // enough remains and the listing is still active, closing the same TOCTOU
   // race two concurrent purchases could otherwise hit.
@@ -171,6 +220,8 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
         quantity: input.quantity,
         totalAmount,
         currency: listing.currency,
+        deliveryAddress: contact.deliveryAddress,
+        contactPhone: contact.contactPhone,
         isAgentBid: false,
         isDirectPurchase: true,
         status: 'ACCEPTED',
@@ -215,7 +266,8 @@ export async function getBidsForListing(listingId: string, farmerId: string) {
     where: { listingId },
     orderBy: { createdAt: 'desc' },
     include: {
-      buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      // phone/location so the seller can reach the buyer and plan delivery
+      buyer: { select: { id: true, name: true, trustScore: true, avatar: true, phone: true, location: true } },
     },
   });
 
@@ -266,7 +318,8 @@ export async function getIncomingBids(farmerId: string, status?: string) {
     orderBy: { createdAt: 'desc' },
     include: {
       listing: true,
-      buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      // phone/location so the seller can reach the buyer and plan delivery
+      buyer: { select: { id: true, name: true, trustScore: true, avatar: true, phone: true, location: true } },
     },
   });
 

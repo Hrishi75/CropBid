@@ -124,6 +124,11 @@ export interface Bid {
   quantity: number;
   currency: Currency;
   message: string | null;
+  // Order fulfilment details — where to deliver and whom to call
+  deliveryAddress?: string | null;
+  contactPhone?: string | null;
+  paymentTerms?: string | null;
+  deliveryTerms?: string | null;
   isAgentBid: boolean;
   status: BidStatus;
   counterPrice: number | null;
