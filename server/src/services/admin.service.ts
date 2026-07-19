@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
+import { ApiError } from '../utils/ApiError';
 
 // =============================================================================
 // PLATFORM STATS — Top-level numbers for the dashboard
@@ -173,4 +174,105 @@ export async function updateUser(userId: string, data: { trustScore?: number }) 
       trustScore: true,
     },
   });
+}
+
+// =============================================================================
+// DELETE LISTING — Admin removes a listing from the market
+// =============================================================================
+// Bids and negotiations hanging off the listing cascade with it. Listings that
+// already produced a transaction are financial history and can't be deleted —
+// those are only removed by purgeDemoData.
+export async function deleteListing(listingId: string) {
+  const listing = await prisma.listing.findUnique({
+    where: { id: listingId },
+    include: { _count: { select: { transactions: true } } },
+  });
+  if (!listing) throw new ApiError(404, 'Listing not found');
+  if (listing._count.transactions > 0) {
+    throw new ApiError(409, 'Listing has transactions attached and cannot be deleted');
+  }
+
+  await prisma.listing.delete({ where: { id: listingId } });
+  return { id: listingId, cropName: listing.cropName };
+}
+
+// =============================================================================
+// DELETE USER — Admin removes an account that never transacted
+// =============================================================================
+// Profiles, listings, bids, notifications, and agent config cascade with the
+// user row. Negotiations that reference the user's agent config sit on OTHER
+// users' bids, so they're cleared first to free the agent config's restrict
+// FKs. Users with transactions are financial history — refuse.
+export async function deleteUser(userId: string, actingAdminId: string) {
+  if (userId === actingAdminId) {
+    throw new ApiError(400, 'You cannot delete your own admin account');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new ApiError(404, 'User not found');
+  if (user.role === 'ADMIN') {
+    throw new ApiError(403, 'Admin accounts cannot be deleted via the API');
+  }
+
+  const transactions = await prisma.transaction.count({
+    where: { OR: [{ farmerId: userId }, { buyerId: userId }] },
+  });
+  if (transactions > 0) {
+    throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const agent = await tx.agentConfig.findUnique({ where: { userId } });
+    if (agent) {
+      await tx.negotiation.deleteMany({
+        where: { OR: [{ farmerAgentId: agent.id }, { buyerAgentId: agent.id }] },
+      });
+    }
+    await tx.user.delete({ where: { id: userId } });
+  });
+
+  return { id: userId, email: user.email };
+}
+
+// =============================================================================
+// PURGE DEMO DATA — One-shot cleanup of seeded/test data
+// =============================================================================
+// Deletes ALL marketplace activity (shipments, transactions, negotiations,
+// bids, listings, notifications) plus every user whose email ends in
+// "@cropbid.test" — except the calling admin — and any extra emails passed
+// explicitly. Real user ACCOUNTS survive; their listings/deals do not.
+// Logistics partners and the waitlist are left untouched.
+// Ordering matters: transactions restrict-FK onto listings/users, so activity
+// rows go first, users last.
+export async function purgeDemoData(actingAdminId: string, extraEmails: string[] = []) {
+  const demoUserWhere = {
+    id: { not: actingAdminId },
+    OR: [
+      { email: { endsWith: '@cropbid.test' } },
+      ...(extraEmails.length > 0 ? [{ email: { in: extraEmails } }] : []),
+    ],
+  };
+
+  const [shipments, transactions, negotiations, bids, listings, notifications, users] =
+    await prisma.$transaction([
+      prisma.shipment.deleteMany(),
+      prisma.transaction.deleteMany(),
+      prisma.negotiation.deleteMany(),
+      prisma.bid.deleteMany(),
+      prisma.listing.deleteMany(),
+      prisma.notification.deleteMany(),
+      prisma.user.deleteMany({ where: demoUserWhere }),
+    ]);
+
+  return {
+    deleted: {
+      shipments: shipments.count,
+      transactions: transactions.count,
+      negotiations: negotiations.count,
+      bids: bids.count,
+      listings: listings.count,
+      notifications: notifications.count,
+      users: users.count,
+    },
+  };
 }

@@ -109,6 +109,12 @@ export async function getMyTransactions(userId: string, role: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true } },
       bid: true,
+      // The Deliveries page renders shipment state per deal in one request
+      shipment: {
+        include: {
+          logisticsPartner: { select: { id: true, name: true, type: true } },
+        },
+      },
     },
   });
 

@@ -17,12 +17,13 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     # Build: install (incl. dev deps for tsc/ts-node), generate client, apply
-    # migrations, optionally seed (only when RUN_SEED=true), then compile TS.
+    # migrations, then compile TS. Seeding is NEVER part of the production
+    # build — it wipes every table. Run it manually if you must (seed.ts
+    # additionally refuses in production unless SEED_FORCE=true).
     buildCommand: >-
       npm install --include=dev &&
       npx prisma generate &&
       npx prisma migrate deploy &&
-      if [ "$RUN_SEED" = "true" ]; then npx prisma db seed; fi &&
       npm run build
     startCommand: npm run start
     envVars:
@@ -60,10 +61,6 @@ services:
       # e.g. https://cropbid.vercel.app  (set AFTER the Vercel deploy exists)
       - key: CLIENT_URL
         sync: false
-      # --- Seed gate: set "true" for the FIRST deploy only, then back to "false".
-      #     Seeding wipes & repopulates all tables on every run. ---
-      - key: RUN_SEED
-        value: "false"
       # --- Locale defaults ---
       - key: DEFAULT_CURRENCY
         value: INR

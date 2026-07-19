@@ -22,8 +22,17 @@ router.get('/users', adminController.getUsers);
 // PATCH /api/admin/users/:id — Update user
 router.patch('/users/:id', adminController.updateUser);
 
+// DELETE /api/admin/users/:id — Hard-delete a user (no transactions attached)
+router.delete('/users/:id', adminController.deleteUser);
+
 // GET /api/admin/listings — Listing oversight
 router.get('/listings', adminController.getAllListings);
+
+// DELETE /api/admin/listings/:id — Remove a listing (no transactions attached)
+router.delete('/listings/:id', adminController.deleteListing);
+
+// POST /api/admin/purge-demo-data — Wipe seeded demo data (confirm phrase required)
+router.post('/purge-demo-data', adminController.purgeDemoData);
 
 // GET /api/admin/transactions — Transaction oversight
 router.get('/transactions', adminController.getAllTransactions);

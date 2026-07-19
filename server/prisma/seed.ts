@@ -199,6 +199,15 @@ const globalListings: (ListingData & { country: string; state: string; currency:
 // MAIN SEED FUNCTION
 // =============================================================================
 async function main() {
+  // Seeding WIPES every table. In production that means destroying live user
+  // data, so it must never run there by accident (e.g. a stale RUN_SEED=true
+  // env var on the host). Require an explicit override.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_FORCE !== 'true') {
+    console.error('✋ Refusing to seed: NODE_ENV=production and seeding wipes all data.');
+    console.error('   Set SEED_FORCE=true if you really mean to reset the production database.');
+    process.exit(1);
+  }
+
   console.log('🌱 Starting CropBid database seed...\n');
 
   // Clean existing data (order matters due to foreign keys)

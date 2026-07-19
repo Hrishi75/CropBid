@@ -42,7 +42,6 @@ Production demo stack — all free tier:
    | `GEMINI_API_KEY` | Gemini key (or leave blank) |
    | `CLOUDINARY_URL` | `cloudinary://<key>:<secret>@<cloud_name>` from the [Cloudinary dashboard](https://console.cloudinary.com) (blank = uploads stored on Render's ephemeral disk and lost on redeploy) |
    | `CLIENT_URL` | leave as a placeholder for now (set in step 3) |
-   | `RUN_SEED` | **`true`** for this first deploy only |
    | `SMTP_HOST` | SMTP server for transactional email, e.g. `smtp.resend.com` (blank = emails print to server logs) |
    | `SMTP_PORT` | usually `587` (or `465` for implicit TLS) |
    | `SMTP_USER` / `SMTP_PASS` | SMTP credentials from your email provider |
@@ -52,11 +51,11 @@ Production demo stack — all free tier:
    > (Resend, Brevo, SES, Gmail app-password). With `SMTP_HOST` unset the app
    > still runs — reset emails are printed to the Render logs instead of sent.
 
-3. Deploy. The build runs: install → `prisma generate` → `prisma migrate deploy`
-   → seed (because `RUN_SEED=true`) → `tsc`.
-   Watch the logs for "migrations applied" and the seed output.
-4. **After the first successful deploy: set `RUN_SEED` back to `false`** and don't
-   redeploy with it `true` again (seeding **wipes** all tables every run).
+3. Deploy. The build runs: install → `prisma generate` → `prisma migrate deploy` → `tsc`.
+   Watch the logs for "migrations applied".
+4. Seeding is **not** part of the deploy — it wipes every table. To load demo
+   data into a fresh database, run `npx prisma db seed` manually (in production
+   it refuses unless `SEED_FORCE=true` is set — a guard against wiping live data).
 5. Note the service URL, e.g. `https://cropbid-api.onrender.com`.
    Verify: open `https://cropbid-api.onrender.com/api/health` → `{"status":"ok",...}`.
 
