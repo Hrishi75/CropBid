@@ -48,16 +48,20 @@ async function orderContactDefaults(
   buyerId: string,
   input: { deliveryAddress?: string; contactPhone?: string },
 ) {
-  if (input.deliveryAddress && input.contactPhone) {
-    return { deliveryAddress: input.deliveryAddress, contactPhone: input.contactPhone };
+  // Whitespace-only values count as "not supplied" — otherwise they'd both
+  // skip the profile fallback and render as blank order details.
+  const deliveryAddress = input.deliveryAddress?.trim();
+  const contactPhone = input.contactPhone?.trim();
+  if (deliveryAddress && contactPhone) {
+    return { deliveryAddress, contactPhone };
   }
   const buyer = await prisma.user.findUnique({
     where: { id: buyerId },
     select: { phone: true, location: true },
   });
   return {
-    deliveryAddress: input.deliveryAddress || buyer?.location || null,
-    contactPhone: input.contactPhone || buyer?.phone || null,
+    deliveryAddress: deliveryAddress || buyer?.location || null,
+    contactPhone: contactPhone || buyer?.phone || null,
   };
 }
 
@@ -179,6 +183,17 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   const totalAmount = retailPrice * input.quantity;
 
   const contact = await orderContactDefaults(consumerId, input);
+
+  // A retail order the seller can't deliver or follow up on is worthless —
+  // unlike a B2B bid, there's no negotiation step where logistics get sorted
+  // out later. Refuse until the consumer supplies (or their profile carries)
+  // both a destination and a phone number.
+  if (!contact.deliveryAddress || !contact.contactPhone) {
+    throw new ApiError(
+      400,
+      'Add a delivery address and phone number so the farmer can deliver your order — set them in your profile or include them with the purchase.',
+    );
+  }
 
   // Same conditional-claim pattern as acceptBid below: only decrement stock if
   // enough remains and the listing is still active, closing the same TOCTOU
