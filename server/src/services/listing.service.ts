@@ -148,6 +148,20 @@ export async function createListing(userId: string, input: CreateListingInput) {
 //   - Crash mobile browsers
 // Pagination sends 20 items at a time with metadata for the next page.
 // =============================================================================
+// Public listing endpoints must not broadcast a farmer's private profile
+// (bank details, APMC license, FPO name, internal userId). Expose only the
+// display fields the marketplace UI actually uses. Reused by getListings,
+// getListingById, and mirrored in browse.service.
+const PUBLIC_FARMER_SELECT = {
+  id: true,
+  state: true,
+  country: true,
+  organicCertified: true,
+  certificationBody: true,
+  verified: true,
+  user: { select: { id: true, name: true, trustScore: true, avatar: true, location: true } },
+} as const;
+
 export async function getListings(query: ListingsQuery) {
   const page = Math.max(1, query.page || 1);
   const limit = Math.min(50, Math.max(1, query.limit || 20));
@@ -171,9 +185,7 @@ export async function getListings(query: ListingsQuery) {
       take: limit,
       orderBy: { [sort]: order },
       include: {
-        farmer: {
-          include: { user: { select: { id: true, name: true, trustScore: true, avatar: true } } },
-        },
+        farmer: { select: PUBLIC_FARMER_SELECT },
         _count: { select: { bids: true } },
       },
     }),
@@ -214,9 +226,7 @@ export async function getListingById(id: string) {
   const listing = await prisma.listing.findUnique({
     where: { id },
     include: {
-      farmer: {
-        include: { user: { select: { id: true, name: true, trustScore: true, avatar: true, location: true } } },
-      },
+      farmer: { select: PUBLIC_FARMER_SELECT },
       _count: { select: { bids: true } },
     },
   });
