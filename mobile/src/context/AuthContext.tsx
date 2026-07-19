@@ -35,6 +35,7 @@ interface AuthState {
   refreshUser: () => Promise<void>; // re-pull /auth/me (e.g. after onboarding)
   applyUser: (user: User) => void; // swap in a fresh user (e.g. after editing the profile)
   signOut: () => Promise<void>;
+  dropSession: () => Promise<void>; // local-only teardown when the server session is already gone
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -93,8 +94,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  // For flows where the server session no longer exists (account deletion):
+  // clear tokens and state without calling /logout, which would just 401.
+  const dropSession = useCallback(async () => {
+    setAccessToken(null);
+    await setRefreshToken(null);
+    setUser(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, applyUser, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, applyUser, signOut, dropSession }}>
       {children}
     </AuthContext.Provider>
   );

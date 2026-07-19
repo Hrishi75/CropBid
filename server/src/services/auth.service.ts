@@ -12,8 +12,7 @@
 // =============================================================================
 
 import bcrypt from 'bcryptjs';
-import fs from 'fs';
-import path from 'path';
+import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, verifyRefreshToken } from '../utils/jwt';
@@ -21,6 +20,7 @@ import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/r
 import { ApiError } from '../utils/ApiError';
 import { sendPasswordResetEmail } from './email.service';
 import { recordAudit } from './audit.service';
+import { removeImage } from './imageStorage';
 import { config } from '../config';
 
 // ---------------------------------------------------------------------------
@@ -355,21 +355,149 @@ export async function changePassword(userId: string, currentPassword: string, ne
 }
 
 // ---------------------------------------------------------------------------
+// Delete Account — the user erases themselves
+// ---------------------------------------------------------------------------
+// Requires the CURRENT password even though the caller is authenticated — a
+// stolen access token alone must not be enough to destroy an account (same
+// reasoning as changePassword).
+//
+// Deletion is refused while any deal still has money in flight (awaiting
+// payment / escrow): the counterparty's deal must settle or refund first.
+//
+// Transactions are immutable financial records whose listing/bid/farmer/buyer
+// FKs deliberately do NOT cascade, so there are two shapes:
+//   - never transacted → hard-delete the user row; profiles, agent config,
+//     bids, and notifications cascade with it.
+//   - has settled deals → the rows a Transaction points at survive, but every
+//     personal field and credential is scrubbed: the user becomes an
+//     anonymous shell ("Deleted account", unusable email, scrambled password,
+//     all sessions revoked), transacted listings leave the market (EXPIRED),
+//     and the buyer profile, notifications, and bank details are removed.
+// Either way, untransacted listings and bids go first — they cascade the
+// bids/negotiations hanging off them, which also frees the agent config's
+// negotiation references so it can cascade (or be safely switched off).
+export async function deleteAccount(userId: string, password: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { farmerProfile: true },
+  });
+  if (!user) {
+    throw new ApiError(404, 'User not found');
+  }
+
+  // The platform must never orphan itself of its admins.
+  if (user.role === 'ADMIN') {
+    throw new ApiError(403, 'Admin accounts cannot be deleted from the app');
+  }
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) {
+    throw new ApiError(401, 'Password is incorrect');
+  }
+
+  const openDeals = await prisma.transaction.count({
+    where: {
+      OR: [{ farmerId: userId }, { buyerId: userId }],
+      paymentStatus: { in: ['AWAITING_PAYMENT', 'ESCROW'] },
+    },
+  });
+  if (openDeals > 0) {
+    throw new ApiError(
+      409,
+      'You have deals with money still in escrow. Settle or refund them first, then delete your account.',
+    );
+  }
+
+  const settledDeals = await prisma.transaction.count({
+    where: { OR: [{ farmerId: userId }, { buyerId: userId }] },
+  });
+
+  // Upload paths of the listings about to be hard-deleted — cleaned from
+  // storage after the commit. Transacted listings keep their images (the
+  // transaction detail page still renders them).
+  const removableListingImages = user.farmerProfile
+    ? (
+        await prisma.listing.findMany({
+          where: { farmerId: user.farmerProfile.id, transactions: { none: {} } },
+          select: { images: true },
+        })
+      ).flatMap((l) => l.images)
+    : [];
+
+  const scrambledPassword = await bcrypt.hash(randomUUID(), 12);
+
+  await prisma.$transaction(async (tx) => {
+    if (user.farmerProfile) {
+      // Never-transacted lots can go; sold lots are pinned by Transaction FKs,
+      // so they stay but leave the market.
+      await tx.listing.deleteMany({
+        where: { farmerId: user.farmerProfile.id, transactions: { none: {} } },
+      });
+      await tx.listing.updateMany({
+        where: { farmerId: user.farmerProfile.id },
+        data: { status: 'EXPIRED' },
+      });
+    }
+    await tx.bid.deleteMany({ where: { buyerId: userId, transaction: null } });
+
+    if (settledDeals === 0) {
+      await tx.user.delete({ where: { id: userId } });
+    } else {
+      // The farmer profile must survive when transacted listings cascade from
+      // it — scrub its sensitive fields instead of deleting the row.
+      if (user.farmerProfile) {
+        await tx.farmerProfile.update({
+          where: { userId },
+          data: { bankDetails: Prisma.DbNull, fpoName: null, apmcLicense: null },
+        });
+      }
+      await tx.buyerProfile.deleteMany({ where: { userId } });
+      // Negotiations on settled deals may still reference the agent config —
+      // switch it off instead of deleting.
+      await tx.agentConfig.updateMany({
+        where: { userId },
+        data: { active: false, autoNegotiate: false },
+      });
+      await tx.notification.deleteMany({ where: { userId } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: 'Deleted account',
+          email: `deleted-${userId}@cropbid.invalid`,
+          password: scrambledPassword,
+          phone: null,
+          location: null,
+          avatar: null,
+          refreshToken: null,
+          passwordResetToken: null,
+          passwordResetExpires: null,
+        },
+      });
+    }
+  });
+
+  // Best-effort upload cleanup — removeImage never throws.
+  if (user.avatar) void removeImage(user.avatar);
+  for (const img of removableListingImages) void removeImage(img);
+
+  await recordAudit({
+    actorId: userId,
+    actorRole: user.role,
+    action: 'auth.account.deleted',
+    entityType: 'User',
+    entityId: userId,
+    metadata: { anonymized: settledDeals > 0 },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Update Avatar — persist the path of a photo uploaded via POST /me/avatar
 // ---------------------------------------------------------------------------
 // The upload middleware has already validated, squared, and stored the image;
 // this just points the user at it. Returns the same shape as getCurrentUser.
 
-// uploads/ is served publicly via express.static, so replaced avatars must be
-// deleted from disk or they stay accessible (and accumulate) forever. Only
-// touch files under our own avatars folder — basename() guards against a
-// tampered DB value escaping the directory.
-const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
-
-function removeAvatarFile(avatarUrlPath: string) {
-  if (!avatarUrlPath.startsWith('/uploads/avatars/')) return;
-  fs.unlink(path.join(AVATARS_DIR, path.basename(avatarUrlPath)), () => {});
-}
+// Replaced avatars stay publicly accessible (and accumulate) forever unless
+// deleted — removeImage handles both backends (local uploads/ and Cloudinary).
 
 export async function updateAvatar(userId: string, avatarPath: string) {
   const previous = await prisma.user.findUnique({
@@ -386,9 +514,10 @@ export async function updateAvatar(userId: string, avatarPath: string) {
     },
   });
 
-  // DB write succeeded — the old file is orphaned now; clean it up.
+  // DB write succeeded — the old image is orphaned now; clean it up.
+  // Fire-and-forget: removeImage never throws.
   if (previous?.avatar && previous.avatar !== avatarPath) {
-    removeAvatarFile(previous.avatar);
+    void removeImage(previous.avatar);
   }
 
   const {

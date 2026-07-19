@@ -16,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { browse } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
+import { cropImageFor } from '../utils/cropImages';
 import type { Listing } from '../api/types';
 import { Mono } from '../components/buyerKit';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
@@ -110,7 +111,7 @@ export default function BrowseScreen() {
 }
 
 function ListingCard({ listing, onPress }: { listing: Listing; onPress: () => void }) {
-  const img = mediaUrl(listing.images?.[0]);
+  const img = mediaUrl(listing.images?.[0]) ?? cropImageFor(listing.cropName);
   return (
     <PressScale onPress={onPress} style={styles.cardSlot} cardStyle={styles.card}>
       <View>

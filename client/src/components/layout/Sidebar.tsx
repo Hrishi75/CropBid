@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getNavSections, isNavItemActive, type PendingCounts } from './nav';
 
@@ -19,6 +20,7 @@ interface SidebarProps {
 
 export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}) {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const location = useLocation();
 
   const sections = getNavSections(user?.role, pendingCounts);
@@ -38,7 +40,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
 
       {sections.map((section) => (
         <div key={section.title} className="cb-sidebar-section">
-          <div className="cb-sidebar-section-title">{section.title}</div>
+          <div className="cb-sidebar-section-title">{t(section.title)}</div>
           {section.items.map((item) => {
             const isActive = isNavItemActive(location.pathname, item.path);
             return (
@@ -49,7 +51,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
                 aria-current={isActive ? 'page' : undefined}
                 className={`cb-sidebar-link ${isActive ? 'active' : ''}`}
               >
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
                 {item.badge !== undefined && item.badge > 0 && (
                   <span className="cb-count">{item.badge}</span>
                 )}
@@ -72,7 +74,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
           className="cb-sidebar-link"
           style={{ width: '100%', background: 'transparent', border: 'none', textAlign: 'left', cursor: 'pointer' }}
         >
-          Sign out
+          {t('Sign out')}
         </button>
       </div>
     </aside>

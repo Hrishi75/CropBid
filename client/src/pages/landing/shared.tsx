@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 export type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
-export type UnitCode = 'KG' | 'QUINTAL' | 'TONNE';
+export type UnitCode = 'KG' | 'QUINTAL' | 'TONNE' | 'LITRE';
 
 export interface Country {
   code: string;
@@ -45,7 +45,7 @@ export const CURRENCY_SYMBOL: Record<CurrencyCode, string> = {
 };
 
 export const UNIT_LABEL: Record<UnitCode, string> = {
-  KG: 'kg', QUINTAL: 'qtl', TONNE: 'MT',
+  KG: 'kg', QUINTAL: 'qtl', TONNE: 'MT', LITRE: 'L',
 };
 
 export function convert(amount: number, from: CurrencyCode, to: CurrencyCode): number {

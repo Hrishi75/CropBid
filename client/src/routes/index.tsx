@@ -27,6 +27,7 @@ import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
 import { MyListings } from '../pages/farmer/MyListings';
 import { CreateListing } from '../pages/farmer/CreateListing';
 import { IncomingBids } from '../pages/farmer/IncomingBids';
+import { Deliveries } from '../pages/farmer/Deliveries';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { MyBids } from '../pages/buyer/MyBids';
@@ -159,6 +160,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['FARMER']}>
             <FarmerAnalytics />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/farmer/deliveries"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <Deliveries />
           </ProtectedRoute>
         }
       />

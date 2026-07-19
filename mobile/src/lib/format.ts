@@ -9,7 +9,9 @@ export function money(amount: number, currency = 'INR'): string {
 }
 
 export function unitLabel(unit: string): string {
-  return unit === 'QUINTAL' ? 'qtl' : unit.toLowerCase();
+  if (unit === 'QUINTAL') return 'qtl';
+  if (unit === 'LITRE') return 'L';
+  return unit.toLowerCase();
 }
 
 export function timeAgo(iso: string): string {

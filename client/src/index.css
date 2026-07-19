@@ -217,6 +217,13 @@ body * {
   background: var(--cb-bg);
   font-feature-settings: 'ss01', 'cv11';
   letter-spacing: -0.005em;
+
+  /* Sticky footer: every landing-family page is a full-height column so the
+     footer pins to the viewport bottom even when content runs short (search
+     with few results, error/loading states). */
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 .cb-landing * { box-sizing: border-box; }
 
@@ -602,7 +609,9 @@ body * {
 .cb-landing .cta-primary { background: #f4f1ea; color: var(--cb-forest); }
 .cb-landing .cta-ghost { background: transparent; color: #e9e6dc; border-color: rgba(255,255,255,0.2); }
 
-.cb-landing .cb-footer { background: var(--cb-forest); color: #cfd9c4; padding: 64px 56px 36px; }
+/* margin-top:auto pins the footer to the bottom of the flex column when the
+   page content is shorter than the viewport. */
+.cb-landing .cb-footer { margin-top: auto; background: var(--cb-forest); color: #cfd9c4; padding: 64px 56px 36px; }
 .cb-landing .cb-footer-inner { max-width: 1240px; margin: 0 auto; }
 .cb-landing .cb-footer-cols {
   display: grid; grid-template-columns: 1.4fr repeat(4, 1fr);
@@ -1952,3 +1961,24 @@ body * {
   --color-border: #2d3b22;
   --color-border-light: #243018;
 }
+
+/* ===========================================================================
+   Language switcher — small native select that sits in the nav bars
+   =========================================================================== */
+.cb-lang-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--cb-line);
+  background: transparent;
+  color: var(--cb-ink-2, inherit);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 22px 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.cb-lang-select:hover { border-color: var(--cb-ink-3); }
+.cb-lang-select:focus-visible { outline: 2px solid var(--cb-forest, #2f5233); outline-offset: 1px; }

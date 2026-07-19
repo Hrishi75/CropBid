@@ -14,6 +14,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import { Loading } from '../components/ui';
 import LoginScreen from '../screens/LoginScreen';
@@ -32,7 +33,8 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
-import RatesScreen from '../screens/RatesScreen';
+import CropSellersScreen from '../screens/CropSellersScreen';
+import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
@@ -43,45 +45,52 @@ import type { User } from '../api/types';
 // --- Buyer ---
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
 function BuyerTabs() {
+  const { t } = useTranslation();
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BuyerTabBar {...props} />}
     >
-      <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
-      <Tab.Screen name="Dashboard" component={BuyerDashboardScreen} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name="Agents" component={BriefScreen} options={{ title: 'Agents' }} />
-      <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: 'Contracts' }} />
-      <Tab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
+      <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
+      <Tab.Screen name="Dashboard" component={BuyerDashboardScreen} options={{ title: t('Dashboard') }} />
+      <Tab.Screen name="Agents" component={BriefScreen} options={{ title: t('Agents') }} />
+      <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: t('Contracts') }} />
+      <Tab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </Tab.Navigator>
   );
 }
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 function BuyerNavigator() {
+  const { t } = useTranslation();
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
       <RootStack.Screen name="Auction" component={AuctionScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <RootStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
-        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Rates"
-        component={RatesScreen}
-        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+        component={MandiScreen}
+        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Schemes"
         component={SchemesScreen}
-        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Notifications"
         component={ActivityScreen}
-        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
       />
     </RootStack.Navigator>
   );
@@ -90,22 +99,24 @@ function BuyerNavigator() {
 // --- Farmer ---
 const FarmerTab = createBottomTabNavigator<FarmerTabParamList>();
 function FarmerTabs() {
+  const { t } = useTranslation();
   return (
     <FarmerTab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
-      <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
-      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: 'My Crops' }} />
-      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: 'Offers' }} />
-      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: 'My Farm' }} />
-      <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
+      <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
+      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: t('My Crops') }} />
+      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
+      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: t('My Farm') }} />
+      <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </FarmerTab.Navigator>
   );
 }
 
 const FarmerStack = createNativeStackNavigator<FarmerStackParamList>();
 function FarmerNavigator() {
+  const { t } = useTranslation();
   return (
     <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
@@ -113,29 +124,34 @@ function FarmerNavigator() {
       <FarmerStack.Screen
         name="EditProfile"
         component={EditProfileScreen}
-        options={{ headerShown: true, title: 'Edit profile', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Edit profile'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen name="Helper" component={BriefScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
-        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Rates"
-        component={RatesScreen}
-        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+        component={MandiScreen}
+        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Schemes"
         component={SchemesScreen}
-        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Notifications"
         component={ActivityScreen}
-        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
       />
     </FarmerStack.Navigator>
   );
@@ -144,42 +160,49 @@ function FarmerNavigator() {
 // --- Consumer ---
 const ConsumerTab = createBottomTabNavigator<ConsumerTabParamList>();
 function ConsumerTabs() {
+  const { t } = useTranslation();
   return (
     <ConsumerTab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <ConsumerTabBar {...props} />}
     >
-      <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: 'Home' }} />
-      <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: 'Orders' }} />
-      <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: 'You' }} />
+      <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
+      <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: t('Orders') }} />
+      <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </ConsumerTab.Navigator>
   );
 }
 
 const ConsumerStack = createNativeStackNavigator<ConsumerStackParamList>();
 function ConsumerNavigator() {
+  const { t } = useTranslation();
   return (
     <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
       <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
       <ConsumerStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
-        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Rates"
-        component={RatesScreen}
-        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+        component={MandiScreen}
+        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Schemes"
         component={SchemesScreen}
-        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Notifications"
         component={ActivityScreen}
-        options={{ headerShown: true, title: 'Activity', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
       />
     </ConsumerStack.Navigator>
   );
@@ -189,33 +212,39 @@ function ConsumerNavigator() {
 // Show the market first; ask for an account only at the point of action.
 const GuestStack = createNativeStackNavigator<GuestStackParamList>();
 function GuestNavigator() {
+  const { t } = useTranslation();
   return (
     <GuestStack.Navigator screenOptions={{ headerShown: false }}>
       <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
       <GuestStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
-        options={{ headerShown: true, title: 'Listing', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Rates"
-        component={RatesScreen}
-        options={{ headerShown: true, title: "Today's mandi rates", presentation: 'card', animation: 'slide_from_right' }}
+        component={MandiScreen}
+        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Schemes"
         component={SchemesScreen}
-        options={{ headerShown: true, title: 'Sarkari Yojana', presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Login"
         component={LoginScreen}
-        options={{ headerShown: true, title: 'Log in', presentation: 'card', animation: 'slide_from_bottom' }}
+        options={{ headerShown: true, title: t('Log in'), presentation: 'card', animation: 'slide_from_bottom' }}
       />
       <GuestStack.Screen
         name="Signup"
         component={SignupScreen}
-        options={{ headerShown: true, title: 'Create account', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Create account'), animation: 'slide_from_right' }}
       />
     </GuestStack.Navigator>
   );

@@ -8,32 +8,45 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 import { Eyebrow, Mono, StatusPill } from '../components/buyerKit';
+import { LanguageChips } from '../components/LanguagePicker';
 import { IconChevR } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import type { ProfileParamList } from '../navigation/types';
-import { uploadAvatar } from '../api/endpoints';
+import { deleteAccount, uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const nav = useNavigation<NativeStackNavigationProp<ProfileParamList>>();
-  const { user, refreshUser, applyUser, signOut } = useAuth();
+  const { user, refreshUser, applyUser, signOut, dropSession } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // Delete-account confirm sheet: the password typed in it, and the in-flight /
+  // error state of the DELETE call.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (!user) return null;
 
@@ -42,8 +55,8 @@ export default function ProfileScreen() {
   const photo = mediaUrl(user.avatar);
   const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
   const subtitle = isFarmer
-    ? `Farmer${farm?.state ? ` · ${farm.state}` : ''}`
-    : user.buyerProfile?.companyName ?? 'Buyer';
+    ? `${t('Farmer')}${farm?.state ? ` · ${farm.state}` : ''}`
+    : user.buyerProfile?.companyName ?? t('Buyer');
 
   async function onRefresh() {
     setRefreshing(true);
@@ -105,11 +118,45 @@ export default function ProfileScreen() {
     }
   }
 
+  function onDeletePress() {
+    Alert.alert(
+      t('Delete your account?'),
+      t('Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.'),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Continue'),
+          style: 'destructive',
+          onPress: () => {
+            setDeletePassword('');
+            setDeleteError(null);
+            setDeleteOpen(true);
+          },
+        },
+      ],
+    );
+  }
+
+  async function onConfirmDelete() {
+    if (deleting || !deletePassword) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(deletePassword);
+      setDeleteOpen(false);
+      await dropSession(); // navigator falls back to the guest storefront
+    } catch (e) {
+      setDeleteError(errorMessage(e, 'Could not delete the account'));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function onSignOutPress() {
-    Alert.alert('Log out?', isFarmer ? 'You can come back any time.' : undefined, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('Log out?'), isFarmer ? t('You can come back any time') : undefined, [
+      { text: t('Cancel'), style: 'cancel' },
       {
-        text: 'Log out',
+        text: t('Log out'),
         style: 'destructive',
         onPress: async () => {
           setSigningOut(true);
@@ -132,8 +179,8 @@ export default function ProfileScreen() {
       >
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
-            <Eyebrow>Your account</Eyebrow>
-            <StatusPill tone="sage">{isFarmer ? 'farmer' : 'buyer'}</StatusPill>
+            <Eyebrow>{t('Your account')}</Eyebrow>
+            <StatusPill tone="sage">{isFarmer ? t('farmer') : t('buyer')}</StatusPill>
           </View>
           <Text style={styles.h1}>
             {isFarmer ? <>Everything about <Text style={styles.h1Serif}>you.</Text></> : <>Your <Text style={styles.h1Serif}>account.</Text></>}
@@ -164,7 +211,7 @@ export default function ProfileScreen() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
                 <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
-                <Text style={styles.photoHint}>Tap the photo to change it</Text>
+                <Text style={styles.photoHint}>{t('Tap the photo to change it')}</Text>
               </View>
             </View>
 
@@ -181,9 +228,20 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* language */}
+        <View style={[styles.sectionHead, styles.sidePadHead]}>
+          <Eyebrow>{t('Language')} · भाषा</Eyebrow>
+        </View>
+        <View style={styles.sidePad}>
+          <View style={styles.card}>
+            <Text style={styles.langHint}>{t('Choose the language the app speaks')}</Text>
+            <LanguageChips />
+          </View>
+        </View>
+
         {/* details */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
-          <Eyebrow>{isFarmer ? 'Your details' : 'Account details'}</Eyebrow>
+          <Eyebrow>{isFarmer ? t('Your details') : t('Account details')}</Eyebrow>
         </View>
         <View style={styles.sidePad}>
           <View style={styles.card}>
@@ -205,7 +263,7 @@ export default function ProfileScreen() {
         {isFarmer ? (
           <>
             <View style={[styles.sectionHead, styles.sidePadHead]}>
-              <Eyebrow>Your farm</Eyebrow>
+              <Eyebrow>{t('Your farm')}</Eyebrow>
               {farm?.organicCertified ? <StatusPill tone="sage">organic</StatusPill> : null}
             </View>
             <View style={styles.sidePad}>
@@ -232,7 +290,7 @@ export default function ProfileScreen() {
         ) : user.buyerProfile ? (
           <>
             <View style={[styles.sectionHead, styles.sidePadHead]}>
-              <Eyebrow>Company</Eyebrow>
+              <Eyebrow>{t('Company')}</Eyebrow>
             </View>
             <View style={styles.sidePad}>
               <View style={styles.card}>
@@ -246,36 +304,99 @@ export default function ProfileScreen() {
 
         {/* actions */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
-          <Eyebrow>{isFarmer ? 'Do something' : 'Actions'}</Eyebrow>
+          <Eyebrow>{isFarmer ? t('Do something') : t('Actions')}</Eyebrow>
         </View>
         <View style={[styles.sidePad, { gap: 10 }]}>
           {isFarmer ? (
             <Row
-              label="Change your details"
-              hint="Name, phone, village and farm"
+              label={t('Change your details')}
+              hint={t('Name, phone, village and farm')}
               onPress={() => nav.navigate('EditProfile')}
             />
           ) : null}
           <Row
-            label={isFarmer ? 'See what happened' : 'Activity'}
-            hint={isFarmer ? 'Offers, deals and payments' : 'Notifications and updates'}
+            label={isFarmer ? t('See what happened') : t('Activity')}
+            hint={isFarmer ? t('Offers, deals and payments') : t('Notifications and updates')}
             onPress={() => nav.navigate('Notifications')}
           />
           {isFarmer ? (
-            <Row label="Your sales" hint="Deals and payments so far" onPress={() => nav.navigate('Contracts')} />
+            <Row label={t('Your sales')} hint={t('Deals and payments so far')} onPress={() => nav.navigate('Contracts')} />
           ) : null}
           {isFarmer ? (
-            <Row label="Your AI helper" hint="Answers offers for you" onPress={() => nav.navigate('Helper')} />
+            <Row label={t('Your AI helper')} hint={t('Answers offers for you')} onPress={() => nav.navigate('Helper')} />
           ) : null}
           <Row
-            label="Log out"
-            hint={isFarmer ? 'You can come back any time' : undefined}
+            label={t('Log out')}
+            hint={isFarmer ? t('You can come back any time') : undefined}
             danger
             loading={signingOut}
             onPress={onSignOutPress}
           />
+          <Row
+            label={t('Delete account')}
+            hint={t('This cannot be undone')}
+            danger
+            onPress={onDeletePress}
+          />
         </View>
       </ScrollView>
+
+      {/* delete-account confirm sheet — password re-entry, then DELETE /auth/me */}
+      <Modal
+        visible={deleteOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleting && setDeleteOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalScrim}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('Delete your account?')}</Text>
+            <Text style={styles.modalBody}>
+              {t('Enter your password to confirm. Everything is removed for good.')}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deletePassword}
+              onChangeText={(v) => { setDeletePassword(v); setDeleteError(null); }}
+              placeholder={t('Password')}
+              placeholderTextColor={design.ink3}
+              secureTextEntry
+              autoCapitalize="none"
+              autoFocus
+              editable={!deleting}
+              onSubmitEditing={onConfirmDelete}
+            />
+            {deleteError ? <Text style={styles.modalError}>{deleteError}</Text> : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setDeleteOpen(false)}
+                disabled={deleting}
+                style={({ pressed }) => [styles.modalBtn, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.modalBtnText}>{t('Cancel')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={onConfirmDelete}
+                disabled={deleting || !deletePassword}
+                style={({ pressed }) => [
+                  styles.modalBtn,
+                  styles.modalBtnDanger,
+                  (pressed || deleting || !deletePassword) && { opacity: 0.75 },
+                ]}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, styles.modalBtnDangerText]}>{t('Delete forever')}</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -331,6 +452,7 @@ const styles = StyleSheet.create({
   h1Serif: { fontFamily: font.serifItalic, fontSize: 29, color: colors.forest },
 
   card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  langHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginBottom: 10 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingBottom: 8 },
 
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -375,4 +497,50 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontFamily: font.sansMed, fontSize: 15, letterSpacing: -0.15, color: design.ink },
   rowHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
+
+  // delete-account confirm sheet
+  modalScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(22,31,16,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    alignSelf: 'stretch',
+    backgroundColor: design.paper,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 18,
+    padding: 20,
+  },
+  modalTitle: { fontFamily: font.sansSemi, fontSize: 18, letterSpacing: -0.3, color: design.ink },
+  modalBody: { fontFamily: font.sans, fontSize: 13, lineHeight: 18, color: design.ink2, marginTop: 6 },
+  modalInput: {
+    backgroundColor: design.bg,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontFamily: font.sans,
+    fontSize: 14.5,
+    color: design.ink,
+    marginTop: 14,
+  },
+  modalError: { fontFamily: font.sansMed, fontSize: 12, color: colors.ember, marginTop: 8 },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  modalBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 12,
+    paddingVertical: 12,
+    backgroundColor: design.paper,
+  },
+  modalBtnDanger: { backgroundColor: colors.ember, borderColor: colors.ember },
+  modalBtnText: { fontFamily: font.sansSemi, fontSize: 13.5, color: design.ink },
+  modalBtnDangerText: { color: '#fff' },
 });

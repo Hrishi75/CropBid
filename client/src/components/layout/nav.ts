@@ -62,6 +62,7 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
           { label: 'Auctions', path: '/auctions' },
           { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
           { label: 'Transactions', path: '/transactions' },
+          { label: 'Deliveries', path: '/farmer/deliveries' },
           { label: 'Analytics', path: '/farmer/analytics' },
         ],
       },

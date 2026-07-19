@@ -86,6 +86,12 @@ export async function logout(): Promise<void> {
   }
 }
 
+// Permanently delete the caller's account. The current password rides in the
+// body as confirmation — the server refuses without it.
+export async function deleteAccount(password: string): Promise<void> {
+  await api.delete('/auth/me', { data: { password } });
+}
+
 // --- Onboarding (creates the role profile required to use the app) ---
 export interface FarmerOnboardingInput {
   farmSizeAcres: number;
@@ -114,6 +120,7 @@ export async function buyerOnboarding(input: BuyerOnboardingInput): Promise<void
 // --- Browse / listings ---
 export async function browse(params?: {
   search?: string;
+  crop?: string; // exact crop-name match (case-insensitive), unlike fuzzy `search`
   page?: number;
   directSale?: boolean;
 }): Promise<Paginated<Listing>> {

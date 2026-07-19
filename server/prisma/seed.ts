@@ -19,6 +19,7 @@
 import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
+import { cropImageFor } from './cropImages';
 
 // Prisma v7 requires a driver adapter for direct database connections.
 // PrismaPg connects to PostgreSQL using the `pg` library under the hood.
@@ -198,6 +199,15 @@ const globalListings: (ListingData & { country: string; state: string; currency:
 // MAIN SEED FUNCTION
 // =============================================================================
 async function main() {
+  // Seeding WIPES every table. In production that means destroying live user
+  // data, so it must never run there by accident (e.g. a stale RUN_SEED=true
+  // env var on the host). Require an explicit override.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_FORCE !== 'true') {
+    console.error('✋ Refusing to seed: NODE_ENV=production and seeding wipes all data.');
+    console.error('   Set SEED_FORCE=true if you really mean to reset the production database.');
+    process.exit(1);
+  }
+
   console.log('🌱 Starting CropBid database seed...\n');
 
   // Clean existing data (order matters due to foreign keys)
@@ -407,7 +417,7 @@ async function main() {
         harvestDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000), // last 30 days
         expiryDate: new Date(Date.now() + (30 + Math.random() * 60) * 24 * 60 * 60 * 1000), // 30-90 days out
         description: l.description,
-        images: [],
+        images: cropImageFor(l.crop) ? [cropImageFor(l.crop)!] : [],
         organic: l.organic,
         location: farmerUser.location,
         country: 'India',
@@ -443,7 +453,7 @@ async function main() {
         harvestDate: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
         expiryDate: new Date(Date.now() + (30 + Math.random() * 60) * 24 * 60 * 60 * 1000),
         description: l.description,
-        images: [],
+        images: cropImageFor(l.crop) ? [cropImageFor(l.crop)!] : [],
         organic: l.organic,
         location: l.country === 'USA' ? (l.state === 'Iowa' ? 'Des Moines' : 'Sacramento') : l.state,
         country: l.country,

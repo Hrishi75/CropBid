@@ -19,13 +19,13 @@ import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 // Data shapes (mirror server/src/services/rates.service.ts)
 // -----------------------------------------------------------------------------
 
-type Cat = 'veg' | 'fruits' | 'grains' | 'spices';
+type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
 interface LiveRate {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
   cat: Cat;
   modal: number;
   min: number;
@@ -56,13 +56,14 @@ interface Breakdown {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
   count: number;
   records: MarketRow[];
 }
 
 const CATS: Array<{ id: Cat; title: string; eyebrow: string }> = [
   { id: 'veg',    title: 'Fresh Vegetables',  eyebrow: 'Daily wholesale · ₹/kg' },
+  { id: 'dairy',  title: 'Milk & Dairy',      eyebrow: 'Daily prices · ₹/L & ₹/kg' },
   { id: 'fruits', title: 'Seasonal Fruits',   eyebrow: 'Daily wholesale · ₹/kg' },
   { id: 'grains', title: 'Grains & Pulses',   eyebrow: 'Daily wholesale · ₹/quintal' },
   { id: 'spices', title: 'Spices & Oilseeds', eyebrow: 'Daily wholesale · ₹/quintal' },
@@ -84,7 +85,7 @@ const INDIAN_STATES = [
 ];
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
-const unitLabel = (u: 'KG' | 'QUINTAL') => (u === 'KG' ? 'kg' : 'qtl');
+const unitLabel = (u: 'KG' | 'QUINTAL' | 'LITRE') => (u === 'KG' ? 'kg' : u === 'LITRE' ? 'L' : 'qtl');
 
 function Signal({ r }: { r: LiveRate }) {
   if (r.source === 'reference') return <span className="rp-sig flat">ref</span>;

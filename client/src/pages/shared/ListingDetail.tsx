@@ -14,6 +14,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
+import { cropImageFor } from '../../utils/cropImages';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -75,6 +76,12 @@ export function ListingDetail() {
               {listing.images.length > 0 ? (
                 <img
                   src={listing.images[selectedImage]}
+                  alt={listing.cropName}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              ) : cropImageFor(listing.cropName) ? (
+                <img
+                  src={cropImageFor(listing.cropName)!}
                   alt={listing.cropName}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />

@@ -23,6 +23,7 @@ import path from 'path';
 import fs from 'fs';
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/ApiError';
+import { storeImage } from '../services/imageStorage';
 
 // Ensure upload directories exist
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
@@ -81,7 +82,8 @@ export const upload = multer({
 // 2. Resizes to max 1200px wide (maintains aspect ratio)
 // 3. Converts to WebP format (80% quality — best size/quality ratio)
 // 4. Deletes the original raw file
-// 5. Updates req.files with the new .webp paths
+// 5. Hands the WebP to imageStorage (Cloudinary or local disk) and
+//    updates req with the stored URLs/paths
 //
 // WHY WebP?
 // WebP is 25-35% smaller than JPEG at the same visual quality.
@@ -98,22 +100,20 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
 
     for (const file of req.files) {
       const webpFilename = file.filename.replace(/\.\w+$/, '.webp');
-      const outputPath = path.join(LISTINGS_DIR, webpFilename);
 
       // Resize + convert to WebP
-      await sharp(file.path)
+      const buffer = await sharp(file.path)
         .resize(1200, 1200, {
           fit: 'inside',           // Don't crop, just fit within bounds
           withoutEnlargement: true, // Don't upscale small images
         })
         .webp({ quality: 80 })
-        .toFile(outputPath);
+        .toBuffer();
 
       // Delete the original raw file (we only keep the WebP)
       fs.unlinkSync(file.path);
 
-      // Store the URL path (not filesystem path) for the database
-      processedPaths.push(`/uploads/listings/${webpFilename}`);
+      processedPaths.push(await storeImage(buffer, 'listings', webpFilename));
     }
 
     // Attach processed paths to request for the controller to use
@@ -154,16 +154,15 @@ export async function processAvatar(req: Request, _res: Response, next: NextFunc
     if (!req.file) return next();
 
     const webpFilename = req.file.filename.replace(/\.\w+$/, '.webp');
-    const outputPath = path.join(AVATARS_DIR, webpFilename);
 
-    await sharp(req.file.path)
+    const buffer = await sharp(req.file.path)
       .resize(512, 512, { fit: 'cover' }) // center-crop to a square
       .webp({ quality: 82 })
-      .toFile(outputPath);
+      .toBuffer();
 
     fs.unlinkSync(req.file.path);
 
-    (req as any).processedAvatar = `/uploads/avatars/${webpFilename}`;
+    (req as any).processedAvatar = await storeImage(buffer, 'avatars', webpFilename);
     next();
   } catch (error) {
     // Sharp failed — remove the raw file Multer already wrote, otherwise it

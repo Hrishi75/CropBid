@@ -8,9 +8,11 @@
 
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import toast from 'react-hot-toast';
 
@@ -22,6 +24,7 @@ const QUICK_ACCOUNTS = [
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState('');
@@ -45,10 +48,10 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      toast.success('Welcome back');
+      toast.success(t('Welcome back'));
       navigate('/');
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Login failed');
+      toast.error(err.response?.data?.message || t('Login failed'));
     } finally {
       setLoading(false);
     }
@@ -62,27 +65,28 @@ export function LoginPage() {
           <span className="wordmark-text">CropBid</span>
         </Link>
         <nav className="cb-auth-nav-links">
-          <a href="/#how">How it works</a>
-          <a href="/#marketplace">Marketplace</a>
-          <Link to="/signup">Sign up</Link>
+          <a href="/#how">{t('How it works')}</a>
+          <a href="/#marketplace">{t('Marketplace')}</a>
+          <Link to="/signup">{t('Sign up')}</Link>
+          <LanguageSwitcher />
         </nav>
       </header>
 
       <div className="cb-auth-body">
         <div className="cb-auth-form-wrap">
           <div className="cb-auth-form">
-            <div className="cb-eyebrow">Auth · sign-in</div>
+            <div className="cb-eyebrow">{t('Auth · sign-in')}</div>
             <h1 className="cb-h2" style={{ marginTop: 14 }}>
-              Sign in to<br />
-              <span className="cb-italic">your agent.</span>
+              {t('Sign in to')}<br />
+              <span className="cb-italic">{t('your agent.')}</span>
             </h1>
             <p className="cb-body" style={{ marginTop: 14, marginBottom: 32 }}>
-              Pick up where your agent left off.
+              {t('Pick up where your agent left off.')}
             </p>
 
             <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Input
-                label="Email"
+                label={t('Email')}
                 type="email"
                 placeholder="you@example.com"
                 value={email}
@@ -94,9 +98,9 @@ export function LoginPage() {
               />
               <div>
                 <Input
-                  label="Password"
+                  label={t('Password')}
                   type="password"
-                  placeholder="Enter your password"
+                  placeholder={t('Enter your password')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -108,7 +112,7 @@ export function LoginPage() {
                     className="cb-small"
                     style={{ color: 'var(--cb-ember)', fontWeight: 500, textDecoration: 'none' }}
                   >
-                    Forgot password?
+                    {t('Forgot password?')}
                   </Link>
                 </div>
               </div>
@@ -120,13 +124,13 @@ export function LoginPage() {
                 className="cb-btn-lg"
                 style={{ width: '100%' }}
               >
-                Sign in
+                {t('Sign in')}
                 <ArrowIcon />
               </Button>
             </form>
 
             <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid var(--cb-line)' }}>
-              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Quick login · test accounts</div>
+              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>{t('Quick login · test accounts')}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                 {QUICK_ACCOUNTS.map((acc) => (
                   <button
@@ -139,16 +143,16 @@ export function LoginPage() {
                       setPassword('password123');
                     }}
                   >
-                    {acc.label}
+                    {t(acc.label)}
                   </button>
                 ))}
               </div>
             </div>
 
             <p className="cb-small" style={{ marginTop: 28, textAlign: 'center' }}>
-              No account on CropBid?{' '}
+              {t('No account on CropBid?')}{' '}
               <Link to="/signup" style={{ color: 'var(--cb-ember)', fontWeight: 500, textDecoration: 'none' }}>
-                Request a buyer agent →
+                {t('Request a buyer agent →')}
               </Link>
             </p>
           </div>

@@ -13,8 +13,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationDropdown } from './NotificationDropdown';
+import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { getNavSections, isNavItemActive } from './nav';
 
 interface NavbarProps {
@@ -23,6 +25,7 @@ interface NavbarProps {
 
 export function Navbar({ onMenuClick }: NavbarProps) {
   const { user, logout } = useAuth();
+  const { t } = useTranslation();
   const location = useLocation();
   const [search, setSearch] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -46,10 +49,10 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     : '?';
 
   const searchPlaceholder = user?.role === 'FARMER'
-    ? 'Search bids, buyers, lots…'
+    ? t('Search bids, buyers, lots…')
     : user?.role === 'BUYER'
-      ? 'Search lots, sellers, regions…'
-      : 'Search users, lots, txns…';
+      ? t('Search lots, sellers, regions…')
+      : t('Search users, lots, txns…');
 
   return (
     <header className="cb-nav-wrap" role="banner">
@@ -87,6 +90,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
         </div>
 
         <div className="cb-nav-actions">
+          <LanguageSwitcher />
           {user && (
             <>
               <NotificationDropdown />
@@ -115,7 +119,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                         className="cb-nav-menu-link"
                         onClick={() => setMenuOpen(false)}
                       >
-                        {item.label}
+                        {t(item.label)}
                       </Link>
                     ))}
                     <button
@@ -124,7 +128,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                       className="cb-nav-menu-link"
                       onClick={() => { setMenuOpen(false); logout(); }}
                     >
-                      Sign out
+                      {t('Sign out')}
                     </button>
                   </div>
                 )}
@@ -144,7 +148,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
               aria-current={isActive ? 'page' : undefined}
               className={`cb-topnav-link ${isActive ? 'active' : ''}`}
             >
-              <span>{item.label}</span>
+              <span>{t(item.label)}</span>
               {item.badge !== undefined && item.badge > 0 && (
                 <span className="cb-count">{item.badge}</span>
               )}

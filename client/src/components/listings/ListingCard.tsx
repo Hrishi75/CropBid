@@ -11,8 +11,10 @@
 // =============================================================================
 
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import type { Listing } from '../../types';
 import { formatCurrency } from '../../utils/currency';
+import { listingImage } from '../../utils/cropImages';
 import { MiniChart } from '../ui/Brand';
 
 // Listings don't yet ship a price-history series from the API. To avoid
@@ -59,7 +61,9 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 'grid' }: ListingCardProps) {
+  const { t } = useTranslation();
   const spark = pseudoRandomSpark(listing.id);
+  const image = listingImage(listing);
   const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
   const statusLabel = STATUS_LABEL[listing.status] || listing.status.slice(0, 4).toUpperCase();
   const statusColor = STATUS_COLOR[listing.status] || 'var(--cb-ink-3)';
@@ -82,23 +86,23 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           <span className="cb-mono cb-tiny" style={{ color: statusColor }}>● {statusLabel}</span>
         </div>
         <div className="cb-small" style={{ marginTop: 4 }}>
-          Grade {listing.qualityGrade}{listing.organic && ' · Organic'} · {listing.location}, {listing.state}
+          {t('Grade')} {listing.qualityGrade}{listing.organic && ` · ${t('Organic')}`} · {listing.location}, {listing.state}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 16, alignItems: 'center', marginTop: 10 }}>
           <div className="cb-mono" style={{ fontSize: 14 }}>
             {formatCurrency(priceMid, listing.currency)}<span className="cb-tiny" style={{ marginLeft: 4 }}>/{listing.unit.toLowerCase()}</span>
           </div>
           <div className="cb-tiny">
-            {listing.quantity} {listing.unit.toLowerCase()} · {listing._count?.bids || 0} bids
+            {listing.quantity} {listing.unit.toLowerCase()} · {listing._count?.bids || 0} {t('bids')}
           </div>
           <MiniChart data={spark} color="#6b8e4e" width={100} height={24} />
           <div style={{ display: 'flex', gap: 10 }}>
-            <Link to={`/listings/${listing.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>View →</Link>
+            <Link to={`/listings/${listing.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('View →')}</Link>
             {showActions && onEdit && (
-              <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>Edit</button>
+              <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('Edit')}</button>
             )}
             {showActions && onDelete && (
-              <button type="button" onClick={() => onDelete(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13, color: 'var(--cb-ember)' }}>Delete</button>
+              <button type="button" onClick={() => onDelete(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13, color: 'var(--cb-ember)' }}>{t('Delete')}</button>
             )}
           </div>
         </div>
@@ -109,9 +113,9 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
   return (
     <article className="cb-card" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'relative', aspectRatio: '4 / 3', background: 'var(--cb-paper-2)' }}>
-        {listing.images.length > 0 ? (
+        {image ? (
           <img
-            src={listing.images[0]}
+            src={image}
             alt={listing.cropName}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             loading="lazy"
@@ -123,7 +127,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           ● {statusLabel}
         </span>
         {listing.organic && (
-          <span className="cb-chip cb-chip-sage" style={{ position: 'absolute', top: 10, left: 10 }}>Organic</span>
+          <span className="cb-chip cb-chip-sage" style={{ position: 'absolute', top: 10, left: 10 }}>{t('Organic')}</span>
         )}
       </div>
 
@@ -135,7 +139,7 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           {listing.cropVariety && <div className="cb-tiny" style={{ marginTop: 2 }}>{listing.cropVariety}</div>}
         </div>
         <div className="cb-tiny">
-          Grade {listing.qualityGrade} · {listing.location}, {listing.state}
+          {t('Grade')} {listing.qualityGrade} · {listing.location}, {listing.state}
         </div>
         <div className="cb-mono" style={{ fontSize: 20, fontWeight: 500, marginTop: 'auto', color: 'var(--cb-ink)' }}>
           {formatCurrency(priceMid, listing.currency)}
@@ -144,12 +148,12 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
         <MiniChart data={spark} color="#6b8e4e" width={160} height={28} />
         <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
           <span className="cb-tiny">{listing.quantity} {listing.unit.toLowerCase()}</span>
-          <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● {listing._count?.bids || 0} bids</span>
+          <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● {listing._count?.bids || 0} {t('bids')}</span>
         </div>
         {showActions && (
           <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
-            {onEdit && <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>Edit</button>}
-            {onDelete && <button type="button" onClick={() => onDelete(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13, color: 'var(--cb-ember)' }}>Delete</button>}
+            {onEdit && <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('Edit')}</button>}
+            {onDelete && <button type="button" onClick={() => onDelete(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13, color: 'var(--cb-ember)' }}>{t('Delete')}</button>}
           </div>
         )}
       </div>

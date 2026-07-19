@@ -64,6 +64,12 @@ export const config = {
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '',
   },
 
+  // Cloudinary (persistent image hosting). Format:
+  //   cloudinary://<api_key>:<api_secret>@<cloud_name>   (from the Cloudinary dashboard)
+  // Leave blank to store uploads on the local filesystem instead — fine for
+  // dev, but on Render's free tier the disk is wiped every deploy/restart.
+  cloudinaryUrl: process.env.CLOUDINARY_URL || '',
+
   // Client URL (for CORS + links inside transactional emails)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
