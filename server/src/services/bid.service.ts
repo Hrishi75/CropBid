@@ -41,6 +41,21 @@ interface DirectPurchaseInput {
   contactPhone?: string;
 }
 
+// Counterparty-safe farmer shape: public display fields only — never the
+// private profile (bankDetails, apmcLicense, fpoName, farmSizeAcres).
+// Mirrors PUBLIC_FARMER_SELECT in listing/browse services, plus userId,
+// which involvement checks compare against (it equals the public user.id).
+const PUBLIC_FARMER_SELECT = {
+  id: true,
+  userId: true,
+  state: true,
+  country: true,
+  organicCertified: true,
+  certificationBody: true,
+  verified: true,
+  user: { select: { id: true, name: true, trustScore: true, avatar: true } },
+} as const;
+
 // The seller needs to know where to send the goods and whom to call. When the
 // order form didn't collect these (one-tap consumer buy, agent bids), snapshot
 // the buyer's profile phone/location instead of leaving the seller blind.
@@ -139,9 +154,7 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
       buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
@@ -287,9 +300,7 @@ export async function getMyBids(buyerId: string, status?: string) {
     include: {
       listing: {
         include: {
-          farmer: {
-            include: { user: { select: { id: true, name: true, trustScore: true } } },
-          },
+          farmer: { select: PUBLIC_FARMER_SELECT },
         },
       },
     },
