@@ -106,7 +106,10 @@ export async function getMyTransactions(userId: string, role: string) {
     orderBy: { createdAt: 'desc' },
     include: {
       listing: true,
-      farmer: { select: { id: true, name: true, trustScore: true, phone: true } },
+      // The farmer's phone is NEVER exposed to the counterparty — only the
+      // platform (admin endpoints) may see it. The buyer's phone is included so
+      // the SELLER can arrange delivery.
+      farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
       // The Deliveries page renders shipment state per deal in one request
@@ -129,7 +132,10 @@ export async function getTransaction(transactionId: string, userId: string) {
     where: { id: transactionId },
     include: {
       listing: true,
-      farmer: { select: { id: true, name: true, trustScore: true, email: true, phone: true } },
+      // The farmer's contact details (email/phone) are NEVER exposed to the
+      // counterparty — only the platform (admin) may see them. The buyer's
+      // contact is included so the SELLER can arrange delivery.
+      farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, email: true, phone: true } },
       bid: true,
     },

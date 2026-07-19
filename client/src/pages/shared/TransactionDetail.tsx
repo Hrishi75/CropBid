@@ -222,7 +222,6 @@ export function TransactionDetail() {
             <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.farmer?.name}</div>
             <div className="cb-tiny" style={{ marginTop: 2 }}>
               Trust {Math.round(transaction.farmer?.trustScore || 0)}
-              {transaction.farmer?.phone && <> · <a href={`tel:${transaction.farmer.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.farmer.phone}</a></>}
             </div>
           </div>
           <div>
