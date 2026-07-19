@@ -15,18 +15,34 @@
 // mediaUrl() passes http(s) through; the web client uses the value as <img src>).
 // =============================================================================
 
-import { v2 as cloudinary } from 'cloudinary';
 import path from 'path';
 import fs from 'fs';
 import { config } from '../config';
 
-export const cloudinaryEnabled = Boolean(config.cloudinaryUrl);
-
-if (cloudinaryEnabled) {
-  // The SDK reads CLOUDINARY_URL from the environment on its own; this call
-  // just forces https URLs in upload results.
-  cloudinary.config({ secure: true });
+// Loaded lazily inside try/catch: the SDK validates CLOUDINARY_URL at require
+// time and THROWS on a malformed value, which would crash the whole API at
+// boot. An optional integration must never take the platform down — a bad URL
+// downgrades to disk storage with a loud log line instead.
+let cloudinary: typeof import('cloudinary').v2 | null = null;
+if (config.cloudinaryUrl) {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    cloudinary = require('cloudinary').v2;
+    // The SDK reads CLOUDINARY_URL from the environment on its own; this call
+    // just forces https URLs in upload results.
+    cloudinary!.config({ secure: true });
+  } catch (err) {
+    cloudinary = null;
+    console.error(
+      "⚠️  CLOUDINARY_URL is set but invalid — it must start with 'cloudinary://' " +
+        '(cloudinary://<api_key>:<api_secret>@<cloud_name>). Falling back to local disk ' +
+        'storage; uploads will NOT survive a redeploy until the value is fixed. ' +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  }
 }
+
+export const cloudinaryEnabled = cloudinary !== null;
 
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
 
@@ -39,9 +55,10 @@ export async function storeImage(
   kind: ImageKind,
   filename: string,
 ): Promise<string> {
-  if (cloudinaryEnabled) {
+  if (cloudinary) {
+    const uploader = cloudinary.uploader;
     return new Promise<string>((resolve, reject) => {
-      cloudinary.uploader
+      uploader
         .upload_stream(
           {
             folder: `cropbid/${kind}`,
@@ -76,7 +93,7 @@ export async function removeImage(url: string): Promise<void> {
       fs.unlink(path.join(UPLOAD_DIR, kind, path.basename(url)), () => {});
       return;
     }
-    if (cloudinaryEnabled && url.includes('res.cloudinary.com')) {
+    if (cloudinary && url.includes('res.cloudinary.com')) {
       const publicId = cloudinaryPublicId(url);
       if (publicId) await cloudinary.uploader.destroy(publicId);
     }
