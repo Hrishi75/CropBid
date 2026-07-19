@@ -5,6 +5,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -209,6 +210,26 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
         <Fig label="TOTAL MONEY" value={money(bid.totalAmount, currency)} />
       </View>
 
+      {(bid.deliveryAddress || bid.contactPhone || bid.buyer?.phone) ? (
+        <View style={styles.orderInfo}>
+          {bid.deliveryAddress ? (
+            <Text style={styles.orderInfoLine}>
+              <Text style={styles.orderInfoLabel}>DELIVER TO  </Text>
+              {bid.deliveryAddress}
+            </Text>
+          ) : null}
+          {(bid.contactPhone || bid.buyer?.phone) ? (
+            <Text
+              style={styles.orderInfoLine}
+              onPress={() => Linking.openURL(`tel:${bid.contactPhone || bid.buyer?.phone}`)}
+            >
+              <Text style={styles.orderInfoLabel}>CALL BUYER  </Text>
+              <Text style={styles.orderInfoPhone}>☎ {bid.contactPhone || bid.buyer?.phone}</Text>
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {bid.message ? <Text style={styles.message}>“{bid.message}”</Text> : null}
 
       {isPending ? (
@@ -309,6 +330,10 @@ const styles = StyleSheet.create({
   figVal: { fontFamily: font.monoSemi, fontSize: 15, color: design.ink, marginTop: 2 },
 
   message: { fontFamily: font.sans, fontStyle: 'italic', fontSize: 13, color: design.ink2, marginTop: 12, padding: 10, backgroundColor: design.paper2, borderRadius: 8 },
+  orderInfo: { marginTop: 12, padding: 10, backgroundColor: design.paper2, borderRadius: 8, gap: 4 },
+  orderInfoLine: { fontFamily: font.sans, fontSize: 13, color: design.ink },
+  orderInfoLabel: { fontFamily: font.mono, fontSize: 10.5, color: design.ink3, letterSpacing: 0.4 },
+  orderInfoPhone: { fontFamily: font.sansMed, color: colors.forest },
   explain: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3, marginTop: 10 },
 
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },

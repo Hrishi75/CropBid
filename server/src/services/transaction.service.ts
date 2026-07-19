@@ -106,8 +106,8 @@ export async function getMyTransactions(userId: string, role: string) {
     orderBy: { createdAt: 'desc' },
     include: {
       listing: true,
-      farmer: { select: { id: true, name: true, trustScore: true } },
-      buyer: { select: { id: true, name: true, trustScore: true } },
+      farmer: { select: { id: true, name: true, trustScore: true, phone: true } },
+      buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
       // The Deliveries page renders shipment state per deal in one request
       shipment: {

@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { ArrowIcon } from '../ui/Brand';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import api from '../../lib/axios';
@@ -27,11 +28,15 @@ interface BidFormProps {
 
 export function BidForm({ listing }: BidFormProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState(String(listing.quantity));
   const [message, setMessage] = useState('');
   const [payment, setPayment] = useState<'LC' | 'NET7' | 'NET15'>('LC');
   const [delivery, setDelivery] = useState<'FOB' | 'CIF'>('CIF');
+  // Prefilled from the profile — the seller sees these on the order
+  const [deliveryAddress, setDeliveryAddress] = useState(user?.location ?? '');
+  const [contactPhone, setContactPhone] = useState(user?.phone ?? '');
   const [agentMode, setAgentMode] = useState(true);
   const [walkAway, setWalkAway] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,6 +77,8 @@ export function BidForm({ listing }: BidFormProps) {
         bidPricePerUnit: bidPrice,
         quantity: bidQty,
         message: message || undefined,
+        deliveryAddress: deliveryAddress.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
         paymentTerms: payment,
         deliveryTerms: delivery,
         agentMode,
@@ -157,6 +164,27 @@ export function BidForm({ listing }: BidFormProps) {
               ))}
             </div>
           </div>
+        </Section>
+
+        <Section title="Delivery details">
+          <div>
+            <label htmlFor="bid-address" className="cb-label">Deliver to</label>
+            <textarea
+              id="bid-address"
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              rows={2}
+              placeholder="Warehouse / delivery address the seller should ship to"
+              className="cb-input"
+            />
+          </div>
+          <Input
+            label="Contact phone"
+            type="tel"
+            placeholder="Number the seller can call about this order"
+            value={contactPhone}
+            onChange={(e) => setContactPhone(e.target.value)}
+          />
         </Section>
 
         <Section title="Message">

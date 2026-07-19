@@ -202,9 +202,13 @@ function Spec({ label, value }: { label: string; value: string }) {
 }
 
 function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) {
+  const { user } = useAuth();
   const [price, setPrice] = useState(String(listing.pricePerUnitMin));
   const [qty, setQty] = useState(String(listing.quantity));
   const [message, setMessage] = useState('');
+  // Prefilled from the profile — the farmer sees these on the offer
+  const [deliveryAddress, setDeliveryAddress] = useState(user?.location ?? '');
+  const [contactPhone, setContactPhone] = useState(user?.phone ?? '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -248,6 +252,8 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
         bidPricePerUnit: priceNum,
         quantity: qtyNum,
         message: message.trim() || undefined,
+        deliveryAddress: deliveryAddress.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
       });
       Alert.alert('Bid placed', 'The farmer has been notified.', [
         { text: 'OK', onPress: onDone },
@@ -278,6 +284,26 @@ function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) 
         value={qty}
         onChangeText={setQty}
         keyboardType="numeric"
+        placeholderTextColor={colors.textMuted}
+      />
+
+      <Text style={styles.label}>Deliver to</Text>
+      <TextInput
+        style={[styles.input, styles.multiline]}
+        value={deliveryAddress}
+        onChangeText={setDeliveryAddress}
+        multiline
+        placeholder="Address the farmer should ship to"
+        placeholderTextColor={colors.textMuted}
+      />
+
+      <Text style={styles.label}>Contact phone</Text>
+      <TextInput
+        style={styles.input}
+        value={contactPhone}
+        onChangeText={setContactPhone}
+        keyboardType="phone-pad"
+        placeholder="Number the farmer can call"
         placeholderTextColor={colors.textMuted}
       />
 

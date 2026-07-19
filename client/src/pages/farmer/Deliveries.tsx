@@ -143,9 +143,14 @@ export function Deliveries() {
                 </div>
                 <div className="cb-small" style={{ marginBottom: 8 }}>
                   to {tx.buyer?.name || 'buyer'}
+                  {(tx.bid?.contactPhone || tx.buyer?.phone) && (
+                    <> · <a href={`tel:${tx.bid?.contactPhone || tx.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {tx.bid?.contactPhone || tx.buyer?.phone}</a></>
+                  )}
                   {shp
                     ? <> · {shp.pickupLocation} → {shp.deliveryLocation} · {shp.logisticsPartner?.name}</>
-                    : tx.listing ? <> · from {tx.listing.location}, {tx.listing.state}</> : null}
+                    : tx.bid?.deliveryAddress
+                      ? <> · deliver to {tx.bid.deliveryAddress}</>
+                      : tx.listing ? <> · from {tx.listing.location}, {tx.listing.state}</> : null}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>

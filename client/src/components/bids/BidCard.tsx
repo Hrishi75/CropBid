@@ -137,6 +137,31 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           </div>
         </div>
 
+        {viewAs === 'farmer' && (bid.deliveryAddress || bid.contactPhone || bid.buyer?.phone || bid.paymentTerms || bid.deliveryTerms) && (
+          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {bid.deliveryAddress && (
+              <div>
+                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>DELIVER TO</span>
+                {bid.deliveryAddress}
+              </div>
+            )}
+            {(bid.contactPhone || bid.buyer?.phone) && (
+              <div>
+                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>CONTACT</span>
+                <a href={`tel:${bid.contactPhone || bid.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>
+                  {bid.contactPhone || bid.buyer?.phone}
+                </a>
+              </div>
+            )}
+            {(bid.paymentTerms || bid.deliveryTerms) && (
+              <div>
+                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>TERMS</span>
+                {[bid.paymentTerms, bid.deliveryTerms].filter(Boolean).join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
+
         {bid.message && (
           <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, fontStyle: 'italic' }}>
             "{bid.message}"

@@ -354,6 +354,15 @@ model Bid {
   currency        Currency  @default(INR)
   message         String?   // Optional message from buyer
 
+  // Order fulfilment details, snapshotted at order time so the seller can
+  // arrange delivery and reach the buyer. When the client doesn't collect
+  // them (e.g. the one-tap consumer buy), the service falls back to the
+  // buyer's profile phone/location.
+  deliveryAddress String?
+  contactPhone    String?
+  paymentTerms    String?   // LC | NET7 | NET15 — validated at the API boundary
+  deliveryTerms   String?   // FOB | CIF — validated at the API boundary
+
   // Was this bid placed by the AI agent or manually by the user?
   isAgentBid      Boolean   @default(false)
 

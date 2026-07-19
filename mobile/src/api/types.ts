@@ -60,12 +60,17 @@ export interface Bid {
   listingId: string;
   listing?: Listing;
   buyerId: string;
-  buyer?: { id?: string; name: string; trustScore?: number };
+  buyer?: { id?: string; name: string; trustScore?: number; phone?: string | null; location?: string | null };
   bidPricePerUnit: number;
   totalAmount: number;
   quantity: number;
   currency: string;
   message: string | null;
+  // Order fulfilment details — where to deliver and whom to call
+  deliveryAddress?: string | null;
+  contactPhone?: string | null;
+  paymentTerms?: string | null;
+  deliveryTerms?: string | null;
   status: BidStatus;
   counterPrice: number | null;
   isAgentBid?: boolean;

@@ -21,9 +21,11 @@ const placeBidSchema = z.object({
   bidPricePerUnit: z.number().positive('Bid price must be positive'),
   quantity: z.number().positive('Quantity must be positive'),
   message: z.string().max(500).optional(),
-  // Optional bid-terms captured on the new BidForm. Accepted today so the
-  // client's POST is validated end-to-end; persistence pending the
-  // bid-terms schema migration (Prisma model + service write).
+  // Order fulfilment details — persisted on the bid so the seller sees where
+  // to deliver and how to reach the buyer. Blank values fall back to the
+  // buyer's profile phone/location in the service.
+  deliveryAddress: z.string().max(500).optional(),
+  contactPhone: z.string().max(20).optional(),
   paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
   deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
   agentMode: z.boolean().optional(),
@@ -41,6 +43,10 @@ const updateBidSchema = z.object({
 const directPurchaseSchema = z.object({
   listingId: z.string().min(1),
   quantity: z.number().positive('Quantity must be positive'),
+  // Optional — the one-tap consumer buy usually sends neither; the service
+  // then snapshots the consumer's profile phone/location onto the order.
+  deliveryAddress: z.string().max(500).optional(),
+  contactPhone: z.string().max(20).optional(),
 });
 
 // POST /api/bids — Place a bid
