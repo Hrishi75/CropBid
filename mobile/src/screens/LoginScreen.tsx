@@ -92,13 +92,6 @@ export default function LoginScreen() {
             New to CropBid? <Text style={styles.switchLink}>Create account</Text>
           </Text>
         </Pressable>
-
-        {__DEV__ ? (
-          <Text style={styles.hint}>
-            Demo: rajesh@cropbid.test (farmer) · vikram@cropbid.test (buyer){'\n'}
-            priya@cropbid.test (consumer) · password123
-          </Text>
-        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -138,10 +131,4 @@ const styles = StyleSheet.create({
   spacer: { height: spacing.xs },
   switch: { textAlign: 'center', marginTop: spacing.xl, color: colors.textSecondary, fontSize: 14 },
   switchLink: { color: colors.ember, fontWeight: '600' },
-  hint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: spacing.xl,
-  },
 });
