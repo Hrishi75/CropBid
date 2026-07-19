@@ -24,8 +24,8 @@ interface Prediction {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
-  cat: 'veg' | 'fruits' | 'grains' | 'spices';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
+  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
   modal: number;
   usual: number;
   changePct: number;
@@ -47,7 +47,7 @@ interface ForecastBoard {
 }
 
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
-const unitLabel = (u: 'KG' | 'QUINTAL') => (u === 'KG' ? 'kg' : 'qtl');
+const unitLabel = (u: 'KG' | 'QUINTAL' | 'LITRE') => (u === 'KG' ? 'kg' : u === 'LITRE' ? 'L' : 'qtl');
 
 const DIRECTION_META: Record<Direction, { arrow: string; word: string; cls: string }> = {
   rise: { arrow: '▲', word: 'set to rise', cls: 'pos' },

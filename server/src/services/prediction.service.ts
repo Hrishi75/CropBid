@@ -47,8 +47,8 @@ export interface CropPrediction {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
-  cat: 'veg' | 'fruits' | 'grains' | 'spices';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
+  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
   // today's anchor (from the rates board)
   modal: number;        // ₹ per unit
@@ -96,6 +96,12 @@ const SEASONS: Record<string, Season> = {
   'Cauliflower':          { peak: [11, 12, 1, 2], peakLabel: 'Nov–Feb', lean: [5, 6, 7],  leanLabel: 'May–Jul' },
   'Brinjal':              { peak: [11, 12, 1],   peakLabel: 'Nov–Jan', lean: [5, 6],      leanLabel: 'May–Jun' },
   'Banana':               { peak: [],            peakLabel: '',        lean: [],          leanLabel: '' }, // year-round crop
+  // Dairy follows the milk cycle: winter flush builds supply, summer heat
+  // thins yields. Ghee is storable, so it trades year-round without a season.
+  'Milk':                 { peak: [11, 12, 1, 2], peakLabel: 'Nov–Feb (winter flush)', lean: [4, 5, 6], leanLabel: 'Apr–Jun (summer dip)' },
+  'Curd':                 { peak: [11, 12, 1, 2], peakLabel: 'Nov–Feb (winter flush)', lean: [4, 5, 6], leanLabel: 'Apr–Jun (summer dip)' },
+  'Paneer':               { peak: [11, 12, 1, 2], peakLabel: 'Nov–Feb (winter flush)', lean: [4, 5, 6], leanLabel: 'Apr–Jun (summer dip)' },
+  'Ghee':                 { peak: [],             peakLabel: '',        lean: [],          leanLabel: '' },
   'Mango':                { peak: [4, 5, 6],     peakLabel: 'Apr–Jun', lean: [11, 12, 1], leanLabel: 'Nov–Jan (off-season)' },
   'Pomegranate':          { peak: [2, 3, 4],     peakLabel: 'Feb–Apr', lean: [6, 7],      leanLabel: 'Jun–Jul' },
   'Grapes':               { peak: [2, 3, 4],     peakLabel: 'Feb–Apr', lean: [8, 9, 10],  leanLabel: 'Aug–Oct' },
@@ -143,9 +149,9 @@ const HORIZON_DAYS = 7;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 const round1 = (v: number) => Math.round(v * 10) / 10;
 
-// ₹/kg to one decimal, ₹/quintal to the rupee — same display precision as rates.
-const roundPrice = (v: number, unit: 'KG' | 'QUINTAL') =>
-  unit === 'KG' ? Math.max(0.1, round1(v)) : Math.max(1, Math.round(v));
+// ₹/kg and ₹/L to one decimal, ₹/quintal to the rupee — same precision as rates.
+const roundPrice = (v: number, unit: 'KG' | 'QUINTAL' | 'LITRE') =>
+  unit === 'QUINTAL' ? Math.max(1, Math.round(v)) : Math.max(0.1, round1(v));
 
 // -----------------------------------------------------------------------------
 // Platform activity — CropBid's own order book, by board crop.
@@ -180,6 +186,10 @@ const CROP_ALIASES: Record<string, string[]> = {
   'Maize':                ['corn', 'makka', 'makki', 'yellow maize', 'sweet corn'],
   'Soyabean':             ['soybean', 'soya', 'soya bean', 'soy bean', 'soy'],
   'Turmeric':             ['haldi', 'turmeric fingers'],
+  'Milk':                 ['cow milk', 'buffalo milk', 'goat milk', 'a2 milk', 'doodh', 'dudh'],
+  'Ghee':                 ['desi ghee', 'a2 ghee', 'bilona ghee', 'clarified butter'],
+  'Curd':                 ['curd dahi', 'dahi', 'yogurt', 'yoghurt'],
+  'Paneer':               ['cottage cheese', 'malai paneer'],
 };
 
 // "Paddy(Dhan)(Common)" → "paddy dhan common"; "  Soy Bean " → "soy bean"

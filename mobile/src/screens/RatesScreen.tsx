@@ -19,8 +19,8 @@ import { money, unitLabel } from '../lib/format';
 
 // --- data shapes (mirror server/src/services/rates.service.ts) ---
 
-type Cat = 'veg' | 'fruits' | 'grains' | 'spices';
-type Unit = 'KG' | 'QUINTAL';
+type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+type Unit = 'KG' | 'QUINTAL' | 'LITRE';
 
 interface LiveRate {
   commodity: string;
@@ -56,6 +56,7 @@ interface Breakdown { count: number; unit: Unit; records: MarketRow[]; }
 
 const CATS: Array<{ id: Cat; title: string }> = [
   { id: 'veg',    title: 'Fresh Vegetables' },
+  { id: 'dairy',  title: 'Milk & Dairy' },
   { id: 'fruits', title: 'Seasonal Fruits' },
   { id: 'grains', title: 'Grains & Pulses' },
   { id: 'spices', title: 'Spices & Oilseeds' },

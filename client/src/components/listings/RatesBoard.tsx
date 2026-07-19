@@ -18,7 +18,7 @@ interface Rate {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
   modal: number;
   min: number;
   max: number;
@@ -43,7 +43,7 @@ const SOURCE_LABEL: Record<Rate['source'], string> = {
 };
 
 function unitLabel(u: Rate['unit']) {
-  return u === 'KG' ? 'kg' : 'qtl';
+  return u === 'KG' ? 'kg' : u === 'LITRE' ? 'L' : 'qtl';
 }
 
 function inr(n: number) {

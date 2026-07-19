@@ -23,6 +23,7 @@
 
   "All India": "पूरा भारत",
   "Fresh Vegetables": "ताज़ी सब्ज़ियाँ",
+  "Milk & Dairy": "दूध और डेयरी",
   "Seasonal Fruits": "मौसमी फल",
   "Grains & Pulses": "अनाज और दालें",
   "Spices & Oilseeds": "मसाले और तिलहन",
@@ -124,5 +125,22 @@
   "Farmer": "किसान",
   "Buyer": "खरीदार",
   "Marketplace": "मार्केटप्लेस",
-  "How it works": "यह कैसे काम करता है"
+  "How it works": "यह कैसे काम करता है",
+
+  "Choose your farmer": "अपना किसान चुनें",
+  "{{n}} farmer selling today": "आज {{n}} किसान बेच रहा है",
+  "{{n}} farmers selling today": "आज {{n}} किसान बेच रहे हैं",
+  "from": "से",
+  "CropBid farmer": "CropBid किसान",
+  "Only {{qty}} {{unit}} left": "सिर्फ़ {{qty}} {{unit}} बची है",
+  "{{qty}} {{unit}} available": "{{qty}} {{unit}} उपलब्ध",
+  "No live lots for this crop right now — pull down to check again.": "अभी इस फ़सल का कोई लाइव लॉट नहीं है — फिर देखने के लिए नीचे खींचें।",
+
+  "Delete account": "खाता मिटाएँ",
+  "This cannot be undone": "यह वापस नहीं हो सकता",
+  "Delete your account?": "अपना खाता मिटाएँ?",
+  "Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.": "आपकी प्रोफ़ाइल, लिस्टिंग, ऑफ़र और सूचनाएँ हमेशा के लिए हट जाएँगी। पूरे हो चुके सौदे बिना आपकी निजी जानकारी के रिकॉर्ड में रहेंगे। यह वापस नहीं हो सकता।",
+  "Continue": "आगे बढ़ें",
+  "Enter your password to confirm. Everything is removed for good.": "पुष्टि के लिए अपना पासवर्ड डालें। सब कुछ हमेशा के लिए हट जाएगा।",
+  "Delete forever": "हमेशा के लिए मिटाएँ"
 }

@@ -8,11 +8,15 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,17 +30,23 @@ import { IconChevR } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import type { ProfileParamList } from '../navigation/types';
-import { uploadAvatar } from '../api/endpoints';
+import { deleteAccount, uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const nav = useNavigation<NativeStackNavigationProp<ProfileParamList>>();
-  const { user, refreshUser, applyUser, signOut } = useAuth();
+  const { user, refreshUser, applyUser, signOut, dropSession } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // Delete-account confirm sheet: the password typed in it, and the in-flight /
+  // error state of the DELETE call.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (!user) return null;
 
@@ -105,6 +115,40 @@ export default function ProfileScreen() {
       Alert.alert('Could not save photo', errorMessage(e));
     } finally {
       setUploading(false);
+    }
+  }
+
+  function onDeletePress() {
+    Alert.alert(
+      t('Delete your account?'),
+      t('Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.'),
+      [
+        { text: t('Cancel'), style: 'cancel' },
+        {
+          text: t('Continue'),
+          style: 'destructive',
+          onPress: () => {
+            setDeletePassword('');
+            setDeleteError(null);
+            setDeleteOpen(true);
+          },
+        },
+      ],
+    );
+  }
+
+  async function onConfirmDelete() {
+    if (deleting || !deletePassword) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(deletePassword);
+      setDeleteOpen(false);
+      await dropSession(); // navigator falls back to the guest storefront
+    } catch (e) {
+      setDeleteError(errorMessage(e, 'Could not delete the account'));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -288,8 +332,71 @@ export default function ProfileScreen() {
             loading={signingOut}
             onPress={onSignOutPress}
           />
+          <Row
+            label={t('Delete account')}
+            hint={t('This cannot be undone')}
+            danger
+            onPress={onDeletePress}
+          />
         </View>
       </ScrollView>
+
+      {/* delete-account confirm sheet — password re-entry, then DELETE /auth/me */}
+      <Modal
+        visible={deleteOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deleting && setDeleteOpen(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalScrim}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('Delete your account?')}</Text>
+            <Text style={styles.modalBody}>
+              {t('Enter your password to confirm. Everything is removed for good.')}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deletePassword}
+              onChangeText={(v) => { setDeletePassword(v); setDeleteError(null); }}
+              placeholder={t('Password')}
+              placeholderTextColor={design.ink3}
+              secureTextEntry
+              autoCapitalize="none"
+              autoFocus
+              editable={!deleting}
+              onSubmitEditing={onConfirmDelete}
+            />
+            {deleteError ? <Text style={styles.modalError}>{deleteError}</Text> : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setDeleteOpen(false)}
+                disabled={deleting}
+                style={({ pressed }) => [styles.modalBtn, pressed && { opacity: 0.85 }]}
+              >
+                <Text style={styles.modalBtnText}>{t('Cancel')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={onConfirmDelete}
+                disabled={deleting || !deletePassword}
+                style={({ pressed }) => [
+                  styles.modalBtn,
+                  styles.modalBtnDanger,
+                  (pressed || deleting || !deletePassword) && { opacity: 0.75 },
+                ]}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.modalBtnText, styles.modalBtnDangerText]}>{t('Delete forever')}</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -390,4 +497,50 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontFamily: font.sansMed, fontSize: 15, letterSpacing: -0.15, color: design.ink },
   rowHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
+
+  // delete-account confirm sheet
+  modalScrim: {
+    flex: 1,
+    backgroundColor: 'rgba(22,31,16,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    alignSelf: 'stretch',
+    backgroundColor: design.paper,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 18,
+    padding: 20,
+  },
+  modalTitle: { fontFamily: font.sansSemi, fontSize: 18, letterSpacing: -0.3, color: design.ink },
+  modalBody: { fontFamily: font.sans, fontSize: 13, lineHeight: 18, color: design.ink2, marginTop: 6 },
+  modalInput: {
+    backgroundColor: design.bg,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontFamily: font.sans,
+    fontSize: 14.5,
+    color: design.ink,
+    marginTop: 14,
+  },
+  modalError: { fontFamily: font.sansMed, fontSize: 12, color: colors.ember, marginTop: 8 },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  modalBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 12,
+    paddingVertical: 12,
+    backgroundColor: design.paper,
+  },
+  modalBtnDanger: { backgroundColor: colors.ember, borderColor: colors.ember },
+  modalBtnText: { fontFamily: font.sansSemi, fontSize: 13.5, color: design.ink },
+  modalBtnDangerText: { color: '#fff' },
 });

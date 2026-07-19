@@ -9,6 +9,10 @@
 // Like the web, the market always renders with prices: the shared static
 // catalog (lib/catalog.ts) fills every rail, and live listings from the API
 // replace the demo card for their crop (consumers see direct-sale lots only).
+// Each crop gets ONE card: when several farmers sell the same crop, their lots
+// collapse into a grouped card ("N FARMERS", cheapest price first) that opens
+// the CropSellers comparison screen — farmer names, trust, grade, and price
+// side by side.
 // Home is market-only — tapping a live lot opens ListingDetail, whose action
 // is role-gated there (consumer buy bar / buyer bid form / farmer read-only);
 // bidding never happens on this page. Selling is farmer-only: farmers get a
@@ -59,7 +63,7 @@ interface LiveRate {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
   modal: number;       // ₹ per unit — today's clearing price
   min: number;
   max: number;
@@ -84,12 +88,18 @@ function useLiveRates(): RatesBoardData | null {
   return board;
 }
 
-// One card on the storefront — either a live API listing or a static demo lot
-// from the shared catalog, normalised to what the card renders.
+// One card on the storefront — a live API listing, a whole crop when several
+// farmers sell it (one card, "N FARMERS", cheapest price), or a static demo
+// lot from the shared catalog, normalised to what the card renders.
 interface CardVM {
   key: string;
   live: boolean;
   listing?: Listing;
+  // All live lots for this crop, cheapest first, when more than one farmer
+  // sells it — the card then opens CropSellers instead of ListingDetail.
+  group?: Listing[];
+  sellers: number;
+  sellersMeta?: string; // meta line override for grouped cards ("3 farms · 2 states")
   cat: RailId;
   name: string;
   variety: string | null;
@@ -112,6 +122,7 @@ function fromListing(l: Listing): CardVM {
     key: l.id,
     live: true,
     listing: l,
+    sellers: 1,
     cat: railFor(l.cropName),
     name: l.cropName,
     variety: l.cropVariety,
@@ -127,6 +138,41 @@ function fromListing(l: Listing): CardVM {
     organic: l.organic,
     trust: l.farmer?.user?.trustScore ?? null,
     low: l.quantity > 0 && l.remainingQuantity / l.quantity <= 0.25,
+  };
+}
+
+// Collapse every live lot of one crop into a single card: the cheapest lot
+// fronts it (photo, price, grade), quantity is the combined stock, and the
+// meta line says how many farms are selling and where. Lots of one crop can
+// be listed in different units, so "cheapest" compares ₹ per kg.
+const KG_PER_UNIT: Record<string, number> = { KG: 1, QUINTAL: 100, TONNE: 1000 };
+
+function fromGroup(group: Listing[]): CardVM {
+  const perKg = (l: Listing) =>
+    (l.retailPricePerUnit ?? l.pricePerUnitMin) / (KG_PER_UNIT[l.unit] ?? 1);
+  const sorted = [...group].sort((a, b) => perKg(a) - perKg(b));
+  const base = fromListing(sorted[0]);
+  if (sorted.length === 1) return base;
+  // Stock and price in the shared unit when all lots agree, else per kg.
+  const sameUnit = sorted.every((l) => l.unit === sorted[0].unit);
+  const kgFactor = KG_PER_UNIT[sorted[0].unit] ?? 1;
+  const inStockUnit = (l: Listing, n: number) => (sameUnit ? n : n * (KG_PER_UNIT[l.unit] ?? 1));
+  const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0));
+  const total = sorted.reduce((s, l) => s + inStockUnit(l, l.quantity), 0);
+  const states = [...new Set(sorted.map((l) => l.state))];
+  return {
+    ...base,
+    key: `crop-${base.name.trim().toLowerCase()}`,
+    group: sorted,
+    sellers: sorted.length,
+    sellersMeta: states.length === 1
+      ? `${sorted.length} farms · ${states[0]}`
+      : `${sorted.length} farms · ${states.length} states`,
+    unit: sameUnit ? base.unit : 'KG',
+    price: sameUnit ? base.price : base.price / kgFactor,
+    anchor: sameUnit ? base.anchor : base.anchor / kgFactor,
+    qty,
+    low: total > 0 && qty / total <= 0.25,
   };
 }
 
@@ -176,16 +222,27 @@ export default function StorefrontHomeScreen() {
     setRefreshing(false);
   }, [load]);
 
-  // Live lots first; the static catalog fills every crop that has no live lot
-  // yet, so the market always renders full, with prices — same as the web.
+  // Live lots first — one card per CROP, not per lot: when several farmers
+  // sell the same crop their lots collapse into a grouped card that opens the
+  // CropSellers comparison screen. The static catalog then fills every crop
+  // that has no live lot yet, so the market always renders full, with prices —
+  // same as the web.
   const items = useMemo<CardVM[]>(() => {
-    const live = listings.map(fromListing);
-    const liveNames = new Set(live.map((v) => v.name.trim().toLowerCase()));
+    const byCrop = new Map<string, Listing[]>();
+    for (const l of listings) {
+      const key = l.cropName.trim().toLowerCase();
+      const group = byCrop.get(key);
+      if (group) group.push(l);
+      else byCrop.set(key, [l]);
+    }
+    const live = [...byCrop.values()].map(fromGroup);
+    const liveNames = new Set(byCrop.keys());
     const demo = DEMO_PRODUCTS
       .filter((d) => !liveNames.has(d.name.trim().toLowerCase()))
       .map<CardVM>((d) => ({
         key: `demo-${d.slug}`,
         live: false,
+        sellers: 1,
         cat: d.cat,
         name: d.name,
         variety: d.variety,
@@ -214,7 +271,11 @@ export default function StorefrontHomeScreen() {
   });
 
   const openCard = (v: CardVM) => {
-    if (v.live && v.listing) {
+    if (v.sellers > 1 && v.group) {
+      // Several farmers sell this crop — open the comparison screen instead
+      // of jumping into one farmer's lot.
+      nav.navigate('CropSellers', { crop: v.name, preview: v.group });
+    } else if (v.live && v.listing) {
       nav.navigate('ListingDetail', { id: v.listing.id, preview: v.listing });
     } else {
       Alert.alert(
@@ -639,15 +700,21 @@ function ProductCard({
         <View style={styles.liveRow}>
           <Pulse style={styles.liveDotSm} />
           <Mono style={styles.liveText}>
-            {vm.live ? (vm.trust != null ? `★ ${vm.trust} · ${liveWord}` : liveWord) : 'MANDI PRICE'}
+            {!vm.live
+              ? 'MANDI PRICE'
+              : vm.sellers > 1
+                ? `${vm.sellers} FARMERS · ${liveWord}`
+                : vm.trust != null
+                  ? `★ ${vm.trust} · ${liveWord}`
+                  : liveWord}
           </Mono>
         </View>
         <Text style={styles.cardName} numberOfLines={1}>
           {vm.name}
-          {vm.variety ? ` · ${vm.variety}` : ''}
+          {vm.sellers === 1 && vm.variety ? ` · ${vm.variety}` : ''}
         </Text>
         <Text style={styles.cardMeta} numberOfLines={1}>
-          {vm.location}, {vm.state}
+          {vm.sellersMeta ?? `${vm.location}, ${vm.state}`}
         </Text>
         <Text style={[styles.stock, vm.low && styles.stockLow]} numberOfLines={1}>
           {vm.low
@@ -657,6 +724,7 @@ function ProductCard({
         <View style={styles.priceFoot}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.priceRow}>
+              {vm.sellers > 1 ? <Text style={styles.fromWord}>from</Text> : null}
               <Text style={styles.price}>{money(vm.price)}</Text>
               <Text style={styles.perUnit}>/{unitLabel(vm.unit)}</Text>
             </View>
@@ -916,6 +984,7 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
   price: { fontFamily: font.sansBold, fontSize: 14, color: design.ink },
   perUnit: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3 },
+  fromWord: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3 },
   strike: { fontFamily: font.sans, fontSize: 11, color: design.ink3, textDecorationLine: 'line-through' },
   buyBtn: {
     borderWidth: 1.4,

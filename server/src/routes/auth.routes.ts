@@ -30,6 +30,7 @@ import {
   changePasswordHandler,
   farmerOnboardingHandler,
   buyerOnboardingHandler,
+  deleteAccountHandler,
 } from '../controllers/auth.controller';
 
 const router = Router();
@@ -52,6 +53,8 @@ router.patch('/me', authenticate, updateProfileHandler);
 // Profile photo — multipart field "avatar"; Multer saves, Sharp squares it
 router.post('/me/avatar', authenticate, uploadAvatar.single('avatar'), processAvatar, updateAvatarHandler);
 router.post('/change-password', authenticate, changePasswordHandler);
+// Delete own account — body carries the current password as confirmation
+router.delete('/me', authenticate, deleteAccountHandler);
 
 // Onboarding (must be logged in + correct role)
 router.post('/onboarding/farmer', authenticate, requireRole('FARMER'), farmerOnboardingHandler);

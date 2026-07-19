@@ -31,7 +31,7 @@ import {
 // Catalog — static demo lots
 // =============================================================================
 
-type RailId = 'veg' | 'fruits' | 'grains' | 'spices';
+type RailId = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
 interface Produce {
   slug: string;          // image filename: /products/<slug>.jpg
@@ -62,6 +62,15 @@ const PRODUCTS: Produce[] = [
   { slug: 'spinach',      name: 'Spinach',       variety: 'All Green',          emoji: '🥬', cat: 'veg', unit: 'KG', priceMin: 15,  priceMax: 22,  qty: 300,  location: 'Indore',    state: 'Madhya Pradesh',   bids: 1, grade: 'A', organic: true },
 
   // Seasonal fruits — ₹/kg
+  // Milk & dairy — ₹/kg (≈ per litre for liquid milk). Floors track Amul's
+  // Jun-2026 procurement rates; ceilings track DoCA retail levels (Jul 2026).
+  // Keep in sync with mobile/src/lib/catalog.ts.
+  { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',             emoji: '🥛', cat: 'dairy', unit: 'LITRE', priceMin: 39,  priceMax: 58,  qty: 600, location: 'Anand',    state: 'Gujarat',     bids: 5, grade: 'A' },
+  { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',             emoji: '🐃', cat: 'dairy', unit: 'LITRE', priceMin: 56,  priceMax: 72,  qty: 450, location: 'Karnal',   state: 'Haryana',     bids: 4, grade: 'A' },
+  { slug: 'curd',         name: 'Curd (Dahi)',   variety: 'Farm-set',           emoji: '🥣', cat: 'dairy', unit: 'LITRE', priceMin: 55,  priceMax: 75,  qty: 200, location: 'Kolhapur', state: 'Maharashtra', bids: 2, grade: 'A' },
+  { slug: 'paneer',       name: 'Paneer',        variety: 'Malai',              emoji: '🧀', cat: 'dairy', unit: 'KG', priceMin: 340, priceMax: 400, qty: 80,  location: 'Pune',     state: 'Maharashtra', bids: 3, grade: 'A' },
+  { slug: 'ghee',         name: 'Ghee',          variety: 'Desi Cow',           emoji: '🧈', cat: 'dairy', unit: 'KG', priceMin: 540, priceMax: 650, qty: 60,  location: 'Jaipur',   state: 'Rajasthan',   bids: 6, grade: 'A', organic: true },
+
   { slug: 'mango',        name: 'Mango',         variety: 'Kesar',              emoji: '🥭', cat: 'fruits', unit: 'KG', priceMin: 90,  priceMax: 140, qty: 900,  location: 'Junagadh',  state: 'Gujarat',          bids: 8, grade: 'A' },
   { slug: 'banana',       name: 'Banana',        variety: 'G9 Cavendish',       emoji: '🍌', cat: 'fruits', unit: 'KG', priceMin: 28,  priceMax: 38,  qty: 2000, location: 'Jalgaon',   state: 'Maharashtra',      bids: 4, grade: 'A' },
   { slug: 'pomegranate',  name: 'Pomegranate',   variety: 'Bhagwa',             emoji: '🍒', cat: 'fruits', unit: 'KG', priceMin: 110, priceMax: 160, qty: 700,  location: 'Solapur',   state: 'Maharashtra',      bids: 5, grade: 'A' },
@@ -93,15 +102,17 @@ const PRODUCTS: Produce[] = [
 ];
 
 const RAILS: Array<{ id: RailId; eyebrow: string; title: string }> = [
-  { id: 'veg',    eyebrow: 'Farm-fresh · picked this week', title: 'Fresh Vegetables' },
-  { id: 'fruits', eyebrow: 'In season now',                 title: 'Seasonal Fruits' },
-  { id: 'grains', eyebrow: 'MSP-anchored floors',           title: 'Grains & Pulses' },
-  { id: 'spices', eyebrow: 'Straight from origin mandis',   title: 'Spices & Oilseeds' },
+  { id: 'veg',    eyebrow: 'Farm-fresh · picked this week',      title: 'Fresh Vegetables' },
+  { id: 'dairy',  eyebrow: 'Milked this morning · farm chilled', title: 'Milk & Dairy' },
+  { id: 'fruits', eyebrow: 'In season now',                      title: 'Seasonal Fruits' },
+  { id: 'grains', eyebrow: 'MSP-anchored floors',                title: 'Grains & Pulses' },
+  { id: 'spices', eyebrow: 'Straight from origin mandis',        title: 'Spices & Oilseeds' },
 ];
 
 // Extra search terms per rail so "dal" or "masala" find things.
 const CAT_KEYWORDS: Record<RailId, string> = {
   veg: 'vegetable sabzi fresh',
+  dairy: 'milk doodh dairy dahi paneer ghee butter',
   fruits: 'fruit fresh',
   grains: 'grain cereal pulse dal rice paddy',
   spices: 'spice masala oilseed fibre',
@@ -109,6 +120,7 @@ const CAT_KEYWORDS: Record<RailId, string> = {
 
 const CATEGORY_TILES: Array<{ label: string; target: RailId; img: string; emoji: string }> = [
   { label: 'Fresh Vegetables', target: 'veg',    img: 'tomato',       emoji: '🍅' },
+  { label: 'Milk & Dairy',     target: 'dairy',  img: 'cow-milk',     emoji: '🥛' },
   { label: 'Seasonal Fruits',  target: 'fruits', img: 'mango',        emoji: '🥭' },
   { label: 'Grains & Cereals', target: 'grains', img: 'wheat',        emoji: '🌾' },
   { label: 'Pulses & Dal',     target: 'grains', img: 'chana',        emoji: '🫘' },
@@ -121,16 +133,18 @@ const CATEGORY_TILES: Array<{ label: string; target: RailId; img: string; emoji:
 const CHIPS: Array<[label: string, target: RailId | 'top']> = [
   ['All', 'top'],
   ['Vegetables', 'veg'],
+  ['Milk & Dairy', 'dairy'],
   ['Fruits', 'fruits'],
   ['Grains & Pulses', 'grains'],
   ['Spices & Oilseeds', 'spices'],
 ];
 
-const SEARCH_WORDS = ['tomatoes', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
+const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
 
 // Top ticker — crop, ₹ floor price, day-over-day move.
 const TICKER: Array<{ p: Produce; delta: number }> = [
   { p: PRODUCTS.find((x) => x.slug === 'wheat')!,        delta: 0.9 },
+  { p: PRODUCTS.find((x) => x.slug === 'cow-milk')!,     delta: 0.4 },
   { p: PRODUCTS.find((x) => x.slug === 'onion')!,        delta: -1.2 },
   { p: PRODUCTS.find((x) => x.slug === 'mango')!,        delta: 2.1 },
   { p: PRODUCTS.find((x) => x.slug === 'chana')!,        delta: 0.7 },
@@ -619,7 +633,8 @@ function ProduceCard({ p, currency, shopHref }: { p: Produce; currency: Currency
             </div>
             {off >= 5 && <div className="st-mrp">{formatUnitPrice(p.priceMax, 'INR', currency)}</div>}
           </div>
-          <Link to={shopHref} className="st-add">{p.unit === 'KG' ? 'BUY' : 'BID'}</Link>
+          {/* fresh per-kg/per-litre produce is bought outright; bulk quintal lots are bid on */}
+          <Link to={shopHref} className="st-add">{p.unit === 'QUINTAL' ? 'BID' : 'BUY'}</Link>
         </div>
       </div>
     </div>

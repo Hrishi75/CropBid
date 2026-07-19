@@ -52,6 +52,10 @@ const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 
+const deleteAccountSchema = z.object({
+  password: z.string().min(1, 'Your password is required to delete the account'),
+});
+
 // PATCH /api/auth/me — a user editing their own account + role profile.
 // Every field is optional; the service writes only the keys that are present.
 // The account fields are shared; the role-specific fields live in per-role
@@ -349,6 +353,33 @@ export async function changePasswordHandler(req: Request, res: Response) {
       ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
       : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// DELETE /api/auth/me
+// ---------------------------------------------------------------------------
+// Permanently deletes (or, when financial records pin the row, anonymizes)
+// the caller's account. The body must carry the current password — see
+// authService.deleteAccount. On success the session is gone server-side, so
+// also drop the refresh cookie like logout does.
+export async function deleteAccountHandler(req: Request, res: Response) {
+  const parsed = deleteAccountSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  await authService.deleteAccount(req.user!.userId, parsed.data.password);
+
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    path: '/api/auth',
+  });
+
+  res.json({ message: 'Your account has been deleted.' });
 }
 
 // ---------------------------------------------------------------------------

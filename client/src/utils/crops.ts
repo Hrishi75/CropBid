@@ -20,6 +20,7 @@ export const CROP_CATEGORIES: CropCategory[] = [
   { name: 'Vegetables', icon: '🥬', crops: ['Tomato', 'Potato', 'Onion', 'Cauliflower', 'Cabbage', 'Spinach', 'Okra', 'Brinjal', 'Carrot', 'Green Peas', 'Bottle Gourd', 'Bitter Gourd', 'Pumpkin', 'Cucumber', 'Capsicum', 'Beetroot', 'Radish', 'Sweet Potato'] },
   { name: 'Fruits', icon: '🍎', crops: ['Mango', 'Banana', 'Apple', 'Orange', 'Grapes', 'Papaya', 'Guava', 'Pomegranate', 'Watermelon', 'Pineapple', 'Coconut', 'Lemon', 'Sapota', 'Custard Apple', 'Jackfruit', 'Strawberry'] },
   { name: 'Nuts & Dry Fruits', icon: '🥜', crops: ['Almond', 'Cashew', 'Walnut', 'Pistachio', 'Arecanut'] },
+  { name: 'Dairy', icon: '🥛', crops: ['Cow Milk', 'Buffalo Milk', 'Goat Milk', 'Curd (Dahi)', 'Paneer', 'Ghee', 'Khoa'] },
 ];
 
 // Flat list of every crop in the catalogue.

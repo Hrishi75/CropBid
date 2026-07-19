@@ -33,6 +33,7 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
+import CropSellersScreen from '../screens/CropSellersScreen';
 import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
 import BuyerTabBar from './BuyerTabBar';
@@ -66,6 +67,11 @@ function BuyerNavigator() {
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
       <RootStack.Screen name="Auction" component={AuctionScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
+      <RootStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
       <RootStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
@@ -123,6 +129,11 @@ function FarmerNavigator() {
       <FarmerStack.Screen name="Contracts" component={SettleScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen name="Helper" component={BriefScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
         options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
@@ -169,6 +180,11 @@ function ConsumerNavigator() {
     <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
       <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
       <ConsumerStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}
         options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
@@ -200,6 +216,11 @@ function GuestNavigator() {
   return (
     <GuestStack.Navigator screenOptions={{ headerShown: false }}>
       <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
+      <GuestStack.Screen
+        name="CropSellers"
+        component={CropSellersScreen as React.ComponentType<any>}
+        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
+      />
       <GuestStack.Screen
         name="ListingDetail"
         component={ListingDetailScreen as React.ComponentType<any>}

@@ -30,7 +30,7 @@ export interface User {
 export interface Listing {
   id: string;
   farmerId: string;
-  farmer?: { user?: Pick<User, 'id' | 'name' | 'trustScore'> };
+  farmer?: { user?: Pick<User, 'id' | 'name' | 'trustScore' | 'avatar'> };
   cropName: string;
   cropVariety: string | null;
   quantity: number;

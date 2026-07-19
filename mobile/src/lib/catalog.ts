@@ -9,7 +9,7 @@
 
 import { CROP_CATEGORIES } from './crops';
 
-export type RailId = 'veg' | 'fruits' | 'grains' | 'spices';
+export type RailId = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
 export interface DemoProduct {
   slug: string;
@@ -17,7 +17,7 @@ export interface DemoProduct {
   variety: string;
   emoji: string;
   cat: RailId;
-  unit: 'KG' | 'QUINTAL';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
   price: number;   // ₹ per unit — farmer's floor (what you pay today)
   anchor: number;  // ₹ per unit — wholesale ceiling (struck-through anchor)
   qty: number;     // available, in `unit`
@@ -37,6 +37,16 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   { slug: 'brinjal',      name: 'Brinjal',       variety: 'Bharta',            emoji: '🍆', cat: 'veg', unit: 'KG', price: 18,  anchor: 26,  qty: 600,  location: 'Kolar',     state: 'Karnataka',        grade: 'B' },
   { slug: 'green-chilli', name: 'Green Chilli',  variety: 'G4',                emoji: '🌶️', cat: 'veg', unit: 'KG', price: 45,  anchor: 60,  qty: 350,  location: 'Guntur',    state: 'Andhra Pradesh',   grade: 'A' },
   { slug: 'spinach',      name: 'Spinach',       variety: 'All Green',         emoji: '🥬', cat: 'veg', unit: 'KG', price: 15,  anchor: 22,  qty: 300,  location: 'Indore',    state: 'Madhya Pradesh',   grade: 'A', organic: true },
+
+  // Milk & dairy — ₹/kg (≈ per litre for liquid milk). Floors track Amul's
+  // Jun-2026 procurement rates (cow 4% fat ≈ ₹39/L, buffalo 6–7% ≈ ₹54–63/L);
+  // anchors track DoCA retail levels (Delhi, Jul 2026: milk ₹60, curd ₹61,
+  // paneer ₹348–400, ghee ₹524–572).
+  { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',            emoji: '🥛', cat: 'dairy', unit: 'LITRE', price: 39,  anchor: 58,  qty: 600, location: 'Anand',     state: 'Gujarat',     grade: 'A' },
+  { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',            emoji: '🐃', cat: 'dairy', unit: 'LITRE', price: 56,  anchor: 72,  qty: 450, location: 'Karnal',    state: 'Haryana',     grade: 'A' },
+  { slug: 'curd',         name: 'Curd (Dahi)',   variety: 'Farm-set',          emoji: '🥣', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 75,  qty: 200, location: 'Kolhapur',  state: 'Maharashtra', grade: 'A' },
+  { slug: 'paneer',       name: 'Paneer',        variety: 'Malai',             emoji: '🧀', cat: 'dairy', unit: 'KG', price: 340, anchor: 400, qty: 80,  location: 'Pune',      state: 'Maharashtra', grade: 'A' },
+  { slug: 'ghee',         name: 'Ghee',          variety: 'Desi Cow',          emoji: '🧈', cat: 'dairy', unit: 'KG', price: 540, anchor: 650, qty: 60,  location: 'Jaipur',    state: 'Rajasthan',   grade: 'A', organic: true },
 
   // Seasonal fruits — ₹/kg
   { slug: 'mango',        name: 'Mango',         variety: 'Kesar',             emoji: '🥭', cat: 'fruits', unit: 'KG', price: 90,  anchor: 140, qty: 900,  location: 'Junagadh',   state: 'Gujarat',          grade: 'A' },
@@ -70,14 +80,16 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
 ];
 
 export const RAILS: Array<{ id: RailId; eyebrow: string; title: string }> = [
-  { id: 'veg',    eyebrow: 'Farm-fresh · picked this week', title: 'Fresh Vegetables' },
-  { id: 'fruits', eyebrow: 'In season now',                 title: 'Seasonal Fruits' },
-  { id: 'grains', eyebrow: 'MSP-anchored floors',           title: 'Grains & Pulses' },
-  { id: 'spices', eyebrow: 'Straight from origin mandis',   title: 'Spices & Oilseeds' },
+  { id: 'veg',    eyebrow: 'Farm-fresh · picked this week',       title: 'Fresh Vegetables' },
+  { id: 'dairy',  eyebrow: 'Milked this morning · farm chilled',  title: 'Milk & Dairy' },
+  { id: 'fruits', eyebrow: 'In season now',                       title: 'Seasonal Fruits' },
+  { id: 'grains', eyebrow: 'MSP-anchored floors',                 title: 'Grains & Pulses' },
+  { id: 'spices', eyebrow: 'Straight from origin mandis',         title: 'Spices & Oilseeds' },
 ];
 
 export const CATEGORY_TILES: Array<{ label: string; target: RailId; emoji: string }> = [
   { label: 'Fresh Vegetables', target: 'veg',    emoji: '🍅' },
+  { label: 'Milk & Dairy',     target: 'dairy',  emoji: '🥛' },
   { label: 'Seasonal Fruits',  target: 'fruits', emoji: '🥭' },
   { label: 'Grains & Cereals', target: 'grains', emoji: '🌾' },
   { label: 'Pulses & Dal',     target: 'grains', emoji: '🫘' },
@@ -90,14 +102,16 @@ export const CATEGORY_TILES: Array<{ label: string; target: RailId; emoji: strin
 export const CHIPS: Array<{ label: string; target: RailId | null }> = [
   { label: 'All', target: null },
   { label: 'Vegetables', target: 'veg' },
+  { label: 'Milk & Dairy', target: 'dairy' },
   { label: 'Fruits', target: 'fruits' },
   { label: 'Grains & Pulses', target: 'grains' },
   { label: 'Spices & Oilseeds', target: 'spices' },
 ];
 
 // Top ticker — same ten crops and day-over-day moves as the web homepage.
-export const TICKER: Array<{ name: string; price: number; unit: 'KG' | 'QUINTAL'; delta: number }> = [
+export const TICKER: Array<{ name: string; price: number; unit: 'KG' | 'QUINTAL' | 'LITRE'; delta: number }> = [
   { name: 'Wheat',        price: 2480,  unit: 'QUINTAL', delta: 0.9 },
+  { name: 'Cow Milk',     price: 39,    unit: 'LITRE',   delta: 0.4 },
   { name: 'Onion',        price: 18,    unit: 'KG',      delta: -1.2 },
   { name: 'Mango',        price: 90,    unit: 'KG',      delta: 2.1 },
   { name: 'Chana',        price: 5720,  unit: 'QUINTAL', delta: 0.7 },
@@ -113,6 +127,7 @@ export const TICKER: Array<{ name: string; price: number; unit: 'KG' | 'QUINTAL'
 // catalogue. Unknown crops land in grains (the bulk-commodity default).
 const CATEGORY_TO_RAIL: Record<string, RailId> = {
   'Vegetables': 'veg',
+  'Dairy': 'dairy',
   'Fruits': 'fruits',
   'Cereals & Grains': 'grains',
   'Pulses & Legumes': 'grains',

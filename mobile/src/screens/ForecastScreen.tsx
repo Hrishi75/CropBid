@@ -25,8 +25,8 @@ interface Prediction {
   commodity: string;
   label: string;
   emoji: string;
-  unit: 'KG' | 'QUINTAL';
-  cat: 'veg' | 'fruits' | 'grains' | 'spices';
+  unit: 'KG' | 'QUINTAL' | 'LITRE';
+  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
   modal: number;
   usual: number;
   changePct: number;

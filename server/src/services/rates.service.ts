@@ -31,8 +31,10 @@ import { config } from '../config';
 // Agmarknet's own spelling or the feed returns nothing. `unit` is how the
 // storefront shows it; grains/spices trade in quintals, fresh produce in kg.
 // -----------------------------------------------------------------------------
-type Unit = 'KG' | 'QUINTAL';
-type Cat = 'veg' | 'fruits' | 'grains' | 'spices';
+// LITRE is display-only for dairy liquids (1 L ≈ 1 kg for milk/curd) — feed
+// prices stay ₹/quintal internally, exactly like KG.
+type Unit = 'KG' | 'QUINTAL' | 'LITRE';
+type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
 interface BoardItem {
   commodity: string;   // Agmarknet commodity name (exact)
@@ -51,6 +53,16 @@ const BOARD: BoardItem[] = [
   { commodity: 'Green Chilli', label: 'Green Chilli', emoji: '🌶️', cat: 'veg', unit: 'KG', fallbackPerQuintal: 4500 },
   { commodity: 'Cauliflower', label: 'Cauliflower', emoji: '🥦', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2200 },
   { commodity: 'Brinjal', label: 'Brinjal', emoji: '🍆', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
+  // Milk & dairy — dairy trades through cooperatives, not APMC mandis, so the
+  // feed rarely (if ever) reports it and these rows usually resolve to the
+  // reference price, labelled honestly by the source chain. References track
+  // the Dept. of Consumer Affairs retail price monitor (Delhi, Jul 2026:
+  // milk ₹60/L, curd ₹61/L, paneer ₹348–400/kg, ghee ₹524–572/kg) — the only
+  // government-published daily price series that covers dairy.
+  { commodity: 'Milk', label: 'Milk', emoji: '🥛', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6000 },
+  { commodity: 'Ghee', label: 'Ghee', emoji: '🧈', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 55000 },
+  { commodity: 'Curd', label: 'Curd (Dahi)', emoji: '🥣', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6100 },
+  { commodity: 'Paneer', label: 'Paneer', emoji: '🧀', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 37000 },
   // Seasonal fruits
   { commodity: 'Banana', label: 'Banana', emoji: '🍌', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 2800 },
   { commodity: 'Mango', label: 'Mango', emoji: '🥭', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 9000 },
@@ -195,10 +207,11 @@ const median = (xs: number[]): number => {
 };
 
 // Convert ₹/quintal (as the feed reports) into the board item's display unit.
+// LITRE behaves like KG: 1 quintal ≈ 100 kg ≈ 100 L for dairy liquids.
 function toUnit(perQuintal: number, unit: Unit): number {
-  const v = unit === 'KG' ? perQuintal / 100 : perQuintal;
-  // ₹/kg to 1 decimal, ₹/quintal to nearest rupee
-  return unit === 'KG' ? Math.round(v * 10) / 10 : Math.round(v);
+  const v = unit === 'QUINTAL' ? perQuintal : perQuintal / 100;
+  // ₹/kg and ₹/L to 1 decimal, ₹/quintal to nearest rupee
+  return unit === 'QUINTAL' ? Math.round(v) : Math.round(v * 10) / 10;
 }
 
 // -----------------------------------------------------------------------------

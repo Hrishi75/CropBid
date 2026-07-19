@@ -22,6 +22,7 @@
   "Forecast": "अंदाज",
 
   "All India": "संपूर्ण भारत",
+  "Milk & Dairy": "दूध आणि दुग्धजन्य",
   "Fresh Vegetables": "ताज्या भाज्या",
   "Seasonal Fruits": "हंगामी फळे",
   "Grains & Pulses": "धान्ये आणि डाळी",
@@ -124,5 +125,22 @@
   "Farmer": "शेतकरी",
   "Buyer": "खरेदीदार",
   "Marketplace": "मार्केटप्लेस",
-  "How it works": "हे कसे काम करते"
+  "How it works": "हे कसे काम करते",
+
+  "Choose your farmer": "तुमचा शेतकरी निवडा",
+  "{{n}} farmer selling today": "आज {{n}} शेतकरी विकत आहे",
+  "{{n}} farmers selling today": "आज {{n}} शेतकरी विकत आहेत",
+  "from": "पासून",
+  "CropBid farmer": "CropBid शेतकरी",
+  "Only {{qty}} {{unit}} left": "फक्त {{qty}} {{unit}} शिल्लक",
+  "{{qty}} {{unit}} available": "{{qty}} {{unit}} उपलब्ध",
+  "No live lots for this crop right now — pull down to check again.": "सध्या या पिकाचा कोणताही लाइव्ह लॉट नाही — पुन्हा पाहण्यासाठी खाली ओढा.",
+
+  "Delete account": "खाते हटवा",
+  "This cannot be undone": "हे परत करता येणार नाही",
+  "Delete your account?": "तुमचे खाते हटवायचे?",
+  "Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.": "तुमची प्रोफाइल, लिस्टिंग, ऑफर आणि सूचना कायमच्या काढून टाकल्या जातील. पूर्ण झालेले व्यवहार तुमच्या वैयक्तिक माहितीशिवाय नोंदीत राहतील. हे परत करता येणार नाही.",
+  "Continue": "पुढे जा",
+  "Enter your password to confirm. Everything is removed for good.": "खात्रीसाठी तुमचा पासवर्ड टाका. सर्व काही कायमचे काढून टाकले जाईल.",
+  "Delete forever": "कायमचे हटवा"
 }

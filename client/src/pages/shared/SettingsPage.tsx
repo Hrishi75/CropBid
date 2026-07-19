@@ -1,10 +1,11 @@
 // =============================================================================
 // SettingsPage — Account, role profile, and password management
 // =============================================================================
-// Shared by all roles. Three cards:
+// Shared by all roles. Four cards:
 //   1. Account   — name / phone / location (everyone)
 //   2. Role      — farm details (farmer) or company details (buyer)
 //   3. Password  — change password with current-password confirmation
+//   4. Danger    — delete the account (password + modal confirmation)
 //
 // Profile edits go through PATCH /auth/me, which returns the same { user }
 // shape as GET /me — we drop it straight into AuthContext so the sidebar and
@@ -13,10 +14,12 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { CROP_CATEGORIES } from '../../utils/crops';
 import { passwordPolicyError } from '../auth/ResetPasswordPage';
 import api from '../../lib/axios';
@@ -44,7 +47,8 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 }
 
 export function SettingsPage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   const isFarmer = user?.role === 'FARMER';
   const isBuyer = user?.role === 'BUYER';
@@ -70,6 +74,11 @@ export function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // --- Delete account (password confirmation + modal) ---
+  const [deletePassword, setDeletePassword] = useState('');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const newPasswordError = newPassword ? passwordPolicyError(newPassword) : undefined;
   const confirmError = confirmPassword && confirmPassword !== newPassword ? 'Passwords do not match' : undefined;
@@ -129,6 +138,22 @@ export function SettingsPage() {
       toast.error(err.response?.data?.message || 'Failed to change password');
     } finally {
       setSavingPassword(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      await api.delete('/auth/me', { data: { password: deletePassword } });
+      toast.success('Your account has been deleted');
+      // The server session is gone; logout() clears local state either way.
+      await logout();
+      navigate('/');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete account');
+      setConfirmingDelete(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -312,6 +337,45 @@ export function SettingsPage() {
           </div>
         </Section>
       </form>
+
+      <div style={{ marginTop: 24 }}>
+        <Section
+          title="Danger zone"
+          hint="Deleting your account removes your profile, listings, bids and notifications for good. Completed deals stay on record without your personal details. Deals with money still in escrow must settle first."
+        >
+          <div className="cb-form-grid-2">
+            <Input
+              label="Your password"
+              type="password"
+              placeholder="Confirm with your password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={!deletePassword}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              Delete my account
+            </Button>
+          </div>
+        </Section>
+      </div>
+
+      <ConfirmModal
+        open={confirmingDelete}
+        title="Delete your account?"
+        message="This cannot be undone. Your profile, listings, bids and notifications are removed permanently; completed deals stay on record without your personal details."
+        confirmLabel="Delete forever"
+        variant="danger"
+        loading={deleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </DashboardLayout>
   );
 }
