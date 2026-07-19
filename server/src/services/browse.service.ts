@@ -13,6 +13,19 @@
 
 import { prisma } from '../lib/prisma';
 
+// Public browse/smart-match must not leak a farmer's private profile fields
+// (bank details, APMC license, FPO name, internal userId) — expose only what
+// the marketplace UI renders. Mirrors PUBLIC_FARMER_SELECT in listing.service.
+const PUBLIC_FARMER_SELECT = {
+  id: true,
+  state: true,
+  country: true,
+  organicCertified: true,
+  certificationBody: true,
+  verified: true,
+  user: { select: { id: true, name: true, trustScore: true, avatar: true, location: true } },
+} as const;
+
 interface BrowseQuery {
   // Filters
   crop?: string;
@@ -111,13 +124,7 @@ export async function browseListings(query: BrowseQuery) {
       take: limit,
       orderBy,
       include: {
-        farmer: {
-          include: {
-            user: {
-              select: { id: true, name: true, trustScore: true, avatar: true },
-            },
-          },
-        },
+        farmer: { select: PUBLIC_FARMER_SELECT },
         _count: { select: { bids: true } },
       },
     }),
@@ -167,13 +174,7 @@ export async function smartMatch(context: SmartMatchContext, limitResults: numbe
   const listings = await prisma.listing.findMany({
     where: { status: 'ACTIVE' },
     include: {
-      farmer: {
-        include: {
-          user: {
-            select: { id: true, name: true, trustScore: true, avatar: true },
-          },
-        },
-      },
+      farmer: { select: PUBLIC_FARMER_SELECT },
       _count: { select: { bids: true } },
     },
     take: 200, // Score top 200, return top N
