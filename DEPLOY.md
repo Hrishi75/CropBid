@@ -112,4 +112,5 @@ Production demo stack — all free tier:
   the machine's DNS to `1.1.1.1`/`8.8.8.8`, or run a local Postgres via `docker compose up -d`
   and point `DATABASE_URL` at `localhost:5432`.
 
-> _Deployed API: `https://cropbid-api-oyfv.onrender.com` · Web: `https://www.cropbid.in`_
+> _Deployed API: `https://cropbid-api-oyfv.onrender.com` · Web: `https://cropbid.in`
+> (canonical origin — `www.` 308-redirects to the apex; `CLIENT_URL` must be the apex)_
