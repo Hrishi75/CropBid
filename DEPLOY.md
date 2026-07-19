@@ -114,3 +114,5 @@ Production demo stack — all free tier:
 
 > _Deployed API: `https://cropbid-api-oyfv.onrender.com` · Web: `https://cropbid.in`
 > (canonical origin — `www.` 308-redirects to the apex; `CLIENT_URL` must be the apex)_
+
+<!-- deploy marker: order-details (PR #70) — re-trigger after missed webhook -->
