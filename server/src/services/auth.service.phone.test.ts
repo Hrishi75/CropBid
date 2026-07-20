@@ -10,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { normalizePhone } from './auth.service';
+import { signupSchema } from '../controllers/auth.controller';
 
 describe('normalizePhone', () => {
   it('collapses every separator spelling of one number to the same value', () => {
@@ -45,6 +46,43 @@ describe('normalizePhone', () => {
     const sqlBackfill = (p: string) => (p.startsWith('+') ? '+' : '') + p.replace(/[^0-9]/g, '');
     for (const p of ['+91-9876543210', '+1-555-0101', '+254-700-1234', '9876543210']) {
       expect(normalizePhone(p)).toBe(sqlBackfill(p));
+    }
+  });
+});
+
+// The signup schema is what stands between a user and an unusable account:
+// anything it accepts must still carry digits after normalization, or login
+// has nothing to match on and a phone-only account is locked out for good.
+describe('signup phone validation', () => {
+  const parse = (phone: string) =>
+    signupSchema.safeParse({
+      name: 'Rajesh',
+      phone,
+      password: 'Sup3rSecret',
+      role: 'FARMER',
+    });
+
+  it('rejects separator-only input that normalizes to no digits', () => {
+    for (const junk of ['+      ', '-------', '(  )  -  ', '+()-  ()']) {
+      expect(parse(junk).success, `expected ${JSON.stringify(junk)} to be rejected`).toBe(false);
+      // The thing that makes it unusable: nothing left to look up at login.
+      expect(normalizePhone(junk).replace('+', '')).toBe('');
+    }
+  });
+
+  it('rejects a number with too few digits', () => {
+    expect(parse('+91-123').success).toBe(false);
+  });
+
+  it('accepts real numbers however they are spelled', () => {
+    for (const ok of ['+91-9876543210', '+91 9876543210', '9876543210', '+1 (555) 0101']) {
+      expect(parse(ok).success, `expected ${JSON.stringify(ok)} to be accepted`).toBe(true);
+    }
+  });
+
+  it('leaves every accepted number with digits for login to match', () => {
+    for (const ok of ['+91-9876543210', '9876543210', '+1 (555) 0101']) {
+      expect(normalizePhone(ok).replace('+', '').length).toBeGreaterThanOrEqual(7);
     }
   });
 });

@@ -14,7 +14,30 @@ SET "phone" =
   || regexp_replace("phone", '[^0-9]', '', 'g')
 WHERE "phone" IS NOT NULL;
 
--- 3. Dedupe phones before adding the unique index (normalizing in step 2 can
+-- 3. Drop phones that carry no digits. Signup previously validated phone as a
+--    bare optional string with no format check, so rows like '-' or 'n/a' can
+--    exist; step 2 normalizes those to '' (or '+'), a value login can never
+--    match and which would still occupy a slot in the unique index below.
+--    Audited like every other clear, so the original text stays recoverable.
+INSERT INTO "AuditLog" ("id", "actorRole", "action", "entityType", "entityId", "metadata", "createdAt")
+SELECT
+  (md5(random()::text || clock_timestamp()::text))::uuid::text,
+  'SYSTEM',
+  'user.phone.cleared_no_digits',
+  'User',
+  "id",
+  jsonb_build_object(
+    'phone', "phone",
+    'reason', 'stored phone contained no digits when phone became the unique login identifier'
+  ),
+  NOW()
+FROM "User"
+WHERE "phone" IS NOT NULL AND "phone" !~ '[0-9]';
+
+UPDATE "User" SET "phone" = NULL
+WHERE "phone" IS NOT NULL AND "phone" !~ '[0-9]';
+
+-- 4. Dedupe phones before adding the unique index (normalizing in step 2 can
 --    itself collapse two spellings into one value): keep each phone on the
 --    oldest account, null it out on newer duplicates so the index can build.
 --    Those accounts keep working via email login and can re-add a phone later.
@@ -59,5 +82,5 @@ WHERE "id" IN (
   WHERE dupes.rn > 1
 );
 
--- 4. One account per phone number
+-- 5. One account per phone number
 CREATE UNIQUE INDEX "User_phone_key" ON "User"("phone");

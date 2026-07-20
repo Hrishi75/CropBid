@@ -24,7 +24,7 @@ const passwordSchema = z.string()
 
 // Phone is the primary contact (required); email is optional. Forms may send
 // email as an empty string — treat that as "not provided" before validating.
-const signupSchema = z.object({
+export const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
@@ -32,11 +32,17 @@ const signupSchema = z.object({
   ),
   password: passwordSchema,
   role: z.enum(['FARMER', 'BUYER', 'CONSUMER']),
+  // The digit count is checked on the SEPARATOR-STRIPPED value, not the raw
+  // string: "+      " is seven allowed characters but normalizes to "+", which
+  // login can never match — that account would be locked out of its own login.
   phone: z
     .string()
-    .min(7, 'Phone number is required')
     .max(20)
-    .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number'),
+    .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
+    .refine(
+      (v) => v.replace(/[^0-9]/g, '').length >= 7,
+      'Phone number must have at least 7 digits'
+    ),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI']).optional(),

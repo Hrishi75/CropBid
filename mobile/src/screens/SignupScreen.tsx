@@ -84,8 +84,12 @@ export default function SignupScreen() {
   );
   const passwordValid = rules.length && rules.upper && rules.lower && rules.number;
   // Phone is the required primary contact; email is optional but must be valid
-  // when provided.
-  const phoneValid = /^[+0-9][0-9\s\-()]{6,19}$/.test(phone.trim());
+  // when provided. Digits are counted on the separator-stripped value (mirrors
+  // the server): "+      " looks long enough but carries no number.
+  const phoneValid =
+    /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
+    phone.trim().length <= 20 &&
+    phone.replace(/[^0-9]/g, '').length >= 7;
   const emailValid = email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
   const formValid = nameValid && phoneValid && emailValid && passwordValid;
