@@ -37,6 +37,7 @@ import logisticsRoutes from './routes/logistics.routes';
 import statsRoutes from './routes/stats.routes';
 import ratesRoutes from './routes/rates.routes';
 import schemesRoutes from './routes/schemes.routes';
+import equipmentRoutes from './routes/equipment.routes';
 
 const app = express();
 
@@ -123,6 +124,7 @@ app.use('/api/logistics', logisticsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/rates', ratesRoutes);
 app.use('/api/schemes', schemesRoutes);
+app.use('/api/equipment', equipmentRoutes);
 
 // =============================================================================
 // Global Error Handler — MUST be last middleware

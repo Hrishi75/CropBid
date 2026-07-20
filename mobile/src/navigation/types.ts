@@ -18,6 +18,7 @@ export type GuestStackParamList = {
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
+  Equipment: undefined;
   Login: undefined;
   Signup: undefined;
 };
@@ -50,6 +51,7 @@ export type RootStackParamList = {
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
+  Equipment: undefined;
   Notifications: undefined;
 };
 
@@ -74,6 +76,7 @@ export type FarmerStackParamList = {
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
+  Equipment: undefined;
   Notifications: undefined;
 };
 
@@ -90,6 +93,7 @@ export type ConsumerStackParamList = {
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
+  Equipment: undefined;
   Notifications: undefined;
 };
 
