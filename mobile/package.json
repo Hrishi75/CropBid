@@ -15,6 +15,7 @@
     "expo-font": "~56.0.5",
     "expo-image-picker": "~56.0.18",
     "expo-secure-store": "~56.0.4",
+    "expo-splash-screen": "~56.0.13",
     "expo-status-bar": "~56.0.4",
     "i18next": "^26.3.6",
     "react": "19.2.3",
