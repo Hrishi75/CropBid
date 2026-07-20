@@ -1,9 +1,9 @@
 // =============================================================================
-// LoginPage — Email/password sign-in
+// LoginPage — Phone-or-email + password sign-in
 // =============================================================================
-// Public page. Validates the email locally, calls AuthContext.login(), then
-// redirects to "/" (which RootRedirect sends to the role dashboard), with a
-// marketing rail alongside.
+// Public page. Accepts the user's phone number (primary identifier) or email
+// in one field, calls AuthContext.login(), then redirects to "/" (which
+// RootRedirect sends to the role dashboard), with a marketing rail alongside.
 // =============================================================================
 
 import { useState } from 'react';
@@ -21,27 +21,27 @@ export function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const formValid = emailValid && password.length > 0;
+  const identifierValid = identifier.trim().length > 0;
+  const formValid = identifierValid && password.length > 0;
 
   function getFieldError(field: string): string | undefined {
     if (!touched[field]) return undefined;
-    if (field === 'email' && email && !emailValid) return 'Invalid email address';
+    if (field === 'identifier' && !identifierValid) return 'Enter your phone number or email';
     return undefined;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ email: true, password: true });
+    setTouched({ identifier: true, password: true });
     if (!formValid) return;
     setLoading(true);
     try {
-      await login(email, password);
+      await login(identifier.trim(), password);
       toast.success(t('Welcome back'));
       navigate('/');
     } catch (err: any) {
@@ -80,15 +80,15 @@ export function LoginPage() {
 
             <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <Input
-                label={t('Email')}
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                error={getFieldError('email')}
+                label={t('Phone or email')}
+                type="text"
+                placeholder="+91-9876543210"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, identifier: true }))}
+                error={getFieldError('identifier')}
                 required
-                autoComplete="email"
+                autoComplete="username"
               />
               <div>
                 <Input

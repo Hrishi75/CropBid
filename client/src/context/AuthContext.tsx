@@ -34,10 +34,10 @@ interface AuthContextType {
 
 interface SignupData {
   name: string;
-  email: string;
+  phone: string; // primary contact + login identifier
+  email?: string;
   password: string;
   role: 'FARMER' | 'BUYER';
-  phone?: string;
   country?: string;
   currency?: string;
   language?: string;
@@ -95,8 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // -------------------------------------------------------------------------
   // Login
   // -------------------------------------------------------------------------
-  async function login(email: string, password: string) {
-    const { data } = await api.post('/auth/login', { email, password });
+  async function login(identifier: string, password: string) {
+    const { data } = await api.post('/auth/login', { identifier, password });
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);

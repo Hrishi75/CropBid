@@ -74,7 +74,12 @@ export function TransactionDetail() {
         order_id: order.orderId,
         name: 'CropBid',
         description: `${transaction.listing?.cropName ?? 'Crop'} — escrow payment`,
-        prefill: { name: user?.name, email: user?.email },
+        // Email is optional on an account now, so only prefill what we have.
+        prefill: {
+          name: user?.name,
+          email: user?.email ?? undefined,
+          contact: user?.phone ?? undefined,
+        },
         theme: { color: '#2f6b3a' },
         handler: async (resp) => {
           try {

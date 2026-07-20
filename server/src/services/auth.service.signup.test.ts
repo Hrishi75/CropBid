@@ -1,9 +1,11 @@
 // =============================================================================
-// auth.service signup tests — duplicate-email handling
+// auth.service signup tests — duplicate phone/email handling
 // =============================================================================
-// Two signups for the same email can both pass the findUnique pre-check; the
-// unique index decides the race. Both the pre-check loser and the race loser
-// must see the same 409, never a raw Prisma error surfacing as a 500.
+// Phone is the primary identifier (required, unique); email is optional but
+// also unique when present. Two signups for the same phone (or email) can both
+// pass the findUnique pre-check; the unique index decides the race. Both the
+// pre-check loser and the race loser must see the same 409, never a raw Prisma
+// error surfacing as a 500.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -29,6 +31,7 @@ const mockUpdate = vi.mocked(prisma.user.update);
 
 const input = {
   name: 'Rajesh',
+  phone: '+919876543210',
   email: 'rajesh@cropbid.test',
   password: 'Sup3rSecret',
   role: 'FARMER' as const,
@@ -37,6 +40,7 @@ const input = {
 const createdUser = {
   id: 'user-1',
   name: input.name,
+  phone: input.phone,
   email: input.email,
   password: 'hashed',
   refreshToken: null,
@@ -45,14 +49,30 @@ const createdUser = {
   buyerProfile: null,
 } as any;
 
+// signup looks up phone first, then email — resolve per lookup so a test can
+// make exactly one of them collide.
+function existingAccounts({ phone = false, email = false }) {
+  mockFindUnique.mockImplementation((async (args: any) =>
+    (args?.where?.phone && phone) || (args?.where?.email && email) ? createdUser : null) as any);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(createdUser);
 });
 
 describe('signup', () => {
+  it('rejects a phone that already has an account (pre-check)', async () => {
+    existingAccounts({ phone: true });
+
+    await expect(signup(input)).rejects.toMatchObject(
+      new ApiError(409, 'An account with this phone number already exists'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('rejects an email that already has an account (pre-check)', async () => {
-    mockFindUnique.mockResolvedValue(createdUser);
+    existingAccounts({ email: true });
 
     await expect(signup(input)).rejects.toMatchObject(
       new ApiError(409, 'An account with this email already exists'),
@@ -60,10 +80,35 @@ describe('signup', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('maps a unique-constraint race on email (P2002) to the same 409', async () => {
-    mockFindUnique.mockResolvedValue(null); // pre-check passed…
+  it('skips the email pre-check when no email is given', async () => {
+    existingAccounts({ email: true }); // would collide IF it were checked
+    mockCreate.mockResolvedValue(createdUser);
+
+    const result = await signup({ ...input, email: undefined });
+
+    expect(result.accessToken).toBeTruthy();
+    expect(mockFindUnique).toHaveBeenCalledTimes(1); // phone only
+  });
+
+  it('maps a unique-constraint race on phone (P2002) to a 409', async () => {
+    existingAccounts({}); // pre-checks passed…
     mockCreate.mockRejectedValue(
       // …but a concurrent signup won the unique index race.
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed on phone', {
+        code: 'P2002',
+        clientVersion: '0.0.0',
+        meta: { target: ['phone'] },
+      }),
+    );
+
+    await expect(signup(input)).rejects.toMatchObject(
+      new ApiError(409, 'An account with this phone number already exists'),
+    );
+  });
+
+  it('maps a unique-constraint race on email (P2002) to a 409', async () => {
+    existingAccounts({});
+    mockCreate.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed on email', {
         code: 'P2002',
         clientVersion: '0.0.0',
@@ -76,8 +121,8 @@ describe('signup', () => {
     );
   });
 
-  it('lets a P2002 on a different unique column bubble instead of claiming the email exists', async () => {
-    mockFindUnique.mockResolvedValue(null);
+  it('lets a P2002 on a different unique column bubble instead of claiming a duplicate contact', async () => {
+    existingAccounts({});
     mockCreate.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed on passwordResetToken', {
         code: 'P2002',
@@ -90,14 +135,14 @@ describe('signup', () => {
   });
 
   it('lets other database errors bubble unchanged', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    existingAccounts({});
     mockCreate.mockRejectedValue(new Error('connection lost'));
 
     await expect(signup(input)).rejects.toThrow('connection lost');
   });
 
   it('returns tokens and strips sensitive fields on success', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    existingAccounts({});
     mockCreate.mockResolvedValue(createdUser);
 
     const result = await signup(input);

@@ -24,27 +24,50 @@ import { removeImage } from './imageStorage';
 import { config } from '../config';
 
 // ---------------------------------------------------------------------------
+// Phone normalization — the stored/lookup form of a phone number
+// ---------------------------------------------------------------------------
+// Phone is a unique login identifier, so "+91-98765 43210" and "+919876543210"
+// must resolve to the SAME account: strip every separator, keep a leading "+".
+// Applied on both write (signup) and read (login) so the two always agree, and
+// backfilled over existing rows by the phone_primary_contact migration.
+export function normalizePhone(phone: string): string {
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  return trimmed.startsWith('+') ? `+${digits}` : digits;
+}
+
+// ---------------------------------------------------------------------------
 // Signup — Create a new user account
 // ---------------------------------------------------------------------------
 interface SignupInput {
   name: string;
-  email: string;
+  email?: string;
   password: string;
   role: 'FARMER' | 'BUYER' | 'CONSUMER';
-  phone?: string;
+  phone: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
   language?: 'EN' | 'HI';
 }
 
 export async function signup(input: SignupInput) {
-  // 1. Check if email already exists
-  const existingUser = await prisma.user.findUnique({
-    where: { email: input.email },
+  // 1. Phone is the primary identifier — one account per phone. Email is
+  // optional but must also be unique when provided.
+  const phone = normalizePhone(input.phone);
+  const existingPhone = await prisma.user.findUnique({
+    where: { phone },
   });
+  if (existingPhone) {
+    throw new ApiError(409, 'An account with this phone number already exists');
+  }
 
-  if (existingUser) {
-    throw new ApiError(409, 'An account with this email already exists');
+  if (input.email) {
+    const existingEmail = await prisma.user.findUnique({
+      where: { email: input.email },
+    });
+    if (existingEmail) {
+      throw new ApiError(409, 'An account with this email already exists');
+    }
   }
 
   // 2. Hash the password
@@ -59,10 +82,10 @@ export async function signup(input: SignupInput) {
     .create({
       data: {
         name: input.name,
-        email: input.email,
+        email: input.email || null,
         password: hashedPassword,
         role: input.role,
-        phone: input.phone || null,
+        phone,
         country: input.country || 'India',
         currency: input.currency || 'INR',
         language: input.language || 'EN',
@@ -75,12 +98,15 @@ export async function signup(input: SignupInput) {
     .catch((err) => {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         // meta.target names the offending columns (or the index, depending on
-        // the connector) — only claim "email exists" when email is the culprit.
+        // the connector) — report whichever unique field lost the race.
         const target = err.meta?.target;
-        const onEmail = Array.isArray(target)
-          ? target.includes('email')
-          : String(target ?? '').includes('email');
-        if (onEmail) throw new ApiError(409, 'An account with this email already exists');
+        const targetStr = Array.isArray(target) ? target.join(',') : String(target ?? '');
+        if (targetStr.includes('phone')) {
+          throw new ApiError(409, 'An account with this phone number already exists');
+        }
+        if (targetStr.includes('email')) {
+          throw new ApiError(409, 'An account with this email already exists');
+        }
       }
       throw err;
     });
@@ -115,14 +141,25 @@ export async function signup(input: SignupInput) {
 // Login — Verify credentials and issue tokens
 // ---------------------------------------------------------------------------
 interface LoginInput {
-  email: string;
+  identifier: string; // phone or email — one field, we match either column
   password: string;
 }
 
 export async function login(input: LoginInput) {
-  // 1. Find user by email (include profiles so client knows onboarding status)
-  const user = await prisma.user.findUnique({
-    where: { email: input.email },
+  // 1. Find user by phone OR email (include profiles so client knows
+  // onboarding status). Both columns are unique, so at most one row matches.
+  // The phone arm matches on the normalized form, so however the user typed
+  // their number (spaces, dashes, brackets) it still finds their account. An
+  // email identifier normalizes to "", which must never become a lookup arm.
+  const identifier = input.identifier.trim();
+  const asPhone = normalizePhone(identifier);
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        ...(asPhone.replace('+', '') ? [{ phone: asPhone }] : []),
+        { email: identifier },
+      ],
+    },
     include: {
       farmerProfile: true,
       buyerProfile: true,
@@ -130,16 +167,16 @@ export async function login(input: LoginInput) {
   });
 
   if (!user) {
-    // SECURITY: Don't reveal whether the email exists or not
-    // "Invalid email or password" for both cases
-    throw new ApiError(401, 'Invalid email or password');
+    // SECURITY: Don't reveal whether the account exists or not
+    // "Invalid credentials" for both cases
+    throw new ApiError(401, 'Invalid phone/email or password');
   }
 
   // 2. Compare provided password with stored hash
   const isPasswordValid = await bcrypt.compare(input.password, user.password);
 
   if (!isPasswordValid) {
-    throw new ApiError(401, 'Invalid email or password');
+    throw new ApiError(401, 'Invalid phone/email or password');
   }
 
   // 3. Generate new tokens
@@ -236,7 +273,9 @@ export async function logout(userId: string) {
 // way, so an attacker can't use it to enumerate registered addresses.
 export async function requestPasswordReset(email: string) {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) return;
+  // Email is optional since phone became the primary contact — an account
+  // without one simply can't use the email reset flow.
+  if (!user || !user.email) return;
 
   const { token, tokenHash } = generateResetToken();
 

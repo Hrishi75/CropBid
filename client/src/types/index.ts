@@ -25,7 +25,7 @@ export type NegotiationOutcome = 'DEAL' | 'NO_DEAL' | 'IN_PROGRESS';
 export interface User {
   id: string;
   name: string;
-  email: string;
+  email: string | null; // optional — phone is the primary contact
   role: Role;
   phone: string | null;
   location: string | null;
