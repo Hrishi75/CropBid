@@ -1071,11 +1071,24 @@ body * {
   overflow: hidden; white-space: nowrap;
 }
 .st-ticker-track {
-  display: inline-flex; align-items: center; gap: 36px;
+  display: flex; align-items: center;
   padding: 7px 0; width: max-content;
   animation: st-marquee 60s linear infinite;
 }
+/* Each copy carries a trailing gap so the two copies are exactly equal in
+   width — that is what makes -50% land on a seamless loop point. Putting the
+   gap on the track instead leaves the seam half a gap short and the marquee
+   visibly hitches once per cycle. */
+.st-ticker-copy { display: flex; align-items: center; gap: 36px; padding-right: 36px; }
+/* Pause on hover — the only way to read a rate before it scrolls off, and the
+   mechanism WCAG 2.2.2 wants for auto-moving content. Restored after the seam
+   fix above dropped it along with the old track styles. */
 .st-ticker:hover .st-ticker-track { animation-play-state: paused; }
+/* Respect a reduced-motion preference outright: a 60s marquee is exactly the
+   kind of continuous movement that triggers vestibular symptoms. */
+@media (prefers-reduced-motion: reduce) {
+  .st-ticker-track { animation: none; }
+}
 @keyframes st-marquee { to { transform: translateX(-50%); } }
 .st-tick { display: inline-flex; align-items: center; gap: 7px; font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.03em; }
 .st-tick .n { color: rgba(244,241,234,0.8); text-transform: uppercase; }

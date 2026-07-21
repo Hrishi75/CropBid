@@ -278,17 +278,22 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
   const ticks = board
     ? board.rates.map((r) => ({ key: r.commodity, name: r.label, price: r.modal, unit: r.unit, delta: r.changePct, ref: r.source === 'reference' }))
     : TICKER.map(({ p, delta }) => ({ key: p.slug, name: p.name, price: p.priceMin, unit: p.unit, delta, ref: true }));
-  // Two copies of the list = seamless -50% marquee loop.
-  const items = [...ticks, ...ticks];
+  // Two equal-width copies of the list = seamless -50% marquee loop. The copies
+  // are separate elements (not one flattened list) so each one owns its
+  // trailing gap and the halfway point is an exact seam.
   return (
     <div className="st-ticker" aria-hidden="true">
       <div className="st-ticker-track">
-        {items.map((t, i) => (
-          <span key={`${t.key}-${i}`} className="st-tick">
-            <span className="n">{t.name}</span>
-            <span className="v">{formatUnitPrice(t.price, 'INR', currency)}/{UNIT_LABEL[t.unit]}</span>
-            {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} />}
-          </span>
+        {[0, 1].map((copy) => (
+          <div key={copy} className="st-ticker-copy">
+            {ticks.map((t, i) => (
+              <span key={`${t.key}-${i}`} className="st-tick">
+                <span className="n">{t.name}</span>
+                <span className="v">{formatUnitPrice(t.price, 'INR', currency)}/{UNIT_LABEL[t.unit]}</span>
+                {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} />}
+              </span>
+            ))}
+          </div>
         ))}
       </div>
     </div>
