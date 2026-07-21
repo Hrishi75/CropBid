@@ -82,6 +82,20 @@ function recordBid(socket: Socket): boolean {
   return true;
 }
 
+// Re-validate a user's role against the database RIGHT NOW, rather than trusting
+// the role captured from the JWT at handshake. A socket outlives its 15-minute
+// access token and survives an account-role change, so the handshake claim can
+// go stale while the connection stays open. Any authorization decision that
+// persists a sale must confirm the CURRENT role. Returns true only if the
+// account still exists AND is a BUYER.
+async function isCurrentBuyer(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return user?.role === 'BUYER';
+}
+
 // In-memory auction store
 const activeAuctions = new Map<string, AuctionState>();
 
@@ -188,13 +202,28 @@ export function initializeSocket(httpServer: HttpServer) {
       // could win an auction, and endAuction writes a real ACCEPTED bid, marks
       // the listing SOLD, and opens a Transaction — taking the lot off the
       // market on behalf of a principal the REST layer would have 403'd.
+      //
+      // `role` is the handshake JWT claim: a cheap first gate that rejects
+      // non-buyers with zero DB cost. But a socket outlives its 15-minute
+      // access token and survives an account-role change, so this claim can go
+      // stale — the live DB re-check below is the authoritative guard.
       if (role !== 'BUYER') {
         return socket.emit('auction:error', 'Only buyer accounts can bid in auctions');
       }
 
-      // Per-socket rate limit — stops bid flooding from a single client
+      // Per-socket rate limit — stops bid flooding from a single client (and
+      // caps how often the live authorization re-check below can hit the DB).
       if (!recordBid(socket)) {
         return socket.emit('auction:error', `Too many bids — slow down (max ${BID_BURST} per ${BID_WINDOW_MS / 1000}s)`);
+      }
+
+      // Live authorization: confirm the account is STILL a BUYER right now, not
+      // just when the socket connected. Closes the stale-role window where a
+      // since-demoted buyer — or one riding an already-expired access token —
+      // could keep winning auctions through an already-open socket. Runs after
+      // the rate limiter so a flood of bids can't turn into a flood of queries.
+      if (!(await isCurrentBuyer(userId))) {
+        return socket.emit('auction:error', 'Your account is no longer authorized to bid');
       }
 
       const auction = activeAuctions.get(data.listingId);
@@ -360,11 +389,37 @@ async function endAuction(listingId: string) {
       return;
     }
 
+    const winnerId = auction.currentWinner; // narrowed to string by the if above
+
+    // Final authorization gate. The winner passed a live BUYER check when they
+    // bid, but settlement can run minutes later — long enough for the account to
+    // have been demoted in the meantime. Never mint an ACCEPTED bid + escrow
+    // Transaction for a principal the REST layer would now 403: if the winner is
+    // no longer a BUYER, void the sale and return the listing to the market
+    // instead of settling it onto them.
+    if (!(await isCurrentBuyer(winnerId))) {
+      console.warn(
+        `Auction ${listingId} winner ${winnerId} is no longer a BUYER — voiding sale, reverting listing to ACTIVE`
+      );
+      await prisma.listing.update({
+        where: { id: listingId },
+        data: { status: 'ACTIVE' },
+      });
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: null,
+        finalPrice: auction.startPrice,
+        totalBids: auction.bids.length,
+        message: 'Auction voided — winning bidder is no longer authorized to buy',
+      });
+      activeAuctions.delete(listingId);
+      return;
+    }
+
     // Persist the winning sale (winning bid + SOLD listing) and its escrow
     // transaction ATOMICALLY, so a settled auction can never leave a SOLD
     // listing with no payable transaction. Wrapped in try/catch because
     // endAuction runs from a setTimeout with no caller to handle a rejection.
-    const winnerId = auction.currentWinner; // narrowed to string by the if above
     let winningBid;
     try {
       winningBid = await prisma.$transaction(async (tx) => {
