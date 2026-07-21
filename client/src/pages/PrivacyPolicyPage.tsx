@@ -15,7 +15,7 @@ import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 
 const UPDATED = '20 July 2026';
-const CONTACT = 'hrishikeshborkar94@gmail.com';
+const CONTACT = 'info@cropbid.in';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
