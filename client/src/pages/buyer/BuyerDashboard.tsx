@@ -41,6 +41,11 @@ export function BuyerDashboard() {
   const [wonDeals, setWonDeals] = useState(0);
   const [totalSpent, setTotalSpent] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Per-feed, because the initial values (empty array, 0) are indistinguishable
+  // from real answers once loading ends. Without these, a failed /bids/my tells
+  // the buyer they have never bid, and a failed stats call reports zero spend.
+  const [bidsFailed, setBidsFailed] = useState(false);
+  const [statsFailed, setStatsFailed] = useState(false);
 
   useEffect(() => {
     // allSettled, not all: the bid feed and the spend totals are independent,
@@ -56,6 +61,7 @@ export function BuyerDashboard() {
       if (bidsRes.status === 'fulfilled') {
         setBids(Array.isArray(bidsRes.value.data) ? bidsRes.value.data : []);
       } else {
+        setBidsFailed(true);
         console.error('Failed to fetch bids:', bidsRes.reason);
       }
 
@@ -63,6 +69,7 @@ export function BuyerDashboard() {
         setWonDeals(txStatsRes.value.data.released || 0);
         setTotalSpent(txStatsRes.value.data.totalRevenue || 0);
       } else {
+        setStatsFailed(true);
         console.error('Failed to fetch transaction stats:', txStatsRes.reason);
       }
 
@@ -89,22 +96,25 @@ export function BuyerDashboard() {
         <p className="cb-page-lede">
           {loading
             ? 'Loading your bids…'
-            : working.length === 0
-              ? 'No bids working right now. Browse the marketplace to find lots.'
-              : `${working.length} ${working.length === 1 ? 'bid' : 'bids'} working.`}
+            : bidsFailed
+              ? "Couldn't load your bids just now."
+              : working.length === 0
+                ? 'No bids working right now. Browse the marketplace to find lots.'
+                : `${working.length} ${working.length === 1 ? 'bid' : 'bids'} working.`}
         </p>
       </div>
 
       <AgentCard role="BUYER" watching={working.length} />
 
       <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
-        <Kpi label="Bids working" value={working.length} loading={loading} />
-        <Kpi label="Deals won" value={wonDeals} loading={loading} />
+        <Kpi label="Bids working" value={working.length} loading={loading} unavailable={bidsFailed} />
+        <Kpi label="Deals won" value={wonDeals} loading={loading} unavailable={statsFailed} />
         <Kpi
           label="Spent"
           value={formatCurrency(totalSpent, currency)}
           hint="settled from escrow"
           loading={loading}
+          unavailable={statsFailed}
         />
       </div>
 
@@ -115,6 +125,8 @@ export function BuyerDashboard() {
       >
         {loading ? (
           <EmptyState>Loading bids…</EmptyState>
+        ) : bidsFailed ? (
+          <EmptyState>Your bids couldn't be loaded. Refresh to try again.</EmptyState>
         ) : recent.length === 0 ? (
           <EmptyState>
             You haven't placed any bids yet.{' '}

@@ -16,17 +16,25 @@ import api from '../../lib/axios';
 // Kpi — one headline number. `hint` is only for context that is itself factual
 // (a unit, a qualifier); it is not a place for an unmeasured trend.
 // -----------------------------------------------------------------------------
-export function Kpi({ label, value, hint, loading }: {
+// `unavailable` exists because a KPI's initial value is 0, and rendering that
+// after a failed fetch states a fact — "you have earned nothing" — that we do
+// not know to be true. Zero and "we couldn't ask" must not look identical.
+export function Kpi({ label, value, hint, loading, unavailable }: {
   label: string;
   value: ReactNode;
   hint?: string;
   loading?: boolean;
+  unavailable?: boolean;
 }) {
   return (
     <div className="cb-kpi-cell">
       <div className="cb-kpi-label">{label}</div>
-      <div className="cb-kpi-value">{loading ? '—' : value}</div>
-      {hint && <div className="cb-kpi-delta">{hint}</div>}
+      <div className="cb-kpi-value" style={unavailable ? { color: 'var(--cb-ink-3)' } : undefined}>
+        {loading || unavailable ? '—' : value}
+      </div>
+      {(unavailable || hint) && (
+        <div className="cb-kpi-delta">{unavailable ? 'unavailable' : hint}</div>
+      )}
     </div>
   );
 }
@@ -92,6 +100,20 @@ export function AgentCard({ role, watching }: { role: 'FARMER' | 'BUYER'; watchi
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, []);
+
+  // Pre-load is also not "off". `config` starts null, so during ordinary
+  // latency or a token refresh the card would render AGENT · OFF and offer to
+  // set up an agent the user already has running. Only a config that actually
+  // arrived with active:false may say OFF.
+  if (!failed && config === null) {
+    return (
+      <div className="cb-card cb-card-forest" style={{ marginBottom: 24 }}>
+        <div className="cb-mono" style={{ fontSize: 12, letterSpacing: '0.08em', color: '#e6efd9' }}>
+          AGENT · CHECKING…
+        </div>
+      </div>
+    );
+  }
 
   // A failed load used to fall through to `config?.active ?? false` and render
   // AGENT · OFF with a "turn it on" prompt. A timeout would therefore tell a

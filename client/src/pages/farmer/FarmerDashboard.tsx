@@ -36,6 +36,12 @@ export function FarmerDashboard() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [earnings, setEarnings] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Per-feed, because the initial values (0, empty array) read as facts once
+  // loading ends. Without these, a failed /listings/my says no lots are live
+  // and a failed stats call says the farmer has earned nothing.
+  const [listingsFailed, setListingsFailed] = useState(false);
+  const [bidsFailed, setBidsFailed] = useState(false);
+  const [statsFailed, setStatsFailed] = useState(false);
 
   useEffect(() => {
     // allSettled, not all: these three feeds are independent, and with
@@ -57,18 +63,21 @@ export function FarmerDashboard() {
         setActiveListings(active.length);
         setCrops([...new Set(active.map((l: any) => l.cropName).filter(Boolean))] as string[]);
       } else {
+        setListingsFailed(true);
         console.error('Failed to fetch listings:', listingsRes.reason);
       }
 
       if (bidsRes.status === 'fulfilled') {
         setBids(Array.isArray(bidsRes.value.data) ? bidsRes.value.data : []);
       } else {
+        setBidsFailed(true);
         console.error('Failed to fetch incoming bids:', bidsRes.reason);
       }
 
       if (txStatsRes.status === 'fulfilled') {
         setEarnings(txStatsRes.value.data.totalRevenue || 0);
       } else {
+        setStatsFailed(true);
         console.error('Failed to fetch transaction stats:', txStatsRes.reason);
       }
 
@@ -94,22 +103,27 @@ export function FarmerDashboard() {
         <p className="cb-page-lede">
           {loading
             ? 'Loading your lots…'
-            : activeListings === 0
-              ? 'No lots are live right now. List a crop to start receiving bids.'
-              : `${activeListings} ${activeListings === 1 ? 'lot' : 'lots'} live · ${pending.length} ${pending.length === 1 ? 'bid' : 'bids'} waiting on you.`}
+            : listingsFailed
+              ? "Couldn't load your lots just now."
+              : activeListings === 0
+                ? 'No lots are live right now. List a crop to start receiving bids.'
+                : `${activeListings} ${activeListings === 1 ? 'lot' : 'lots'} live${
+                    bidsFailed ? '' : ` · ${pending.length} ${pending.length === 1 ? 'bid' : 'bids'} waiting on you`
+                  }.`}
         </p>
       </div>
 
       <AgentCard role="FARMER" watching={activeListings} />
 
       <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
-        <Kpi label="Active lots" value={activeListings} loading={loading} />
-        <Kpi label="Bids waiting" value={pending.length} loading={loading} />
+        <Kpi label="Active lots" value={activeListings} loading={loading} unavailable={listingsFailed} />
+        <Kpi label="Bids waiting" value={pending.length} loading={loading} unavailable={bidsFailed} />
         <Kpi
           label="Earned"
           value={formatCurrency(earnings, currency)}
           hint="released from escrow"
           loading={loading}
+          unavailable={statsFailed}
         />
       </div>
 
@@ -120,6 +134,8 @@ export function FarmerDashboard() {
       >
         {loading ? (
           <EmptyState>Loading bids…</EmptyState>
+        ) : bidsFailed ? (
+          <EmptyState>Incoming bids couldn't be loaded. Refresh to try again.</EmptyState>
         ) : recent.length === 0 ? (
           <EmptyState>No bids yet. They'll appear here as buyers respond to your lots.</EmptyState>
         ) : (
