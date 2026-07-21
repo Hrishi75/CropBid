@@ -1,193 +1,148 @@
 // =============================================================================
 // FarmerDashboard — Farmer home / overview
 // =============================================================================
-// Landing page for farmers. Pulls live KPIs (active listings, pending bids,
-// total earnings) from /listings/my, /bids/incoming, /transactions/stats, and
-// renders the activity queue + market strip. The QUEUE_FALLBACK / MARKET_FALLBACK
-// constants are illustrative placeholders shown until those feeds are wired.
+// Landing page for farmers. Everything shown is live: KPIs and the recent-bid
+// list come from /listings/my, /bids/incoming and /transactions/stats, the
+// agent card from /agent/config, and the rate strip from /rates/board. Sections
+// with no data render an empty state — we never fill a gap with a sample row,
+// since on a trading screen an illustrative price is indistinguishable from a
+// real one.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
-import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
+import { ArrowIcon } from '../../components/ui/Brand';
+import { Kpi, Section, EmptyState, AgentCard, MarketRates } from '../../components/dashboard/DashboardPieces';
+import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
+import { timeAgo, greeting } from '../../utils/time';
 import api from '../../lib/axios';
 
-interface Stats {
-  activeListings: number;
-  pendingBids: number;
-  totalEarnings: number;
+interface Bid {
+  id: string;
+  status: string;
+  bidPricePerUnit: number;
+  createdAt: string;
+  buyer?: { name?: string | null } | null;
+  listing?: { cropName?: string | null; unit?: UnitCode | null } | null;
 }
-
-const SPARK_POS = [3, 5, 4, 6, 5, 8, 7, 9, 11, 10, 12];
-const SPARK_NEG = [10, 9, 11, 8, 9, 7, 8, 6, 5, 7, 5];
-
-const QUEUE_FALLBACK = [
-  { t: '09:18', evt: 'Bid received', lot: 'Wheat-A', spread: '+₹140', mark: '●' },
-  { t: '08:45', evt: 'Counter sent', lot: 'Mustard', spread: '−₹60', mark: '●' },
-  { t: '07:02', evt: 'Match · drafted', lot: 'Turmeric', spread: '₹0', mark: '●' },
-  { t: '06:55', evt: 'Listing closed', lot: 'Bajra', spread: '—', mark: '' },
-];
-
-const MARKET_FALLBACK = [
-  { crop: 'Wheat HRW', price: '₹2,340/qtl', delta: '+1.2%', tone: 'pos' as const, spark: SPARK_POS },
-  { crop: 'Turmeric', price: '₹14,800/qtl', delta: '−0.4%', tone: 'neg' as const, spark: SPARK_NEG },
-  { crop: 'Mustard', price: '₹5,890/qtl', delta: '+0.8%', tone: 'pos' as const, spark: SPARK_POS },
-];
 
 export function FarmerDashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<Stats>({ activeListings: 0, pendingBids: 0, totalEarnings: 0 });
+  const [activeListings, setActiveListings] = useState(0);
+  const [crops, setCrops] = useState<string[]>([]);
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [earnings, setEarnings] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchStats() {
+    async function load() {
       try {
         const [listingsRes, bidsRes, txStatsRes] = await Promise.all([
           api.get('/listings/my'),
           api.get('/bids/incoming'),
           api.get('/transactions/stats'),
         ]);
+
         const listings = listingsRes.data.listings ?? listingsRes.data;
-        const activeListings = Array.isArray(listings)
-          ? listings.filter((l: any) => l.status === 'ACTIVE').length
-          : 0;
-        const bids = Array.isArray(bidsRes.data) ? bidsRes.data : [];
-        const pendingBids = bids.filter((b: any) => b.status === 'PENDING').length;
-        const totalEarnings = txStatsRes.data.totalRevenue || 0;
-        setStats({ activeListings, pendingBids, totalEarnings });
+        const active = Array.isArray(listings) ? listings.filter((l: any) => l.status === 'ACTIVE') : [];
+        setActiveListings(active.length);
+        setCrops([...new Set(active.map((l: any) => l.cropName).filter(Boolean))] as string[]);
+
+        setBids(Array.isArray(bidsRes.data) ? bidsRes.data : []);
+        setEarnings(txStatsRes.data.totalRevenue || 0);
       } catch (err) {
         console.error('Failed to fetch dashboard stats:', err);
       } finally {
         setLoading(false);
       }
     }
-    fetchStats();
+    load();
   }, []);
 
   // KPI aggregates sum ₹-native records; labelling them with the account's
   // display currency would mislabel the amounts (no FX conversion happens).
   const currency = 'INR';
-  const firstName = user?.name?.split(/\s+/)[0] || '';
+  const firstName = user?.name?.split(/\s+/)[0] || user?.name || '';
+  const pending = bids.filter((b) => b.status === 'PENDING');
+  const recent = bids.slice(0, 5);
 
   return (
     <DashboardLayout>
       <div className="cb-page-head">
-        <div className="cb-page-eyebrow">Welcome · {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · Crop year {new Date().getFullYear()}</div>
         <h1 className="cb-page-title">
-          Good morning,<br />
-          <span className="cb-italic">{firstName || user?.name}.</span>
+          {greeting()},<br />
+          <span className="cb-italic">{firstName}.</span>
         </h1>
-        <p className="cb-page-lede">Your agent ran negotiations overnight. Review pending bids, calibrate strategy, or list a new lot.</p>
+        <p className="cb-page-lede">
+          {loading
+            ? 'Loading your lots…'
+            : activeListings === 0
+              ? 'No lots are live right now. List a crop to start receiving bids.'
+              : `${activeListings} ${activeListings === 1 ? 'lot' : 'lots'} live · ${pending.length} ${pending.length === 1 ? 'bid' : 'bids'} waiting on you.`}
+        </p>
       </div>
 
-      <div className="cb-card cb-card-forest" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-          <span className="cb-live-dot" />
-          <span className="cb-mono" style={{ fontSize: 12, letterSpacing: '0.08em', color: '#e6efd9' }}>
-            AGENT · ACTIVE · monitoring {stats.activeListings} lots
-          </span>
-        </div>
-        <div className="cb-mono" style={{ fontSize: 11, color: 'rgba(244,241,234,0.55)', letterSpacing: '0.08em', marginBottom: 4 }}>STRATEGY</div>
-        <div style={{ fontSize: 14, color: '#e6efd9' }}>
-          Open at floor +₹120, accept at ceiling −2%. Match competing bids within 0.5%.
-        </div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 12 }}>
-          <Link to="/agent" className="cb-btn cb-btn-ghost" style={{ background: 'rgba(255,255,255,0.08)', color: '#e6efd9', borderColor: 'rgba(255,255,255,0.2)' }}>
-            Configure agent
-            <ArrowIcon />
-          </Link>
-        </div>
-      </div>
+      <AgentCard role="FARMER" watching={activeListings} />
 
       <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
-        <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Active lots</div>
-          <div className="cb-kpi-value">{loading ? '—' : stats.activeListings}</div>
-          <div className="cb-kpi-delta pos">↑ tracking now</div>
-          <div style={{ marginTop: 8 }}><MiniChart data={SPARK_POS} color="#6b8e4e" /></div>
-        </div>
-        <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Bids open</div>
-          <div className="cb-kpi-value">{loading ? '—' : stats.pendingBids}</div>
-          <div className="cb-kpi-delta">awaiting your call</div>
-          <div style={{ marginTop: 8 }}>
-            <Link to="/farmer/bids" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>
-              Review bids →
-            </Link>
-          </div>
-        </div>
-        <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Earned · season</div>
-          <div className="cb-kpi-value">{formatCurrency(stats.totalEarnings, currency)}</div>
-          <div className="cb-kpi-delta pos">+12% YoY</div>
-          <div style={{ marginTop: 8 }}><MiniChart data={SPARK_POS} color="#1f2d18" /></div>
-        </div>
+        <Kpi label="Active lots" value={activeListings} loading={loading} />
+        <Kpi label="Bids waiting" value={pending.length} loading={loading} />
+        <Kpi
+          label="Earned"
+          value={formatCurrency(earnings, currency)}
+          hint="released from escrow"
+          loading={loading}
+        />
       </div>
 
-      <section style={{ marginBottom: 24 }}>
-        <div className="cb-section-head">
-          <div>
-            <div className="cb-eyebrow">Today · action queue</div>
-            <h2 className="cb-h3" style={{ marginTop: 8 }}>Recent agent activity</h2>
-          </div>
-          <Link to="/negotiations" className="cb-btn cb-btn-link">See all →</Link>
-        </div>
-        <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
-          <table className="cb-table">
-            <thead>
-              <tr>
-                <th style={{ width: 80 }}>T+</th>
-                <th>Event</th>
-                <th>Lot</th>
-                <th className="num">Spread</th>
-                <th style={{ width: 32 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {QUEUE_FALLBACK.map((row) => (
-                <tr key={row.t}>
-                  <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{row.t}</td>
-                  <td style={{ color: 'var(--cb-ink)' }}>{row.evt}</td>
-                  <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{row.lot}</td>
-                  <td className="num">{row.spread}</td>
-                  <td><span className="cb-mono" style={{ color: 'var(--cb-ember)' }}>{row.mark}</span></td>
+      <Section
+        eyebrow="Bids · on your lots"
+        title="Recent bids"
+        action={recent.length > 0 ? { to: '/farmer/bids', label: 'See all' } : undefined}
+      >
+        {loading ? (
+          <EmptyState>Loading bids…</EmptyState>
+        ) : recent.length === 0 ? (
+          <EmptyState>No bids yet. They'll appear here as buyers respond to your lots.</EmptyState>
+        ) : (
+          <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="cb-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 92 }}>When</th>
+                  <th>Buyer</th>
+                  <th>Lot</th>
+                  <th className="num">Bid</th>
+                  <th style={{ width: 96 }}>Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <div className="cb-section-head">
-          <div>
-            <div className="cb-eyebrow">Market · your crops</div>
-            <h2 className="cb-h3" style={{ marginTop: 8 }}>Price moves to watch</h2>
+              </thead>
+              <tbody>
+                {recent.map((b) => (
+                  <tr key={b.id}>
+                    <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{timeAgo(b.createdAt)}</td>
+                    <td style={{ color: 'var(--cb-ink)' }}>{b.buyer?.name || 'Buyer'}</td>
+                    <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.cropName || '—'}</td>
+                    <td className="num cb-mono">
+                      {formatCurrency(b.bidPricePerUnit, currency)}
+                      {b.listing?.unit ? `/${UNIT_LABEL[b.listing.unit] ?? b.listing.unit}` : ''}
+                    </td>
+                    <td className="cb-mono cb-tiny" style={{ color: b.status === 'PENDING' ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
+                      {b.status.toLowerCase()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-        <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
-          {MARKET_FALLBACK.map((row, i) => (
-            <div
-              key={row.crop}
-              style={{
-                display: 'grid', gridTemplateColumns: '1.5fr 1fr 80px 160px',
-                gap: 16, padding: '14px 20px', alignItems: 'center',
-                borderBottom: i < MARKET_FALLBACK.length - 1 ? '1px solid var(--cb-line)' : 'none',
-              }}
-            >
-              <span style={{ fontWeight: 500 }}>{row.crop}</span>
-              <span className="cb-mono">{row.price}</span>
-              <span className="cb-mono" style={{ color: row.tone === 'pos' ? 'var(--cb-sage)' : 'var(--cb-ember)' }}>
-                {row.delta}
-              </span>
-              <MiniChart data={row.spark} color={row.tone === 'pos' ? '#6b8e4e' : '#c8602b'} />
-            </div>
-          ))}
-        </div>
-      </section>
+        )}
+      </Section>
+
+      <Section eyebrow="Mandi · today" title="Rates for your crops">
+        <MarketRates crops={crops} />
+      </Section>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="cb-eyebrow">Quick</span>
