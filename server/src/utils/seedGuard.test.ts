@@ -16,10 +16,18 @@ describe('isLocalDatabase', () => {
     expect(isLocalDatabase('postgresql://cropbid:cropbid_dev@127.0.0.1:5432/cropbid')).toBe(true);
   });
 
-  it('accepts the docker-compose service names', () => {
+  it('accepts the docker-compose service names inside a container', () => {
     // Inside a container the database is reached by service name, not localhost.
-    expect(isLocalDatabase('postgresql://cropbid:pw@postgres:5432/cropbid')).toBe(true);
-    expect(isLocalDatabase('postgresql://cropbid:pw@db:5432/cropbid')).toBe(true);
+    expect(isLocalDatabase('postgresql://cropbid:pw@postgres:5432/cropbid', { inContainer: true })).toBe(true);
+    expect(isLocalDatabase('postgresql://cropbid:pw@db:5432/cropbid', { inContainer: true })).toBe(true);
+  });
+
+  it('rejects the docker-compose service names outside a container', () => {
+    // `postgres` and `db` are local only by compose convention. Off a container
+    // they may resolve anywhere — including a real database — so the guard must
+    // not take the name as proof of locality.
+    expect(isLocalDatabase('postgresql://cropbid:pw@postgres:5432/cropbid', { inContainer: false })).toBe(false);
+    expect(isLocalDatabase('postgresql://cropbid:pw@db:5432/cropbid', { inContainer: false })).toBe(false);
   });
 
   it('rejects hosted Neon — the case that caused the incident', () => {

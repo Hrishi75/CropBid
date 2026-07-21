@@ -109,10 +109,26 @@ export async function browseEquipment(query: BrowseQuery) {
   // Price ceiling applies to whichever rate the farmer is shopping on: day rate
   // when they asked for rentals, sale price otherwise. Filtering sale price on
   // a RENT search would silently drop every rent-only row (salePrice is null).
+  //
+  // A rental may be priced by the day, by the hour, or both, and the clients
+  // lead with the day rate and fall back to the hourly one. The ceiling has to
+  // test whichever rate the farmer actually sees, so an hourly-only machine is
+  // judged on its hourly rate rather than vanishing on a null day rate. Nested
+  // under AND because the free-text search above already owns `where.OR`.
   if (typeof query.maxPrice === 'number' && Number.isFinite(query.maxPrice)) {
-    where[query.mode === 'RENT' ? 'rentPricePerDay' : 'salePrice'] = {
-      lte: query.maxPrice,
-    };
+    if (query.mode === 'RENT') {
+      where.AND = [
+        ...(where.AND ?? []),
+        {
+          OR: [
+            { rentPricePerDay: { lte: query.maxPrice } },
+            { rentPricePerDay: null, rentPricePerHour: { lte: query.maxPrice } },
+          ],
+        },
+      ];
+    } else {
+      where.salePrice = { lte: query.maxPrice };
+    }
   }
 
   const [equipment, total] = await Promise.all([
@@ -141,12 +157,16 @@ export async function browseEquipment(query: BrowseQuery) {
 // DETAIL — One machine, still without the dealer's phone number
 // =============================================================================
 export async function getEquipmentById(id: string) {
-  const equipment = await prisma.equipment.findUnique({
-    where: { id },
+  // A deactivated dealer takes their catalogue down here too, not just in
+  // browse — otherwise a shared or guessed URL keeps serving stock nobody will
+  // answer for. Filtered in the query rather than checked afterwards, so
+  // `active` never has to join DEALER_PUBLIC and leak into the response.
+  const equipment = await prisma.equipment.findFirst({
+    where: { id, active: true, dealer: { active: true } },
     include: { dealer: { select: DEALER_PUBLIC } },
   });
 
-  if (!equipment || !equipment.active) {
+  if (!equipment) {
     throw new ApiError(404, 'Equipment not found');
   }
 
