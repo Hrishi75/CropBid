@@ -176,6 +176,7 @@ const CROP_ALIASES: Record<string, string[]> = {
   'Green Chilli':         ['green chili', 'green chillies', 'green chilies', 'hari mirch', 'chilli', 'chili', 'mirchi'],
   'Cauliflower':          ['gobi', 'phool gobi', 'phul gobi'],
   'Brinjal':              ['eggplant', 'aubergine', 'baingan', 'baigan'],
+  'Bhindi(Ladies Finger)': ['lady finger', 'ladies finger', 'ladyfinger', 'okra', 'bhindi', 'bhendi'],
   'Banana':               ['bananas', 'kela'],
   'Mango':                ['mangoes', 'mangos', 'aam', 'kesar mango', 'alphonso mango'],
   'Pomegranate':          ['pomegranates', 'anar'],

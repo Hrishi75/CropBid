@@ -5,7 +5,12 @@
 // GMV, revenue) from /admin/stats. The live event stream and "needs attention"
 // triage queue render from server data only — they stay empty (no fabricated
 // rows) until /admin/events and /admin/attention exist (see TODO below).
-// The COUNTRIES list is static illustrative geo-distribution data.
+//
+// Nothing on this page is invented. A system-health tile (hardcoded latencies
+// and socket counts) and a per-country GMV breakdown used to render from
+// constants — they looked like telemetry, so an admin reading them would have
+// been reading fiction. Both are gone until real sources exist: health needs a
+// metrics endpoint, geo needs GMV grouped by user country in /admin/stats.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -28,14 +33,6 @@ interface PlatformStats {
 // IDs that lead nowhere when clicked.
 type EventRow = { t: string; evt: string; val: string; warn?: boolean };
 type AttentionRow = { type: string; id: string; desc: string; sla: string; cta: string; href?: string };
-
-const COUNTRIES = [
-  { name: 'India', flag: '🇮🇳', gmv: 142, pct: 57 },
-  { name: 'USA', flag: '🇺🇸', gmv: 47, pct: 19 },
-  { name: 'Brazil', flag: '🇧🇷', gmv: 28, pct: 11 },
-  { name: 'Kenya', flag: '🇰🇪', gmv: 14, pct: 6 },
-  { name: 'UK', flag: '🇬🇧', gmv: 9, pct: 4 },
-];
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
@@ -72,39 +69,23 @@ export function AdminDashboard() {
   return (
     <DashboardLayout>
       <div className="cb-page-eyebrow">
-        Ops center · {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })} · all systems ●
+        Ops center · {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' })}
       </div>
       <h1 className="cb-page-title" style={{ marginTop: 12 }}>
         Platform pulse,<br />
         <span className="cb-italic">live.</span>
       </h1>
 
-      <div className="cb-card" style={{ marginTop: 24, marginBottom: 20 }}>
-        <div className="cb-eyebrow" style={{ marginBottom: 12 }}>System health</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
-          {[
-            { label: 'API', val: '142ms p50' },
-            { label: 'Socket', val: '1,847 clients' },
-            { label: 'DB', val: '23ms p95' },
-            { label: 'Queue', val: '4 jobs' },
-            { label: 'Errors', val: '0' },
-          ].map((s) => (
-            <div key={s.label}>
-              <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)', marginBottom: 4 }}>●●● {s.label}</div>
-              <div className="cb-mono" style={{ fontSize: 13 }}>{s.val}</div>
-            </div>
-          ))}
-        </div>
-        <div className="cb-tiny" style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
-          Agent uptime 99.4% 24h · last deploy 18:32 yesterday
-        </div>
-      </div>
-
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(6, 1fr)', marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(6, 1fr)', marginTop: 24, marginBottom: 24 }}>
+        {/* Every delta below is derived from the stats payload. There are no
+            rate-of-change figures (per-day signups, bids/min, QoQ growth)
+            because /admin/stats returns point-in-time counts only — inventing
+            a trend line from a single snapshot is how a dashboard starts
+            lying. */}
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Users</div>
           <div className="cb-kpi-value">{stats.users.total.toLocaleString()}</div>
-          <div className="cb-kpi-delta">+312/d</div>
+          <div className="cb-kpi-delta">{stats.users.farmers} farmers · {stats.users.buyers} buyers</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Lots</div>
@@ -114,7 +95,7 @@ export function AdminDashboard() {
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Bids</div>
           <div className="cb-kpi-value">{stats.bids.total.toLocaleString()}</div>
-          <div className="cb-kpi-delta">↑ 4/min</div>
+          <div className="cb-kpi-delta">{stats.negotiations.total} negotiations</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Txns</div>
@@ -124,12 +105,12 @@ export function AdminDashboard() {
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">GMV</div>
           <div className="cb-kpi-value">{formatCurrency(stats.financial.gmv, 'INR')}</div>
-          <div className="cb-kpi-delta pos">+18% QQ</div>
+          <div className="cb-kpi-delta">{stats.transactions.completed} settled</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Fee</div>
           <div className="cb-kpi-value">{formatCurrency(stats.financial.platformRevenue, 'INR')}</div>
-          <div className="cb-kpi-delta">1% take</div>
+          <div className="cb-kpi-delta">on released deals</div>
         </div>
       </div>
 
@@ -202,22 +183,13 @@ export function AdminDashboard() {
       </div>
 
       <div className="cb-card">
-        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Top countries by GMV</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {COUNTRIES.map((c) => (
-            <div key={c.name}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13 }}>{c.flag} {c.name}</span>
-                <span className="cb-mono cb-tiny">₹{c.gmv} Cr · {c.pct}%</span>
-              </div>
-              <div style={{ height: 6, background: 'var(--cb-paper-2)', borderRadius: 3 }}>
-                <div style={{ width: `${c.pct}%`, height: '100%', background: 'var(--cb-forest)', borderRadius: 3 }} />
-              </div>
-            </div>
-          ))}
+        <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Breakdowns</div>
+        <div className="cb-small" style={{ marginBottom: 14 }}>
+          Geo and category splits live on the analytics page.
         </div>
-        <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 16 }}>
           <Link to="/admin/analytics" className="cb-btn cb-btn-link">View full analytics →</Link>
+          <Link to="/admin/transactions" className="cb-btn cb-btn-link">Review orders →</Link>
         </div>
       </div>
     </DashboardLayout>

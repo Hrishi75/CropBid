@@ -19,6 +19,7 @@ import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign } from 
 import { useAuth } from '../../context/AuthContext';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/axios';
+import { timeAgo } from '../../utils/time';
 import type { Notification } from '../../types';
 
 const TYPE_ICONS: Record<string, typeof Bell> = {
@@ -132,17 +133,6 @@ export function NotificationDropdown() {
     } else if (data?.listingId) {
       navigate(`/listings/${data.listingId}`);
     }
-  }
-
-  function timeAgo(dateStr: string) {
-    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-    if (seconds < 60) return 'just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
   }
 
   return (

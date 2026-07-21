@@ -21,6 +21,14 @@ const purgeDemoDataSchema = z.object({
   extraEmails: z.array(z.string().email()).max(50).optional(),
 });
 
+const enquiryIdParamSchema = z.object({
+  id: z.string().uuid('Invalid enquiry id'),
+});
+
+const updateEnquirySchema = z.object({
+  status: z.enum(['NEW', 'CONTACTED', 'CLOSED']),
+});
+
 // GET /api/admin/stats — Platform-wide statistics
 export async function getPlatformStats(_req: Request, res: Response, next: NextFunction) {
   try {
@@ -179,6 +187,49 @@ export async function purgeDemoData(req: Request, res: Response, next: NextFunct
       entityType: 'Platform',
       entityId: 'demo-data',
       metadata: result.deleted,
+    });
+
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/admin/enquiries — Inbound equipment leads
+export async function getEquipmentEnquiries(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { status, limit, offset } = req.query;
+    const result = await adminService.getEquipmentEnquiries(
+      status as string,
+      parseInt(limit as string) || 20,
+      parseInt(offset as string) || 0
+    );
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /api/admin/enquiries/:id — Move a lead through the triage queue
+export async function updateEnquiryStatus(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = enquiryIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      return res.status(400).json({ message: params.error.issues[0]?.message || 'Invalid id' });
+    }
+
+    const body = updateEnquirySchema.safeParse(req.body);
+    if (!body.success) {
+      return res.status(400).json({ message: 'Status must be NEW, CONTACTED, or CLOSED' });
+    }
+
+    const result = await adminService.updateEnquiryStatus(params.data.id, body.data.status);
+
+    await auditFromRequest(req, {
+      action: 'admin.enquiry.update_status',
+      entityType: 'EquipmentEnquiry',
+      entityId: params.data.id,
+      metadata: { status: body.data.status },
     });
 
     res.json(result);

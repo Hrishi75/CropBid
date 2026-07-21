@@ -37,4 +37,10 @@ router.post('/purge-demo-data', adminController.purgeDemoData);
 // GET /api/admin/transactions — Transaction oversight
 router.get('/transactions', adminController.getAllTransactions);
 
+// GET /api/admin/enquiries — Inbound equipment leads
+router.get('/enquiries', adminController.getEquipmentEnquiries);
+
+// PATCH /api/admin/enquiries/:id — Move a lead through the triage queue
+router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
+
 export default router;
