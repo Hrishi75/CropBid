@@ -51,6 +51,16 @@ function targetHost(url: string | undefined): string {
 // rather than quietly accepted because this path skips the API's validation.
 const MIN_PASSWORD_LENGTH = 8;
 
+// How long the promotion warning stays on screen before the write lands.
+// A warning that says "Ctrl-C now" and then acts in the same tick is not a
+// warning, so the pause is real. Skipped when stdout isn't a TTY, since a
+// CI or `| tee` run has nobody there to read it.
+const PROMOTION_GRACE_SECONDS = 10;
+
+function pause(seconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     console.error('❌ DATABASE_URL is not set — nothing to connect to.');
@@ -83,8 +93,14 @@ async function main() {
 
   if (existing && existing.role !== 'ADMIN') {
     console.log(`⚠️  ${phone} is an existing ${existing.role} account ("${existing.name}").`);
-    console.log('   It will be PROMOTED to ADMIN and its password reset.');
-    console.log('   If that phone number is a typo, stop now (Ctrl-C).\n');
+    console.log('   It will be PROMOTED to ADMIN and its password reset —');
+    console.log('   that person loses access to their own account.');
+    if (process.stdout.isTTY) {
+      console.log(`   Press Ctrl-C within ${PROMOTION_GRACE_SECONDS}s to abort.\n`);
+      await pause(PROMOTION_GRACE_SECONDS);
+    } else {
+      console.log('   (running non-interactively — proceeding)\n');
+    }
   }
 
   const hashed = await bcrypt.hash(password, 12);
@@ -123,8 +139,15 @@ main()
   .catch((e) => {
     // A duplicate email lands here: the phone was free but the email belongs
     // to someone else, so the upsert's create failed on the unique constraint.
+    // `meta.target` is empty on the driver-adapter path, so the guidance can't
+    // rely on it — name the only field it can realistically be instead.
     if (e?.code === 'P2002') {
-      console.error(`❌ ${e.meta?.target ?? 'A unique field'} is already taken by another account.`);
+      const field = Array.isArray(e.meta?.target) ? e.meta.target.join(', ') : e.meta?.target;
+      console.error(
+        field
+          ? `❌ ${field} is already taken by another account.`
+          : '❌ ADMIN_EMAIL is already registered to a different account — omit it or use another address.',
+      );
       process.exit(1);
     }
     console.error('❌ Failed:', e);
