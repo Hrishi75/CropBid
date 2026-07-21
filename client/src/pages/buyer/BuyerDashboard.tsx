@@ -43,20 +43,30 @@ export function BuyerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // allSettled, not all: the bid feed and the spend totals are independent,
+    // and with Promise.all a failing /transactions/stats threw away a
+    // perfectly good /bids/my response — the buyer's working bids vanished
+    // because an unrelated stats endpoint was down.
     async function load() {
-      try {
-        const [bidsRes, txStatsRes] = await Promise.all([
-          api.get('/bids/my'),
-          api.get('/transactions/stats'),
-        ]);
-        setBids(Array.isArray(bidsRes.data) ? bidsRes.data : []);
-        setWonDeals(txStatsRes.data.released || 0);
-        setTotalSpent(txStatsRes.data.totalRevenue || 0);
-      } catch (err) {
-        console.error('Failed to fetch dashboard stats:', err);
-      } finally {
-        setLoading(false);
+      const [bidsRes, txStatsRes] = await Promise.allSettled([
+        api.get('/bids/my'),
+        api.get('/transactions/stats'),
+      ]);
+
+      if (bidsRes.status === 'fulfilled') {
+        setBids(Array.isArray(bidsRes.value.data) ? bidsRes.value.data : []);
+      } else {
+        console.error('Failed to fetch bids:', bidsRes.reason);
       }
+
+      if (txStatsRes.status === 'fulfilled') {
+        setWonDeals(txStatsRes.value.data.released || 0);
+        setTotalSpent(txStatsRes.value.data.totalRevenue || 0);
+      } else {
+        console.error('Failed to fetch transaction stats:', txStatsRes.reason);
+      }
+
+      setLoading(false);
     }
     load();
   }, []);

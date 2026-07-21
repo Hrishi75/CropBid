@@ -83,14 +83,33 @@ interface AgentConfig {
 
 export function AgentCard({ role, watching }: { role: 'FARMER' | 'BUYER'; watching: number }) {
   const [config, setConfig] = useState<AgentConfig | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     api.get('/agent/config')
       .then((res) => { if (!cancelled) setConfig(res.data); })
-      .catch(() => { /* card stays in its neutral, pre-load state */ });
+      .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, []);
+
+  // A failed load used to fall through to `config?.active ?? false` and render
+  // AGENT · OFF with a "turn it on" prompt. A timeout would therefore tell a
+  // user with a live, actively-negotiating agent that it was switched off —
+  // and invite them to "set it up" again. Unknown is its own state.
+  if (failed) {
+    return (
+      <div className="cb-card cb-card-forest" style={{ marginBottom: 24 }}>
+        <div className="cb-mono" style={{ fontSize: 12, letterSpacing: '0.08em', color: '#e6efd9', marginBottom: 10 }}>
+          AGENT · UNAVAILABLE
+        </div>
+        <div style={{ fontSize: 14, color: '#e6efd9' }}>
+          Couldn't reach the agent service, so its current state is unknown.
+          Any negotiation already running is unaffected.
+        </div>
+      </div>
+    );
+  }
 
   const on = config?.active ?? false;
   const bound = role === 'FARMER' ? config?.minPrice : config?.maxPrice;
@@ -164,9 +183,28 @@ export function MarketRates({ crops = [], limit = 4 }: { crops?: string[]; limit
   if (!rates) return <EmptyState>Loading today's rates…</EmptyState>;
   if (rates.length === 0) return <EmptyState>No mandi rates reported today.</EmptyState>;
 
+  // Listing crop names and rate-board commodity names are different naming
+  // schemes — a lot called "Lady Finger" never equals the board's
+  // "Bhindi(Ladies Finger)". Falling back to the unfiltered board when nothing
+  // matches put arbitrary commodities under a heading that promises "rates for
+  // YOUR crops", which is worse than showing nothing: a farmer could price
+  // against a crop they don't grow.
+  //
+  // No crops at all is a different case — there is nothing to mismatch, so the
+  // general board is honest there and stays.
   const wanted = crops.map((c) => c.toLowerCase());
   const mine = rates.filter((r) => wanted.includes(r.commodity.toLowerCase()));
-  const shown = (mine.length > 0 ? mine : rates).slice(0, limit);
+
+  if (crops.length > 0 && mine.length === 0) {
+    return (
+      <EmptyState>
+        No mandi rates today for {crops.length === 1 ? crops[0] : 'your crops'}.{' '}
+        <Link to="/rates" style={{ color: 'var(--cb-forest)' }}>See the full board →</Link>
+      </EmptyState>
+    );
+  }
+
+  const shown = (crops.length > 0 ? mine : rates).slice(0, limit);
 
   return (
     <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>

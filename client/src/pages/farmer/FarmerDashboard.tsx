@@ -38,26 +38,41 @@ export function FarmerDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // allSettled, not all: these three feeds are independent, and with
+    // Promise.all a single failing endpoint discarded the two that succeeded.
+    // A farmer with live lots and incoming bids would then see zeros across
+    // the board because /transactions/stats happened to be down — the
+    // dashboard reporting "no activity" when the truth is "one number is
+    // missing" is the worse failure of the two.
     async function load() {
-      try {
-        const [listingsRes, bidsRes, txStatsRes] = await Promise.all([
-          api.get('/listings/my'),
-          api.get('/bids/incoming'),
-          api.get('/transactions/stats'),
-        ]);
+      const [listingsRes, bidsRes, txStatsRes] = await Promise.allSettled([
+        api.get('/listings/my'),
+        api.get('/bids/incoming'),
+        api.get('/transactions/stats'),
+      ]);
 
-        const listings = listingsRes.data.listings ?? listingsRes.data;
+      if (listingsRes.status === 'fulfilled') {
+        const listings = listingsRes.value.data.listings ?? listingsRes.value.data;
         const active = Array.isArray(listings) ? listings.filter((l: any) => l.status === 'ACTIVE') : [];
         setActiveListings(active.length);
         setCrops([...new Set(active.map((l: any) => l.cropName).filter(Boolean))] as string[]);
-
-        setBids(Array.isArray(bidsRes.data) ? bidsRes.data : []);
-        setEarnings(txStatsRes.data.totalRevenue || 0);
-      } catch (err) {
-        console.error('Failed to fetch dashboard stats:', err);
-      } finally {
-        setLoading(false);
+      } else {
+        console.error('Failed to fetch listings:', listingsRes.reason);
       }
+
+      if (bidsRes.status === 'fulfilled') {
+        setBids(Array.isArray(bidsRes.value.data) ? bidsRes.value.data : []);
+      } else {
+        console.error('Failed to fetch incoming bids:', bidsRes.reason);
+      }
+
+      if (txStatsRes.status === 'fulfilled') {
+        setEarnings(txStatsRes.value.data.totalRevenue || 0);
+      } else {
+        console.error('Failed to fetch transaction stats:', txStatsRes.reason);
+      }
+
+      setLoading(false);
     }
     load();
   }, []);
