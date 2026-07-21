@@ -53,6 +53,14 @@ const BOARD: BoardItem[] = [
   { commodity: 'Green Chilli', label: 'Green Chilli', emoji: '🌶️', cat: 'veg', unit: 'KG', fallbackPerQuintal: 4500 },
   { commodity: 'Cauliflower', label: 'Cauliflower', emoji: '🥦', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2200 },
   { commodity: 'Brinjal', label: 'Brinjal', emoji: '🍆', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
+  // More daily-use vegetables. `commodity` uses Agmarknet's exact spelling
+  // (parenthesised names and all) or the feed returns nothing.
+  { commodity: 'Cabbage', label: 'Cabbage', emoji: '🥬', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1600 },
+  { commodity: 'Carrot', label: 'Carrot', emoji: '🥕', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2800 },
+  { commodity: 'Bhindi(Ladies Finger)', label: 'Lady Finger', emoji: '🫛', cat: 'veg', unit: 'KG', fallbackPerQuintal: 3500 },
+  { commodity: 'Cucumbar(Kheera)', label: 'Cucumber', emoji: '🥒', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2000 },
+  { commodity: 'Garlic', label: 'Garlic', emoji: '🧄', cat: 'veg', unit: 'KG', fallbackPerQuintal: 9000 },
+  { commodity: 'Ginger(Green)', label: 'Ginger', emoji: '🫚', cat: 'veg', unit: 'KG', fallbackPerQuintal: 8000 },
   // Milk & dairy — dairy trades through cooperatives, not APMC mandis, so the
   // feed rarely (if ever) reports it and these rows usually resolve to the
   // reference price, labelled honestly by the source chain. References track
@@ -69,6 +77,10 @@ const BOARD: BoardItem[] = [
   { commodity: 'Pomegranate', label: 'Pomegranate', emoji: '🍒', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 11000 },
   { commodity: 'Grapes', label: 'Grapes', emoji: '🍇', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 7000 },
   { commodity: 'Apple', label: 'Apple', emoji: '🍎', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 12000 },
+  // More everyday fruits (Agmarknet exact spellings).
+  { commodity: 'Pineapple', label: 'Pineapple', emoji: '🍍', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 4000 },
+  { commodity: 'Water Melon', label: 'Watermelon', emoji: '🍉', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 1400 },
+  { commodity: 'Lime', label: 'Lemon', emoji: '🍋', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 6000 },
   // Grains & pulses
   { commodity: 'Wheat', label: 'Wheat', emoji: '🌾', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2480 },
   { commodity: 'Paddy(Dhan)(Common)', label: 'Paddy (Rice)', emoji: '🍚', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2400 },

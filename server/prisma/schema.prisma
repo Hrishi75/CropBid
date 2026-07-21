@@ -164,6 +164,7 @@ model User {
   farmerTransactions Transaction[] @relation("FarmerTransactions")
   buyerTransactions  Transaction[] @relation("BuyerTransactions")
   notifications Notification[]
+  equipmentEnquiries EquipmentEnquiry[] // Machinery leads this user has raised
 }
 
 // =============================================================================
@@ -639,4 +640,170 @@ model Shipment {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// EQUIPMENT MARKETPLACE — machines, pumps, pipes and implements
+// =============================================================================
+// A LEAD-GEN surface, deliberately NOT a checkout. CropBid lists what dealers
+// stock, farmers raise an enquiry, and the dealer closes the sale offline. We
+// never take payment, hold inventory, or own the warranty — high-ticket
+// machinery is a completely different ops problem from perishable produce.
+//
+// Two ways a farmer gets a machine, and both matter in India:
+//   SALE — outright purchase (pumps, pipes, sprayers are affordable)
+//   RENT — day/hour hire, the Custom Hiring Centre model the government funds
+//          through SMAM. A ₹6L tractor is out of reach for a smallholder who
+//          will happily pay ₹1,200/day at sowing time.
+// An Equipment row can offer either or both (see `mode`).
+
+enum EquipmentCategory {
+  TRACTOR    // Tractors and power tillers
+  TILLAGE    // Rotavators, cultivators, ploughs, harrows
+  HARVESTER  // Combine harvesters, reapers
+  IRRIGATION // Pumps, pipes, sprinklers, drip sets
+  SPRAYER    // Knapsack, boom and power sprayers
+  THRESHER   // Threshers, winnowers, shellers
+  POWER      // Motors, diesel engines, gensets
+  TOOLS      // Hand implements and small attachments
+}
+
+enum EquipmentCondition {
+  NEW
+  USED
+}
+
+// What the dealer is willing to do with this machine.
+enum EquipmentMode {
+  SALE // Purchase only
+  RENT // Hire only
+  BOTH // Either — farmer picks on the enquiry
+}
+
+enum EnquiryIntent {
+  SALE
+  RENT
+}
+
+enum EnquiryStatus {
+  NEW       // Raised, dealer not yet reached
+  CONTACTED // Dealer has spoken to the farmer
+  CLOSED    // Resolved either way
+}
+
+// =============================================================================
+// Model 13: EquipmentDealer — Third-party machinery sellers & hire centres
+// =============================================================================
+// Modelled like LogisticsPartner: an offline partner CropBid curates, NOT a
+// User with a login. Dealers have no account to sign into yet — we pass them
+// leads over the phone. If dealer self-service is ever built, this row gains an
+// optional userId rather than being replaced.
+
+model EquipmentDealer {
+  id            String   @id @default(uuid())
+  name          String
+  location      String   // City/town
+  state         String
+  country       String   @default("India")
+
+  contactPhone  String   // Revealed to a farmer only once they raise an enquiry
+  contactEmail  String?
+
+  // Curated trust signals — CropBid vouches for verified dealers.
+  verified      Boolean  @default(false)
+  rating        Float    @default(4.0)
+
+  // Some dealers are empanelled under the government's SMAM subsidy scheme,
+  // which means a farmer buying through them can claim 40–50% back. Surfacing
+  // this is a genuine reason to pick one dealer over another.
+  smamEmpanelled Boolean @default(false)
+
+  active        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment Equipment[]
+}
+
+// =============================================================================
+// Model 14: Equipment — A machine offered for sale, hire, or both
+// =============================================================================
+
+model Equipment {
+  id          String             @id @default(uuid())
+
+  dealerId    String
+  dealer      EquipmentDealer    @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  title       String             // e.g., "Mahindra 575 DI XP Plus"
+  category    EquipmentCategory
+  brand       String?
+  modelName   String?            // `model` is a Prisma keyword — hence modelName
+  condition   EquipmentCondition @default(NEW)
+  yearMade    Int?               // Relevant for USED listings
+
+  mode        EquipmentMode      @default(SALE)
+
+  // Pricing. Which fields are set depends on `mode` — the service validates
+  // that a SALE row has salePrice and a RENT row has at least one rent rate.
+  salePrice        Float?
+  rentPricePerDay  Float?
+  rentPricePerHour Float?
+  securityDeposit  Float?        // Refundable, rentals only
+  currency         Currency      @default(INR)
+
+  // Spec sheet. Free-form strings keep this flexible across a tractor and a
+  // 2-inch pipe without a table per category.
+  powerHp     Float?             // Horsepower, where it applies
+  specs       String[]           // e.g., ["540 PTO RPM", "1600 kg lift"]
+
+  description String?
+  images      String[]
+
+  location    String
+  state       String
+
+  active      Boolean            @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enquiries EquipmentEnquiry[]
+
+  // Browse is always filtered by these — index the hot paths.
+  @@index([category, active])
+  @@index([state, active])
+}
+
+// =============================================================================
+// Model 15: EquipmentEnquiry — A farmer's lead, handed to the dealer
+// =============================================================================
+// The whole point of the surface. Raising one is what unlocks the dealer's
+// phone number for that farmer, so we capture the lead instead of letting the
+// catalogue be scraped for contacts.
+
+model EquipmentEnquiry {
+  id          String        @id @default(uuid())
+
+  equipmentId String
+  equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  userId      String        // Whoever raised it — usually a FARMER
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  intent      EnquiryIntent // Buying or hiring — a BOTH listing needs this
+  message     String?
+
+  // Rental window, when intent = RENT. Advisory only; the dealer confirms
+  // availability offline since we hold no booking calendar.
+  rentFrom    DateTime?
+  rentTo      DateTime?
+
+  status      EnquiryStatus @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }

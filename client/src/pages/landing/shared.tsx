@@ -348,7 +348,7 @@ export function CBFooter() {
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  All rights reserved</span>
           <span className="cb-footer-bottom-links">
             <a href="#">Terms</a>
-            <a href="#">Privacy</a>
+            <Link to="/privacy">Privacy</Link>
             <a href="#">Disclosures</a>
           </span>
         </div>

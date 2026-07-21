@@ -36,6 +36,7 @@ import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
 import CropSellersScreen from '../screens/CropSellersScreen';
 import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
+import EquipmentScreen from '../screens/EquipmentScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
@@ -86,6 +87,11 @@ function BuyerNavigator() {
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="Equipment"
+        component={EquipmentScreen}
+        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Notifications"
@@ -149,6 +155,11 @@ function FarmerNavigator() {
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
+        name="Equipment"
+        component={EquipmentScreen}
+        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
         name="Notifications"
         component={ActivityScreen}
         options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
@@ -200,6 +211,11 @@ function ConsumerNavigator() {
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
+        name="Equipment"
+        component={EquipmentScreen}
+        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
         name="Notifications"
         component={ActivityScreen}
         options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
@@ -235,6 +251,11 @@ function GuestNavigator() {
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="Equipment"
+        component={EquipmentScreen}
+        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Login"
