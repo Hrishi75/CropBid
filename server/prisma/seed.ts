@@ -21,6 +21,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 import { cropImageFor } from './cropImages';
 import { isLocalDatabase } from '../src/utils/seedGuard';
+import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE } from './equipmentCatalogue';
 
 // Prisma v7 requires a driver adapter for direct database connections.
 // PrismaPg connects to PostgreSQL using the `pg` library under the hood.
@@ -798,249 +799,54 @@ async function main() {
   // 12b. Equipment Dealers + Machinery Catalogue
   // =========================================================================
   // Lead-gen catalogue: dealers are curated partners (no login), farmers raise
-  // enquiries. Prices are realistic Indian market rates as of 2026 — a smallholder
-  // rents the ₹6L tractor at ₹1,100/day rather than buying it, which is why
-  // most rows offer BOTH.
+  // enquiries. The rows themselves live in ./equipmentCatalogue so that
+  // seedEquipment.ts — the additive loader that can safely run against
+  // production — stays in step with this one.
   console.log('  Creating equipment dealers and machinery...');
 
-  const dealers = await Promise.all([
-    prisma.equipmentDealer.create({
+  const dealerIdByName = new Map<string, string>();
+  for (const d of EQUIPMENT_DEALERS) {
+    const row = await prisma.equipmentDealer.create({
       data: {
-        name: 'Sharma Tractors & Implements',
-        location: 'Nashik', state: 'Maharashtra',
-        contactPhone: '+91-9820000101', contactEmail: 'sales@sharmatractors.in',
-        verified: true, rating: 4.4, smamEmpanelled: true,
+        name: d.name,
+        location: d.location,
+        state: d.state,
+        contactPhone: d.contactPhone,
+        contactEmail: d.contactEmail ?? null,
+        verified: d.verified ?? false,
+        rating: d.rating ?? 4.0,
+        smamEmpanelled: d.smamEmpanelled ?? false,
       },
-    }),
-    prisma.equipmentDealer.create({
-      data: {
-        name: 'Krishi Yantra Kendra',
-        location: 'Pune', state: 'Maharashtra',
-        contactPhone: '+91-9820000102', contactEmail: 'info@krishiyantra.in',
-        verified: true, rating: 4.1, smamEmpanelled: true,
-      },
-    }),
-    prisma.equipmentDealer.create({
-      data: {
-        name: 'Patel Pumps & Pipes',
-        location: 'Ahmedabad', state: 'Gujarat',
-        contactPhone: '+91-9820000103', contactEmail: 'orders@patelpumps.in',
-        verified: true, rating: 4.6,
-      },
-    }),
-    prisma.equipmentDealer.create({
-      data: {
-        name: 'Green Field Custom Hiring Centre',
-        location: 'Perambalur', state: 'Tamil Nadu',
-        contactPhone: '+91-9820000104',
-        verified: true, rating: 4.3, smamEmpanelled: true,
-      },
-    }),
-    prisma.equipmentDealer.create({
-      data: {
-        name: 'Deshmukh Agro Machinery',
-        location: 'Nagpur', state: 'Maharashtra',
-        contactPhone: '+91-9820000105', contactEmail: 'deshmukh.agro@gmail.com',
-        rating: 3.8,
-      },
-    }),
-  ]);
+      select: { id: true },
+    });
+    dealerIdByName.set(d.name, row.id);
+  }
 
-  const [sharma, krishi, patel, greenfield, deshmukh] = dealers;
+  for (const e of EQUIPMENT_CATALOGUE) {
+    await prisma.equipment.create({
+      data: {
+        dealerId: dealerIdByName.get(e.dealer)!,
+        title: e.title,
+        category: e.category,
+        brand: e.brand ?? null,
+        modelName: e.modelName ?? null,
+        condition: e.condition,
+        yearMade: e.yearMade ?? null,
+        mode: e.mode,
+        salePrice: e.salePrice ?? null,
+        rentPricePerDay: e.rentPricePerDay ?? null,
+        rentPricePerHour: e.rentPricePerHour ?? null,
+        securityDeposit: e.securityDeposit ?? null,
+        powerHp: e.powerHp ?? null,
+        specs: e.specs,
+        description: e.description ?? null,
+        location: e.location,
+        state: e.state,
+      },
+    });
+  }
 
-  const equipment = await Promise.all([
-    // --- Tractors: expensive to buy, so hire rates matter most ---
-    prisma.equipment.create({
-      data: {
-        dealerId: sharma!.id,
-        title: 'Mahindra 575 DI XP Plus',
-        category: 'TRACTOR', brand: 'Mahindra', modelName: '575 DI XP Plus',
-        condition: 'NEW', mode: 'BOTH',
-        salePrice: 785000, rentPricePerDay: 1400, securityDeposit: 10000,
-        powerHp: 47,
-        specs: ['47 HP', '1600 kg lift capacity', '8 forward + 2 reverse gears', 'Power steering'],
-        description: 'Workhorse 47 HP tractor suited to 5–20 acre holdings. Eligible for 40–50% SMAM subsidy through this dealer.',
-        location: 'Nashik', state: 'Maharashtra',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: greenfield!.id,
-        title: 'John Deere 5050 D — hire only',
-        category: 'TRACTOR', brand: 'John Deere', modelName: '5050 D',
-        condition: 'USED', yearMade: 2022, mode: 'RENT',
-        rentPricePerDay: 1800, rentPricePerHour: 320, securityDeposit: 15000,
-        powerHp: 50,
-        specs: ['50 HP', '2000 kg lift capacity', 'Operator included'],
-        description: 'Custom Hiring Centre tractor with operator. Book by the day through sowing and harvest season.',
-        location: 'Perambalur', state: 'Tamil Nadu',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: krishi!.id,
-        title: 'Kubota Power Tiller PEM 140 DI',
-        category: 'TRACTOR', brand: 'Kubota', modelName: 'PEM 140 DI',
-        condition: 'NEW', mode: 'BOTH',
-        salePrice: 168000, rentPricePerDay: 650, securityDeposit: 5000,
-        powerHp: 14,
-        specs: ['14 HP diesel', 'Suits paddy and vegetable plots', 'Rotary tiller attachment'],
-        location: 'Pune', state: 'Maharashtra',
-      },
-    }),
-
-    // --- Tillage ---
-    prisma.equipment.create({
-      data: {
-        dealerId: sharma!.id,
-        title: 'Rotavator 7 feet — Shaktiman',
-        category: 'TILLAGE', brand: 'Shaktiman', modelName: 'Regular 210',
-        condition: 'NEW', mode: 'BOTH',
-        salePrice: 96000, rentPricePerDay: 900,
-        specs: ['7 ft working width', '42 blades', 'Needs 45+ HP tractor'],
-        location: 'Nashik', state: 'Maharashtra',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: deshmukh!.id,
-        title: 'Disc Harrow 16-blade (used)',
-        category: 'TILLAGE', brand: 'Landforce',
-        condition: 'USED', yearMade: 2021, mode: 'SALE',
-        salePrice: 42000,
-        specs: ['16 discs', 'Offset mounted', 'Suits 35–50 HP tractors'],
-        location: 'Nagpur', state: 'Maharashtra',
-      },
-    }),
-
-    // --- Irrigation: the everyday spend, affordable to buy outright ---
-    prisma.equipment.create({
-      data: {
-        dealerId: patel!.id,
-        title: 'Kirloskar 5 HP Openwell Submersible Pump',
-        category: 'IRRIGATION', brand: 'Kirloskar', modelName: 'KOS-535+',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 28500,
-        powerHp: 5,
-        specs: ['5 HP', 'Three phase', 'Max head 45 m', 'Copper winding'],
-        description: 'Openwell submersible for borewell and canal irrigation. Two-year manufacturer warranty.',
-        location: 'Ahmedabad', state: 'Gujarat',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: patel!.id,
-        title: 'HDPE Irrigation Pipe 63 mm — 100 m coil',
-        category: 'IRRIGATION', brand: 'Supreme',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 6800,
-        specs: ['63 mm diameter', '100 m coil', '6 kg/cm² pressure rating', 'ISI marked'],
-        location: 'Ahmedabad', state: 'Gujarat',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: patel!.id,
-        title: 'Drip Irrigation Set — 1 acre',
-        category: 'IRRIGATION', brand: 'Jain Irrigation',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 34000,
-        specs: ['Covers 1 acre', 'Inline drippers at 40 cm', 'Filter and venturi included'],
-        description: 'Complete 1-acre drip set. Eligible for PMKSY micro-irrigation subsidy — dealer assists with the paperwork.',
-        location: 'Ahmedabad', state: 'Gujarat',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: krishi!.id,
-        title: 'Solar Pump 3 HP DC',
-        category: 'IRRIGATION', brand: 'Shakti', modelName: 'SSP-3000',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 165000,
-        powerHp: 3,
-        specs: ['3 HP DC', 'Solar panels included', 'Zero running cost', 'PM-KUSUM eligible'],
-        description: 'Off-grid solar pump. Under PM-KUSUM the effective cost drops sharply — ask the dealer for the current state subsidy split.',
-        location: 'Pune', state: 'Maharashtra',
-      },
-    }),
-
-    // --- Sprayers ---
-    prisma.equipment.create({
-      data: {
-        dealerId: krishi!.id,
-        title: 'Battery Knapsack Sprayer 16 L',
-        category: 'SPRAYER', brand: 'Neptune',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 3200,
-        specs: ['16 litre tank', '12V 8Ah battery', '4 nozzles included'],
-        location: 'Pune', state: 'Maharashtra',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: deshmukh!.id,
-        title: 'Tractor-mounted Boom Sprayer 400 L',
-        category: 'SPRAYER',
-        condition: 'NEW', mode: 'BOTH',
-        salePrice: 58000, rentPricePerDay: 700,
-        specs: ['400 litre tank', '12 m boom', 'PTO driven'],
-        location: 'Nagpur', state: 'Maharashtra',
-      },
-    }),
-
-    // --- Harvester / thresher: classic hire items ---
-    prisma.equipment.create({
-      data: {
-        dealerId: greenfield!.id,
-        title: 'Combine Harvester — hire with operator',
-        category: 'HARVESTER', brand: 'Preet', modelName: '987',
-        condition: 'USED', yearMade: 2020, mode: 'RENT',
-        rentPricePerHour: 2400, securityDeposit: 20000,
-        specs: ['Self-propelled', 'Paddy and wheat', 'Operator and diesel extra'],
-        description: 'Booked by the hour through harvest season. Reserve early — availability tightens in November.',
-        location: 'Perambalur', state: 'Tamil Nadu',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: sharma!.id,
-        title: 'Multi-crop Thresher 5 HP',
-        category: 'THRESHER', brand: 'Dashmesh',
-        condition: 'NEW', mode: 'BOTH',
-        salePrice: 78000, rentPricePerDay: 850,
-        powerHp: 5,
-        specs: ['Wheat, gram, soybean', '8–10 quintal/hour', 'Blower cleaning'],
-        location: 'Nashik', state: 'Maharashtra',
-      },
-    }),
-
-    // --- Power + tools ---
-    prisma.equipment.create({
-      data: {
-        dealerId: patel!.id,
-        title: 'Crompton 7.5 HP Three-Phase Motor',
-        category: 'POWER', brand: 'Crompton',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 21500,
-        powerHp: 7.5,
-        specs: ['7.5 HP', '1440 RPM', 'Three phase', 'IE2 efficiency'],
-        location: 'Ahmedabad', state: 'Gujarat',
-      },
-    }),
-    prisma.equipment.create({
-      data: {
-        dealerId: deshmukh!.id,
-        title: 'Brush Cutter / Weeder 2-stroke',
-        category: 'TOOLS', brand: 'Honda', modelName: 'UMK 435',
-        condition: 'NEW', mode: 'SALE',
-        salePrice: 14500,
-        specs: ['35.8 cc 2-stroke', 'Backpack type', 'Blade and nylon head'],
-        location: 'Nagpur', state: 'Maharashtra',
-      },
-    }),
-  ]);
-
-  console.log(`  ✅ Created ${dealers.length} equipment dealers and ${equipment.length} machines`);
+  console.log(`  ✅ Created ${EQUIPMENT_DEALERS.length} equipment dealers and ${EQUIPMENT_CATALOGUE.length} machines`);
 
   // =========================================================================
   // 13. Create Consumer Test Account (direct-to-consumer retail buyer)

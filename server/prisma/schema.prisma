@@ -724,6 +724,12 @@ model EquipmentDealer {
   updatedAt DateTime @updatedAt
 
   equipment Equipment[]
+
+  // The catalogue loader's identity for a dealer, enforced here so concurrent
+  // runs cannot insert the same partner twice. Name alone is deliberately not
+  // unique: a chain with branches in two states is two dealers, each with its
+  // own phone number and stock.
+  @@unique([name, state])
 }
 
 // =============================================================================
@@ -774,6 +780,11 @@ model Equipment {
   // Browse is always filtered by these — index the hot paths.
   @@index([category, active])
   @@index([state, active])
+
+  // The catalogue loader's identity for a machine. Enforcing it here rather
+  // than trusting the loader means two concurrent runs cannot both decide a
+  // row is missing and insert it twice.
+  @@unique([dealerId, title])
 }
 
 // =============================================================================
