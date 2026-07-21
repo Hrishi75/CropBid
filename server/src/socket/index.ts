@@ -135,6 +135,9 @@ export function initializeSocket(httpServer: HttpServer) {
   io.on('connection', (socket: Socket) => {
     const userId = (socket as any).userId;
     const userName = (socket as any).userName;
+    // Set from the verified JWT payload in the handshake middleware above — it
+    // is the token's claim, not anything the client can assert separately.
+    const role = (socket as any).role;
     console.log(`Socket connected: ${userId} (${userName})`);
 
     // Auto-join user's personal notification room
@@ -177,6 +180,16 @@ export function initializeSocket(httpServer: HttpServer) {
       // Validate input shape before doing anything else
       if (!data || typeof data.listingId !== 'string' || typeof data.price !== 'number' || !Number.isFinite(data.price)) {
         return socket.emit('auction:error', 'Invalid bid payload');
+      }
+
+      // Only BUYERs may bid — the same guard every REST bidding route carries
+      // (requireRole('BUYER') in bid.routes.ts). Without it this socket was a
+      // way around that check: a self-registered CONSUMER (or a rival FARMER)
+      // could win an auction, and endAuction writes a real ACCEPTED bid, marks
+      // the listing SOLD, and opens a Transaction — taking the lot off the
+      // market on behalf of a principal the REST layer would have 403'd.
+      if (role !== 'BUYER') {
+        return socket.emit('auction:error', 'Only buyer accounts can bid in auctions');
       }
 
       // Per-socket rate limit — stops bid flooding from a single client
