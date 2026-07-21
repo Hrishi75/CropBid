@@ -190,7 +190,15 @@ interface LiveRate {
   state: string | null;
 }
 
-export function MarketRates({ crops = [], limit = 4 }: { crops?: string[]; limit?: number }) {
+// `cropsUnavailable` says the feed that supplies `crops` failed. Without it an
+// empty array is ambiguous — "this user grows nothing" and "we couldn't ask
+// what they grow" arrive identically, and the second one rendered the whole
+// general board under a heading promising the user's own crops.
+export function MarketRates({ crops = [], limit = 4, cropsUnavailable = false }: {
+  crops?: string[];
+  limit?: number;
+  cropsUnavailable?: boolean;
+}) {
   const [rates, setRates] = useState<LiveRate[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -205,6 +213,19 @@ export function MarketRates({ crops = [], limit = 4 }: { crops?: string[]; limit
   if (failed) return <EmptyState>Rates are unavailable right now.</EmptyState>;
   if (!rates) return <EmptyState>Loading today's rates…</EmptyState>;
   if (rates.length === 0) return <EmptyState>No mandi rates reported today.</EmptyState>;
+
+  // The rate board itself loaded, but we don't know which crops to filter it
+  // to. Showing the unfiltered board here would put arbitrary commodities
+  // under "rates for your crops" — the same failure the filter below exists to
+  // prevent, arriving one step earlier.
+  if (cropsUnavailable) {
+    return (
+      <EmptyState>
+        Couldn't load your crops, so these can't be filtered.{' '}
+        <Link to="/rates" style={{ color: 'var(--cb-forest)' }}>See the full board →</Link>
+      </EmptyState>
+    );
+  }
 
   // Listing crop names and board commodities are different naming schemes, so
   // both sides are canonicalised before comparing: "Corn" and "Maize" are one

@@ -172,7 +172,7 @@ export function FarmerDashboard() {
       </Section>
 
       <Section eyebrow="Mandi · today" title="Rates for your crops">
-        <MarketRates crops={crops} />
+        <MarketRates crops={crops} cropsUnavailable={listingsFailed} />
       </Section>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

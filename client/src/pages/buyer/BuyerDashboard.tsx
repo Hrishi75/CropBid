@@ -166,7 +166,7 @@ export function BuyerDashboard() {
       </Section>
 
       <Section eyebrow="Mandi · today" title="Rates for crops you bid on">
-        <MarketRates crops={crops} />
+        <MarketRates crops={crops} cropsUnavailable={bidsFailed} />
       </Section>
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
