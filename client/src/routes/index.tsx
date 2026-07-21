@@ -36,6 +36,7 @@ import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
 import { AdminListings } from '../pages/admin/AdminListings';
 import { AdminTransactions } from '../pages/admin/AdminTransactions';
+import { AdminEnquiries } from '../pages/admin/AdminEnquiries';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { FarmerAnalytics } from '../pages/farmer/FarmerAnalytics';
 import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
@@ -345,6 +346,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminTransactions />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/enquiries"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminEnquiries />
           </ProtectedRoute>
         }
       />

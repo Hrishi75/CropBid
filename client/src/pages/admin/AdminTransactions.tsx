@@ -16,8 +16,18 @@ import toast from 'react-hot-toast';
 interface AdminTransaction {
   id: string;
   listing: { cropName: string; cropVariety: string | null; unit: string };
-  farmer: { id: string; name: string };
-  buyer: { id: string; name: string };
+  farmer: { id: string; name: string; phone: string | null };
+  buyer: { id: string; name: string; phone: string | null };
+  // Fulfilment snapshot, captured on the bid at order time. Null on older
+  // rows and on flows that never collected an address.
+  bid: {
+    quantity: number;
+    deliveryAddress: string | null;
+    contactPhone: string | null;
+    paymentTerms: string | null;
+    deliveryTerms: string | null;
+    isDirectPurchase: boolean;
+  } | null;
   finalPricePerUnit: number;
   totalAmount: number;
   currency: string;
@@ -170,13 +180,65 @@ export function AdminTransactions() {
                 </div>
                 <div className="cb-small" style={{ marginBottom: 8 }}>
                   {tx.farmer?.name} → {tx.buyer?.name} · {new Date(tx.createdAt).toLocaleDateString()}
+                  {tx.bid?.isDirectPurchase && (
+                    <span className="cb-mono cb-tiny" style={{ marginLeft: 8, color: 'var(--cb-ink-3)' }}>
+                      direct buy
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                  <div className="cb-mono" style={{ fontSize: 14 }}>{formatCurrency(tx.totalAmount, tx.currency)}</div>
+                  <div className="cb-mono" style={{ fontSize: 14 }}>
+                    {formatCurrency(tx.totalAmount, tx.currency)}
+                    {tx.bid && (
+                      <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginLeft: 6 }}>
+                        {tx.bid.quantity} {tx.listing?.unit}
+                      </span>
+                    )}
+                  </div>
                   <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>
                     fee +{formatCurrency(tx.platformFeeAmount, tx.currency)}
                   </div>
                 </div>
+
+                {/* Fulfilment block — where this order ships and who to call.
+                    Falls back to the buyer's account phone when the order flow
+                    didn't capture a separate contact number. */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 10,
+                    borderTop: '1px dashed var(--cb-line)',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto',
+                    gap: 12,
+                    alignItems: 'start',
+                  }}
+                >
+                  <div>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>
+                      SHIP TO
+                    </div>
+                    <div className="cb-small">
+                      {tx.bid?.deliveryAddress || (
+                        <span style={{ color: 'var(--cb-ember)' }}>No address captured — call the buyer</span>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>
+                      CONTACT
+                    </div>
+                    <div className="cb-mono" style={{ fontSize: 13 }}>
+                      {tx.bid?.contactPhone || tx.buyer?.phone || '—'}
+                    </div>
+                  </div>
+                </div>
+
+                {(tx.bid?.paymentTerms || tx.bid?.deliveryTerms) && (
+                  <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 6 }}>
+                    {[tx.bid.paymentTerms, tx.bid.deliveryTerms].filter(Boolean).join(' · ')}
+                  </div>
+                )}
                 <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
                   <Link to={`/transactions/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
                   {tx.paymentStatus === 'ESCROW' && (

@@ -131,6 +131,11 @@ export async function getAllListings(status?: string, limit = 20, offset = 0) {
 // =============================================================================
 // LIST ALL TRANSACTIONS — Admin view
 // =============================================================================
+// The bid is included for its fulfilment snapshot — deliveryAddress,
+// contactPhone, and the agreed terms. Without it an admin can see that an
+// order exists but not where to ship it or who to call, which is most of the
+// reason to look at this screen at all. Those fields live on Bid rather than
+// Transaction because they're captured at order time (see schema.prisma).
 export async function getAllTransactions(paymentStatus?: string, limit = 20, offset = 0) {
   const where: any = {};
   if (paymentStatus) where.paymentStatus = paymentStatus;
@@ -143,14 +148,78 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
       skip: offset,
       include: {
         listing: true,
-        farmer: { select: { id: true, name: true } },
-        buyer: { select: { id: true, name: true } },
+        farmer: { select: { id: true, name: true, phone: true } },
+        buyer: { select: { id: true, name: true, phone: true } },
+        bid: {
+          select: {
+            quantity: true,
+            deliveryAddress: true,
+            contactPhone: true,
+            paymentTerms: true,
+            deliveryTerms: true,
+            isDirectPurchase: true,
+          },
+        },
       },
     }),
     prisma.transaction.count({ where }),
   ]);
 
   return { transactions, total };
+}
+
+// =============================================================================
+// LIST EQUIPMENT ENQUIRIES — Admin view of inbound machinery leads
+// =============================================================================
+// Enquiries are leads, not deals: they never become a Transaction, so they're
+// invisible on every other admin screen. The dealer's phone is included
+// because working a lead means calling both sides.
+export async function getEquipmentEnquiries(status?: string, limit = 20, offset = 0) {
+  const where: any = {};
+  if (status && ['NEW', 'CONTACTED', 'CLOSED'].includes(status)) {
+    where.status = status;
+  }
+
+  const [enquiries, total] = await Promise.all([
+    prisma.equipmentEnquiry.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        equipment: {
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            dealer: { select: { name: true, contactPhone: true, state: true } },
+          },
+        },
+        user: { select: { id: true, name: true, phone: true, email: true, location: true } },
+      },
+    }),
+    prisma.equipmentEnquiry.count({ where }),
+  ]);
+
+  return { enquiries, total };
+}
+
+// =============================================================================
+// UPDATE ENQUIRY STATUS — Move a lead through the triage queue
+// =============================================================================
+export async function updateEnquiryStatus(enquiryId: string, status: string) {
+  if (!['NEW', 'CONTACTED', 'CLOSED'].includes(status)) {
+    throw new ApiError(400, 'Status must be NEW, CONTACTED, or CLOSED');
+  }
+
+  const enquiry = await prisma.equipmentEnquiry.findUnique({ where: { id: enquiryId } });
+  if (!enquiry) throw new ApiError(404, 'Enquiry not found');
+
+  return prisma.equipmentEnquiry.update({
+    where: { id: enquiryId },
+    data: { status: status as any },
+    select: { id: true, status: true },
+  });
 }
 
 // =============================================================================
