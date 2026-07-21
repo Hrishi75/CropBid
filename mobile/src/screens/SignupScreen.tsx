@@ -1,7 +1,8 @@
 // Signup screen — create a farmer or buyer account. Mirrors the web SignupPage:
-// role, name, email, country (which fixes the account currency), optional phone,
-// and a password with live-validated rules. On success AuthContext.signUp() sets
-// the user; the root navigator then routes to onboarding (no profile yet).
+// role, name, country (which fixes the account currency), phone (the primary
+// contact and login identifier — required), optional email, and a password with
+// live-validated rules. On success AuthContext.signUp() sets the user; the root
+// navigator then routes to onboarding (no profile yet).
 
 import React, { useMemo, useState } from 'react';
 import {
@@ -82,18 +83,27 @@ export default function SignupScreen() {
     [password],
   );
   const passwordValid = rules.length && rules.upper && rules.lower && rules.number;
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Phone is the required primary contact; email is optional but must be valid
+  // when provided. Digits are counted on the separator-stripped value (mirrors
+  // the server): "+      " looks long enough but carries no number.
+  const phoneValid =
+    /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
+    phone.trim().length <= 20 &&
+    phone.replace(/[^0-9]/g, '').length >= 7;
+  const emailValid = email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
-  const formValid = nameValid && emailValid && passwordValid;
+  const formValid = nameValid && phoneValid && emailValid && passwordValid;
 
   async function onSubmit() {
     if (!formValid) {
       setError(
         !nameValid
           ? 'Name must be at least 2 characters'
-          : !emailValid
-            ? 'Enter a valid email address'
-            : 'Password does not meet the requirements',
+          : !phoneValid
+            ? 'Enter a valid phone number'
+            : !emailValid
+              ? 'Enter a valid email address'
+              : 'Password does not meet the requirements',
       );
       return;
     }
@@ -102,10 +112,10 @@ export default function SignupScreen() {
     try {
       await signUp({
         name: name.trim(),
-        email: email.trim(),
+        phone: phone.trim(),
+        email: email.trim() || undefined,
         password,
         role,
-        phone: phone.trim() || undefined,
         country,
         currency: selectedCountry.currency,
       });
@@ -149,7 +159,23 @@ export default function SignupScreen() {
             autoCapitalize="words"
           />
 
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Country</Text>
+          <Pressable style={styles.select} onPress={() => setCountryOpen(true)}>
+            <Text style={styles.selectText}>{selectedCountry.label}</Text>
+            <Text style={styles.selectMeta}>{selectedCountry.currency} ›</Text>
+          </Pressable>
+
+          <Text style={styles.label}>Phone</Text>
+          <TextInput
+            style={styles.input}
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            placeholder={selectedCountry.phone}
+            placeholderTextColor={colors.textMuted}
+          />
+
+          <Text style={styles.label}>Email (optional)</Text>
           <TextInput
             style={styles.input}
             value={email}
@@ -158,22 +184,6 @@ export default function SignupScreen() {
             autoCorrect={false}
             keyboardType="email-address"
             placeholder="you@example.com"
-            placeholderTextColor={colors.textMuted}
-          />
-
-          <Text style={styles.label}>Country</Text>
-          <Pressable style={styles.select} onPress={() => setCountryOpen(true)}>
-            <Text style={styles.selectText}>{selectedCountry.label}</Text>
-            <Text style={styles.selectMeta}>{selectedCountry.currency} ›</Text>
-          </Pressable>
-
-          <Text style={styles.label}>Phone (optional)</Text>
-          <TextInput
-            style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            placeholder={selectedCountry.phone}
             placeholderTextColor={colors.textMuted}
           />
 

@@ -130,10 +130,12 @@ enum NegotiationOutcome {
 model User {
   id          String   @id @default(uuid())
   name        String
-  email       String   @unique
+  // Phone is the primary contact/login identifier (required at signup);
+  // email is optional. Both stay nullable at the DB level for legacy rows.
+  email       String?  @unique
   password    String   // Hashed with bcrypt — NEVER store plain text
   role        Role
-  phone       String?  // Optional — ? means nullable
+  phone       String?  @unique
   location    String?
   country     String   @default("India")
   currency    Currency @default(INR)

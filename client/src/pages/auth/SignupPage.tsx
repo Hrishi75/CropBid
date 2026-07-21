@@ -1,9 +1,10 @@
 // =============================================================================
 // SignupPage — Create a farmer or buyer account
 // =============================================================================
-// Public page. Collects name/email/password, role, country (which fixes the
-// account currency), and optional phone. Enforces live password rules and email
-// validity before calling AuthContext.signup(), then routes to /onboarding to
+// Public page. Collects name/phone/password, role, country (which fixes the
+// account currency), and optional email. Phone is the primary contact and
+// login identifier — required; email is optional. Enforces live password
+// rules before calling AuthContext.signup(), then routes to /onboarding to
 // finish the profile. The right-hand rail swaps copy based on the chosen role.
 // =============================================================================
 
@@ -74,21 +75,29 @@ export function SignupPage() {
   }), [password]);
 
   const passwordValid = passwordRules.length && passwordRules.upper && passwordRules.lower && passwordRules.number;
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Phone is the required primary contact; email is optional but must be
+  // valid when provided. Digits are counted on the separator-stripped value
+  // (mirrors the server): "+      " looks long enough but carries no number.
+  const phoneValid =
+    /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
+    phone.trim().length <= 20 &&
+    phone.replace(/[^0-9]/g, '').length >= 7;
+  const emailValid = email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
-  const formValid = nameValid && emailValid && passwordValid;
+  const formValid = nameValid && phoneValid && emailValid && passwordValid;
 
   function getFieldError(field: string): string | undefined {
     if (!touched[field]) return undefined;
     if (field === 'name' && !nameValid) return 'Name must be at least 2 characters';
-    if (field === 'email' && email && !emailValid) return 'Invalid email address';
+    if (field === 'phone' && !phoneValid) return 'Enter a valid phone number';
+    if (field === 'email' && !emailValid) return 'Invalid email address';
     if (field === 'password' && password && !passwordValid) return 'Password does not meet requirements';
     return undefined;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ name: true, email: true, password: true });
+    setTouched({ name: true, phone: true, email: true, password: true });
     if (!formValid) {
       toast.error('Please fix the errors above');
       return;
@@ -96,8 +105,8 @@ export function SignupPage() {
     setLoading(true);
     try {
       await signup({
-        name, email, password, role,
-        phone: phone || undefined,
+        name, password, role, phone,
+        email: email.trim() || undefined,
         country,
         currency: selectedCountry.currency,
       });
@@ -167,18 +176,6 @@ export function SignupPage() {
                 required
               />
 
-              <Input
-                label="Email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                error={getFieldError('email')}
-                required
-                autoComplete="email"
-              />
-
               <div>
                 <label htmlFor="country-select" className="cb-label">Country</label>
                 <select
@@ -196,11 +193,26 @@ export function SignupPage() {
               </div>
 
               <Input
-                label="Phone (optional)"
+                label="Phone"
                 type="tel"
                 placeholder={selectedCountry.phonePlaceholder}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, phone: true }))}
+                error={getFieldError('phone')}
+                required
+                autoComplete="tel"
+              />
+
+              <Input
+                label="Email (optional)"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                error={getFieldError('email')}
+                autoComplete="email"
               />
 
               <div>

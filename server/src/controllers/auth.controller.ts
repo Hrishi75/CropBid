@@ -22,19 +22,36 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number');
 
-const signupSchema = z.object({
+// Phone is the primary contact (required); email is optional. Forms may send
+// email as an empty string — treat that as "not provided" before validating.
+export const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.string().email('Invalid email address'),
+  email: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().email('Invalid email address').optional()
+  ),
   password: passwordSchema,
   role: z.enum(['FARMER', 'BUYER', 'CONSUMER']),
-  phone: z.string().max(20).optional(),
+  // The digit count is checked on the SEPARATOR-STRIPPED value, not the raw
+  // string: "+      " is seven allowed characters but normalizes to "+", which
+  // login can never match — that account would be locked out of its own login.
+  phone: z
+    .string()
+    .max(20)
+    .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
+    .refine(
+      (v) => v.replace(/[^0-9]/g, '').length >= 7,
+      'Phone number must have at least 7 digits'
+    ),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI']).optional(),
 });
 
+// Login accepts phone OR email in one field. Older clients send it as
+// `email`, newer ones as `identifier` — normalize before validating.
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  identifier: z.string().min(1, 'Phone or email is required'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -145,16 +162,19 @@ export async function signupHandler(req: Request, res: Response) {
 // POST /api/auth/login
 // ---------------------------------------------------------------------------
 export async function loginHandler(req: Request, res: Response) {
-  const parsed = loginSchema.safeParse(req.body);
+  const parsed = loginSchema.safeParse({
+    ...req.body,
+    identifier: req.body?.identifier ?? req.body?.email ?? req.body?.phone,
+  });
   if (!parsed.success) {
     const firstError = parsed.error.issues[0]?.message || 'Invalid input';
     res.status(400).json({ error: true, message: firstError });
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { identifier, password } = parsed.data;
 
-  const result = await authService.login({ email, password });
+  const result = await authService.login({ identifier, password });
 
   res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
 

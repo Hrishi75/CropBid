@@ -30,7 +30,7 @@ import type { User } from '../api/types';
 interface AuthState {
   user: User | null;
   loading: boolean; // bootstrap (silent refresh) in progress
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (identifier: string, password: string) => Promise<void>; // phone or email
   signUp: (input: SignupInput) => Promise<void>;
   refreshUser: () => Promise<void>; // re-pull /auth/me (e.g. after onboarding)
   applyUser: (user: User) => void; // swap in a fresh user (e.g. after editing the profile)
@@ -69,8 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const u = await apiLogin(email, password);
+  const signIn = useCallback(async (identifier: string, password: string) => {
+    const u = await apiLogin(identifier, password);
     setUser(u);
   }, []);
 

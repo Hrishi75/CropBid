@@ -1,5 +1,8 @@
 # Dependencies
-node_modules/
+# No trailing slash: "node_modules/" matches only directories, so a *symlink*
+# named node_modules slips past it and can be committed (see the symlinks
+# removed in this commit). Without the slash this matches either.
+node_modules
 
 # Build output
 dist/

@@ -1,5 +1,6 @@
-// Login screen — email/password sign-in. Calls AuthContext.signIn(); the root
-// navigator swaps to the app once authenticated.
+// Login screen — phone-or-email + password sign-in. Phone is the primary
+// identifier; the server matches either column. Calls AuthContext.signIn();
+// the root navigator swaps to the app once authenticated.
 
 import React, { useState } from 'react';
 import {
@@ -23,20 +24,20 @@ import type { AuthStackParamList } from '../navigation/types';
 export default function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { signIn } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit() {
-    if (!email.trim() || !password) {
-      setError('Enter email and password');
+    if (!identifier.trim() || !password) {
+      setError('Enter your phone number (or email) and password');
       return;
     }
     setError(null);
     setSubmitting(true);
     try {
-      await signIn(email.trim(), password);
+      await signIn(identifier.trim(), password);
     } catch (e) {
       setError(errorMessage(e, 'Login failed'));
     } finally {
@@ -57,15 +58,15 @@ export default function LoginScreen() {
         <Text style={styles.tagline}>AI-powered crop trading</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Phone or email</Text>
           <TextInput
             style={styles.input}
-            value={email}
-            onChangeText={setEmail}
+            value={identifier}
+            onChangeText={setIdentifier}
             autoCapitalize="none"
             autoCorrect={false}
-            keyboardType="email-address"
-            placeholder="you@example.com"
+            keyboardType="default"
+            placeholder="+91-9876543210"
             placeholderTextColor={colors.textMuted}
           />
 

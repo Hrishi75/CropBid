@@ -21,8 +21,10 @@ interface AuthResult {
   refreshToken?: string;
 }
 
-export async function login(email: string, password: string): Promise<User> {
-  const { data } = await api.post<AuthResult>('/auth/login', { email, password });
+// `identifier` is the user's phone number (primary) or email — the server
+// matches either column.
+export async function login(identifier: string, password: string): Promise<User> {
+  const { data } = await api.post<AuthResult>('/auth/login', { identifier, password });
   setAccessToken(data.accessToken);
   if (data.refreshToken) await setRefreshToken(data.refreshToken);
   return data.user;
@@ -30,10 +32,10 @@ export async function login(email: string, password: string): Promise<User> {
 
 export interface SignupInput {
   name: string;
-  email: string;
+  phone: string; // primary contact + login identifier
+  email?: string;
   password: string;
   role: 'FARMER' | 'BUYER' | 'CONSUMER';
-  phone?: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
 }
