@@ -354,6 +354,7 @@ function StoreHeader({
           <Link to="/rates" className="st-header-link">Live rates</Link>
           <Link to="/forecast" className="st-header-link">Forecast</Link>
           <Link to="/schemes" className="st-header-link">Yojana</Link>
+          <Link to="/equipment" className="st-header-link">Equipment</Link>
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).

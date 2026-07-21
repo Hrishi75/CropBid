@@ -7,8 +7,13 @@ build/
 .vite/
 
 # Environment variables (NEVER commit these — they contain secrets)
+# The wildcard matters: hand-made copies (.env.bak, .env.prod, .env.2024-01)
+# carry the same live credentials as .env and are the usual way secrets end up
+# in a commit. .env.example is re-included below because it holds only
+# placeholders and is meant to be committed.
 .env
-.env.local
+.env.*
+!.env.example
 
 # Uploaded files (user content, not code)
 uploads/
