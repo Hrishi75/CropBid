@@ -10,6 +10,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { UNIT_LABEL, type UnitCode } from '../../pages/landing/shared';
+import { matchesAnyCrop } from '../../utils/cropAliases';
 import api from '../../lib/axios';
 
 // -----------------------------------------------------------------------------
@@ -205,17 +206,19 @@ export function MarketRates({ crops = [], limit = 4 }: { crops?: string[]; limit
   if (!rates) return <EmptyState>Loading today's rates…</EmptyState>;
   if (rates.length === 0) return <EmptyState>No mandi rates reported today.</EmptyState>;
 
-  // Listing crop names and rate-board commodity names are different naming
-  // schemes — a lot called "Lady Finger" never equals the board's
-  // "Bhindi(Ladies Finger)". Falling back to the unfiltered board when nothing
-  // matches put arbitrary commodities under a heading that promises "rates for
-  // YOUR crops", which is worse than showing nothing: a farmer could price
-  // against a crop they don't grow.
+  // Listing crop names and board commodities are different naming schemes, so
+  // both sides are canonicalised before comparing: "Corn" and "Maize" are one
+  // crop, as are "Rice" and "Paddy(Dhan)(Common)". A lowercase string compare
+  // missed every one of those and reported no rates for crops the board
+  // actually carried.
   //
-  // No crops at all is a different case — there is nothing to mismatch, so the
-  // general board is honest there and stays.
-  const wanted = crops.map((c) => c.toLowerCase());
-  const mine = rates.filter((r) => wanted.includes(r.commodity.toLowerCase()));
+  // What it must NOT do is fall back to the unfiltered board when nothing
+  // matches — that put arbitrary commodities under a heading promising "rates
+  // for YOUR crops", which a farmer could price against. Unmatched says so.
+  //
+  // No crops at all is a different case: nothing to mismatch, so the general
+  // board is honest there and stays.
+  const mine = rates.filter((r) => matchesAnyCrop(r.commodity, crops, r.label));
 
   if (crops.length > 0 && mine.length === 0) {
     return (
