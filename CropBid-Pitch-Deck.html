@@ -1,0 +1,810 @@
+<title>CropBid — Pitch Deck</title>
+<style>
+  :root {
+    --paper: #f6f3ec;
+    --ink: #181b10;
+    --ink-soft: #4a4d3e;
+    --leaf: #3f6d2a;
+    --sprout: #9bc97a;
+    --field: #e9efdc;
+    --clay: #c2591f;
+    --dark: #1c2513;
+    --dark-2: #24301a;
+    --cream-on-dark: #f2efe4;
+    --muted-on-dark: #b9bfa6;
+    --display: "Avenir Next", "Helvetica Neue", -apple-system, "Segoe UI", sans-serif;
+    --serif: "Iowan Old Style", Georgia, "Times New Roman", serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: #101208;
+    font-family: var(--display);
+    color: var(--ink);
+    overflow: hidden;
+  }
+
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .slide {
+    position: absolute;
+    width: 1280px;
+    height: 720px;
+    background: var(--paper);
+    padding: 64px 84px 58px;
+    display: flex;
+    flex-direction: column;
+    transform: scale(var(--s, 1));
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .28s ease;
+  }
+  .slide.current { opacity: 1; visibility: visible; }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; }
+  }
+
+  .slide.dark { background: var(--dark); color: var(--cream-on-dark); }
+
+  /* ---------- shared pieces ---------- */
+
+  .eyebrow {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--leaf);
+    margin-bottom: 14px;
+  }
+  .dark .eyebrow { color: var(--sprout); }
+
+  h1 {
+    font-size: 46px;
+    font-weight: 800;
+    letter-spacing: -.015em;
+    line-height: 1.08;
+    text-wrap: balance;
+    margin-bottom: 34px;
+  }
+  h1 em { font-style: normal; color: var(--leaf); }
+  .dark h1 em { color: var(--sprout); }
+
+  .foot {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 24px;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .dark .foot { color: var(--muted-on-dark); }
+  .foot .src { font-family: var(--serif); font-style: italic; font-size: 13.5px; }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  .circle-mark {
+    display: inline-block;
+    padding: 2px 14px;
+    border: 3px solid var(--clay);
+    border-radius: 50% / 46%;
+    transform: rotate(-2deg);
+    color: var(--clay);
+  }
+
+  .placeholder { color: var(--ink-soft); opacity: .75; }
+  .dark .placeholder { color: var(--muted-on-dark); }
+
+  /* ---------- title ---------- */
+
+  .title-slide { justify-content: center; align-items: flex-start; }
+  .wordmark {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 56px;
+  }
+  .wordmark .dot {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--sprout);
+  }
+  .title-slide h1 {
+    font-size: 84px;
+    line-height: 1.02;
+    margin-bottom: 30px;
+    max-width: 950px;
+  }
+  .title-slide .sub {
+    font-size: 23px;
+    line-height: 1.5;
+    color: var(--muted-on-dark);
+    max-width: 780px;
+    margin-bottom: 48px;
+  }
+  .title-slide .sub strong { color: var(--cream-on-dark); font-weight: 600; }
+  .title-links { font-size: 17px; letter-spacing: .02em; color: var(--sprout); font-weight: 600; }
+  .title-links span { color: var(--muted-on-dark); font-weight: 400; margin: 0 14px; }
+  .backed {
+    margin-top: auto;
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 14px;
+    color: var(--muted-on-dark);
+  }
+  .backed b { color: var(--cream-on-dark); font-weight: 600; letter-spacing: .01em; }
+
+  /* ---------- problem cascade ---------- */
+
+  .cascade { display: flex; flex-direction: column; gap: 26px; margin-top: 10px; }
+  .cascade .row { display: flex; align-items: baseline; gap: 18px; }
+  .cascade .lead-in { font-size: 27px; line-height: 1.35; }
+  .cascade .step {
+    font-size: 27px;
+    line-height: 1.35;
+  }
+  .cascade .indent-1 { margin-left: 70px; }
+  .cascade .indent-2 { margin-left: 140px; }
+  .cascade .arrow {
+    font-size: 30px;
+    color: var(--clay);
+    transform: translateY(2px);
+    flex: none;
+  }
+  .cascade .big {
+    font-weight: 800;
+    font-size: 33px;
+    border-bottom: 4px solid var(--ink);
+    padding-bottom: 1px;
+  }
+  .problem-punch {
+    margin-top: 44px;
+    margin-left: 70px;
+    max-width: 760px;
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.45;
+    color: var(--ink-soft);
+  }
+
+  /* ---------- tile grids ---------- */
+
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .tile {
+    background: var(--field);
+    border-radius: 10px;
+    padding: 24px 26px 22px;
+  }
+  .tile h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.01em; }
+  .tile h3 .knum { color: var(--leaf); }
+  .tile p { font-size: 16px; line-height: 1.45; color: var(--ink-soft); }
+
+  /* ---------- business model ladder ---------- */
+
+  .ladder { display: flex; flex-direction: column; gap: 16px; }
+  .rung {
+    display: grid;
+    grid-template-columns: 118px 250px 1fr;
+    align-items: baseline;
+    gap: 26px;
+    padding: 17px 24px;
+    border-radius: 10px;
+    background: var(--field);
+  }
+  .rung .stage-tag {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .rung.live { background: var(--leaf); color: #fff; }
+  .rung.live .stage-tag { color: var(--sprout); }
+  .rung.live p { color: #e4ecd9; }
+  .rung h3 { font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+  .rung p { font-size: 15.5px; line-height: 1.4; color: var(--ink-soft); }
+  .model-punch {
+    margin-top: 30px;
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 980px;
+  }
+  .model-punch b { color: var(--leaf); }
+
+  /* ---------- market stats ---------- */
+
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; margin-bottom: 40px; }
+  .stat {
+    border-top: 5px solid var(--leaf);
+    padding-top: 18px;
+  }
+  .stat .n { font-size: 66px; font-weight: 800; letter-spacing: -.02em; line-height: 1; margin-bottom: 10px; }
+  .stat.hot { border-top-color: var(--clay); }
+  .stat.hot .n { color: var(--clay); }
+  .stat p { font-size: 16.5px; line-height: 1.4; color: var(--ink-soft); max-width: 300px; }
+  .market-note { font-size: 19px; line-height: 1.5; max-width: 900px; }
+
+  /* ---------- landscape table ---------- */
+
+  .land { display: flex; flex-direction: column; gap: 12px; }
+  .land .lrow {
+    display: grid;
+    grid-template-columns: 235px 1fr;
+    gap: 28px;
+    align-items: baseline;
+    padding: 15px 24px;
+    border-radius: 10px;
+    background: var(--field);
+  }
+  .land .lrow h3 { font-size: 20px; font-weight: 700; }
+  .land .lrow p { font-size: 16px; line-height: 1.4; color: var(--ink-soft); }
+  .land .lrow.us { background: var(--leaf); color: #fff; }
+  .land .lrow.us p { color: #e4ecd9; }
+
+  /* ---------- advantage ---------- */
+
+  .wedge {
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1.3;
+    max-width: 900px;
+    margin-bottom: 40px;
+    letter-spacing: -.01em;
+  }
+  .wedge .circle-mark { font-size: 30px; }
+  .adv-list { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 40px; }
+  .adv-list .adv { border-left: 4px solid var(--sprout); padding-left: 18px; }
+  .adv-list h3 { font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+  .adv-list p { font-size: 15.5px; line-height: 1.45; color: var(--ink-soft); }
+
+  /* ---------- gtm steps ---------- */
+
+  .gtm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 22px; margin-bottom: 36px; }
+  .gtm .step-card { border-top: 4px solid var(--leaf); padding-top: 16px; }
+  .gtm .k {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--leaf);
+    margin-bottom: 8px;
+  }
+  .gtm h3 { font-size: 19px; font-weight: 700; margin-bottom: 8px; line-height: 1.25; }
+  .gtm p { font-size: 15px; line-height: 1.45; color: var(--ink-soft); }
+  .gtm-target {
+    background: var(--field);
+    border-radius: 10px;
+    padding: 20px 26px;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  .gtm-target b { color: var(--clay); }
+
+  /* ---------- roadmap ---------- */
+
+  .road { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+  .phase { background: var(--field); border-radius: 10px; padding: 26px 28px; }
+  .phase.now { background: var(--leaf); color: #fff; }
+  .phase .when {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    color: var(--ink-soft);
+  }
+  .phase.now .when { color: var(--sprout); }
+  .phase h3 { font-size: 22px; font-weight: 700; margin-bottom: 12px; letter-spacing: -.01em; }
+  .phase p { font-size: 15.5px; line-height: 1.5; color: var(--ink-soft); }
+  .phase.now p { color: #e4ecd9; }
+
+  /* ---------- team ---------- */
+
+  .team { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+  .person { background: var(--field); border-radius: 10px; padding: 28px 30px; }
+  .person .role {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--leaf);
+    margin-bottom: 10px;
+  }
+  .person h3 { font-size: 24px; font-weight: 700; margin-bottom: 10px; }
+  .person p { font-size: 16px; line-height: 1.5; color: var(--ink-soft); }
+  .person.open { background: transparent; border: 2px dashed #b9b5a4; }
+
+  /* ---------- metrics ---------- */
+
+  .north {
+    display: flex;
+    align-items: baseline;
+    gap: 22px;
+    margin-bottom: 34px;
+  }
+  .north .label {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--clay);
+    flex: none;
+  }
+  .north h3 { font-size: 30px; font-weight: 800; letter-spacing: -.015em; }
+  .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px 26px; margin-bottom: 34px; }
+  .metric { border-top: 3px solid var(--sprout); padding-top: 12px; }
+  .metric h4 { font-size: 17px; font-weight: 700; margin-bottom: 5px; }
+  .metric p { font-size: 14.5px; line-height: 1.4; color: var(--ink-soft); }
+  .metrics-status {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 19px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    max-width: 920px;
+  }
+
+  /* ---------- ask / capital allocation ---------- */
+
+  .ask-head { display: flex; align-items: baseline; gap: 28px; margin-bottom: 44px; }
+  .ask-head .amount {
+    font-size: 76px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--sprout);
+    line-height: 1;
+  }
+  .ask-head .for {
+    font-size: 21px;
+    line-height: 1.4;
+    color: var(--muted-on-dark);
+    max-width: 520px;
+  }
+  .alloc { display: flex; flex-direction: column; gap: 14px; margin-bottom: 40px; }
+  .bar-row { display: grid; grid-template-columns: 320px 1fr 64px; gap: 20px; align-items: center; }
+  .bar-row .what { font-size: 17px; font-weight: 600; }
+  .bar-row .track { height: 16px; border-radius: 8px; background: var(--dark-2); overflow: hidden; }
+  .bar-row .fill { height: 100%; border-radius: 8px; background: var(--sprout); }
+  .bar-row .pct { font-size: 17px; font-weight: 700; text-align: right; color: var(--sprout); }
+  .ask-goal { font-size: 19px; line-height: 1.5; color: var(--muted-on-dark); max-width: 940px; }
+  .ask-goal b { color: var(--cream-on-dark); }
+
+  /* ---------- navigation chrome ---------- */
+
+  .nav {
+    position: fixed;
+    right: 22px;
+    bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10;
+    color: #8a8f78;
+    font-family: var(--display);
+    font-size: 13.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .nav button {
+    background: rgba(246, 243, 236, .08);
+    border: 1px solid rgba(246, 243, 236, .22);
+    color: #d8d5c8;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .nav button:hover { background: rgba(246, 243, 236, .18); }
+  .nav button:focus-visible { outline: 2px solid var(--sprout); outline-offset: 2px; }
+
+  /* ---------- print ---------- */
+
+  @media print {
+    body { overflow: visible; background: #fff; }
+    .stage { position: static; display: block; }
+    .slide {
+      position: relative;
+      opacity: 1;
+      visibility: visible;
+      transform: none;
+      width: 100%;
+      height: auto;
+      min-height: 100vh;
+      break-after: page;
+    }
+    .nav { display: none; }
+  }
+</style>
+
+<div class="stage" id="stage">
+
+  <!-- 1 · TITLE -->
+  <section class="slide dark title-slide current">
+    <div class="wordmark"><span class="dot"></span>CropBid</div>
+    <h1>The crop exchange<br />for <em>everyone</em>.</h1>
+    <p class="sub">Farmers, traders, retailers and consumers — trading around <strong>live government mandi prices</strong>, with money held safe in <strong>escrow</strong> until delivery.</p>
+    <p class="title-links">cropbid.in <span>·</span> Android &amp; iOS <span>·</span> हिंदी · मराठी · English</p>
+    <div class="backed">
+      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b></span>
+      <span class="placeholder">‹ your name · contact ›</span>
+    </div>
+  </section>
+
+  <!-- 2 · PROBLEM -->
+  <section class="slide">
+    <p class="eyebrow">Problem</p>
+    <h1>Selling a harvest is still a <em>blind trade</em>.</h1>
+    <div class="cascade">
+      <p class="lead-in">In India, <span class="big num">100M+</span> farmer families sell without seeing the market.</p>
+      <div class="row indent-1">
+        <span class="arrow">↳</span>
+        <p class="step">the farmer keeps only <span class="circle-mark num"><b>~33%</b></span> of what the consumer pays</p>
+      </div>
+      <div class="row indent-2">
+        <span class="arrow">↳</span>
+        <p class="step"><span class="big num">₹1.5 lakh crore</span> of produce is lost after harvest, every year</p>
+      </div>
+    </div>
+    <p class="problem-punch">No shared price anchor, no payment protection — every deal starts from a guess, and the least-informed party loses.</p>
+    <div class="foot">
+      <span class="src">RBI Bulletin 2022 · NABCONS / MoFPI 2022</span>
+      <span>CropBid · cropbid.in — <span class="num">2</span></span>
+    </div>
+  </section>
+
+  <!-- 3 · SOLUTION -->
+  <section class="slide">
+    <p class="eyebrow">Solution</p>
+    <h1>One exchange, <em>everything a deal needs</em>.</h1>
+    <div class="tiles">
+      <div class="tile">
+        <h3>Live govt mandi anchor · <span class="knum num">4,600+</span> mandis</h3>
+        <p>Real wholesale prices (Agmarknet) on every listing — every state, refreshed daily. Everyone negotiates around the same number.</p>
+      </div>
+      <div class="tile">
+        <h3>Open bidding + AI-agent negotiation</h3>
+        <p>Buyers bid in transparent rounds — or each side's AI agent negotiates for them, round by round, within limits they set.</p>
+      </div>
+      <div class="tile">
+        <h3>Escrow payments</h3>
+        <p>Razorpay holds the money; it releases only on confirmed delivery. Sellers never ship and chase payments again.</p>
+      </div>
+      <div class="tile">
+        <h3>Direct retail channel</h3>
+        <p>Farmers flip a listing to retail at a fixed price; consumers buy any quantity instantly — farm to home, no bidding.</p>
+      </div>
+    </div>
+    <div class="foot">
+      <span>Live in production at cropbid.in — web storefront + native apps in Hindi, Marathi &amp; English.</span>
+      <span>CropBid · cropbid.in — <span class="num">3</span></span>
+    </div>
+  </section>
+
+  <!-- 4 · BUSINESS MODEL -->
+  <section class="slide">
+    <p class="eyebrow">Business Model</p>
+    <h1>We move the <em>money</em>, never the crop.</h1>
+    <div class="ladder">
+      <div class="rung live">
+        <span class="stage-tag">Live today</span>
+        <h3><span class="num">2%</span> settlement fee</h3>
+        <p>On every escrow release — the core take rate on all trade cleared through the platform.</p>
+      </div>
+      <div class="rung">
+        <span class="stage-tag">Next</span>
+        <h3>Logistics margin</h3>
+        <p>Commission on shipments once the transport-partner network goes live in the pilot district.</p>
+      </div>
+      <div class="rung">
+        <span class="stage-tag">Next</span>
+        <h3>Premium tools</h3>
+        <p>Sourcing dashboards, placement and analytics for buyers, processors and FPOs.</p>
+      </div>
+      <div class="rung">
+        <span class="stage-tag">Later</span>
+        <h3>Financing rails</h3>
+        <p>Working-capital credit with NBFC partners — underwritten by on-platform trade and trust history.</p>
+      </div>
+    </div>
+    <p class="model-punch"><b>Why it compounds:</b> every hop in the chain — farmer → trader → wholesaler → retailer — can clear on-platform, and each hop is a fee event. No warehouses, no inventory, no spoilage on our books.</p>
+    <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">4</span></span></div>
+  </section>
+
+  <!-- 5 · MARKET -->
+  <section class="slide">
+    <p class="eyebrow">Market</p>
+    <h1>A huge market, <em>an empty seat</em>.</h1>
+    <div class="stat-row">
+      <div class="stat hot">
+        <div class="n num">$28B</div>
+        <p>India agritech by 2030, growing ~25% CAGR</p>
+      </div>
+      <div class="stat">
+        <div class="n num">100M+</div>
+        <p>farmer families — the largest underserved seller base in the country</p>
+      </div>
+      <div class="stat">
+        <div class="n num">4,600+</div>
+        <p>regulated mandis whose daily prices we already put on every screen</p>
+      </div>
+    </div>
+    <p class="market-note">Everyone in the chain is a customer — sellers and buyers of every size, from FPOs and processors to the household buying vegetables. The exchange earns on each of them.</p>
+    <div class="foot">
+      <span class="src">Ernst &amp; Young, Indian agritech market sizing</span>
+      <span>CropBid · cropbid.in — <span class="num">5</span></span>
+    </div>
+  </section>
+
+  <!-- 6 · COMPETITIVE LANDSCAPE -->
+  <section class="slide">
+    <p class="eyebrow">Competitive Landscape</p>
+    <h1>Everyone solved <em>one seat at the table</em>.</h1>
+    <div class="land">
+      <div class="lrow">
+        <h3>eNAM <span class="src" style="font-weight:400;">govt</span></h3>
+        <p>E-auctions — but inside the mandi yard the farmer still has to physically reach.</p>
+      </div>
+      <div class="lrow">
+        <h3>Bijak</h3>
+        <p>Trust &amp; credit for traders trading with traders — the farmer stays outside the loop.</p>
+      </div>
+      <div class="lrow">
+        <h3>Ninjacart · WayCool</h3>
+        <p>Own the crop: warehouses, custody, spoilage — asset-heavy, margin lives in operations.</p>
+      </div>
+      <div class="lrow us">
+        <h3>CropBid</h3>
+        <p>Farmer-first transparency, asset-light, and the whole chain trades on one screen.</p>
+      </div>
+    </div>
+    <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">6</span></span></div>
+  </section>
+
+  <!-- 7 · COMPETITIVE ADVANTAGE -->
+  <section class="slide">
+    <p class="eyebrow">Competitive Advantage</p>
+    <h1>Our wedge</h1>
+    <p class="wedge">Point the price data at the <span class="circle-mark">least-informed party</span> — and let everyone trade on it.</p>
+    <div class="adv-list">
+      <div class="adv">
+        <h3>The anchor is public and ours to surface</h3>
+        <p>4,600+ mandi prices on every listing, in the farmer's language — the information advantage middlemen rely on, gone.</p>
+      </div>
+      <div class="adv">
+        <h3>Asset-light by design</h3>
+        <p>We clear payments, we don't touch produce — no warehouses or spoilage, so unit economics survive scale.</p>
+      </div>
+      <div class="adv">
+        <h3>Whole chain on one screen</h3>
+        <p>Farmer, trader, wholesaler, retailer and consumer on the same exchange — every hop is our fee event, not a competitor's.</p>
+      </div>
+      <div class="adv">
+        <h3>Trust that compounds</h3>
+        <p>Escrow + trust scores + AI-agent negotiation history — every completed deal makes the next one easier to win here.</p>
+      </div>
+    </div>
+    <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">7</span></span></div>
+  </section>
+
+  <!-- 8 · GO TO MARKET -->
+  <section class="slide">
+    <p class="eyebrow">Go To Market</p>
+    <h1>One crop. One district. <em>Then repeat.</em></h1>
+    <div class="gtm">
+      <div class="step-card">
+        <p class="k num">01</p>
+        <h3>Onboard at the mandi gate</h3>
+        <p>Field team + FPO partnerships sign up farmers where they already sell — apps in Hindi &amp; Marathi.</p>
+      </div>
+      <div class="step-card">
+        <p class="k num">02</p>
+        <h3>Seed the buy side</h3>
+        <p>20–30 local traders and processors as first buyers, so every listing gets bids from day one.</p>
+      </div>
+      <div class="step-card">
+        <p class="k num">03</p>
+        <h3>Deliver manually first</h3>
+        <p>Pilot transport partners &amp; doorstep delivery — hands-on, no trucks bought.</p>
+      </div>
+      <div class="step-card">
+        <p class="k num">04</p>
+        <h3>Copy the playbook</h3>
+        <p>Density before breadth: prove the district, then replicate crop-by-crop, district-by-district.</p>
+      </div>
+    </div>
+    <p class="gtm-target"><b>90-day target:</b> first <span class="placeholder">‹ N ›</span> farmers and <span class="placeholder">‹ N ›</span> traders live in one district, first <span class="placeholder">‹ ₹X ›</span> of GMV cleared through escrow.</p>
+    <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">8</span></span></div>
+  </section>
+
+  <!-- 9 · ROADMAP -->
+  <section class="slide">
+    <p class="eyebrow">Roadmap</p>
+    <h1>Built. <em>Next: liquidity.</em></h1>
+    <div class="road">
+      <div class="phase now">
+        <p class="when">Now · Built</p>
+        <h3>The exchange is live</h3>
+        <p>Storefront, live mandi rates with market-wise detail, open bidding &amp; auctions, AI-agent negotiation, escrow with tracked deal flow, direct retail, Sarkari Yojana hub — web + native apps.</p>
+      </div>
+      <div class="phase">
+        <p class="when">Next · 90 days</p>
+        <h3>Liquidity in one place</h3>
+        <p>Own one crop in one district: onboard farmers &amp; local traders, deepen ratings, pilot real transport partners &amp; doorstep delivery.</p>
+      </div>
+      <div class="phase">
+        <p class="when">Later</p>
+        <h3>Price intelligence &amp; credit</h3>
+        <p>Price history and trend signals from daily snapshots; FPO tools; financing with NBFC partners built on top of trade data.</p>
+      </div>
+    </div>
+    <div class="foot">
+      <span>See it live: cropbid.in — storefront, live rates and Yojana hub open to everyone, no login needed.</span>
+      <span>CropBid · cropbid.in — <span class="num">9</span></span>
+    </div>
+  </section>
+
+  <!-- 10 · TEAM -->
+  <section class="slide">
+    <p class="eyebrow">Team</p>
+    <h1>Small team, <em>shipped product</em>.</h1>
+    <div class="team">
+      <div class="person">
+        <p class="role">Founder</p>
+        <h3>Hrishikesh Borkar</h3>
+        <p>Designed and shipped the entire exchange — web platform, native apps, escrow rails, AI negotiation — live in production at cropbid.in.</p>
+      </div>
+      <div class="person open">
+        <p class="role">Joining</p>
+        <h3 class="placeholder">‹ co-founder / first hires ›</h3>
+        <p class="placeholder">‹ field ops lead for the pilot district · growth ›</p>
+      </div>
+    </div>
+    <div class="foot">
+      <span>Incubated by <b>India 2047 Ventures</b></span>
+      <span>CropBid · cropbid.in — <span class="num">10</span></span>
+    </div>
+  </section>
+
+  <!-- 11 · METRICS -->
+  <section class="slide">
+    <p class="eyebrow">Metrics</p>
+    <h1>One number tells the truth.</h1>
+    <div class="north">
+      <span class="label">North star</span>
+      <h3>GMV cleared through escrow <span class="src" style="font-weight:400; font-size:20px;">— trade only counts when the money moves on-platform</span></h3>
+    </div>
+    <div class="mgrid">
+      <div class="metric">
+        <h4>Take rate</h4>
+        <p class="num">2% of every settlement — revenue tracks GMV directly.</p>
+      </div>
+      <div class="metric">
+        <h4>Active listings &amp; bids</h4>
+        <p>Supply-side depth in the pilot district.</p>
+      </div>
+      <div class="metric">
+        <h4>Bid → deal conversion</h4>
+        <p>Whether the price anchor actually closes trades.</p>
+      </div>
+      <div class="metric">
+        <h4>Repeat trade rate</h4>
+        <p>The trust loop working: sellers and buyers coming back.</p>
+      </div>
+      <div class="metric">
+        <h4>Escrow dispute rate</h4>
+        <p>Deals refunded vs released — the safety promise, measured.</p>
+      </div>
+      <div class="metric">
+        <h4>Farmer price delta</h4>
+        <p>What sellers earn vs the mandi rate — the reason we exist.</p>
+      </div>
+    </div>
+    <p class="metrics-status">Platform is live and pre-revenue — these counters start moving with the pilot district, and we will report them monthly.</p>
+    <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">11</span></span></div>
+  </section>
+
+  <!-- 12 · CAPITAL ALLOCATION -->
+  <section class="slide dark">
+    <p class="eyebrow">Capital Allocation</p>
+    <h1>The ask</h1>
+    <div class="ask-head">
+      <div class="amount placeholder num">‹ ₹X Cr ›</div>
+      <p class="for">to take the exchange from built to liquid — one district proven, playbook ready to repeat.</p>
+    </div>
+    <div class="alloc">
+      <div class="bar-row">
+        <span class="what">Pilot liquidity ops — field team &amp; onboarding</span>
+        <div class="track"><div class="fill" style="width:45%;"></div></div>
+        <span class="pct num">45%</span>
+      </div>
+      <div class="bar-row">
+        <span class="what">Product &amp; AI</span>
+        <div class="track"><div class="fill" style="width:25%;"></div></div>
+        <span class="pct num">25%</span>
+      </div>
+      <div class="bar-row">
+        <span class="what">Logistics partnerships</span>
+        <div class="track"><div class="fill" style="width:20%;"></div></div>
+        <span class="pct num">20%</span>
+      </div>
+      <div class="bar-row">
+        <span class="what">Compliance &amp; buffer</span>
+        <div class="track"><div class="fill" style="width:10%;"></div></div>
+        <span class="pct num">10%</span>
+      </div>
+    </div>
+    <p class="ask-goal"><b>What it buys:</b> <span class="placeholder">‹ N ›</span> districts live and <span class="placeholder">‹ ₹X Cr ›</span> annualised GMV through escrow in 24 months.</p>
+    <div class="backed">
+      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b></span>
+      <span class="placeholder">‹ your name · email · phone ›</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button type="button" id="prev" aria-label="Previous slide">‹</button>
+  <span id="counter" aria-live="polite">1 / 12</span>
+  <button type="button" id="next" aria-label="Next slide">›</button>
+</div>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+    var counter = document.getElementById("counter");
+    var i = 0;
+
+    var fromHash = parseInt(location.hash.replace("#", ""), 10);
+    if (fromHash >= 1 && fromHash <= slides.length) i = fromHash - 1;
+
+    function fit() {
+      var s = Math.min(window.innerWidth / 1280, window.innerHeight / 720);
+      document.documentElement.style.setProperty("--s", String(s));
+    }
+
+    function show(n) {
+      i = Math.max(0, Math.min(slides.length - 1, n));
+      slides.forEach(function (sl, k) { sl.classList.toggle("current", k === i); });
+      counter.textContent = (i + 1) + " / " + slides.length;
+      history.replaceState(null, "", "#" + (i + 1));
+    }
+
+    document.getElementById("prev").addEventListener("click", function () { show(i - 1); });
+    document.getElementById("next").addEventListener("click", function () { show(i + 1); });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") { e.preventDefault(); show(i + 1); }
+      else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); show(i - 1); }
+      else if (e.key === "Home") { e.preventDefault(); show(0); }
+      else if (e.key === "End") { e.preventDefault(); show(slides.length - 1); }
+    });
+
+    var touchX = null;
+    document.addEventListener("touchstart", function (e) { touchX = e.touches[0].clientX; }, { passive: true });
+    document.addEventListener("touchend", function (e) {
+      if (touchX === null) return;
+      var dx = e.changedTouches[0].clientX - touchX;
+      if (dx < -40) show(i + 1);
+      else if (dx > 40) show(i - 1);
+      touchX = null;
+    }, { passive: true });
+
+    window.addEventListener("resize", fit);
+    fit();
+    show(i);
+  })();
+</script>
