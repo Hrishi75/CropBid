@@ -9,10 +9,11 @@
 // script closes that gap: it INSERTS AND UPDATES ONLY, and never deletes.
 //
 // IDEMPOTENT
-// Dealers are matched on (name, state) and machines on (dealer, title), so a
-// re-run updates prices and specs in place rather than duplicating rows. Both
-// tables lack a unique constraint on those fields, hence findFirst-then-write
-// rather than upsert.
+// Dealers are keyed on (name, state) and machines on (dealer, title), both
+// enforced by unique constraints in the schema, so this runs as a single
+// upsert per row: a re-run corrects prices and specs in place rather than
+// duplicating stock, and two overlapping runs cannot race a find against an
+// insert.
 //
 // `active` is deliberately never written on update: if someone has taken a
 // dealer or a machine off the catalogue by hand, re-running this must not
@@ -48,55 +49,42 @@ async function main() {
   console.log(`   target: ${targetHost(process.env.DATABASE_URL)}`);
   console.log('   this script only inserts and updates — it deletes nothing\n');
 
-  let dealersCreated = 0;
-  let dealersUpdated = 0;
+  const dealersBefore = await prisma.equipmentDealer.count();
+
+  // Keyed by name alone, which is safe because the catalogue forbids a repeated
+  // dealer name (see equipmentCatalogue.test.ts) — that is what lets a machine
+  // reference its dealer by name and nothing else. The DATABASE key is still
+  // (name, state), since a chain with branches in two states is two dealers.
   const dealerIds = new Map<string, string>();
 
   for (const d of EQUIPMENT_DEALERS) {
-    const existing = await prisma.equipmentDealer.findFirst({
-      where: { name: d.name, state: d.state },
+    // `active` is written on neither branch: a new dealer takes the schema
+    // default of true, and an existing one keeps whatever it has, so a dealer
+    // taken off the catalogue by hand does not come back on the next load.
+    const shared = {
+      location: d.location,
+      contactPhone: d.contactPhone,
+      contactEmail: d.contactEmail ?? null,
+      verified: d.verified ?? false,
+      rating: d.rating ?? 4.0,
+      smamEmpanelled: d.smamEmpanelled ?? false,
+    };
+
+    const row = await prisma.equipmentDealer.upsert({
+      where: { name_state: { name: d.name, state: d.state } },
+      create: { name: d.name, state: d.state, ...shared },
+      update: shared,
       select: { id: true },
     });
-
-    if (existing) {
-      // `active` omitted on purpose — see the header note.
-      const row = await prisma.equipmentDealer.update({
-        where: { id: existing.id },
-        data: {
-          location: d.location,
-          contactPhone: d.contactPhone,
-          contactEmail: d.contactEmail ?? null,
-          verified: d.verified ?? false,
-          rating: d.rating ?? 4.0,
-          smamEmpanelled: d.smamEmpanelled ?? false,
-        },
-        select: { id: true },
-      });
-      dealerIds.set(d.name, row.id);
-      dealersUpdated++;
-    } else {
-      const row = await prisma.equipmentDealer.create({
-        data: {
-          name: d.name,
-          location: d.location,
-          state: d.state,
-          contactPhone: d.contactPhone,
-          contactEmail: d.contactEmail ?? null,
-          verified: d.verified ?? false,
-          rating: d.rating ?? 4.0,
-          smamEmpanelled: d.smamEmpanelled ?? false,
-        },
-        select: { id: true },
-      });
-      dealerIds.set(d.name, row.id);
-      dealersCreated++;
-    }
+    dealerIds.set(d.name, row.id);
   }
 
-  console.log(`   dealers:  ${dealersCreated} created, ${dealersUpdated} updated`);
+  const dealersCreated = (await prisma.equipmentDealer.count()) - dealersBefore;
+  console.log(
+    `   dealers:  ${dealersCreated} created, ${EQUIPMENT_DEALERS.length - dealersCreated} updated`,
+  );
 
-  let machinesCreated = 0;
-  let machinesUpdated = 0;
+  const machinesBefore = await prisma.equipment.count();
 
   for (const e of EQUIPMENT_CATALOGUE) {
     const dealerId = dealerIds.get(e.dealer);
@@ -125,21 +113,17 @@ async function main() {
       state: e.state,
     };
 
-    const existing = await prisma.equipment.findFirst({
-      where: { dealerId, title: e.title },
-      select: { id: true },
+    await prisma.equipment.upsert({
+      where: { dealerId_title: { dealerId, title: e.title } },
+      create: { dealerId, title: e.title, ...fields },
+      update: fields,
     });
-
-    if (existing) {
-      await prisma.equipment.update({ where: { id: existing.id }, data: fields });
-      machinesUpdated++;
-    } else {
-      await prisma.equipment.create({ data: { dealerId, title: e.title, ...fields } });
-      machinesCreated++;
-    }
   }
 
-  console.log(`   machines: ${machinesCreated} created, ${machinesUpdated} updated`);
+  const machinesCreated = (await prisma.equipment.count()) - machinesBefore;
+  console.log(
+    `   machines: ${machinesCreated} created, ${EQUIPMENT_CATALOGUE.length - machinesCreated} updated`,
+  );
 
   const [liveDealers, liveMachines] = await Promise.all([
     prisma.equipmentDealer.count({ where: { active: true } }),

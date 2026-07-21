@@ -20,10 +20,21 @@ describe('equipment catalogue', () => {
   });
 
   it('identifies each dealer uniquely by (name, state)', () => {
-    // Both writers match on that pair. A duplicate would make findFirst pick
-    // one arbitrarily and silently attach machines to the wrong dealer.
+    // The database key both writers upsert on. A duplicate here would make the
+    // second upsert overwrite the first rather than add a partner.
     const keys = EQUIPMENT_DEALERS.map((d) => `${d.name}|${d.state}`);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('never repeats a dealer name, even across states', () => {
+    // Stricter than the database constraint on purpose. A machine points at
+    // its dealer by name alone, so the loader resolves names through a
+    // name-keyed map; two dealers sharing a name in different states would
+    // collide in that map and silently attach every one of their machines to
+    // whichever was loaded last — routing enquiries to the wrong partner.
+    // Give one of them a distinguishing name, e.g. "… (Nashik)".
+    const names = EQUIPMENT_DEALERS.map((d) => d.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it('identifies each machine uniquely by (dealer, title)', () => {
