@@ -16,13 +16,16 @@ import { existsSync } from 'fs';
 // Hosts that mean "a database on this machine" no matter where we are running.
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1'];
 
-// docker-compose service names. Inside a container the database is reached by
-// service name rather than localhost, so these have to pass — but `postgres`
-// and `db` are local only by convention in this repo's compose file. A DNS
-// record, a Kubernetes service, or a hosts entry could point either at a real
-// database, and an unconditional allowlist would then hand the seed a remote
-// target to wipe. They therefore count as local only inside a container.
-const DOCKER_HOSTS = ['postgres', 'db'];
+// The one docker-compose service name that reaches our database. Inside a
+// container the database is addressed by service name rather than localhost,
+// so this has to pass — but the name is generic enough that a DNS record, a
+// Kubernetes service, or a network alias could point it at a real database,
+// and an unconditional allowlist would hand the seed a remote target to wipe.
+// It therefore counts as local only from inside a container.
+//
+// `db` was previously allowlisted too. docker-compose.yml declares no such
+// service, so it granted a generic name a pass on nothing but convention.
+const DOCKER_HOSTS = ['postgres'];
 
 // Docker writes this marker into every container it builds.
 function inDockerContainer(): boolean {
