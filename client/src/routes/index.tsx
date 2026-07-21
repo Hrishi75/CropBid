@@ -56,6 +56,7 @@ import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
 import { RatesPage } from '../pages/RatesPage';
 import { ForecastPage } from '../pages/ForecastPage';
 import { SchemesPage } from '../pages/SchemesPage';
+import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
 
@@ -103,6 +104,9 @@ export function AppRoutes() {
       <Route path="/rates" element={<RatesPage />} />
       <Route path="/forecast" element={<ForecastPage />} />
       <Route path="/schemes" element={<SchemesPage />} />
+      {/* Linked from the footer, and the URL given to Google Play's Data Safety
+          form — it must stay publicly reachable without a login. */}
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
       {/* Public auth routes */}
       <Route path="/login" element={<LoginPage />} />

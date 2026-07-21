@@ -1073,7 +1073,7 @@ body * {
 .st-ticker-track {
   display: inline-flex; align-items: center; gap: 36px;
   padding: 7px 0; width: max-content;
-  animation: st-marquee 36s linear infinite;
+  animation: st-marquee 60s linear infinite;
 }
 .st-ticker:hover .st-ticker-track { animation-play-state: paused; }
 @keyframes st-marquee { to { transform: translateX(-50%); } }

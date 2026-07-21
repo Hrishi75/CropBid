@@ -24,6 +24,7 @@ import {
 } from '@expo-google-fonts/instrument-serif';
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { Loading } from './src/components/ui';
 
 export default function App() {
@@ -42,12 +43,17 @@ export default function App() {
 
   if (!fontsLoaded) return <Loading />;
 
+  // The boundary sits inside SafeAreaProvider so its fallback respects the
+  // notch, but outside AuthProvider — a throw while restoring the session is
+  // exactly the kind of launch crash it needs to catch.
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <RootNavigator />
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <StatusBar style="dark" />
+          <RootNavigator />
+        </AuthProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

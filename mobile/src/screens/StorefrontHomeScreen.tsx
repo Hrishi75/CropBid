@@ -402,6 +402,7 @@ export default function StorefrontHomeScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
+              <PromoCard tone="paper" emoji="🚜" title={t('Machines & equipment')} desc={t('Tractors, pumps and pipes — buy outright or hire by the day.')} onPress={() => nav.navigate('Equipment')} />
               <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t("Any quantity, at the farmer's listed price.")} />
               <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for you.')} />
               <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
@@ -504,7 +505,7 @@ function TickerStrip({ board }: { board: RatesBoardData | null }) {
     if (w <= 0) return;
     x.setValue(0);
     const anim = Animated.loop(
-      Animated.timing(x, { toValue: -w, duration: Math.max(w * 30, 8000), easing: Easing.linear, useNativeDriver: true }),
+      Animated.timing(x, { toValue: -w, duration: Math.max(w * 50, 13000), easing: Easing.linear, useNativeDriver: true }),
     );
     anim.start();
     return () => anim.stop();
