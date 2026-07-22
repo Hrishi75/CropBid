@@ -416,11 +416,20 @@ async function endAuction(listingId: string) {
 
         // Final authorization gate — never mint an ACCEPTED bid + escrow
         // Transaction for a principal the REST layer would now 403.
-        const winner = await tx.user.findUnique({
-          where: { id: winnerId },
-          select: { role: true },
-        });
-        if (winner?.role !== 'BUYER') {
+        //
+        // We take a row lock on the winner (SELECT ... FOR UPDATE) rather than a
+        // plain read: under PostgreSQL's default read-committed isolation a plain
+        // read wouldn't stop a demotion from committing between the role check
+        // and the sale writes. FOR UPDATE holds the User row for the rest of this
+        // transaction, so a concurrent role UPDATE blocks until settlement
+        // commits or rolls back — making the authorization decision and the sale
+        // genuinely atomic. (Cast to text so the enum comes back as a plain
+        // string; empty result = user deleted mid-auction, treated as not a
+        // buyer.)
+        const lockedWinner = await tx.$queryRaw<Array<{ role: string }>>`
+          SELECT "role"::text AS role FROM "User" WHERE "id" = ${winnerId} FOR UPDATE
+        `;
+        if (lockedWinner[0]?.role !== 'BUYER') {
           // Void: return the listing to the market instead of selling to a
           // non-buyer. Same transaction, so the revert is atomic too.
           await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
