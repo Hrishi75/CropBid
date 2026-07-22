@@ -370,8 +370,12 @@ export async function getNegotiation(negotiationId: string, userId: string) {
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
-      farmerAgent: true,
-      buyerAgent: true,
+      // The two AgentConfig rows are deliberately NOT included. Both parties are
+      // authorised to read this negotiation, so including them handed each side
+      // the other's walk-away price (minPrice / maxPrice / autoAcceptThreshold)
+      // — enough to bid exactly the counterparty's floor or ceiling and take the
+      // whole surplus. The scalar farmerAgentId / buyerAgentId columns stay on
+      // the row, which is all either client ever read.
     },
   });
 
@@ -441,8 +445,7 @@ export async function getNegotiationByBid(bidId: string, userId: string) {
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
-      farmerAgent: true,
-      buyerAgent: true,
+      // No AgentConfig include — see getNegotiation above for why.
     },
   });
 

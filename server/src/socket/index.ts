@@ -70,6 +70,11 @@ const ANTI_SNIPE_EXTENSION_MS = 30_000;
 // Hard cap so an attacker (or an enthusiastic bidder) cannot extend a
 // 10-minute auction indefinitely. 5 minutes past the original endsAt.
 const ANTI_SNIPE_MAX_EXTENSION_MS = 5 * 60 * 1000;
+// If settlement AND its listing-release fallback both fail (e.g. the DB is
+// briefly unreachable), retry reconciliation on this interval instead of
+// stranding the listing IN_AUCTION. The self-rescheduling timer stops as soon
+// as one attempt reconciles the listing.
+const SETTLEMENT_RETRY_MS = 60_000;
 const bidTimestamps = new WeakMap<Socket, number[]>();
 
 function recordBid(socket: Socket): boolean {
@@ -80,6 +85,20 @@ function recordBid(socket: Socket): boolean {
   fresh.push(now);
   bidTimestamps.set(socket, fresh);
   return true;
+}
+
+// Re-validate a user's role against the database RIGHT NOW, rather than trusting
+// the role captured from the JWT at handshake. A socket outlives its 15-minute
+// access token and survives an account-role change, so the handshake claim can
+// go stale while the connection stays open. Any authorization decision that
+// persists a sale must confirm the CURRENT role. Returns true only if the
+// account still exists AND is a BUYER.
+async function isCurrentBuyer(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return user?.role === 'BUYER';
 }
 
 // In-memory auction store
@@ -135,6 +154,9 @@ export function initializeSocket(httpServer: HttpServer) {
   io.on('connection', (socket: Socket) => {
     const userId = (socket as any).userId;
     const userName = (socket as any).userName;
+    // Set from the verified JWT payload in the handshake middleware above — it
+    // is the token's claim, not anything the client can assert separately.
+    const role = (socket as any).role;
     console.log(`Socket connected: ${userId} (${userName})`);
 
     // Auto-join user's personal notification room
@@ -179,9 +201,43 @@ export function initializeSocket(httpServer: HttpServer) {
         return socket.emit('auction:error', 'Invalid bid payload');
       }
 
-      // Per-socket rate limit — stops bid flooding from a single client
+      // Only BUYERs may bid — the same guard every REST bidding route carries
+      // (requireRole('BUYER') in bid.routes.ts). Without it this socket was a
+      // way around that check: a self-registered CONSUMER (or a rival FARMER)
+      // could win an auction, and endAuction writes a real ACCEPTED bid, marks
+      // the listing SOLD, and opens a Transaction — taking the lot off the
+      // market on behalf of a principal the REST layer would have 403'd.
+      //
+      // `role` is the handshake JWT claim: a cheap first gate that rejects
+      // non-buyers with zero DB cost. But a socket outlives its 15-minute
+      // access token and survives an account-role change, so this claim can go
+      // stale — the live DB re-check below is the authoritative guard.
+      if (role !== 'BUYER') {
+        return socket.emit('auction:error', 'Only buyer accounts can bid in auctions');
+      }
+
+      // Per-socket rate limit — stops bid flooding from a single client (and
+      // caps how often the live authorization re-check below can hit the DB).
       if (!recordBid(socket)) {
         return socket.emit('auction:error', `Too many bids — slow down (max ${BID_BURST} per ${BID_WINDOW_MS / 1000}s)`);
+      }
+
+      // Live authorization: confirm the account is STILL a BUYER right now, not
+      // just when the socket connected. Closes the stale-role window where a
+      // since-demoted buyer — or one riding an already-expired access token —
+      // could keep winning auctions through an already-open socket. Runs after
+      // the rate limiter so a flood of bids can't turn into a flood of queries.
+      try {
+        if (!(await isCurrentBuyer(userId))) {
+          return socket.emit('auction:error', 'Your account is no longer authorized to bid');
+        }
+      } catch (err) {
+        // A Prisma rejection here would otherwise escape this async Socket.IO
+        // handler as an unhandled rejection (silent bid failure, and a process
+        // crash under runtimes that exit on unhandled rejections). Surface a
+        // retryable error to the client instead.
+        console.error(`Failed to authorize auction bid from ${userId}:`, err);
+        return socket.emit('auction:error', 'Unable to verify your account right now — please retry');
       }
 
       const auction = activeAuctions.get(data.listingId);
@@ -340,21 +396,55 @@ async function endAuction(listingId: string) {
   const roomName = `auction:${listingId}`;
 
   if (auction.currentWinner && auction.bids.length > 0) {
-    // Fetch listing once for quantity
-    const listing = await prisma.listing.findUnique({ where: { id: listingId } });
-    if (!listing) {
-      activeAuctions.delete(listingId);
-      return;
-    }
-
-    // Persist the winning sale (winning bid + SOLD listing) and its escrow
-    // transaction ATOMICALLY, so a settled auction can never leave a SOLD
-    // listing with no payable transaction. Wrapped in try/catch because
-    // endAuction runs from a setTimeout with no caller to handle a rejection.
     const winnerId = auction.currentWinner; // narrowed to string by the if above
-    let winningBid;
+
+    // Settle the auction ATOMICALLY. Every fact the outcome depends on is read
+    // and written inside ONE transaction, so there is no check-then-act gap:
+    //   - The winner's CURRENT role is re-read here (tx.user), not trusted from
+    //     the socket handshake or the moment they bid. Because that read shares
+    //     the settlement transaction, a role change racing settlement cannot
+    //     slip a sale through between the authorization check and the writes —
+    //     a since-demoted winner is caught and the sale is voided.
+    //   - The winning bid, the SOLD flip, and the escrow Transaction commit
+    //     together, so a settled auction can never leave a SOLD listing with no
+    //     payable transaction.
+    // The whole thing is wrapped in try/catch because endAuction runs from a
+    // setTimeout with no caller to handle a rejection — on ANY failure (e.g. a
+    // transient DB outage during the authorization read) we must still release
+    // the listing and drop the in-memory auction, or it is stranded IN_AUCTION
+    // with a dead timer and never ends.
+    type Settlement =
+      | { outcome: 'sold'; bidId: string }
+      | { outcome: 'voided' }
+      | { outcome: 'gone' };
+    let settlement: Settlement;
     try {
-      winningBid = await prisma.$transaction(async (tx) => {
+      settlement = await prisma.$transaction(async (tx): Promise<Settlement> => {
+        const listing = await tx.listing.findUnique({ where: { id: listingId } });
+        if (!listing) return { outcome: 'gone' };
+
+        // Final authorization gate — never mint an ACCEPTED bid + escrow
+        // Transaction for a principal the REST layer would now 403.
+        //
+        // We take a row lock on the winner (SELECT ... FOR UPDATE) rather than a
+        // plain read: under PostgreSQL's default read-committed isolation a plain
+        // read wouldn't stop a demotion from committing between the role check
+        // and the sale writes. FOR UPDATE holds the User row for the rest of this
+        // transaction, so a concurrent role UPDATE blocks until settlement
+        // commits or rolls back — making the authorization decision and the sale
+        // genuinely atomic. (Cast to text so the enum comes back as a plain
+        // string; empty result = user deleted mid-auction, treated as not a
+        // buyer.)
+        const lockedWinner = await tx.$queryRaw<Array<{ role: string }>>`
+          SELECT "role"::text AS role FROM "User" WHERE "id" = ${winnerId} FOR UPDATE
+        `;
+        if (lockedWinner[0]?.role !== 'BUYER') {
+          // Void: return the listing to the market instead of selling to a
+          // non-buyer. Same transaction, so the revert is atomic too.
+          await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+          return { outcome: 'voided' };
+        }
+
         const wb = await tx.bid.create({
           data: {
             listingId,
@@ -368,28 +458,60 @@ async function endAuction(listingId: string) {
             status: 'ACCEPTED',
           },
         });
-        await tx.listing.update({
-          where: { id: listingId },
-          data: { status: 'SOLD' },
-        });
+        await tx.listing.update({ where: { id: listingId }, data: { status: 'SOLD' } });
         await createTransaction(wb.id, tx);
-        return wb;
+        return { outcome: 'sold', bidId: wb.id };
       });
     } catch (err) {
       console.error(`Failed to settle auction ${listingId}:`, err);
+      // The transaction rolled back, so the listing is still IN_AUCTION.
+      // Release it back to the market so it isn't stranded.
+      try {
+        await prisma.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+      } catch (revertErr) {
+        // Even the release failed — the DB is likely still unreachable. Dropping
+        // the auction now would leave the listing stuck IN_AUCTION with no timer
+        // and nothing in activeAuctions to reconcile it, requiring manual repair.
+        // Instead keep the auction and re-arm a timer to retry reconciliation, so
+        // it self-heals once the DB recovers. The retry loop ends as soon as one
+        // attempt succeeds (settles, voids, or releases). A process crash still
+        // loses it — the in-memory auction design already accepts that; a
+        // production system would move this to Redis / a durable queue.
+        console.error(
+          `Failed to release listing ${listingId} after settlement error; retrying in ${SETTLEMENT_RETRY_MS / 1000}s:`,
+          revertErr
+        );
+        auction.timer = setTimeout(() => endAuction(listingId), SETTLEMENT_RETRY_MS);
+        return;
+      }
       activeAuctions.delete(listingId);
       return;
     }
 
-    // Broadcast auction end with winner
-    io.to(roomName).emit('auction:ended', {
-      listingId,
-      winner: auction.currentWinnerName,
-      winnerId: auction.currentWinner,
-      finalPrice: auction.currentPrice,
-      totalBids: auction.bids.length,
-      bidId: winningBid.id,
-    });
+    if (settlement.outcome === 'sold') {
+      // Broadcast auction end with winner
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: auction.currentWinnerName,
+        winnerId: auction.currentWinner,
+        finalPrice: auction.currentPrice,
+        totalBids: auction.bids.length,
+        bidId: settlement.bidId,
+      });
+    } else if (settlement.outcome === 'voided') {
+      console.warn(
+        `Auction ${listingId} winner ${winnerId} is no longer a BUYER — sale voided, listing returned to ACTIVE`
+      );
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: null,
+        finalPrice: auction.startPrice,
+        totalBids: auction.bids.length,
+        message: 'Auction voided — winning bidder is no longer authorized to buy',
+      });
+    }
+    // outcome 'gone' (listing deleted mid-auction): nothing to settle or
+    // broadcast; fall through to the shared cleanup below.
   } else {
     // No bids — revert to ACTIVE
     await prisma.listing.update({
