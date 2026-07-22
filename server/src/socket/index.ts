@@ -70,6 +70,11 @@ const ANTI_SNIPE_EXTENSION_MS = 30_000;
 // Hard cap so an attacker (or an enthusiastic bidder) cannot extend a
 // 10-minute auction indefinitely. 5 minutes past the original endsAt.
 const ANTI_SNIPE_MAX_EXTENSION_MS = 5 * 60 * 1000;
+// If settlement AND its listing-release fallback both fail (e.g. the DB is
+// briefly unreachable), retry reconciliation on this interval instead of
+// stranding the listing IN_AUCTION. The self-rescheduling timer stops as soon
+// as one attempt reconciles the listing.
+const SETTLEMENT_RETRY_MS = 60_000;
 const bidTimestamps = new WeakMap<Socket, number[]>();
 
 function recordBid(socket: Socket): boolean {
@@ -442,12 +447,24 @@ async function endAuction(listingId: string) {
     } catch (err) {
       console.error(`Failed to settle auction ${listingId}:`, err);
       // The transaction rolled back, so the listing is still IN_AUCTION.
-      // Best-effort release it back to the market so it isn't stranded, then
-      // drop the dead in-memory auction.
+      // Release it back to the market so it isn't stranded.
       try {
         await prisma.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
       } catch (revertErr) {
-        console.error(`Failed to revert listing ${listingId} after settlement error:`, revertErr);
+        // Even the release failed — the DB is likely still unreachable. Dropping
+        // the auction now would leave the listing stuck IN_AUCTION with no timer
+        // and nothing in activeAuctions to reconcile it, requiring manual repair.
+        // Instead keep the auction and re-arm a timer to retry reconciliation, so
+        // it self-heals once the DB recovers. The retry loop ends as soon as one
+        // attempt succeeds (settles, voids, or releases). A process crash still
+        // loses it — the in-memory auction design already accepts that; a
+        // production system would move this to Redis / a durable queue.
+        console.error(
+          `Failed to release listing ${listingId} after settlement error; retrying in ${SETTLEMENT_RETRY_MS / 1000}s:`,
+          revertErr
+        );
+        auction.timer = setTimeout(() => endAuction(listingId), SETTLEMENT_RETRY_MS);
+        return;
       }
       activeAuctions.delete(listingId);
       return;
