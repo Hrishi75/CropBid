@@ -227,8 +227,17 @@ export function initializeSocket(httpServer: HttpServer) {
       // since-demoted buyer — or one riding an already-expired access token —
       // could keep winning auctions through an already-open socket. Runs after
       // the rate limiter so a flood of bids can't turn into a flood of queries.
-      if (!(await isCurrentBuyer(userId))) {
-        return socket.emit('auction:error', 'Your account is no longer authorized to bid');
+      try {
+        if (!(await isCurrentBuyer(userId))) {
+          return socket.emit('auction:error', 'Your account is no longer authorized to bid');
+        }
+      } catch (err) {
+        // A Prisma rejection here would otherwise escape this async Socket.IO
+        // handler as an unhandled rejection (silent bid failure, and a process
+        // crash under runtimes that exit on unhandled rejections). Surface a
+        // retryable error to the client instead.
+        console.error(`Failed to authorize auction bid from ${userId}:`, err);
+        return socket.emit('auction:error', 'Unable to verify your account right now — please retry');
       }
 
       const auction = activeAuctions.get(data.listingId);
