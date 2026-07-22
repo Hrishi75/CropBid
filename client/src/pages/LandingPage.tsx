@@ -17,8 +17,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
+import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 import type { User } from '../types';
 import {
   type Country, type CurrencyCode, type UnitCode,
@@ -310,6 +312,7 @@ function StoreHeader({
   onJump: (target: RailId | 'top') => void;
   user: User | null;
 }) {
+  const { t } = useTranslation();
   const [scrolled, setScrolled] = useState(false);
   const [wordIdx, setWordIdx] = useState(0);
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
@@ -323,8 +326,8 @@ function StoreHeader({
 
   // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
   useEffect(() => {
-    const t = setInterval(() => setWordIdx((i) => (i + 1) % SEARCH_WORDS.length), 2400);
-    return () => clearInterval(t);
+    const id = setInterval(() => setWordIdx((i) => (i + 1) % SEARCH_WORDS.length), 2400);
+    return () => clearInterval(id);
   }, []);
 
   return (
@@ -336,7 +339,7 @@ function StoreHeader({
         </Link>
 
         <div className="st-source">
-          <span className="cb-tiny st-source-l">Sourcing from</span>
+          <span className="cb-tiny st-source-l">{t('Sourcing from')}</span>
           <CountrySelector country={country} onChange={onChangeCountry} />
         </div>
 
@@ -356,10 +359,11 @@ function StoreHeader({
         </div>
 
         <nav className="st-header-links" aria-label="Primary">
-          <Link to="/rates" className="st-header-link">Live rates</Link>
-          <Link to="/forecast" className="st-header-link">Forecast</Link>
-          <Link to="/schemes" className="st-header-link">Yojana</Link>
-          <Link to="/equipment" className="st-header-link">Equipment</Link>
+          <LanguageSwitcher />
+          <Link to="/rates" className="st-header-link">{t('Live rates')}</Link>
+          <Link to="/forecast" className="st-header-link">{t('Forecast')}</Link>
+          <Link to="/schemes" className="st-header-link">{t('Yojana')}</Link>
+          <Link to="/equipment" className="st-header-link">{t('Equipment')}</Link>
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
@@ -368,22 +372,22 @@ function StoreHeader({
                 to={user.role === 'FARMER' ? '/farmer' : user.role === 'BUYER' ? '/buyer' : '/admin'}
                 className="nav-signin"
               >
-                Dashboard
+                {t('Dashboard')}
               </Link>
               <Link
                 to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
                 className="cb-btn cb-btn-primary"
               >
-                {user.role === 'FARMER' ? 'Sell a crop' : 'Browse live lots'}
+                {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
                 <ArrowIcon />
               </Link>
             </>
           ) : (
             <>
-              <Link to="/how-it-works" className="st-header-link">How it works</Link>
-              <Link to="/login" className="nav-signin">Sign in</Link>
+              <Link to="/how-it-works" className="st-header-link">{t('How it works')}</Link>
+              <Link to="/login" className="nav-signin">{t('Sign in')}</Link>
               <Link to="/signup" className="cb-btn cb-btn-primary">
-                Start selling
+                {t('Start selling')}
                 <ArrowIcon />
               </Link>
             </>
@@ -399,7 +403,7 @@ function StoreHeader({
             className={`st-chip${activeChip === target ? ' active' : ''}`}
             onClick={() => { setActiveChip(target); onJump(target); }}
           >
-            {label}
+            {t(label)}
           </button>
         ))}
       </div>
@@ -414,6 +418,7 @@ function StoreHeader({
 const FLOAT_CHIP_PICKS = ['Tomato', 'Wheat', 'Mango'];
 
 function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
+  const { t } = useTranslation();
   // Secondary hero action follows the viewer: guests are asked to join,
   // farmers are sent to list a crop, buyers to their working bids.
   const secondary = user?.role === 'FARMER'
@@ -437,25 +442,24 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
           {board?.live ? `Live govt mandi rates · ${board.date}` : 'Live now · 42 lots from 100+ verified farms'}
         </span>
         <h1 className="st-banner-title">
-          Farm-fresh crops,<br />
-          <span className="italic">farmer-fair</span> prices.
+          {t('Farm-fresh crops,')}<br />
+          <span className="italic">{t('farmer-fair')}</span> {t('prices.')}
         </h1>
         <p className="st-banner-lede">
-          Buy vegetables, fruits, grains and spices straight from the grower —
-          today's real mandi price on every lot, escrow-settled, delivered farm to door.
+          {t('Buy vegetables, fruits, grains and spices straight from the grower — today\'s real mandi price on every lot, escrow-settled, delivered farm to door.')}
         </p>
         <div className="st-banner-actions">
           <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
-            Shop the market
+            {t('Shop the market')}
             <ArrowIcon />
           </button>
-          <Link to={secondary.to} className="cb-btn st-btn-outline">{secondary.label}</Link>
+          <Link to={secondary.to} className="cb-btn st-btn-outline">{t(secondary.label)}</Link>
         </div>
         <div className="st-banner-ticks">
-          <span>✓ Live govt mandi rates</span>
-          <span>✓ Open bidding &amp; auctions</span>
-          <span>✓ Escrow settlement</span>
-          <span>✓ Farm-to-door logistics</span>
+          <span>✓ {t('Live govt mandi rates')}</span>
+          <span>✓ {t('Open bidding & auctions')}</span>
+          <span>✓ {t('Escrow settlement')}</span>
+          <span>✓ {t('Farm-to-door logistics')}</span>
         </div>
       </div>
       <div className="st-banner-media">
@@ -583,15 +587,16 @@ const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: st
 ];
 
 function PromoTrio({ shopHref }: { shopHref: string }) {
+  const { t } = useTranslation();
   const ref = useReveal<HTMLDivElement>();
   return (
     <div className="st-promos st-reveal" ref={ref}>
       {PROMOS.map((p) => (
         <Link key={p.title} to={p.to === '/signup' ? shopHref : p.to} className={`st-promo ${p.tone}`}>
           <span className="st-promo-emoji" aria-hidden="true">{p.emoji}</span>
-          <span className="st-promo-t">{p.title}</span>
-          <span className="st-promo-d">{p.desc}</span>
-          <span className="st-promo-link">{p.ctaLabel} <ArrowIcon size={12} /></span>
+          <span className="st-promo-t">{t(p.title)}</span>
+          <span className="st-promo-d">{t(p.desc)}</span>
+          <span className="st-promo-link">{t(p.ctaLabel)} <ArrowIcon size={12} /></span>
         </Link>
       ))}
     </div>
@@ -599,17 +604,18 @@ function PromoTrio({ shopHref }: { shopHref: string }) {
 }
 
 function CategoryGrid({ onJump }: { onJump: (target: RailId) => void }) {
+  const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
     <section className="st-cats st-reveal" ref={ref}>
-      <h2 className="st-rail-title">Shop by category</h2>
+      <h2 className="st-rail-title">{t('Shop by category')}</h2>
       <div className="st-cats-grid">
         {CATEGORY_TILES.map((c) => (
           <button key={c.label} type="button" className="st-cat" onClick={() => onJump(c.target)}>
             <span className="st-cat-img">
               <ProduceImg slug={c.img} emoji={c.emoji} alt={c.label} />
             </span>
-            <span className="st-cat-l">{c.label}</span>
+            <span className="st-cat-l">{t(c.label)}</span>
           </button>
         ))}
       </div>
@@ -648,6 +654,7 @@ function ProduceCard({ p, currency, shopHref }: { p: Produce; currency: Currency
 }
 
 function Rail({ rail, currency, shopHref }: { rail: (typeof RAILS)[number]; currency: CurrencyCode; shopHref: string }) {
+  const { t } = useTranslation();
   const revealRef = useReveal<HTMLElement>();
   const track = useRef<HTMLDivElement | null>(null);
   const items = PRODUCTS.filter((p) => p.cat === rail.id);
@@ -661,11 +668,11 @@ function Rail({ rail, currency, shopHref }: { rail: (typeof RAILS)[number]; curr
     <section id={rail.id} className="st-rail st-reveal" ref={revealRef}>
       <div className="st-rail-head">
         <div>
-          <span className="cb-eyebrow">{rail.eyebrow}</span>
-          <h2 className="st-rail-title">{rail.title}</h2>
+          <span className="cb-eyebrow">{t(rail.eyebrow)}</span>
+          <h2 className="st-rail-title">{t(rail.title)}</h2>
         </div>
         <div className="st-rail-nav">
-          <Link to={shopHref} className="st-seeall">see all <ArrowIcon size={12} /></Link>
+          <Link to={shopHref} className="st-seeall">{t('see all')} <ArrowIcon size={12} /></Link>
           <button type="button" className="st-rail-btn prev" aria-label={`Scroll ${rail.title} back`} onClick={() => nudge(-1)}>
             <ChevronIcon />
           </button>
@@ -717,22 +724,23 @@ const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
 ];
 
 function HowStrip() {
+  const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
     <section className="st-how st-reveal" ref={ref}>
       <div className="st-rail-head">
         <div>
-          <span className="cb-eyebrow">Simple by design</span>
-          <h2 className="st-rail-title">How CropBid works</h2>
+          <span className="cb-eyebrow">{t('Simple by design')}</span>
+          <h2 className="st-rail-title">{t('How CropBid works')}</h2>
         </div>
-        <Link to="/how-it-works" className="st-seeall">the full story <ArrowIcon size={12} /></Link>
+        <Link to="/how-it-works" className="st-seeall">{t('the full story')} <ArrowIcon size={12} /></Link>
       </div>
       <div className="st-how-grid">
-        {HOW_STEPS.map(([n, t, d]) => (
+        {HOW_STEPS.map(([n, title, desc]) => (
           <div key={n} className="st-how-step">
             <span className="cb-mono st-how-n">{n}</span>
-            <span className="st-how-t">{t}</span>
-            <span className="st-how-d">{d}</span>
+            <span className="st-how-t">{t(title)}</span>
+            <span className="st-how-d">{t(desc)}</span>
           </div>
         ))}
       </div>
@@ -741,6 +749,7 @@ function HowStrip() {
 }
 
 function SellCTA({ user }: { user: User | null }) {
+  const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   // Marketing noise for a signed-in buyer — the block is farmer-targeted.
   if (user?.role === 'BUYER') return null;
@@ -752,19 +761,18 @@ function SellCTA({ user }: { user: User | null }) {
         <div className="cta-grid-bg" />
         <div className="cta-inner">
           <div>
-            <h2 className="cb-h1">Grow it? <span className="italic">Sell it here.</span></h2>
+            <h2 className="cb-h1">{t('Grow it?')} <span className="italic">{t('Sell it here.')}</span></h2>
             <p className="cb-body cta-lede">
-              List your harvest in two minutes and let verified buyers bid it up.
-              No mandi trips, no guesswork — you keep the margin.
+              {t('List your harvest in two minutes and let verified buyers bid it up. No mandi trips, no guesswork — you keep the margin.')}
             </p>
           </div>
           <div className="cta-actions">
             <Link to={sellHref} className="cb-btn cta-primary">
-              {sellLabel}
+              {t(sellLabel)}
               <ArrowIcon />
             </Link>
             <Link to="/how-it-works" className="cb-btn cta-ghost">
-              See how it works
+              {t('See how it works')}
             </Link>
           </div>
         </div>
@@ -795,16 +803,17 @@ function India2047Logo() {
 }
 
 function IncubatedBy() {
+  const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
     <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
-      <span className="cb-eyebrow">Incubated by</span>
+      <span className="cb-eyebrow">{t('Incubated by')}</span>
       <div className="st-incub-brand">
         <India2047Logo />
         <span className="st-incub-name">India 2047 <span>Ventures</span></span>
       </div>
       <p className="cb-small st-incub-line">
-        CropBid is built with the backing of India 2047 Ventures.
+        {t('CropBid is built with the backing of India 2047 Ventures.')}
       </p>
     </section>
   );

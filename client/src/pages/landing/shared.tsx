@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 export type CurrencyCode = 'INR' | 'USD' | 'EUR' | 'GBP';
 export type UnitCode = 'KG' | 'QUINTAL' | 'TONNE' | 'LITRE';
@@ -314,6 +315,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
 ];
 
 export function CBFooter() {
+  const { t } = useTranslation();
   return (
     <footer id="resources" className="cb-footer">
       <div className="cb-footer-inner">
@@ -324,32 +326,35 @@ export function CBFooter() {
               <span className="wordmark-text" style={{ fontSize: 20 }}>CropBid</span>
             </Link>
             <p className="cb-footer-blurb">
-              Fair price discovery for agriculture — live govt mandi rates, open bidding,
-              escrow-settled deals, and farm-to-door logistics. Built in India, for farmers first.
+              {t('Fair price discovery for agriculture — live govt mandi rates, open bidding, escrow-settled deals, and farm-to-door logistics. Built in India, for farmers first.')}
             </p>
             <div className="cb-footer-badges">
               {['Govt Agmarknet data', 'Razorpay escrow', 'Made in India'].map((b) => (
-                <span key={b} className="cb-chip">{b}</span>
+                <span key={b} className="cb-chip">{t(b)}</span>
               ))}
+            </div>
+            <div className="cb-footer-contact">
+              <span className="cb-footer-contact-label">{t('Contact')}</span>
+              <a href="mailto:info@cropbid.in">info@cropbid.in</a>
             </div>
           </div>
 
           {FOOTER_COLS.map((c) => (
             <div key={c.title} className="cb-footer-col">
-              <div className="cb-footer-col-title">{c.title}</div>
+              <div className="cb-footer-col-title">{t(c.title)}</div>
               <ul>
-                {c.items.map(([label, href]) => <li key={label}><a href={href}>{label}</a></li>)}
+                {c.items.map(([label, href]) => <li key={label}><a href={href}>{t(label)}</a></li>)}
               </ul>
             </div>
           ))}
         </div>
 
         <div className="cb-footer-bottom">
-          <span>© {new Date().getFullYear()} CropBid, Inc.  ·  All rights reserved</span>
+          <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
           <span className="cb-footer-bottom-links">
-            <a href="#">Terms</a>
-            <Link to="/privacy">Privacy</Link>
-            <a href="#">Disclosures</a>
+            <a href="#">{t('Terms')}</a>
+            <Link to="/privacy">{t('Privacy')}</Link>
+            <a href="#">{t('Disclosures')}</a>
           </span>
         </div>
       </div>
