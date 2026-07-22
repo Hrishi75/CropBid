@@ -297,7 +297,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
       ['Careers', '#'],
       ['Press',   '#'],
       ['Blog',    '#'],
-      ['Contact', 'mailto:hrishikeshborkar94@gmail.com'],
+      ['Contact', 'mailto:info@cropbid.in'],
     ],
   },
   {
