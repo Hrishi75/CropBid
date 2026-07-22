@@ -382,47 +382,46 @@ async function endAuction(listingId: string) {
   const roomName = `auction:${listingId}`;
 
   if (auction.currentWinner && auction.bids.length > 0) {
-    // Fetch listing once for quantity
-    const listing = await prisma.listing.findUnique({ where: { id: listingId } });
-    if (!listing) {
-      activeAuctions.delete(listingId);
-      return;
-    }
-
     const winnerId = auction.currentWinner; // narrowed to string by the if above
 
-    // Final authorization gate. The winner passed a live BUYER check when they
-    // bid, but settlement can run minutes later — long enough for the account to
-    // have been demoted in the meantime. Never mint an ACCEPTED bid + escrow
-    // Transaction for a principal the REST layer would now 403: if the winner is
-    // no longer a BUYER, void the sale and return the listing to the market
-    // instead of settling it onto them.
-    if (!(await isCurrentBuyer(winnerId))) {
-      console.warn(
-        `Auction ${listingId} winner ${winnerId} is no longer a BUYER — voiding sale, reverting listing to ACTIVE`
-      );
-      await prisma.listing.update({
-        where: { id: listingId },
-        data: { status: 'ACTIVE' },
-      });
-      io.to(roomName).emit('auction:ended', {
-        listingId,
-        winner: null,
-        finalPrice: auction.startPrice,
-        totalBids: auction.bids.length,
-        message: 'Auction voided — winning bidder is no longer authorized to buy',
-      });
-      activeAuctions.delete(listingId);
-      return;
-    }
-
-    // Persist the winning sale (winning bid + SOLD listing) and its escrow
-    // transaction ATOMICALLY, so a settled auction can never leave a SOLD
-    // listing with no payable transaction. Wrapped in try/catch because
-    // endAuction runs from a setTimeout with no caller to handle a rejection.
-    let winningBid;
+    // Settle the auction ATOMICALLY. Every fact the outcome depends on is read
+    // and written inside ONE transaction, so there is no check-then-act gap:
+    //   - The winner's CURRENT role is re-read here (tx.user), not trusted from
+    //     the socket handshake or the moment they bid. Because that read shares
+    //     the settlement transaction, a role change racing settlement cannot
+    //     slip a sale through between the authorization check and the writes —
+    //     a since-demoted winner is caught and the sale is voided.
+    //   - The winning bid, the SOLD flip, and the escrow Transaction commit
+    //     together, so a settled auction can never leave a SOLD listing with no
+    //     payable transaction.
+    // The whole thing is wrapped in try/catch because endAuction runs from a
+    // setTimeout with no caller to handle a rejection — on ANY failure (e.g. a
+    // transient DB outage during the authorization read) we must still release
+    // the listing and drop the in-memory auction, or it is stranded IN_AUCTION
+    // with a dead timer and never ends.
+    type Settlement =
+      | { outcome: 'sold'; bidId: string }
+      | { outcome: 'voided' }
+      | { outcome: 'gone' };
+    let settlement: Settlement;
     try {
-      winningBid = await prisma.$transaction(async (tx) => {
+      settlement = await prisma.$transaction(async (tx): Promise<Settlement> => {
+        const listing = await tx.listing.findUnique({ where: { id: listingId } });
+        if (!listing) return { outcome: 'gone' };
+
+        // Final authorization gate — never mint an ACCEPTED bid + escrow
+        // Transaction for a principal the REST layer would now 403.
+        const winner = await tx.user.findUnique({
+          where: { id: winnerId },
+          select: { role: true },
+        });
+        if (winner?.role !== 'BUYER') {
+          // Void: return the listing to the market instead of selling to a
+          // non-buyer. Same transaction, so the revert is atomic too.
+          await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+          return { outcome: 'voided' };
+        }
+
         const wb = await tx.bid.create({
           data: {
             listingId,
@@ -436,28 +435,48 @@ async function endAuction(listingId: string) {
             status: 'ACCEPTED',
           },
         });
-        await tx.listing.update({
-          where: { id: listingId },
-          data: { status: 'SOLD' },
-        });
+        await tx.listing.update({ where: { id: listingId }, data: { status: 'SOLD' } });
         await createTransaction(wb.id, tx);
-        return wb;
+        return { outcome: 'sold', bidId: wb.id };
       });
     } catch (err) {
       console.error(`Failed to settle auction ${listingId}:`, err);
+      // The transaction rolled back, so the listing is still IN_AUCTION.
+      // Best-effort release it back to the market so it isn't stranded, then
+      // drop the dead in-memory auction.
+      try {
+        await prisma.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+      } catch (revertErr) {
+        console.error(`Failed to revert listing ${listingId} after settlement error:`, revertErr);
+      }
       activeAuctions.delete(listingId);
       return;
     }
 
-    // Broadcast auction end with winner
-    io.to(roomName).emit('auction:ended', {
-      listingId,
-      winner: auction.currentWinnerName,
-      winnerId: auction.currentWinner,
-      finalPrice: auction.currentPrice,
-      totalBids: auction.bids.length,
-      bidId: winningBid.id,
-    });
+    if (settlement.outcome === 'sold') {
+      // Broadcast auction end with winner
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: auction.currentWinnerName,
+        winnerId: auction.currentWinner,
+        finalPrice: auction.currentPrice,
+        totalBids: auction.bids.length,
+        bidId: settlement.bidId,
+      });
+    } else if (settlement.outcome === 'voided') {
+      console.warn(
+        `Auction ${listingId} winner ${winnerId} is no longer a BUYER — sale voided, listing returned to ACTIVE`
+      );
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: null,
+        finalPrice: auction.startPrice,
+        totalBids: auction.bids.length,
+        message: 'Auction voided — winning bidder is no longer authorized to buy',
+      });
+    }
+    // outcome 'gone' (listing deleted mid-auction): nothing to settle or
+    // broadcast; fall through to the shared cleanup below.
   } else {
     // No bids — revert to ACTIVE
     await prisma.listing.update({
