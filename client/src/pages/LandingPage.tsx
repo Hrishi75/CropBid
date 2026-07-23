@@ -68,7 +68,7 @@ const PRODUCTS: Produce[] = [
   // Jun-2026 procurement rates; ceilings track DoCA retail levels (Jul 2026).
   // Keep in sync with mobile/src/lib/catalog.ts.
   { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',             emoji: '🥛', cat: 'dairy', unit: 'LITRE', priceMin: 55,  priceMax: 58,  qty: 600, location: 'Anand',    state: 'Gujarat',     bids: 5, grade: 'A' },
-  { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',             emoji: '🐃', cat: 'dairy', unit: 'LITRE', priceMin: 56,  priceMax: 72,  qty: 450, location: 'Karnal',   state: 'Haryana',     bids: 4, grade: 'A' },
+  { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',             emoji: '🐃', cat: 'dairy', unit: 'LITRE', priceMin: 69,  priceMax: 72,  qty: 450, location: 'Karnal',   state: 'Haryana',     bids: 4, grade: 'A' },
   { slug: 'curd',         name: 'Curd (Dahi)',   variety: 'Farm-set',           emoji: '🥣', cat: 'dairy', unit: 'LITRE', priceMin: 55,  priceMax: 75,  qty: 200, location: 'Kolhapur', state: 'Maharashtra', bids: 2, grade: 'A' },
   { slug: 'paneer',       name: 'Paneer',        variety: 'Malai',              emoji: '🧀', cat: 'dairy', unit: 'KG', priceMin: 340, priceMax: 400, qty: 80,  location: 'Pune',     state: 'Maharashtra', bids: 3, grade: 'A' },
   { slug: 'ghee',         name: 'Ghee',          variety: 'Desi Cow',           emoji: '🧈', cat: 'dairy', unit: 'KG', priceMin: 540, priceMax: 650, qty: 60,  location: 'Jaipur',   state: 'Rajasthan',   bids: 6, grade: 'A', organic: true },
