@@ -42,7 +42,7 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   // Jun-2026 procurement rates (cow 4% fat ≈ ₹39/L, buffalo 6–7% ≈ ₹54–63/L);
   // anchors track DoCA retail levels (Delhi, Jul 2026: milk ₹60, curd ₹61,
   // paneer ₹348–400, ghee ₹524–572).
-  { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',            emoji: '🥛', cat: 'dairy', unit: 'LITRE', price: 39,  anchor: 58,  qty: 600, location: 'Anand',     state: 'Gujarat',     grade: 'A' },
+  { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',            emoji: '🥛', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 58,  qty: 600, location: 'Anand',     state: 'Gujarat',     grade: 'A' },
   { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',            emoji: '🐃', cat: 'dairy', unit: 'LITRE', price: 56,  anchor: 72,  qty: 450, location: 'Karnal',    state: 'Haryana',     grade: 'A' },
   { slug: 'curd',         name: 'Curd (Dahi)',   variety: 'Farm-set',          emoji: '🥣', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 75,  qty: 200, location: 'Kolhapur',  state: 'Maharashtra', grade: 'A' },
   { slug: 'paneer',       name: 'Paneer',        variety: 'Malai',             emoji: '🧀', cat: 'dairy', unit: 'KG', price: 340, anchor: 400, qty: 80,  location: 'Pune',      state: 'Maharashtra', grade: 'A' },
@@ -111,7 +111,7 @@ export const CHIPS: Array<{ label: string; target: RailId | null }> = [
 // Top ticker — same ten crops and day-over-day moves as the web homepage.
 export const TICKER: Array<{ name: string; price: number; unit: 'KG' | 'QUINTAL' | 'LITRE'; delta: number }> = [
   { name: 'Wheat',        price: 2480,  unit: 'QUINTAL', delta: 0.9 },
-  { name: 'Cow Milk',     price: 39,    unit: 'LITRE',   delta: 0.4 },
+  { name: 'Cow Milk',     price: 55,    unit: 'LITRE',   delta: 0.4 },
   { name: 'Onion',        price: 18,    unit: 'KG',      delta: -1.2 },
   { name: 'Mango',        price: 90,    unit: 'KG',      delta: 2.1 },
   { name: 'Chana',        price: 5720,  unit: 'QUINTAL', delta: 0.7 },
