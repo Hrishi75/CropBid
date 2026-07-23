@@ -39,7 +39,7 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   { slug: 'spinach',      name: 'Spinach',       variety: 'All Green',         emoji: '🥬', cat: 'veg', unit: 'KG', price: 15,  anchor: 22,  qty: 300,  location: 'Indore',    state: 'Madhya Pradesh',   grade: 'A', organic: true },
 
   // Milk & dairy — ₹/kg (≈ per litre for liquid milk). Floors track Amul's
-  // Jun-2026 procurement rates (cow 4% fat ≈ ₹39/L, buffalo 6–7% ≈ ₹54–63/L);
+  // Jun-2026 procurement rates (cow 4% fat ≈ ₹55/L, buffalo 6–7% ≈ ₹54–63/L);
   // anchors track DoCA retail levels (Delhi, Jul 2026: milk ₹60, curd ₹61,
   // paneer ₹348–400, ghee ₹524–572).
   { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',            emoji: '🥛', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 58,  qty: 600, location: 'Anand',     state: 'Gujarat',     grade: 'A' },
