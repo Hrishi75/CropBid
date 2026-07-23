@@ -626,6 +626,16 @@ body * {
   background: rgba(255,255,255,0.06); color: rgba(244,241,234,0.7);
   border-color: rgba(255,255,255,0.1);
 }
+.cb-landing .cb-footer-contact { margin-top: 20px; }
+.cb-landing .cb-footer-contact-label {
+  display: block; font-family: var(--cb-font-mono); font-size: 11px;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(244,241,234,0.5); margin-bottom: 6px;
+}
+.cb-landing .cb-footer-contact a {
+  color: rgba(244,241,234,0.85); text-decoration: none; font-size: 14px;
+}
+.cb-landing .cb-footer-contact a:hover { color: #f4f1ea; }
 .cb-landing .cb-footer-col-title {
   font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.14em;
   text-transform: uppercase; color: rgba(244,241,234,0.5); margin-bottom: 14px;
