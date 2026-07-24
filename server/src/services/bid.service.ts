@@ -57,9 +57,11 @@ const PUBLIC_FARMER_SELECT = {
 } as const;
 
 // The seller needs to know where to send the goods and whom to call. When the
-// order form didn't collect these (one-tap consumer buy, agent bids), snapshot
-// the buyer's profile phone/location instead of leaving the seller blind.
-async function orderContactDefaults(
+// order form didn't collect these (one-tap consumer buy, agent bids, buyer
+// requirement fills), snapshot the buyer's profile phone/location instead of
+// leaving the seller blind. Exported for requirement.service, which builds the
+// same order snapshot from a requirement's delivery address.
+export async function orderContactDefaults(
   buyerId: string,
   input: { deliveryAddress?: string; contactPhone?: string },
 ) {

@@ -28,9 +28,14 @@ import { MyListings } from '../pages/farmer/MyListings';
 import { CreateListing } from '../pages/farmer/CreateListing';
 import { IncomingBids } from '../pages/farmer/IncomingBids';
 import { Deliveries } from '../pages/farmer/Deliveries';
+import { RequirementsFeed } from '../pages/farmer/RequirementsFeed';
+import { MyOffers } from '../pages/farmer/MyOffers';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { MyBids } from '../pages/buyer/MyBids';
+import { MyRequirements } from '../pages/buyer/MyRequirements';
+import { CreateRequirement } from '../pages/buyer/CreateRequirement';
+import { RequirementDetail } from '../pages/buyer/RequirementDetail';
 import { PlaceBid } from '../pages/buyer/PlaceBid';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
@@ -165,6 +170,22 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/farmer/requirements"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <RequirementsFeed />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/farmer/offers"
+        element={
+          <ProtectedRoute allowedRoles={['FARMER']}>
+            <MyOffers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/farmer/analytics"
         element={
           <ProtectedRoute allowedRoles={['FARMER']}>
@@ -205,6 +226,41 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <MyBids />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Requirements — /new and /:id/edit declared before /:id, matching how
+          the farmer's listing routes are ordered. */}
+      <Route
+        path="/buyer/requirements/new"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <CreateRequirement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/:id/edit"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <CreateRequirement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/:id"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <RequirementDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <MyRequirements />
           </ProtectedRoute>
         }
       />
