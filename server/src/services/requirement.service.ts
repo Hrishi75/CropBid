@@ -141,6 +141,43 @@ function statusPhrase(status: string): string {
   return `${'aeiou'.includes(word[0]!) ? 'an' : 'a'} ${word}`;
 }
 
+// The fields that define WHAT a farmer agreed to supply and WHERE. A pending
+// offer is an answer to these; change any of them and the outstanding offers are
+// answers to a different question, so they must not survive into a deal.
+//
+// Deliberately excluded:
+//   quantity     — already reconciled against what's filled, and an offer names
+//                  its own quantity, which is re-checked at accept time
+//   pricePerUnit — a COUNTER offer names its own price, so the buyer's posted
+//                  price is not what a pending offer agreed to (an INSTANT offer
+//                  is born ACCEPTED and is never pending)
+//   description  — prose for humans; it binds nothing
+const MATERIAL_TERMS = [
+  'cropName',
+  'cropVariety',
+  'unit',
+  'qualityGrade',
+  'organic',
+  'deliveryLocation',
+  'deliveryState',
+  'deliveryCountry',
+  'neededBy',
+  'paymentTerms',
+  'deliveryTerms',
+] as const;
+
+function materialTermsChanged(before: Record<string, any>, after: Record<string, any>): boolean {
+  return MATERIAL_TERMS.some((field) => {
+    const a = before[field];
+    const b = after[field];
+    // Dates need value comparison, not identity.
+    if (a instanceof Date || b instanceof Date) {
+      return (a as Date | null)?.getTime() !== (b as Date | null)?.getTime();
+    }
+    return a !== b;
+  });
+}
+
 // =============================================================================
 // SHARED — Guards reused across the response paths
 // =============================================================================
@@ -763,9 +800,21 @@ export async function rejectOffer(offerId: string, buyerUserId: string) {
     throw new ApiError(400, `Cannot reject ${statusPhrase(offer.status)} offer`);
   }
 
-  const updated = await prisma.requirementOffer.update({
-    where: { id: offerId },
+  // Conditional claim, not a bare update: the status check above is a read, and
+  // acceptOffer can commit between that read and this write. An unconditional
+  // update would then flip an ACCEPTED offer — one that already has a Listing,
+  // Bid and payable Transaction behind it — back to REJECTED, hiding a real deal
+  // from both parties.
+  const claimed = await prisma.requirementOffer.updateMany({
+    where: { id: offerId, status: 'PENDING' },
     data: { status: 'REJECTED', respondedAt: new Date() },
+  });
+  if (claimed.count === 0) {
+    throw new ApiError(409, 'This offer is no longer pending — it may have just been accepted.');
+  }
+
+  const updated = await prisma.requirementOffer.findUniqueOrThrow({
+    where: { id: offerId },
     include: { farmer: { select: PUBLIC_OFFER_FARMER_SELECT } },
   });
 
@@ -799,10 +848,23 @@ export async function withdrawOffer(offerId: string, farmerUserId: string) {
   // Marked WITHDRAWN rather than hard-deleted (which is what withdrawing a bid
   // does): the row can carry listing/bid FKs, and "offered then pulled out" is a
   // trust signal worth keeping in the farmer's history.
-  return prisma.requirementOffer.update({
-    where: { id: offerId },
+  //
+  // Conditional claim for the same reason rejectOffer uses one, and this is the
+  // likelier race of the two: withdrawing is the FARMER's action while accepting
+  // is the BUYER's, so the two genuinely run at once. Losing it means the farmer
+  // sees WITHDRAWN while a payable Transaction sits behind the offer.
+  const claimed = await prisma.requirementOffer.updateMany({
+    where: { id: offerId, status: 'PENDING' },
     data: { status: 'WITHDRAWN', respondedAt: new Date() },
   });
+  if (claimed.count === 0) {
+    throw new ApiError(
+      409,
+      'This offer is no longer pending — the buyer may have just accepted it. Refresh to see the deal.',
+    );
+  }
+
+  return prisma.requirementOffer.findUniqueOrThrow({ where: { id: offerId } });
 }
 
 // =============================================================================
@@ -828,7 +890,7 @@ export async function updateRequirement(
     if (neededBy < new Date()) throw new ApiError(400, 'Needed-by date must be in the future');
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Take the row lock BEFORE reading the quantities. Under READ COMMITTED a
     // concurrent fill and a quantity edit would otherwise clobber each other:
     // the edit would compute `filled` from a stale row and write back a
@@ -881,12 +943,37 @@ export async function updateRequirement(
       include: { buyer: { select: PUBLIC_BUYER_SELECT } },
     });
 
-    // Shrinking the quantity down to exactly what's already filled closes it.
-    const settled = await settleIfFilled(tx, id);
-    notifyExpiredOffers(settled.expired, updated.cropName, id);
+    // A pending offer agreed to supply a specific crop, at a specific grade, to
+    // a specific place. If the buyer has changed any of that, accepting the offer
+    // later would mint a Listing/Bid/Transaction from the NEW terms while keeping
+    // the farmer's OLD quantity and price — binding them to a deal they never
+    // offered. Retire those offers instead; the farmer can re-offer against the
+    // requirement as it now stands.
+    let staleExpired: { id: string; farmerId: string }[] = [];
+    if (materialTermsChanged(current, updated)) {
+      staleExpired = await tx.requirementOffer.findMany({
+        where: { requirementId: id, status: 'PENDING' },
+        select: { id: true, farmerId: true },
+      });
+      await tx.requirementOffer.updateMany({
+        where: { requirementId: id, status: 'PENDING' },
+        data: { status: 'EXPIRED', respondedAt: new Date() },
+      });
+    }
 
-    return updated;
+    // Shrinking the quantity down to exactly what's already filled closes it.
+    // staleExpired already swept every PENDING row, so the two lists never
+    // overlap — settleIfFilled finds nothing left to expire when it ran.
+    const settled = await settleIfFilled(tx, id);
+
+    return { updated, expired: [...staleExpired, ...settled.expired] };
   });
+
+  // Best-effort, after commit — never from inside the transaction, or a rollback
+  // would leave farmers told their offer expired when it didn't.
+  notifyExpiredOffers(result.expired, result.updated.cropName, id);
+
+  return result.updated;
 }
 
 // =============================================================================

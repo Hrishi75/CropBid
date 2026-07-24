@@ -11,6 +11,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as requirementService from '../services/requirement.service';
 import { auditFromRequest } from '../services/audit.service';
+import { ApiError } from '../utils/ApiError';
 
 function paramId(req: Request): string {
   return req.params.id as string;
@@ -55,6 +56,26 @@ const createOfferSchema = z.object({
   message: z.string().max(500).optional(),
 });
 
+// Enum-valued query params go straight into Prisma enum filters, where an
+// unrecognised value makes Prisma throw and the endpoint 500s. Validate at the
+// boundary and return a controlled 400 instead — the same reason the services
+// whitelist sortable columns rather than trusting `sort`.
+const QUALITY_GRADES = ['A', 'B', 'C'];
+const REQUIREMENT_STATUSES = ['OPEN', 'FULFILLED', 'CLOSED', 'EXPIRED'];
+const OFFER_STATUSES = ['PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED'];
+
+// Returns the value when valid, undefined when absent, and throws a 400 when
+// present but unrecognised. Silently dropping a bad value would be worse: the
+// caller would get an unfiltered list and believe it was filtered.
+function enumParam(value: unknown, allowed: string[], label: string): string | undefined {
+  if (value === undefined || value === '') return undefined;
+  const v = String(value);
+  if (!allowed.includes(v)) {
+    throw new ApiError(400, `Invalid ${label}. Expected one of: ${allowed.join(', ')}`);
+  }
+  return v;
+}
+
 // Query strings arrive as strings; coerce the numerics and booleans once here so
 // the service can take a clean typed query.
 function parseFeedQuery(req: Request) {
@@ -64,7 +85,7 @@ function parseFeedQuery(req: Request) {
     crop: (q.crop as string) || undefined,
     crops: typeof q.crops === 'string' && q.crops ? q.crops.split(',') : undefined,
     state: (q.state as string) || undefined,
-    quality: (q.quality as string) || undefined,
+    quality: enumParam(q.quality, QUALITY_GRADES, 'quality grade'),
     organic: q.organic === undefined ? undefined : q.organic === 'true',
     priceMin: num(q.priceMin),
     priceMax: num(q.priceMax),
@@ -177,7 +198,7 @@ export async function getFeedFilters(_req: Request, res: Response, next: NextFun
 export async function getMyRequirements(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await requirementService.getMyRequirements(req.user!.userId, {
-      status: (req.query.status as string) || undefined,
+      status: enumParam(req.query.status, REQUIREMENT_STATUSES, 'status'),
       page: req.query.page ? Number(req.query.page) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     });
@@ -205,7 +226,7 @@ export async function getMyOffers(req: Request, res: Response, next: NextFunctio
   try {
     const offers = await requirementService.getMyOffers(
       req.user!.userId,
-      (req.query.status as string) || undefined,
+      enumParam(req.query.status, OFFER_STATUSES, 'status'),
     );
     res.json(offers);
   } catch (error) {
