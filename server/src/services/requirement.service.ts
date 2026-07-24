@@ -261,6 +261,13 @@ interface MaterialiseParams {
   farmerProfile: { id: string; state: string; country: string; user: { location: string | null } };
   quantity: number;
   pricePerUnit: number;
+  // The denomination the two parties actually agreed on, passed explicitly
+  // rather than read back off the requirement. A COUNTER offer snapshots its own
+  // currency at creation, and that snapshot — not whatever the requirement says
+  // at accept time — is what the farmer offered in. Reading it from the
+  // requirement would make the deal's correctness depend on the requirement's
+  // currency being immutable, which is an invariant enforced somewhere else.
+  currency: 'INR' | 'USD' | 'EUR' | 'GBP';
   contact: { deliveryAddress: string | null; contactPhone: string | null };
   message?: string | null;
 }
@@ -290,7 +297,7 @@ async function materialiseDeal(tx: Prisma.TransactionClient, p: MaterialiseParam
       // print a single honest figure.
       pricePerUnitMin: p.pricePerUnit,
       pricePerUnitMax: p.pricePerUnit,
-      currency: requirement.currency,
+      currency: p.currency,
       directSaleEnabled: false,
       description:
         `Filled buyer requirement #${requirement.id.slice(-6).toUpperCase()} — ` +
@@ -315,7 +322,7 @@ async function materialiseDeal(tx: Prisma.TransactionClient, p: MaterialiseParam
       bidPricePerUnit: p.pricePerUnit,
       quantity: p.quantity,
       totalAmount,
-      currency: requirement.currency,
+      currency: p.currency,
       message: p.message || null,
       deliveryAddress: p.contact.deliveryAddress,
       contactPhone: p.contact.contactPhone,
@@ -592,6 +599,9 @@ export async function acceptRequirementNow(
       farmerProfile,
       quantity: input.quantity,
       pricePerUnit: requirement.pricePerUnit,
+      // An instant fill takes the requirement exactly as posted, and the offer
+      // row below snapshots the same value in the same transaction.
+      currency: requirement.currency,
       contact,
       message: input.message,
     });
@@ -752,6 +762,10 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
       farmerProfile,
       quantity: offer.quantity,
       pricePerUnit: offer.pricePerUnit,
+      // The offer's own snapshot, taken when the farmer submitted it — not the
+      // requirement's current value. price, quantity and currency then all come
+      // from the same agreement rather than two points in time.
+      currency: offer.currency,
       contact,
       message: offer.message,
     });

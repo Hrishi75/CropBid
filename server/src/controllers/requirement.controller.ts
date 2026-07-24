@@ -43,7 +43,13 @@ const createRequirementSchema = z.object({
   deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
 });
 
-const updateRequirementSchema = createRequirementSchema.partial();
+// `currency` is omitted on purpose, joining status/remainingQuantity/buyerId as
+// fixed-at-creation. A requirement can already carry filled deals and pending
+// offers denominated in the original currency, and re-denominating it would make
+// those disagree with each other. The service never persisted it either, so this
+// only makes an existing invariant visible: previously a client could PUT a new
+// currency, get a 200, and believe it had changed.
+const updateRequirementSchema = createRequirementSchema.partial().omit({ currency: true });
 
 const acceptNowSchema = z.object({
   quantity: z.number().positive('Quantity must be positive'),
