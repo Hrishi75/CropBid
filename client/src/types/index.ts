@@ -20,6 +20,9 @@ export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXP
 export type PaymentStatus = 'AWAITING_PAYMENT' | 'ESCROW' | 'RELEASED' | 'REFUNDED';
 export type DeliveryStatus = 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | 'CONFIRMED';
 export type NegotiationOutcome = 'DEAL' | 'NO_DEAL' | 'IN_PROGRESS';
+export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
+export type RequirementOfferStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
 
 // --- Models ---
 export interface User {
@@ -134,6 +137,92 @@ export interface Bid {
   counterPrice: number | null;
   createdAt: string;
   expiresAt: string | null;
+}
+
+// --- Buyer Requirements (the reverse marketplace) ---
+// A buyer posts demand; farmers either fill it at the posted price (an INSTANT
+// offer, which closes the deal immediately) or counter with their own price (a
+// COUNTER offer the buyer accepts or rejects).
+
+// The counterparty-safe buyer shape the API returns on requirements — company
+// details only, never taxId, procurement volume, phone or email.
+export interface RequirementBuyer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  buyerProfile?: Pick<BuyerProfile, 'companyName' | 'companyType' | 'country' | 'verified'> | null;
+}
+
+// The counterparty-safe farmer shape on offers. Rooted at User, not
+// FarmerProfile, because RequirementOffer.farmerId targets User.
+export interface RequirementOfferFarmer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  farmerProfile?: Pick<
+    FarmerProfile,
+    'state' | 'country' | 'organicCertified' | 'certificationBody' | 'verified'
+  > | null;
+}
+
+export interface BuyerRequirement {
+  id: string;
+  buyerId: string;
+  buyer?: RequirementBuyer;
+  cropName: string;
+  cropVariety: string | null;
+  quantity: number;
+  remainingQuantity: number;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  currency: Currency;
+  deliveryLocation: string;
+  deliveryState: string;
+  deliveryCountry: string;
+  neededBy: string | null;
+  description: string | null;
+  organic: boolean;
+  paymentTerms: string | null;
+  deliveryTerms: string | null;
+  status: RequirementStatus;
+  createdAt: string;
+  updatedAt: string;
+  offers?: RequirementOffer[];
+  // On the feed this counts ALL offers; on /my it counts only PENDING ones,
+  // because that's the number the buyer needs to act on.
+  _count?: { offers: number };
+}
+
+export interface RequirementOffer {
+  id: string;
+  requirementId: string;
+  requirement?: BuyerRequirement;
+  farmerId: string;
+  farmer?: RequirementOfferFarmer;
+  kind: RequirementOfferKind;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  currency: Currency;
+  message: string | null;
+  status: RequirementOfferStatus;
+  listingId: string | null;
+  bidId: string | null;
+  // Present once the offer becomes a deal — the route to the transaction.
+  bid?: {
+    id: string;
+    transaction?: {
+      id: string;
+      paymentStatus: PaymentStatus;
+      deliveryStatus: DeliveryStatus;
+    } | null;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+  respondedAt: string | null;
 }
 
 export interface Transaction {

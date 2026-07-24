@@ -121,6 +121,35 @@ enum NegotiationOutcome {
   IN_PROGRESS // Still negotiating
 }
 
+// Buyer requirements — the reverse marketplace. A requirement runs the mirror
+// image of a Listing's lifecycle: it opens with a quantity, gets whittled down
+// by partial fills, and closes at zero.
+enum RequirementStatus {
+  OPEN      // Accepting fills and offers
+  FULFILLED // remainingQuantity hit 0 — every unit is spoken for
+  CLOSED    // Buyer withdrew it before it filled
+  EXPIRED   // neededBy passed with quantity still open.
+            // NOTE: nothing sets this automatically — there is no scheduler in
+            // this codebase (same story as ListingStatus.EXPIRED). The feed and
+            // both accept paths reject past-deadline rows lazily instead.
+}
+
+enum RequirementOfferStatus {
+  PENDING   // Awaiting the buyer's decision
+  ACCEPTED  // Buyer took it — a Listing + Bid + Transaction now exist
+  REJECTED  // Buyer declined
+  WITHDRAWN // Farmer pulled it before the buyer decided
+  EXPIRED   // Requirement filled or closed underneath it
+}
+
+// The two product paths, not a style flag: an INSTANT row is born ACCEPTED (the
+// farmer took the buyer's posted price), a COUNTER row is born PENDING and needs
+// the buyer's sign-off.
+enum RequirementOfferKind {
+  INSTANT
+  COUNTER
+}
+
 // =============================================================================
 // Model 1: User — The core identity
 // =============================================================================
@@ -165,6 +194,8 @@ model User {
   buyerTransactions  Transaction[] @relation("BuyerTransactions")
   notifications Notification[]
   equipmentEnquiries EquipmentEnquiry[] // Machinery leads this user has raised
+  buyerRequirements BuyerRequirement[]  // Demand this buyer has posted
+  requirementOffers RequirementOffer[]  // Responses this farmer has sent
 }
 
 // =============================================================================
@@ -264,6 +295,13 @@ model Listing {
   directSaleEnabled  Boolean   @default(false)
   retailPricePerUnit Float?
 
+  // True when this row exists only to carry a buyer-requirement fill into the
+  // Transaction pipeline — Transaction.listingId and .bidId are both NOT NULL,
+  // so a fill needs a Listing to hang off. Born SOLD with remainingQuantity 0;
+  // it is never inventory, so listing.service and analytics filter it out.
+  // Same marker technique as Bid.isDirectPurchase.
+  isRequirementFill  Boolean   @default(false)
+
   // Dates
   harvestDate    DateTime?     // When the crop was/will be harvested
   expiryDate     DateTime?     // When this listing expires
@@ -288,6 +326,122 @@ model Listing {
   bids          Bid[]
   transactions  Transaction[]
   negotiations  Negotiation[]
+  requirementOffer RequirementOffer? // Set when this listing is a requirement fill
+}
+
+// =============================================================================
+// Model 4b: BuyerRequirement — A buyer's standing demand
+// =============================================================================
+// The mirror image of a Listing: "I want 500 qtl cotton at ₹7,000/qtl, delivered
+// to Nagpur". Farmers either take that price outright (an INSTANT offer, which
+// closes the deal on the spot) or counter with their own price (a COUNTER offer
+// the buyer signs off on).
+//
+// WHY buyerId → User.id AND NOT BuyerProfile.id?
+// Listing.farmerId points at FarmerProfile.id, which forces every caller to
+// resolve profile→user before it can do anything. But Bid.buyerId,
+// Transaction.farmerId/buyerId, Notification.userId and AuditLog.actorId ALL
+// target User.id, and so does req.user.userId. Every single thing this model
+// feeds needs the User id; nothing needs the profile id. Pointing at User makes
+// the ownership check a bare `requirement.buyerId === userId` instead of a join.
+// Company details are still one hop away via User.buyerProfile.
+
+model BuyerRequirement {
+  id                String            @id @default(uuid())
+
+  buyerId           String
+  buyer             User              @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  cropName          String            // e.g., "Cotton"
+  cropVariety       String?           // e.g., "Shankar-6"
+
+  quantity          Float             // Total demand, fixed at creation
+  remainingQuantity Float             // Decremented on every fill; 0 → FULFILLED
+  unit              Unit              @default(QUINTAL)
+  qualityGrade      QualityGrade      // Minimum grade the buyer will accept
+
+  // A single number, not a range: this is what the buyer will pay, and it is the
+  // price an INSTANT fill executes at. Farmers who want more send a COUNTER.
+  pricePerUnit      Float
+  currency          Currency          @default(INR)
+
+  // Where the goods must LAND. Deliberately separate from the fill listing's
+  // location/state, which is where they ship FROM.
+  deliveryLocation  String            // City/town, e.g. "Nagpur"
+  deliveryState     String
+  deliveryCountry   String            @default("India")
+  neededBy          DateTime?         // Delivery deadline
+
+  description       String?
+  organic           Boolean           @default(false) // Buyer REQUIRES organic
+
+  // Copied onto the auto-created Bid so a requirement deal carries the same
+  // commercial terms a hand-placed bid does.
+  paymentTerms      String?           // LC | NET7 | NET15 — validated at the API boundary
+  deliveryTerms     String?           // FOB | CIF — validated at the API boundary
+
+  status            RequirementStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offers RequirementOffer[]
+
+  // The farmer feed is always "OPEN, newest first", usually narrowed by crop or
+  // delivery state.
+  @@index([status, createdAt])
+  @@index([cropName, status])
+  @@index([deliveryState, status])
+  @@index([buyerId, createdAt])
+}
+
+// =============================================================================
+// Model 4c: RequirementOffer — A farmer's response to a requirement
+// =============================================================================
+// Two kinds share one table because they share one lifecycle and one inbox:
+//   INSTANT — farmer took the posted price. Created already ACCEPTED, with its
+//             listing/bid/transaction materialised in the same DB transaction.
+//   COUNTER — farmer's own price/quantity. Created PENDING; the buyer accepts
+//             (which materialises the deal) or rejects.
+//
+// farmerId targets User.id for the same reason buyerId does above — the
+// FarmerProfile id is looked up exactly once, inside the accept path, because
+// that is the only place that needs it (Listing.farmerId).
+
+model RequirementOffer {
+  id            String                 @id @default(uuid())
+
+  requirementId String
+  requirement   BuyerRequirement       @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  farmerId      String
+  farmer        User                   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+
+  kind          RequirementOfferKind
+  quantity      Float
+  pricePerUnit  Float
+  totalAmount   Float                  // pricePerUnit × quantity, snapshotted.
+                                       // The Transaction is money-of-record.
+  currency      Currency               @default(INR)
+  message       String?
+
+  status        RequirementOfferStatus @default(PENDING)
+
+  // Set the moment the offer becomes a real deal. Nullable because a PENDING /
+  // REJECTED / WITHDRAWN offer never produces one. @unique means the database
+  // itself refuses to let one offer mint two listings or two bids — a hard
+  // backstop under the conditional-claim logic in the service.
+  listingId     String?                @unique
+  listing       Listing?               @relation(fields: [listingId], references: [id])
+  bidId         String?                @unique
+  bid           Bid?                   @relation(fields: [bidId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  respondedAt DateTime?                // When the buyer accepted/rejected
+
+  @@index([requirementId, status])
+  @@index([farmerId, createdAt])
 }
 
 // =============================================================================
@@ -382,6 +536,7 @@ model Bid {
   // Relations
   transaction  Transaction?
   negotiation  Negotiation?
+  requirementOffer RequirementOffer? // Set when this bid is a requirement fill
 }
 
 // =============================================================================

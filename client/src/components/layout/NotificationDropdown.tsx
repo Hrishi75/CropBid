@@ -31,6 +31,11 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   AUCTION_WON: Gavel,
   DELIVERY_UPDATE: Truck,
   PAYMENT_RELEASED: DollarSign,
+  REQUIREMENT_OFFER: Gavel,
+  REQUIREMENT_FILLED: Check,
+  REQUIREMENT_OFFER_ACCEPTED: Check,
+  REQUIREMENT_OFFER_REJECTED: Package,
+  REQUIREMENT_CLOSED: Package,
 };
 
 export function NotificationDropdown() {
@@ -132,6 +137,16 @@ export function NotificationDropdown() {
       navigate(`/listings/${data.listingId}`);
     } else if (data?.listingId) {
       navigate(`/listings/${data.listingId}`);
+    } else if (data?.requirementId) {
+      // Requirement events without a transaction (a new offer, a rejection, a
+      // closure). The two sides have different homes for it: the buyer owns the
+      // requirement and its offers inbox; the farmer only ever sees their own
+      // offers, so send them there.
+      navigate(
+        user?.role === 'FARMER'
+          ? '/farmer/offers'
+          : `/buyer/requirements/${data.requirementId}`,
+      );
     }
   }
 
