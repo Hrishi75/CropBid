@@ -37,9 +37,13 @@ export async function getFarmerAnalytics(userId: string) {
     orderBy: { createdAt: 'asc' },
   });
 
-  // Get listing stats
+  // Get listing stats. Requirement fills are excluded: they're synthetic SOLD
+  // rows behind buyer-requirement deals, so counting them would inflate
+  // totalListings, cropDistribution and listingStatuses with lots the farmer
+  // never actually listed. The revenue figures above intentionally DO include
+  // those deals — the money is real, only the listing is a carrier.
   const listings = await prisma.listing.findMany({
-    where: { farmerId: farmerProfile.id },
+    where: { farmerId: farmerProfile.id, isRequirementFill: false },
     select: {
       status: true,
       cropName: true,

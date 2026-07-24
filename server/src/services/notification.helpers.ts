@@ -59,6 +59,62 @@ export async function notifyDirectPurchase(farmerId: string, buyerName: string, 
   });
 }
 
+// --- Buyer Requirement Events ---
+// The reverse marketplace. Note which payloads carry `transactionId`: the
+// notification dropdown checks for it BEFORE the listing/requirement branches,
+// so the two "deal is done" events deep-link both parties straight to the deal.
+// The others carry `requirementId` and land on the relevant inbox instead.
+
+export async function notifyRequirementOffer(buyerId: string, farmerName: string, cropName: string, price: number, currency: string, unit: string, requirementId: string, offerId: string) {
+  await createNotification({
+    userId: buyerId,
+    type: 'REQUIREMENT_OFFER',
+    title: `New offer on your ${cropName} requirement`,
+    message: `${farmerName} offered ${currency} ${price}/${unit}`,
+    data: { requirementId, offerId },
+  });
+}
+
+export async function notifyRequirementFilled(buyerId: string, farmerName: string, cropName: string, quantity: number, unit: string, requirementId: string, offerId: string, transactionId: string) {
+  await createNotification({
+    userId: buyerId,
+    type: 'REQUIREMENT_FILLED',
+    title: `${cropName} requirement filled`,
+    message: `${farmerName} supplied ${quantity} ${unit} at your posted price`,
+    data: { requirementId, offerId, transactionId },
+  });
+}
+
+export async function notifyRequirementOfferAccepted(farmerId: string, cropName: string, price: number, currency: string, unit: string, requirementId: string, offerId: string, transactionId: string) {
+  await createNotification({
+    userId: farmerId,
+    type: 'REQUIREMENT_OFFER_ACCEPTED',
+    title: 'Offer accepted!',
+    message: `Your offer on ${cropName} at ${currency} ${price}/${unit} was accepted`,
+    data: { requirementId, offerId, transactionId },
+  });
+}
+
+export async function notifyRequirementOfferRejected(farmerId: string, cropName: string, requirementId: string, offerId: string) {
+  await createNotification({
+    userId: farmerId,
+    type: 'REQUIREMENT_OFFER_REJECTED',
+    title: 'Offer rejected',
+    message: `Your offer on the ${cropName} requirement was rejected by the buyer`,
+    data: { requirementId, offerId },
+  });
+}
+
+export async function notifyRequirementClosed(farmerId: string, cropName: string, requirementId: string, offerId: string) {
+  await createNotification({
+    userId: farmerId,
+    type: 'REQUIREMENT_CLOSED',
+    title: `${cropName} requirement closed`,
+    message: `The ${cropName} requirement you offered on is no longer open, so your offer has expired`,
+    data: { requirementId, offerId },
+  });
+}
+
 // --- Negotiation Events ---
 
 export async function notifyNegotiationResult(userId: string, cropName: string, outcome: string, finalPrice: number | null, currency: string, unit: string, negotiationId: string) {

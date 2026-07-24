@@ -19,6 +19,11 @@
 //   AUCTION_WON       — You won a live auction
 //   DELIVERY_UPDATE   — Delivery status changed
 //   PAYMENT_RELEASED  — Payment released from escrow
+//   REQUIREMENT_OFFER          — A farmer offered on your buyer requirement
+//   REQUIREMENT_FILLED         — A farmer filled part of it at your posted price
+//   REQUIREMENT_OFFER_ACCEPTED — The buyer accepted your offer
+//   REQUIREMENT_OFFER_REJECTED — The buyer rejected your offer
+//   REQUIREMENT_CLOSED         — The requirement closed, expiring your offer
 // =============================================================================
 
 import { prisma } from '../lib/prisma';

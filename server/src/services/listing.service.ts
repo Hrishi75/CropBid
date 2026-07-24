@@ -173,8 +173,13 @@ export async function getListings(query: ListingsQuery) {
   const sort = SORTABLE_FIELDS.includes(query.sort || '') ? (query.sort as string) : 'createdAt';
   const order = query.order === 'asc' ? 'asc' : 'desc';
 
-  // Build where clause
-  const where: any = {};
+  // Build where clause. Requirement fills are excluded everywhere: they are
+  // one-shot SOLD rows that exist only to carry a buyer-requirement deal into
+  // the Transaction pipeline, never inventory the farmer listed. Showing them
+  // in /listings/my would put phantom lots in the farmer's own stock list.
+  // getListingById deliberately does NOT filter, so deep links from a bid or
+  // transaction still resolve.
+  const where: any = { isRequirementFill: false };
   if (query.farmerId) where.farmerId = query.farmerId;
   if (query.status) where.status = query.status;
 
