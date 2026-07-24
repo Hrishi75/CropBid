@@ -592,16 +592,45 @@ export async function acceptRequirementNow(
       );
     }
 
+    // Re-read under the claim's row lock and check the terms have not moved.
+    // `requirement` above was read BEFORE this transaction opened, so a buyer's
+    // edit committing in that window is invisible to the claim — it only guards
+    // status and quantity. Materialising from the stale snapshot would bind a
+    // listing, bid and payable transaction to terms the requirement no longer
+    // carries, and the price is the sharp end: an edit from 7200 to 6000 would
+    // still bill the buyer 7200 on an in-flight fill.
+    //
+    // The counter path needs no equivalent check — a material edit expires
+    // pending offers, so acceptOffer's `status: PENDING` claim already catches
+    // this. An instant fill has no offer to expire, so it is checked here.
+    // Any edit arriving AFTER the claim blocks on the lock, so this window is
+    // the only one that exists.
+    const fresh = await tx.buyerRequirement.findUniqueOrThrow({ where: { id: requirement.id } });
+    if (
+      materialTermsChanged(requirement, fresh)
+      || fresh.pricePerUnit !== requirement.pricePerUnit
+      || fresh.currency !== requirement.currency
+    ) {
+      // Throwing rolls the claim back, so the stock is released untouched.
+      throw new ApiError(
+        409,
+        'The buyer just changed this requirement — nothing was filled. Reload to see the new terms before filling.',
+      );
+    }
+
     const settled = await settleIfFilled(tx, requirement.id);
 
     const deal = await materialiseDeal(tx, {
-      requirement,
+      // The freshly read row, not the pre-transaction snapshot. They are proven
+      // equal by the guard above, but using `fresh` keeps the deal sourced from
+      // the row that was actually locked.
+      requirement: fresh,
       farmerProfile,
       quantity: input.quantity,
-      pricePerUnit: requirement.pricePerUnit,
+      pricePerUnit: fresh.pricePerUnit,
       // An instant fill takes the requirement exactly as posted, and the offer
       // row below snapshots the same value in the same transaction.
-      currency: requirement.currency,
+      currency: fresh.currency,
       contact,
       message: input.message,
     });
@@ -612,9 +641,9 @@ export async function acceptRequirementNow(
         farmerId: farmerUserId,
         kind: 'INSTANT',
         quantity: input.quantity,
-        pricePerUnit: requirement.pricePerUnit,
-        totalAmount: money(requirement.pricePerUnit * input.quantity),
-        currency: requirement.currency,
+        pricePerUnit: fresh.pricePerUnit,
+        totalAmount: money(fresh.pricePerUnit * input.quantity),
+        currency: fresh.currency,
         message: input.message || null,
         status: 'ACCEPTED',
         respondedAt: new Date(),
