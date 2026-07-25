@@ -79,6 +79,141 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
   { slug: 'cotton',         name: 'Cotton',         variety: 'Shankar-6',  emoji: '☁️', cat: 'spices', unit: 'QUINTAL', price: 7800,  anchor: 8350,  qty: 140, location: 'Rajkot',    state: 'Gujarat',        grade: 'A' },
 ];
 
+// =============================================================================
+// Consumer packs — the retail tier
+// =============================================================================
+// A household does not buy a 1.2-tonne tomato lot. Every consumer-grade crop
+// carries a shop pack (1 kg tomatoes, 1 L milk, 100 g jeera) priced off the
+// farmgate floor plus a category retail margin — grading, packing, cold chain,
+// last-mile and wastage — unless the farmer set their own direct-sale price,
+// which always wins. The wholesale ₹/quintal tier stays on the card for bulk
+// buyers, who bid on the whole lot instead.
+//
+// Crops in BULK_ONLY are never shown as packs: nobody shops for a kilo of
+// Shankar-6. Keep in sync with client/src/pages/LandingPage.tsx.
+// =============================================================================
+
+const KG_PER_UNIT: Record<string, number> = { KG: 1, LITRE: 1, QUINTAL: 100, TONNE: 1000 };
+
+const RETAIL_MARGIN: Record<RailId, number> = {
+  veg: 0.30,     // washed, graded, crated — highest wastage
+  fruits: 0.30,
+  dairy: 0.10,   // chilled chain already priced into the procurement rate
+  grains: 0.25,  // cleaned, bagged, shelf-stable
+  spices: 0.25,
+};
+
+export interface Pack {
+  label: string;   // what the shopper puts in the basket
+  kg: number;      // pack size in kg — litres for liquids
+  margin?: number; // overrides the category margin
+}
+
+// Keyed by catalogue slug. Live listings are matched by crop name via NAME_TO_PACK.
+const PACKS: Record<string, Pack> = {
+  // Vegetables
+  tomato: { label: '1 kg', kg: 1 },
+  onion: { label: '1 kg', kg: 1 },
+  potato: { label: '1 kg', kg: 1 },
+  okra: { label: '500 g', kg: 0.5 },
+  cauliflower: { label: '1 kg', kg: 1 },
+  brinjal: { label: '500 g', kg: 0.5 },
+  'green-chilli': { label: '250 g', kg: 0.25 },
+  spinach: { label: '250 g', kg: 0.25 },
+
+  // Dairy
+  'cow-milk': { label: '1 L', kg: 1 },
+  'buffalo-milk': { label: '1 L', kg: 1 },
+  curd: { label: '500 g', kg: 0.5 },
+  paneer: { label: '200 g', kg: 0.2 },
+  ghee: { label: '500 g', kg: 0.5 },
+
+  // Fruits
+  mango: { label: '1 kg', kg: 1 },
+  banana: { label: '1 kg', kg: 1 },
+  pomegranate: { label: '1 kg', kg: 1 },
+  grapes: { label: '500 g', kg: 0.5 },
+  guava: { label: '500 g', kg: 0.5 },
+  papaya: { label: '1 kg', kg: 1 },
+  apple: { label: '1 kg', kg: 1 },
+  watermelon: { label: '2 kg', kg: 2 },
+
+  // Grains & pulses. Paddy is not rice — the shopper pack is milled and
+  // polished, so it carries a processing uplift instead of the shelf margin.
+  wheat: { label: '5 kg', kg: 5 },
+  'basmati-rice': { label: '5 kg', kg: 5, margin: 0.85 },
+  bajra: { label: '2 kg', kg: 2 },
+  chana: { label: '1 kg', kg: 1 },
+  'tur-dal': { label: '1 kg', kg: 1 },
+  moong: { label: '1 kg', kg: 1 },
+  masoor: { label: '1 kg', kg: 1 },
+
+  // Spices & oilseeds
+  turmeric: { label: '200 g', kg: 0.2 },
+  'red-chilli': { label: '200 g', kg: 0.2 },
+  cumin: { label: '100 g', kg: 0.1 },
+  'coriander-seed': { label: '200 g', kg: 0.2 },
+  mustard: { label: '500 g', kg: 0.5 },
+  groundnut: { label: '1 kg', kg: 1 },
+};
+
+// Fibre, feed and crush crops — bought by the quintal or not at all.
+const BULK_ONLY = new Set(['cotton', 'soybean', 'maize', 'jute', 'sugarcane', 'castor', 'guar']);
+
+// A live listing arrives as a crop NAME ("Cow Milk"), not a slug, so index the
+// catalogue by name too; anything off-catalogue falls back to a rail default.
+const NAME_TO_PACK = new Map<string, Pack>();
+for (const d of DEMO_PRODUCTS) {
+  const pack = PACKS[d.slug];
+  if (pack) NAME_TO_PACK.set(d.name.trim().toLowerCase(), pack);
+}
+
+const DEFAULT_PACK: Record<RailId, Pack> = {
+  veg: { label: '1 kg', kg: 1 },
+  dairy: { label: '1 L', kg: 1 },
+  fruits: { label: '1 kg', kg: 1 },
+  grains: { label: '1 kg', kg: 1 },
+  spices: { label: '200 g', kg: 0.2 },
+};
+
+export interface ShopPack {
+  label: string;      // "1 kg", "100 g"
+  suffix: string;     // label as a price suffix — "₹34/kg" reads better than "₹34/1 kg"
+  price: number;      // ₹ for one pack
+  anchor: number;     // ₹ for one pack at the wholesale ceiling — the struck-through number
+  perKg: number;      // ₹ per kg (litre for liquids), so packs stay comparable. Never
+  perKgLabel: string; // per quintal: "₹31/kg" is what a shopper checks, not "₹3,100/qtl".
+}
+
+// What a household actually buys and pays. null for a bulk-only crop, in which
+// case the card keeps its wholesale framing.
+export function shopPack(opts: {
+  crop: string;           // catalogue slug or live crop name
+  cat: RailId;
+  unit: string;           // KG | QUINTAL | TONNE | LITRE
+  floor: number;          // ₹/unit — farmgate floor
+  ceiling: number;        // ₹/unit — wholesale ceiling
+  retail?: number | null; // ₹/unit — the farmer's own direct-sale price, if they set one
+}): ShopPack | null {
+  const key = opts.crop.trim().toLowerCase();
+  if (BULK_ONLY.has(key)) return null;
+  const pack = PACKS[key] ?? NAME_TO_PACK.get(key) ?? DEFAULT_PACK[opts.cat];
+  // A farmer-set retail price is already what the shopper pays; only a derived
+  // price takes the shelf margin on top.
+  const uplift = opts.retail != null ? 1 : 1 + (pack.margin ?? RETAIL_MARGIN[opts.cat]);
+  const perUnit = opts.retail ?? opts.floor * uplift;
+  const kgPerUnit = KG_PER_UNIT[opts.unit] ?? 1;
+  const packUnits = pack.kg / kgPerUnit; // pack size in the listing's own unit
+  return {
+    label: pack.label,
+    suffix: pack.label.replace(/^1 /, ''),
+    price: Math.round(perUnit * packUnits),
+    anchor: Math.round(opts.ceiling * uplift * packUnits),
+    perKg: perUnit / kgPerUnit,
+    perKgLabel: opts.unit === 'LITRE' ? 'L' : 'kg',
+  };
+}
+
 export const RAILS: Array<{ id: RailId; eyebrow: string; title: string }> = [
   { id: 'veg',    eyebrow: 'Farm-fresh · picked this week',       title: 'Fresh Vegetables' },
   { id: 'dairy',  eyebrow: 'Milked this morning · farm chilled',  title: 'Milk & Dairy' },
