@@ -751,6 +751,13 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
   if (offer.requirement.status !== 'OPEN') {
     throw new ApiError(400, `Cannot accept offers on ${statusPhrase(offer.requirement.status)} requirement`);
   }
+  // Requirements are never auto-marked expired, so an OPEN requirement whose
+  // delivery date has passed would otherwise slip through here and mint a bid +
+  // payable transaction for undeliverable demand. The instant-fill path rejects
+  // this same case; the counter-accept path must too.
+  if (offer.requirement.neededBy && offer.requirement.neededBy < new Date()) {
+    throw new ApiError(400, "This requirement's delivery date has passed");
+  }
 
   // The farmer could have deleted their profile between offering and now. That
   // error must name the farmer's side, not blame the buyer for their own click.
@@ -948,6 +955,19 @@ export async function updateRequirement(
 
     const current = await tx.buyerRequirement.findUniqueOrThrow({ where: { id } });
     const filled = current.quantity - current.remainingQuantity;
+
+    // `filled` is denominated in the requirement's CURRENT unit. If the buyer
+    // also changes the unit, subtracting it from a new-unit `input.quantity`
+    // below would mis-scale remainingQuantity and push a wrong physical quantity
+    // into every downstream offer/transaction/delivery. Once anything is filled,
+    // the unit is locked — there's no reliable conversion factor to reconcile the
+    // two denominations.
+    if (input.unit !== undefined && input.unit !== current.unit && filled > 0) {
+      throw new ApiError(
+        400,
+        `You've already had ${filled} ${current.unit.toLowerCase()} filled — the unit can't change once a requirement is partially filled.`,
+      );
+    }
 
     let remainingQuantity: number | undefined;
     if (input.quantity !== undefined) {
