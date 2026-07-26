@@ -4,9 +4,11 @@
 
 # CropBid — The AI-Powered Crop Exchange
 
-**One crop exchange for everyone — farmers, processors, retailers and consumers trade on the same platform, with AI-agent negotiation, escrow payments, live auctions, live mandi rates, and logistics built in.**
+**One crop exchange for everyone — farmers, processors, retailers and consumers trade on the same platform, with AI-agent negotiation, escrow payments, live auctions, live government mandi rates from 4,600+ mandis, and logistics built in. In Hindi, Marathi and English.**
 
 [![Live Demo](https://img.shields.io/badge/live-cropbid.in-2f6b3a?style=flat-square)](https://cropbid.in)
+&nbsp;
+![Backed by India 2047 Ventures](https://img.shields.io/badge/backed_by-India_2047_Ventures-c9822b?style=flat-square)
 &nbsp;
 ![Stack](https://img.shields.io/badge/React_19-Express_5-Prisma_7-Postgres-444?style=flat-square)
 &nbsp;
@@ -20,7 +22,7 @@
 
 ## What is CropBid?
 
-CropBid is a full-stack crop exchange built for India (and adaptable globally). Sellers list crops; buyers of every size — processors, FMCG, exporters, retailers, restaurants, and everyday consumers — discover and buy them, with the government's live mandi rates as a shared fair-price anchor. Every deal can be struck **two ways**:
+CropBid is a full-stack crop exchange built for India (and adaptable globally), available in **Hindi, Marathi and English**. Sellers list crops; buyers of every size — processors, FMCG, exporters, retailers, restaurants, and everyday consumers — discover and buy them, with the government's **live mandi rates from 4,600+ mandis** as a shared fair-price anchor. Every deal can be struck **two ways**:
 
 1. **Manually** — buyers place bids, sellers accept / reject / counter.
 2. **Via AI agents** — each user configures an agent (Google Gemini) that negotiates on their behalf, round by round, within price limits they set.
@@ -28,6 +30,8 @@ CropBid is a full-stack crop exchange built for India (and adaptable globally). 
 Once a deal is reached, money moves into **escrow via Razorpay**, the crop ships through a **logistics partner**, and on delivery confirmation the payment releases to the farmer. Trust scores grow with every completed deal.
 
 > **Try it:** [cropbid.in](https://cropbid.in) · test accounts below (password `password123`).
+
+CropBid is **backed by India 2047 Ventures** and live in production today.
 
 ---
 
@@ -115,6 +119,7 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 
 ## Features
 
+- **Live Govt Mandi Rates** — every listing anchored to the day's official AGMARKNET wholesale price, drawn from 4,600+ mandis, as a shared fair-price reference for both sides
 - **AI Negotiation** — Gemini agents, 3 styles, agent-to-agent rounds with recorded reasoning
 - **Razorpay Escrow** — capture-only payments, signed webhook, idempotent capture
 - **Live Auctions** — real-time WebSocket bidding with anti-sniping
@@ -129,6 +134,7 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 - **Account Security** — password recovery (forgot / reset), in-app change password, and account settings across all roles
 - **Native Mobile Apps** — Expo / React Native apps for buyers, farmers, and consumers: browse, place bids, live auctions, escrow checkout, manage listings, incoming bids, direct retail purchases, and ship/confirm delivery
 - **MSP Price Floor (India)** — warns farmers and buyers when an INR listing is priced below the government Minimum Support Price, for catalogue crops that carry an official MSP (~11 of the ~23 nationally mandated crops)
+- **Multi-language** — full storefront and app UI localized into **Hindi, Marathi and English**, with a live language switcher
 - **Dark Mode** + responsive mobile layout
 
 ---
