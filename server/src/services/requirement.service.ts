@@ -581,8 +581,16 @@ export async function acceptRequirementNow(
     // farmers racing for the last 100 qtl would both pass the pre-check above;
     // here the second blocks on the row lock, re-evaluates against the committed
     // row, gets count 0, and bails. remainingQuantity can never go negative.
+    // The deadline lives in the WHERE alongside status and quantity so the check
+    // is atomic: a requirement crossing `neededBy` between the pre-transaction
+    // validation and this claim can no longer be filled. Mirrors acceptOffer.
     const claim = await tx.buyerRequirement.updateMany({
-      where: { id: requirement.id, status: 'OPEN', remainingQuantity: { gte: input.quantity } },
+      where: {
+        id: requirement.id,
+        status: 'OPEN',
+        remainingQuantity: { gte: input.quantity },
+        OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
+      },
       data: { remainingQuantity: { decrement: input.quantity } },
     });
     if (claim.count === 0) {
@@ -751,6 +759,13 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
   if (offer.requirement.status !== 'OPEN') {
     throw new ApiError(400, `Cannot accept offers on ${statusPhrase(offer.requirement.status)} requirement`);
   }
+  // Requirements are never auto-marked expired, so an OPEN requirement whose
+  // delivery date has passed would otherwise slip through here and mint a bid +
+  // payable transaction for undeliverable demand. The instant-fill path rejects
+  // this same case; the counter-accept path must too.
+  if (offer.requirement.neededBy && offer.requirement.neededBy < new Date()) {
+    throw new ApiError(400, "This requirement's delivery date has passed");
+  }
 
   // The farmer could have deleted their profile between offering and now. That
   // error must name the farmer's side, not blame the buyer for their own click.
@@ -767,8 +782,17 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
   const result = await prisma.$transaction(async (tx) => {
     // Requirement FIRST, offer SECOND — the same lock order acceptRequirementNow
     // uses, so the two accept paths can never deadlock against each other.
+    // The deadline lives in the WHERE, not just the pre-transaction check above:
+    // that keeps the guarantee atomic so a requirement crossing `neededBy` between
+    // the read and the claim can't still be filled. The pre-check stays only to
+    // surface a clearer message than the generic 409 below.
     const claim = await tx.buyerRequirement.updateMany({
-      where: { id: offer.requirementId, status: 'OPEN', remainingQuantity: { gte: offer.quantity } },
+      where: {
+        id: offer.requirementId,
+        status: 'OPEN',
+        remainingQuantity: { gte: offer.quantity },
+        OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
+      },
       data: { remainingQuantity: { decrement: offer.quantity } },
     });
     if (claim.count === 0) {
@@ -948,6 +972,30 @@ export async function updateRequirement(
 
     const current = await tx.buyerRequirement.findUniqueOrThrow({ where: { id } });
     const filled = current.quantity - current.remainingQuantity;
+
+    // A unit change can silently mis-scale the stored demand, so it is fenced
+    // two ways. `filled` and `remainingQuantity` are both denominated in the
+    // CURRENT unit:
+    //   - Once anything is filled, there's no reliable factor to reconcile the
+    //     old-unit `filled` with a new-unit quantity, so the unit is locked.
+    //   - While unfilled, the caller must restate `quantity` in the new unit;
+    //     otherwise `remainingQuantity` keeps its old number under the new label
+    //     (500 KG becoming 500 TONNE) and every downstream offer/transaction
+    //     inherits the mis-scaled demand.
+    if (input.unit !== undefined && input.unit !== current.unit) {
+      if (filled > 0) {
+        throw new ApiError(
+          400,
+          `You've already had ${filled} ${current.unit.toLowerCase()} filled — the unit can't change once a requirement is partially filled.`,
+        );
+      }
+      if (input.quantity === undefined) {
+        throw new ApiError(
+          400,
+          'Changing the unit also requires restating the quantity in that unit.',
+        );
+      }
+    }
 
     let remainingQuantity: number | undefined;
     if (input.quantity !== undefined) {
