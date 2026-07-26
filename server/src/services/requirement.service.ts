@@ -581,8 +581,16 @@ export async function acceptRequirementNow(
     // farmers racing for the last 100 qtl would both pass the pre-check above;
     // here the second blocks on the row lock, re-evaluates against the committed
     // row, gets count 0, and bails. remainingQuantity can never go negative.
+    // The deadline lives in the WHERE alongside status and quantity so the check
+    // is atomic: a requirement crossing `neededBy` between the pre-transaction
+    // validation and this claim can no longer be filled. Mirrors acceptOffer.
     const claim = await tx.buyerRequirement.updateMany({
-      where: { id: requirement.id, status: 'OPEN', remainingQuantity: { gte: input.quantity } },
+      where: {
+        id: requirement.id,
+        status: 'OPEN',
+        remainingQuantity: { gte: input.quantity },
+        OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
+      },
       data: { remainingQuantity: { decrement: input.quantity } },
     });
     if (claim.count === 0) {
