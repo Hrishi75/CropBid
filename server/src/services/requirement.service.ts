@@ -774,8 +774,17 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
   const result = await prisma.$transaction(async (tx) => {
     // Requirement FIRST, offer SECOND — the same lock order acceptRequirementNow
     // uses, so the two accept paths can never deadlock against each other.
+    // The deadline lives in the WHERE, not just the pre-transaction check above:
+    // that keeps the guarantee atomic so a requirement crossing `neededBy` between
+    // the read and the claim can't still be filled. The pre-check stays only to
+    // surface a clearer message than the generic 409 below.
     const claim = await tx.buyerRequirement.updateMany({
-      where: { id: offer.requirementId, status: 'OPEN', remainingQuantity: { gte: offer.quantity } },
+      where: {
+        id: offer.requirementId,
+        status: 'OPEN',
+        remainingQuantity: { gte: offer.quantity },
+        OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
+      },
       data: { remainingQuantity: { decrement: offer.quantity } },
     });
     if (claim.count === 0) {
@@ -956,17 +965,28 @@ export async function updateRequirement(
     const current = await tx.buyerRequirement.findUniqueOrThrow({ where: { id } });
     const filled = current.quantity - current.remainingQuantity;
 
-    // `filled` is denominated in the requirement's CURRENT unit. If the buyer
-    // also changes the unit, subtracting it from a new-unit `input.quantity`
-    // below would mis-scale remainingQuantity and push a wrong physical quantity
-    // into every downstream offer/transaction/delivery. Once anything is filled,
-    // the unit is locked — there's no reliable conversion factor to reconcile the
-    // two denominations.
-    if (input.unit !== undefined && input.unit !== current.unit && filled > 0) {
-      throw new ApiError(
-        400,
-        `You've already had ${filled} ${current.unit.toLowerCase()} filled — the unit can't change once a requirement is partially filled.`,
-      );
+    // A unit change can silently mis-scale the stored demand, so it is fenced
+    // two ways. `filled` and `remainingQuantity` are both denominated in the
+    // CURRENT unit:
+    //   - Once anything is filled, there's no reliable factor to reconcile the
+    //     old-unit `filled` with a new-unit quantity, so the unit is locked.
+    //   - While unfilled, the caller must restate `quantity` in the new unit;
+    //     otherwise `remainingQuantity` keeps its old number under the new label
+    //     (500 KG becoming 500 TONNE) and every downstream offer/transaction
+    //     inherits the mis-scaled demand.
+    if (input.unit !== undefined && input.unit !== current.unit) {
+      if (filled > 0) {
+        throw new ApiError(
+          400,
+          `You've already had ${filled} ${current.unit.toLowerCase()} filled — the unit can't change once a requirement is partially filled.`,
+        );
+      }
+      if (input.quantity === undefined) {
+        throw new ApiError(
+          400,
+          'Changing the unit also requires restating the quantity in that unit.',
+        );
+      }
     }
 
     let remainingQuantity: number | undefined;
