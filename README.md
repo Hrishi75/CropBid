@@ -10,8 +10,6 @@
 &nbsp;
 ![Backed by India 2047 Ventures](https://img.shields.io/badge/backed_by-India_2047_Ventures-c9822b?style=flat-square)
 &nbsp;
-![Stack](https://img.shields.io/badge/React_19-Express_5-Prisma_7-Postgres-444?style=flat-square)
-&nbsp;
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 &nbsp;
 [![X](https://img.shields.io/badge/X-@CropBid-000?style=flat-square&logo=x&logoColor=white)](https://x.com/CropBid)
