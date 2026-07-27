@@ -157,8 +157,25 @@ const PACKS: Record<string, Pack> = {
   groundnut: { label: '1 kg', kg: 1 },
 };
 
-// Fibre, feed and crush crops — bought by the quintal or not at all.
-const BULK_ONLY = new Set(['cotton', 'soybean', 'maize', 'jute', 'sugarcane', 'castor', 'guar']);
+// Fibre, feed and crush crops — bought by the quintal or not at all. A farmer
+// types whatever name they know, so the spellings live here beside the
+// canonical one: an exact-name miss ("Corn" for maize) would otherwise fall
+// through to the rail default and hand a wholesale-only crop a 1 kg retail
+// pack. Mirrors the alias lists in client/src/utils/cropAliases.ts.
+const BULK_ONLY = new Set([
+  'cotton', 'kapas',
+  'soybean', 'soyabean', 'soya', 'soya bean', 'soy bean', 'soy',
+  'maize', 'corn', 'makka', 'makki', 'yellow maize', 'sweet corn',
+  'jute', 'patsan',
+  'sugarcane', 'ganna', 'sugar cane',
+  'castor', 'arandi', 'castor seed',
+  'guar', 'guar seed', 'cluster bean',
+]);
+
+// "Sweet-Corn " → "sweet corn", so punctuation and spacing can't smuggle a
+// bulk crop past the check. Matching stays EXACT, never substring — "Sweet
+// Potato" must not read as "potato".
+const plainName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // A live listing arrives as a crop NAME ("Cow Milk"), not a slug, so index the
 // catalogue by name too; anything off-catalogue falls back to a rail default.
@@ -181,6 +198,9 @@ export interface ShopPack {
   suffix: string;     // label as a price suffix — "₹34/kg" reads better than "₹34/1 kg"
   price: number;      // ₹ for one pack
   anchor: number;     // ₹ for one pack at the wholesale ceiling — the struck-through number
+  units: number;      // pack size in the LISTING's own unit — 500 g of a KG lot is 0.5,
+                      // a 5 kg wheat pack off a QUINTAL lot is 0.05. What the buy
+                      // flow actually orders, so the card and the checkout agree.
   perKg: number;      // ₹ per kg (litre for liquids), so packs stay comparable. Never
   perKgLabel: string; // per quintal: "₹31/kg" is what a shopper checks, not "₹3,100/qtl".
 }
@@ -196,7 +216,7 @@ export function shopPack(opts: {
   retail?: number | null; // ₹/unit — the farmer's own direct-sale price, if they set one
 }): ShopPack | null {
   const key = opts.crop.trim().toLowerCase();
-  if (BULK_ONLY.has(key)) return null;
+  if (BULK_ONLY.has(plainName(key))) return null;
   const pack = PACKS[key] ?? NAME_TO_PACK.get(key) ?? DEFAULT_PACK[opts.cat];
   // A farmer-set retail price is already what the shopper pays; only a derived
   // price takes the shelf margin on top.
@@ -209,6 +229,7 @@ export function shopPack(opts: {
     suffix: pack.label.replace(/^1 /, ''),
     price: Math.round(perUnit * packUnits),
     anchor: Math.round(opts.ceiling * uplift * packUnits),
+    units: packUnits,
     perKg: perUnit / kgPerUnit,
     perKgLabel: opts.unit === 'LITRE' ? 'L' : 'kg',
   };

@@ -110,6 +110,10 @@ interface CardVM {
   anchor: number;
   floor: number;          // ₹/unit farmgate floor — the bulk lane's headline
   retail: number | null;  // ₹/unit the farmer set for direct sale, if they did
+  // Whether ListingDetail will actually sell this lot by the pack. A lot the
+  // farmer never opened for direct sale keeps its wholesale framing, so the
+  // card never offers an ADD that dead-ends on the next screen.
+  buyable: boolean;
   pack: ShopPack | null;  // household pack — set only when the viewer is shopping
   qty: number;
   location: string;
@@ -136,6 +140,7 @@ function fromListing(l: Listing): CardVM {
     anchor: l.pricePerUnitMax,
     floor: l.pricePerUnitMin,
     retail: l.retailPricePerUnit ?? null,
+    buyable: l.directSaleEnabled && l.retailPricePerUnit != null,
     pack: null,
     qty: l.remainingQuantity,
     location: l.location,
@@ -264,6 +269,7 @@ export default function StorefrontHomeScreen() {
         anchor: d.anchor,
         floor: d.price,
         retail: null,
+        buyable: true, // reference cards are the showroom — they open the mandi-price note
         pack: null,
         qty: d.qty,
         location: d.location,
@@ -276,17 +282,21 @@ export default function StorefrontHomeScreen() {
     const all = [...live, ...demo];
     if (!shopping) return all;
     // Price the household pack off whichever number the lot actually carries —
-    // the farmer's own retail price, or the floor plus the shelf margin.
+    // the farmer's own retail price, or the floor plus the shelf margin. A lot
+    // that isn't open for direct sale gets no pack: ListingDetail would only
+    // offer it by the quintal, so the card says so too.
     return all.map((vm) => ({
       ...vm,
-      pack: shopPack({
-        crop: vm.name,
-        cat: vm.cat,
-        unit: vm.unit,
-        floor: vm.floor,
-        ceiling: vm.anchor,
-        retail: vm.retail,
-      }),
+      pack: vm.buyable
+        ? shopPack({
+            crop: vm.name,
+            cat: vm.cat,
+            unit: vm.unit,
+            floor: vm.floor,
+            ceiling: vm.anchor,
+            retail: vm.retail,
+          })
+        : null,
     }));
   }, [listings, shopping]);
 
@@ -461,7 +471,7 @@ export default function StorefrontHomeScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
                     {railItems.map((v) => (
-                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} onPress={() => openCard(v)} />
+                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
                     ))}
                   </ScrollView>
                 </View>
@@ -507,7 +517,7 @@ export default function StorefrontHomeScreen() {
             {results.length > 0 ? (
               <View style={styles.grid}>
                 {results.map((v) => (
-                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} onPress={() => openCard(v)} />
+                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
                 ))}
               </View>
             ) : (
@@ -691,7 +701,7 @@ function CategoryTile({ label, emoji, onPress }: { label: string; emoji: string;
 // Web .st-card: photo flush to the card top with the % OFF tag and grade chip
 // overlaid, live line, name, meta, stock, price + struck anchor + bordered BUY.
 function ProductCard({
-  vm, onPress, width, grid, action, liveWord,
+  vm, onPress, width, grid, action, liveWord, shopping,
 }: {
   vm: CardVM;
   onPress: () => void;
@@ -699,10 +709,16 @@ function ProductCard({
   grid?: boolean;
   action: string;
   liveWord: string;
+  shopping: boolean;
 }) {
   const pct = pctOff(vm);
   const pack = vm.pack;
   const img = vm.image ? mediaUrl(vm.image) : null;
+  // Whatever the next screen will actually offer: the pack goes in the basket,
+  // a direct-sale lot with no household pack (cotton, maize) is bought whole by
+  // the quintal, and everything else is a bidding lot. Farmers and buyers keep
+  // their own verb — they never see packs.
+  const label = !shopping || pack ? action : vm.live && vm.buyable ? 'BUY' : 'BID';
   return (
     <PressScale
       onPress={onPress}
@@ -764,7 +780,7 @@ function ProductCard({
             {pct > 0 ? <Text style={styles.strike}>{money(pack ? pack.anchor : vm.anchor)}</Text> : null}
           </View>
           <View style={styles.buyBtn}>
-            <Text style={styles.buyBtnText}>{pack ? action : 'BID'}</Text>
+            <Text style={styles.buyBtnText}>{label}</Text>
           </View>
         </View>
         {/* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */}
