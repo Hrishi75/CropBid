@@ -26,6 +26,7 @@ import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
 import { FadeInImage, PressScale } from '../components/motion';
 import { money, unitLabel } from '../lib/format';
+import { orderQuantity, railFor, shopPack, type ShopPack } from '../lib/catalog';
 import { mspForCrop } from '../lib/msp';
 import { colors, design, font, radius, spacing } from '../theme';
 
@@ -63,6 +64,20 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   const canDirectBuy =
     isConsumer && !isOwner && listing.directSaleEnabled && listing.retailPricePerUnit != null;
 
+  // The household pack the storefront card advertised — same crop, same unit,
+  // same maths, so "₹34 · 500 g" on the card is what the buy bar opens at.
+  // null for a bulk-only crop (cotton, maize), which stays priced by the unit.
+  const pack = canDirectBuy
+    ? shopPack({
+        crop: listing.cropName,
+        cat: railFor(listing.cropName),
+        unit: listing.unit,
+        floor: listing.pricePerUnitMin,
+        ceiling: listing.pricePerUnitMax,
+        retail: listing.retailPricePerUnit,
+      })
+    : null;
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
@@ -84,7 +99,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         </View>
 
         {isConsumer && listing.directSaleEnabled && listing.retailPricePerUnit != null ? (
-          <ConsumerPrice listing={listing} />
+          <ConsumerPrice listing={listing} pack={pack} />
         ) : (
           <Text style={styles.price}>
             {money(listing.pricePerUnitMin, listing.currency)}–
@@ -130,7 +145,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       {/* Blinkit-style sticky buy bar — quantity stepper + total + Buy now.
           Guests get the login gate here instead: price + "Log in to buy". */}
       {canDirectBuy ? (
-        <BuyBar listing={listing} onDone={() => navigation.goBack()} />
+        <BuyBar listing={listing} pack={pack} onDone={() => navigation.goBack()} />
       ) : isGuest ? (
         <GuestBar listing={listing} onLogin={() => (navigation as any).navigate('Login')} />
       ) : null}
@@ -170,23 +185,33 @@ function ImagePager({ images }: { images: string[] }) {
 
 // Blinkit-style price block for the direct-buy flow: green selling price with
 // the wholesale ceiling as a struck-through anchor and a "% OFF" tag when the
-// farmer's retail price sits meaningfully below it.
-function ConsumerPrice({ listing }: { listing: Listing }) {
+// farmer's retail price sits meaningfully below it. Priced by the pack when
+// there is one, so the headline matches the card that was tapped.
+function ConsumerPrice({ listing, pack }: { listing: Listing; pack: ShopPack | null }) {
   const retail = listing.retailPricePerUnit ?? 0;
   const pct = retail < listing.pricePerUnitMax ? Math.round((1 - retail / listing.pricePerUnitMax) * 100) : 0;
   return (
-    <View style={styles.consumerPriceRow}>
-      <Text style={styles.consumerPrice}>
-        {money(retail, listing.currency)}
-        <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
-      </Text>
-      {pct >= 5 ? (
-        <>
-          <Text style={styles.mrp}>{money(listing.pricePerUnitMax, listing.currency)}</Text>
-          <View style={styles.offTag}>
-            <Text style={styles.offTagText}>{pct}% OFF</Text>
-          </View>
-        </>
+    <View style={styles.consumerPriceWrap}>
+      <View style={styles.consumerPriceRow}>
+        <Text style={styles.consumerPrice}>
+          {money(pack ? pack.price : retail, listing.currency)}
+          <Text style={styles.priceUnit}> /{pack ? pack.suffix : unitLabel(listing.unit)}</Text>
+        </Text>
+        {pct >= 5 ? (
+          <>
+            <Text style={styles.mrp}>
+              {money(pack ? pack.anchor : listing.pricePerUnitMax, listing.currency)}
+            </Text>
+            <View style={styles.offTag}>
+              <Text style={styles.offTagText}>{pct}% OFF</Text>
+            </View>
+          </>
+        ) : null}
+      </View>
+      {pack ? (
+        <Text style={styles.packNote}>
+          {pack.label} pack · {money(pack.perKg, listing.currency)}/{pack.perKgLabel}
+        </Text>
       ) : null}
     </View>
   );
@@ -354,30 +379,41 @@ function GuestBar({ listing, onLogin }: { listing: Listing; onLogin: () => void 
 }
 
 // Sticky bottom purchase bar: − / + quantity stepper, live total, and a Buy
-// button — the quick-commerce "Add to cart" bar, adapted for loose produce
-// where the consumer picks how many kg/quintals they want.
-function BuyBar({ listing, onDone }: { listing: Listing; onDone: () => void }) {
+// button — the quick-commerce "Add to cart" bar, adapted for loose produce.
+// The stepper counts PACKS when the crop has one ("2 × 500 g"), so a shopper
+// buys exactly what the storefront card offered; the order still goes to the
+// server in the listing's own unit. Crops without a pack step by the unit.
+function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | null; onDone: () => void }) {
   const insets = useSafeAreaInsets();
-  const [qty, setQty] = useState('1');
+  const [count, setCount] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const qtyNum = Number(qty);
+  const step = pack ? pack.units : 1; // listing units per tap of the stepper
+  const n = Number(count);
   const price = listing.retailPricePerUnit ?? 0;
+  // Rounded because 3 × 0.05 quintal is 0.15000000000000002 in binary floating
+  // point, and that goes on an order. Packs round in kg then convert, so a
+  // small pack off a TONNE lot survives the trip.
+  const qtyNum = n > 0 ? (pack ? orderQuantity(pack, n) : Number(n.toFixed(3))) : 0;
   const total = qtyNum > 0 ? qtyNum * price : 0;
   const inStock = listing.remainingQuantity;
   const unit = unitLabel(listing.unit);
-  const valid = qtyNum > 0 && qtyNum <= inStock;
+  const maxCount = Math.floor(inStock / step);
+  const valid = n > 0 && qtyNum > 0 && qtyNum <= inStock;
+  // Six decimals: a gram of a TONNE lot is 0.000001, and rounding the display
+  // to the usual three would show a 500 g pack as "0 t".
+  const qtyText = `${qtyNum.toLocaleString('en-IN', { maximumFractionDigits: 6 })} ${unit}`;
 
   const bump = (d: number) => {
-    const next = Math.min(Math.max((Number(qty) || 0) + d, 1), inStock);
+    const next = Math.min(Math.max((Number(count) || 0) + d, 1), Math.max(maxCount, 1));
     setError(null);
-    setQty(String(next));
+    setCount(String(next));
   };
 
   async function submit() {
-    if (!(qtyNum > 0)) {
-      setError('Enter how much you want to buy');
+    if (!(n > 0)) {
+      setError(pack ? 'Choose how many packs you want' : 'Enter how much you want to buy');
       return;
     }
     if (qtyNum > inStock) {
@@ -410,8 +446,8 @@ function BuyBar({ listing, onDone }: { listing: Listing; onDone: () => void }) {
           </Pressable>
           <TextInput
             style={styles.stepInput}
-            value={qty}
-            onChangeText={(t) => { setError(null); setQty(t.replace(/[^0-9]/g, '')); }}
+            value={count}
+            onChangeText={(t) => { setError(null); setCount(t.replace(/[^0-9]/g, '')); }}
             keyboardType="numeric"
             maxLength={6}
           />
@@ -422,11 +458,18 @@ function BuyBar({ listing, onDone }: { listing: Listing; onDone: () => void }) {
         <View style={styles.buyTotals}>
           <Text style={styles.buyTotal}>{money(total, listing.currency)}</Text>
           <Text style={styles.buyTotalSub} numberOfLines={1}>
-            {qtyNum > 0 ? `${qtyNum.toLocaleString('en-IN')} ${unit} · farmer's price` : `${money(price, listing.currency)}/${unit}`}
+            {qtyNum <= 0
+              ? `${money(pack ? pack.price : price, listing.currency)}/${pack ? pack.suffix : unit}`
+              : pack
+                ? `${n} × ${pack.label} · ${qtyText}`
+                : `${qtyText} · farmer's price`}
           </Text>
         </View>
+        {/* Dim but still pressable when the amount doesn't work — a tap then
+            says why (out of stock, less than one pack left) instead of the
+            button silently doing nothing. */}
         <PressScale
-          onPress={submitting || !valid ? undefined : submit}
+          onPress={submitting ? undefined : submit}
           cardStyle={[styles.buyBtn, (submitting || !valid) && styles.buyBtnDim]}
         >
           <Text style={styles.buyBtnText}>{submitting ? 'Placing…' : 'Buy now'}</Text>
@@ -444,7 +487,9 @@ const styles = StyleSheet.create({
   crop: { flex: 1, fontSize: 24, fontWeight: '800', color: colors.text },
   price: { fontSize: 20, fontWeight: '700', color: colors.forest },
   priceUnit: { fontSize: 14, fontWeight: '500', color: colors.textMuted },
+  consumerPriceWrap: { gap: 2 },
   consumerPriceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  packNote: { fontSize: 13, color: colors.textMuted },
   consumerPrice: { fontSize: 20, fontWeight: '800', color: colors.forest },
   mrp: { fontSize: 14, color: colors.textMuted, textDecorationLine: 'line-through' },
   offTag: { backgroundColor: colors.ember, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },

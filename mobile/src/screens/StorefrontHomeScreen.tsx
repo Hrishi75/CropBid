@@ -50,7 +50,7 @@ import type { Listing } from '../api/types';
 import { money, unitLabel } from '../lib/format';
 import {
   CATEGORY_TILES, CHIPS, DEMO_PRODUCTS, RAILS, TICKER,
-  railFor, type RailId,
+  railFor, shopPack, type RailId, type ShopPack,
 } from '../lib/catalog';
 
 const SEARCH_HINTS = ['tomato', 'fresh mango', 'wheat', 'onion', 'dal', 'turmeric'];
@@ -91,6 +91,16 @@ function useLiveRates(): RatesBoardData | null {
 // One card on the storefront — a live API listing, a whole crop when several
 // farmers sell it (one card, "N FARMERS", cheapest price), or a static demo
 // lot from the shared catalog, normalised to what the card renders.
+// What a household pack is priced from. Held separately from the card's own
+// headline numbers because the two can come from different lots: the bulk lane
+// quotes the cheapest lot of all, the pack quotes the cheapest buyable one.
+interface ShopBasis {
+  unit: string;
+  floor: number;
+  ceiling: number;
+  retail: number | null;
+}
+
 interface CardVM {
   key: string;
   live: boolean;
@@ -108,6 +118,15 @@ interface CardVM {
   unit: string;
   price: number;
   anchor: number;
+  floor: number;          // ₹/unit farmgate floor — the bulk lane's headline
+  retail: number | null;  // ₹/unit the farmer set for direct sale, if they did
+  // The lot the household pack is priced off — the cheapest one a shopper can
+  // actually buy, which on a grouped card need not be the cheapest lot overall.
+  // null when nothing here is open for direct sale, so the card keeps its
+  // wholesale framing instead of offering an ADD that dead-ends on the next
+  // screen.
+  shop: ShopBasis | null;
+  pack: ShopPack | null;  // household pack — set only when the viewer is shopping
   qty: number;
   location: string;
   state: string;
@@ -116,6 +135,13 @@ interface CardVM {
   trust: number | null;
   low: boolean;
 }
+
+// A lot is on the shelf only if the farmer opened it for direct sale AND put a
+// price on it; anything else is a bidding lot.
+const shopBasis = (l: Listing): ShopBasis | null =>
+  l.directSaleEnabled && l.retailPricePerUnit != null
+    ? { unit: l.unit, floor: l.pricePerUnitMin, ceiling: l.pricePerUnitMax, retail: l.retailPricePerUnit }
+    : null;
 
 function fromListing(l: Listing): CardVM {
   return {
@@ -131,6 +157,10 @@ function fromListing(l: Listing): CardVM {
     unit: l.unit,
     price: l.retailPricePerUnit ?? l.pricePerUnitMin,
     anchor: l.pricePerUnitMax,
+    floor: l.pricePerUnitMin,
+    retail: l.retailPricePerUnit ?? null,
+    shop: shopBasis(l),
+    pack: null,
     qty: l.remainingQuantity,
     location: l.location,
     state: l.state,
@@ -160,10 +190,17 @@ function fromGroup(group: Listing[]): CardVM {
   const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0));
   const total = sorted.reduce((s, l) => s + inStockUnit(l, l.quantity), 0);
   const states = [...new Set(sorted.map((l) => l.state))];
+  // The cheapest lot need not be the cheapest one on the shelf — a farmer can
+  // undercut the group and still keep their lot for bidders only. The card
+  // opens CropSellers, where the shopper picks a seller, so price the pack off
+  // the cheapest lot that is genuinely for sale rather than hiding the whole
+  // group behind BID. `sorted` is already cheapest-first.
+  const shop = sorted.map(shopBasis).find((b) => b != null) ?? null;
   return {
     ...base,
     key: `crop-${base.name.trim().toLowerCase()}`,
     group: sorted,
+    shop,
     sellers: sorted.length,
     sellersMeta: states.length === 1
       ? `${sorted.length} farms · ${states[0]}`
@@ -171,14 +208,16 @@ function fromGroup(group: Listing[]): CardVM {
     unit: sameUnit ? base.unit : 'KG',
     price: sameUnit ? base.price : base.price / kgFactor,
     anchor: sameUnit ? base.anchor : base.anchor / kgFactor,
+    floor: sameUnit ? base.floor : base.floor / kgFactor,
+    retail: base.retail == null ? null : sameUnit ? base.retail : base.retail / kgFactor,
     qty,
     low: total > 0 && qty / total <= 0.25,
   };
 }
 
-function pctOff(vm: CardVM): number {
-  if (vm.price >= vm.anchor) return 0;
-  return Math.round((1 - vm.price / vm.anchor) * 100);
+function pctOff(price: number, anchor: number): number {
+  if (price >= anchor) return 0;
+  return Math.round((1 - price / anchor) * 100);
 }
 
 export default function StorefrontHomeScreen() {
@@ -195,8 +234,11 @@ export default function StorefrontHomeScreen() {
 
   const role = user?.role;
   const isFarmer = role === 'FARMER';
+  // Consumers and guests shop by the pack; buyers and farmers work in lots, so
+  // they keep the wholesale ₹/quintal framing.
+  const shopping = role !== 'BUYER' && !isFarmer && role !== 'ADMIN';
   // Card action mirrors what ListingDetail offers each role.
-  const actionLabel = role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'BUY';
+  const actionLabel = role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'ADD';
   const liveWord = role === 'CONSUMER' ? 'FARM DIRECT' : 'LIVE LOT';
 
   const load = useCallback(async () => {
@@ -251,6 +293,12 @@ export default function StorefrontHomeScreen() {
         unit: d.unit,
         price: d.price,
         anchor: d.anchor,
+        floor: d.price,
+        retail: null,
+        // Reference cards are the showroom — they open the mandi-price note,
+        // so they price a pack off their own band.
+        shop: { unit: d.unit, floor: d.price, ceiling: d.anchor, retail: null },
+        pack: null,
         qty: d.qty,
         location: d.location,
         state: d.state,
@@ -259,8 +307,17 @@ export default function StorefrontHomeScreen() {
         trust: null,
         low: false,
       }));
-    return [...live, ...demo];
-  }, [listings]);
+    const all = [...live, ...demo];
+    if (!shopping) return all;
+    // Price the household pack off whichever number the lot actually carries —
+    // the farmer's own retail price, or the floor plus the shelf margin. A lot
+    // that isn't open for direct sale gets no pack: ListingDetail would only
+    // offer it by the quintal, so the card says so too.
+    return all.map((vm) => ({
+      ...vm,
+      pack: vm.shop ? shopPack({ crop: vm.name, cat: vm.cat, ...vm.shop }) : null,
+    }));
+  }, [listings, shopping]);
 
   const q = search.trim().toLowerCase();
   const browsing = q === '' && category === null;
@@ -403,7 +460,7 @@ export default function StorefrontHomeScreen() {
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
               <PromoCard tone="paper" emoji="🚜" title={t('Machines & equipment')} desc={t('Tractors, pumps and pipes — buy outright or hire by the day.')} onPress={() => nav.navigate('Equipment')} />
-              <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t("Any quantity, at the farmer's listed price.")} />
+              <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t('Household packs at the farmer’s own price.')} />
               <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for you.')} />
               <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
             </ScrollView>
@@ -433,7 +490,7 @@ export default function StorefrontHomeScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
                     {railItems.map((v) => (
-                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} onPress={() => openCard(v)} />
+                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
                     ))}
                   </ScrollView>
                 </View>
@@ -445,7 +502,7 @@ export default function StorefrontHomeScreen() {
             <View style={styles.howWrap}>
               {[
                 ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
-                ['02', 'You buy at their price', 'Any quantity, no bidding — the price you see is the farmer\'s own.'],
+                ['02', 'You buy at their price', 'A pack for the week or a whole lot — the price you see is the farmer\'s own.'],
                 ['03', 'Escrow keeps it safe', 'Money held on-platform; released when you confirm delivery.'],
               ].map(([n, t, d]) => (
                 <View key={n} style={styles.howStep}>
@@ -479,7 +536,7 @@ export default function StorefrontHomeScreen() {
             {results.length > 0 ? (
               <View style={styles.grid}>
                 {results.map((v) => (
-                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} onPress={() => openCard(v)} />
+                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
                 ))}
               </View>
             ) : (
@@ -663,7 +720,7 @@ function CategoryTile({ label, emoji, onPress }: { label: string; emoji: string;
 // Web .st-card: photo flush to the card top with the % OFF tag and grade chip
 // overlaid, live line, name, meta, stock, price + struck anchor + bordered BUY.
 function ProductCard({
-  vm, onPress, width, grid, action, liveWord,
+  vm, onPress, width, grid, action, liveWord, shopping,
 }: {
   vm: CardVM;
   onPress: () => void;
@@ -671,9 +728,19 @@ function ProductCard({
   grid?: boolean;
   action: string;
   liveWord: string;
+  shopping: boolean;
 }) {
-  const pct = pctOff(vm);
+  const pack = vm.pack;
+  // Off the same pair of numbers the card prints below — a grouped card can
+  // price its pack off one farmer's lot and its bulk line off another's, and a
+  // badge computed from the other lot would advertise a discount nobody gets.
+  const pct = pack ? pctOff(pack.price, pack.anchor) : pctOff(vm.price, vm.anchor);
   const img = vm.image ? mediaUrl(vm.image) : null;
+  // Whatever the next screen will actually offer: the pack goes in the basket,
+  // a direct-sale lot with no household pack (cotton, maize) is bought whole by
+  // the quintal, and everything else is a bidding lot. Farmers and buyers keep
+  // their own verb — they never see packs.
+  const label = !shopping || pack ? action : vm.live && vm.shop ? 'BUY' : 'BID';
   return (
     <PressScale
       onPress={onPress}
@@ -717,24 +784,36 @@ function ProductCard({
         <Text style={styles.cardMeta} numberOfLines={1}>
           {vm.sellersMeta ?? `${vm.location}, ${vm.state}`}
         </Text>
+        {/* running low beats pack framing — urgency is the more useful line */}
         <Text style={[styles.stock, vm.low && styles.stockLow]} numberOfLines={1}>
           {vm.low
             ? `Only ${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} left`
-            : `${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} available`}
+            : pack
+              ? `${pack.label} pack · ${money(pack.perKg)}/${pack.perKgLabel}`
+              : `${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} available`}
         </Text>
         <View style={styles.priceFoot}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.priceRow}>
               {vm.sellers > 1 ? <Text style={styles.fromWord}>from</Text> : null}
-              <Text style={styles.price}>{money(vm.price)}</Text>
-              <Text style={styles.perUnit}>/{unitLabel(vm.unit)}</Text>
+              <Text style={styles.price}>{money(pack ? pack.price : vm.price)}</Text>
+              <Text style={styles.perUnit}>/{pack ? pack.suffix : unitLabel(vm.unit)}</Text>
             </View>
-            {pct > 0 ? <Text style={styles.strike}>{money(vm.anchor)}</Text> : null}
+            {pct > 0 ? <Text style={styles.strike}>{money(pack ? pack.anchor : vm.anchor)}</Text> : null}
           </View>
           <View style={styles.buyBtn}>
-            <Text style={styles.buyBtnText}>{action}</Text>
+            <Text style={styles.buyBtnText}>{label}</Text>
           </View>
         </View>
+        {/* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */}
+        {pack ? (
+          <View style={styles.bulkRow}>
+            <Mono style={styles.bulkTag}>BULK</Mono>
+            <Text style={styles.bulkText} numberOfLines={1}>
+              {money(vm.floor)}/{unitLabel(vm.unit)} · {vm.qty.toLocaleString('en-IN')} {unitLabel(vm.unit)}
+            </Text>
+          </View>
+        ) : null}
       </View>
     </PressScale>
   );
@@ -996,6 +1075,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   buyBtnText: { fontFamily: font.sansBold, fontSize: 11.5, color: colors.forest, letterSpacing: 0.5 },
+  bulkRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: 8, paddingTop: 7,
+    borderTopWidth: 1, borderTopColor: design.line, borderStyle: 'dashed',
+  },
+  bulkTag: {
+    fontSize: 8.5, letterSpacing: 0.7, color: design.ink3,
+    backgroundColor: design.paper2,
+    borderWidth: 1, borderColor: design.line, borderRadius: 5,
+    paddingHorizontal: 5, paddingVertical: 1,
+  },
+  bulkText: { flex: 1, fontFamily: font.sans, fontSize: 10, color: design.ink3 },
 
   // results grid
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 10 },
