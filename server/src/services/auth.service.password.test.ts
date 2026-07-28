@@ -51,6 +51,11 @@ const baseUser = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(baseUser);
+  // clearAllMocks wipes recorded calls but keeps implementations, so both
+  // lookups get an explicit "no match" default — otherwise a test that stubs
+  // one of them silently changes the meaning of the next one.
+  mockFindUnique.mockResolvedValue(null);
+  mockFindFirst.mockResolvedValue(null);
 });
 
 describe('requestPasswordReset', () => {
@@ -61,6 +66,17 @@ describe('requestPasswordReset', () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(mockSendReset).not.toHaveBeenCalled();
+  });
+
+  it('uses the exact-case account when one exists, without the fallback', async () => {
+    // Legacy rows can differ from each other by case alone. An exact hit must
+    // win outright, or an arbitrary case-variant could receive the reset link.
+    mockFindUnique.mockResolvedValue(baseUser);
+
+    await requestPasswordReset('rajesh@cropbid.test');
+
+    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockSendReset).toHaveBeenCalled();
   });
 
   it('finds the account when the address is typed in a different case', async () => {

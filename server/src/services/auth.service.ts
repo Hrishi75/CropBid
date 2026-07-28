@@ -179,20 +179,31 @@ export async function login(input: LoginInput) {
   // email identifier normalizes to "", which must never become a lookup arm.
   const identifier = input.identifier.trim();
   const asPhone = normalizePhone(identifier);
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        ...(asPhone.replace('+', '') ? [{ phone: asPhone }] : []),
-        // Case-insensitive: people capitalise their own address inconsistently
-        // and none of them expect that to be a different account.
-        { email: { equals: identifier, mode: 'insensitive' as const } },
-      ],
-    },
-    include: {
-      farmerProfile: true,
-      buyerProfile: true,
-    },
-  });
+  const withProfiles = { farmerProfile: true, buyerProfile: true };
+
+  // Exact match first. People capitalise their own address inconsistently and
+  // none of them expect that to be a different account, so a miss falls back to
+  // a case-insensitive match — but only as a fallback. Rows created before
+  // emails were normalized can differ from each other by case alone, and going
+  // case-insensitive first would let an arbitrary one of them answer for the
+  // address that was actually typed.
+  const user =
+    (await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(asPhone.replace('+', '') ? [{ phone: asPhone }] : []),
+          { email: identifier },
+        ],
+      },
+      include: withProfiles,
+    })) ??
+    (await prisma.user.findFirst({
+      where: { email: { equals: identifier, mode: 'insensitive' } },
+      // Oldest wins, so a repeat login always lands on the same account
+      // instead of whichever row the planner happened to return.
+      orderBy: { createdAt: 'asc' },
+      include: withProfiles,
+    }));
 
   if (!user) {
     // SECURITY: Don't reveal whether the account exists or not
@@ -300,11 +311,15 @@ export async function logout(userId: string) {
 // Unknown email → return silently; the endpoint answers the same 200 either
 // way, so an attacker can't use it to enumerate registered addresses.
 export async function requestPasswordReset(email: string) {
-  // Case-insensitive, like login — the address someone types into "forgot
-  // password" is the one they type into the login box.
-  const user = await prisma.user.findFirst({
-    where: { email: { equals: email.trim(), mode: 'insensitive' } },
-  });
+  // Exact first, then case-insensitive — the same order login uses, so the
+  // reset link goes to the account that would actually be logged into.
+  const typed = email.trim();
+  const user =
+    (await prisma.user.findUnique({ where: { email: typed } })) ??
+    (await prisma.user.findFirst({
+      where: { email: { equals: typed, mode: 'insensitive' } },
+      orderBy: { createdAt: 'asc' },
+    }));
   // Email is optional since phone became the primary contact — an account
   // without one simply can't use the email reset flow.
   if (!user || !user.email) return;
