@@ -21,6 +21,13 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import api, { setAccessToken } from '../lib/axios';
+import {
+  clearActivity,
+  isIdle,
+  markActivity,
+  setLogoutReason,
+  watchIdle,
+} from '../lib/idle';
 import type { User } from '../types';
 
 interface AuthContextType {
@@ -66,11 +73,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // -------------------------------------------------------------------------
   useEffect(() => {
     async function restoreSession() {
+      // Idle sessions don't survive a reload either. The server would reject
+      // the expired refresh token anyway; checking first saves the round-trip
+      // and lets us name the reason on the login screen.
+      if (isIdle()) {
+        clearActivity();
+        setLogoutReason('idle');
+        setSessionHint(false);
+        setLoading(false);
+        return;
+      }
+
       try {
         const { data } = await api.post('/auth/refresh');
         setAccessToken(data.accessToken);
         setUser(data.user);
         setSessionHint(true);
+        markActivity(true); // Restored session starts its idle clock now
       } catch {
         // No valid refresh token — user is not logged in
         // This is normal for first-time visitors
@@ -87,10 +106,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null);
       setUser(null);
       setSessionHint(false);
+      clearActivity();
     };
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
+
+  // -------------------------------------------------------------------------
+  // Idle timeout — sign out after 15 minutes with no interaction
+  // -------------------------------------------------------------------------
+  // Only runs while someone is signed in; see lib/idle.ts for what counts as
+  // activity and why the server enforces the same window independently.
+  useEffect(() => {
+    if (!user) return;
+
+    return watchIdle(() => {
+      setLogoutReason('idle');
+      // Fire-and-forget: /auth/logout clears the server-side refresh token, but
+      // local state must drop regardless of whether that call succeeds.
+      void logout();
+    });
+  }, [user]);
 
   // -------------------------------------------------------------------------
   // Login
@@ -100,6 +136,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);
+    // Start the idle clock fresh — a stale stamp from an earlier session would
+    // otherwise trip the watchdog the instant it starts.
+    markActivity(true);
   }
 
   // -------------------------------------------------------------------------
@@ -110,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);
+    markActivity(true);
   }
 
   // -------------------------------------------------------------------------
@@ -124,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setUser(null);
     setSessionHint(false);
+    clearActivity();
   }
 
   // -------------------------------------------------------------------------

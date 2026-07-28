@@ -21,6 +21,7 @@
 // =============================================================================
 
 import axios from 'axios';
+import { setLogoutReason } from './idle';
 
 // Create a custom axios instance (not the global one)
 // This lets us add interceptors without affecting other axios usage
@@ -131,10 +132,16 @@ api.interceptors.response.use(
         // Retry the original request
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshError: any) {
         // Refresh failed — token is fully expired, user must log in again
         processQueue(refreshError, null);
         setAccessToken(null);
+
+        // SESSION_IDLE means the refresh token aged out rather than being
+        // revoked, so the login page can say why instead of just appearing.
+        if (refreshError?.response?.data?.code === 'SESSION_IDLE') {
+          setLogoutReason('idle');
+        }
 
         // Redirect to login (the AuthContext will handle this)
         window.dispatchEvent(new CustomEvent('auth:logout'));

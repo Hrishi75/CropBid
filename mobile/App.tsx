@@ -25,6 +25,7 @@ import {
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { IdleGuard } from './src/components/IdleGuard';
 import { Loading } from './src/components/ui';
 
 export default function App() {
@@ -50,8 +51,11 @@ export default function App() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <AuthProvider>
-          <StatusBar style="dark" />
-          <RootNavigator />
+          {/* Inside AuthProvider — it needs the session to know when to end it. */}
+          <IdleGuard>
+            <StatusBar style="dark" />
+            <RootNavigator />
+          </IdleGuard>
         </AuthProvider>
       </ErrorBoundary>
     </SafeAreaProvider>

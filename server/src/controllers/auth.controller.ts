@@ -11,6 +11,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import * as authService from '../services/auth.service';
+import { IDLE_TIMEOUT_MS } from '../utils/jwt';
 
 // --- Zod Schemas for input validation ---
 
@@ -120,7 +121,10 @@ const updateAccountBasicsSchema = z.object(accountFields);
 //                      different domains, so the refresh cookie is cross-site and
 //                      MUST be 'none' to be sent on XHR. 'none' requires secure:true.
 //                      In development both run on localhost, so 'lax' is fine.
-//   maxAge: 7 days   → Matches the refresh token's JWT expiry
+//   maxAge           → The idle window PLUS a grace period, re-set on every
+//                      refresh so the cookie slides forward with the token it
+//                      carries. See COOKIE_GRACE_MS for why it isn't an exact
+//                      match.
 //   path: '/api/auth'→ Only sent to auth endpoints (not every API call)
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -134,11 +138,20 @@ function isMobileClient(req: Request): boolean {
   return req.headers['x-client'] === 'mobile';
 }
 
+// The cookie deliberately OUTLIVES the token inside it by a few minutes.
+// If the two expired together, the browser would discard the cookie at the
+// same instant the token aged out, /refresh would see no cookie at all, and
+// the user would get a bare "No refresh token" instead of being told they were
+// signed out for being idle. Letting the dead token arrive lets the server
+// name the reason (SESSION_IDLE). This grants no access: the token is the
+// authority and it is already expired by then — the cookie is just an envelope.
+const COOKIE_GRACE_MS = 5 * 60 * 1000;
+
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isProd,
   sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+  maxAge: IDLE_TIMEOUT_MS + COOKIE_GRACE_MS,
   path: '/api/auth',
 };
 

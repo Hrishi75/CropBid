@@ -43,6 +43,19 @@ export const config = {
   jwtSecret,
   jwtRefreshSecret,
 
+  // Session lifetimes.
+  // The refresh token IS the inactivity window: it is rotated on every
+  // /auth/refresh, so a session slides forward while the user keeps using the
+  // app and dies `idleTimeoutMinutes` after their last request.
+  // The access token must be comfortably SHORTER than the idle window — if the
+  // two matched, an active user's access token and refresh token would expire
+  // in the same instant and log them out mid-session. At 5 min an active user
+  // refreshes (and re-arms the window) roughly three times per idle period.
+  auth: {
+    accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || '5', 10),
+    idleTimeoutMinutes: parseInt(process.env.SESSION_IDLE_MINUTES || '15', 10),
+  },
+
   // Google Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
