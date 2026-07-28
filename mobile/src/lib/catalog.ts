@@ -201,6 +201,8 @@ export interface ShopPack {
   units: number;      // pack size in the LISTING's own unit — 500 g of a KG lot is 0.5,
                       // a 5 kg wheat pack off a QUINTAL lot is 0.05. What the buy
                       // flow actually orders, so the card and the checkout agree.
+  kg: number;         // pack size in kg, before any unit conversion
+  kgPerUnit: number;  // kg in one listing unit — 100 for a QUINTAL lot, 1000 for TONNE
   perKg: number;      // ₹ per kg (litre for liquids), so packs stay comparable. Never
   perKgLabel: string; // per quintal: "₹31/kg" is what a shopper checks, not "₹3,100/qtl".
 }
@@ -230,9 +232,23 @@ export function shopPack(opts: {
     price: Math.round(perUnit * packUnits),
     anchor: Math.round(opts.ceiling * uplift * packUnits),
     units: packUnits,
+    kg: pack.kg,
+    kgPerUnit,
     perKg: perUnit / kgPerUnit,
     perKgLabel: opts.unit === 'LITRE' ? 'L' : 'kg',
   };
+}
+
+// How much a shopper's basket of `count` packs comes to in the LISTING's own
+// unit — the figure that goes on the order.
+//
+// The rounding happens in KILOGRAMS, where every pack is a whole number of
+// grams, and only then converts. Rounding the converted number instead would
+// collapse a 100 g pack of a TONNE lot (0.0001) to zero and round a 500 g pack
+// up to 0.001 — double the advertised amount. Three decimals of a kilogram is
+// one gram, which is finer than any pack we sell.
+export function orderQuantity(pack: ShopPack, count: number): number {
+  return Number((count * pack.kg).toFixed(3)) / pack.kgPerUnit;
 }
 
 export const RAILS: Array<{ id: RailId; eyebrow: string; title: string }> = [

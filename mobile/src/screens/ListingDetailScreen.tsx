@@ -26,7 +26,7 @@ import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
 import { FadeInImage, PressScale } from '../components/motion';
 import { money, unitLabel } from '../lib/format';
-import { railFor, shopPack, type ShopPack } from '../lib/catalog';
+import { orderQuantity, railFor, shopPack, type ShopPack } from '../lib/catalog';
 import { mspForCrop } from '../lib/msp';
 import { colors, design, font, radius, spacing } from '../theme';
 
@@ -393,14 +393,17 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
   const n = Number(count);
   const price = listing.retailPricePerUnit ?? 0;
   // Rounded because 3 × 0.05 quintal is 0.15000000000000002 in binary floating
-  // point, and that goes on an order.
-  const qtyNum = n > 0 ? Number((n * step).toFixed(3)) : 0;
+  // point, and that goes on an order. Packs round in kg then convert, so a
+  // small pack off a TONNE lot survives the trip.
+  const qtyNum = n > 0 ? (pack ? orderQuantity(pack, n) : Number(n.toFixed(3))) : 0;
   const total = qtyNum > 0 ? qtyNum * price : 0;
   const inStock = listing.remainingQuantity;
   const unit = unitLabel(listing.unit);
   const maxCount = Math.floor(inStock / step);
   const valid = n > 0 && qtyNum > 0 && qtyNum <= inStock;
-  const qtyText = `${qtyNum.toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${unit}`;
+  // Six decimals: a gram of a TONNE lot is 0.000001, and rounding the display
+  // to the usual three would show a 500 g pack as "0 t".
+  const qtyText = `${qtyNum.toLocaleString('en-IN', { maximumFractionDigits: 6 })} ${unit}`;
 
   const bump = (d: number) => {
     const next = Math.min(Math.max((Number(count) || 0) + d, 1), Math.max(maxCount, 1));
