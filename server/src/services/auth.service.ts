@@ -51,8 +51,16 @@ interface SignupInput {
 }
 
 export async function signup(input: SignupInput) {
+  // 0. Buyers must have an email on file; farmers and consumers may sign up
+  // with a phone alone. The controller's schema rejects this first — repeated
+  // here so the rule holds for every caller of the service, not just HTTP.
+  const email = input.email?.trim() || undefined;
+  if (input.role === 'BUYER' && !email) {
+    throw new ApiError(400, 'Email is required for buyer accounts');
+  }
+
   // 1. Phone is the primary identifier — one account per phone. Email is
-  // optional but must also be unique when provided.
+  // optional for non-buyers but must always be unique when provided.
   const phone = normalizePhone(input.phone);
   const existingPhone = await prisma.user.findUnique({
     where: { phone },
@@ -61,9 +69,9 @@ export async function signup(input: SignupInput) {
     throw new ApiError(409, 'An account with this phone number already exists');
   }
 
-  if (input.email) {
+  if (email) {
     const existingEmail = await prisma.user.findUnique({
-      where: { email: input.email },
+      where: { email },
     });
     if (existingEmail) {
       throw new ApiError(409, 'An account with this email already exists');
@@ -82,7 +90,7 @@ export async function signup(input: SignupInput) {
     .create({
       data: {
         name: input.name,
-        email: input.email || null,
+        email: email || null,
         password: hashedPassword,
         role: input.role,
         phone,

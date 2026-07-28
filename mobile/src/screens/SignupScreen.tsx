@@ -1,6 +1,7 @@
 // Signup screen — create a farmer or buyer account. Mirrors the web SignupPage:
 // role, name, country (which fixes the account currency), phone (the primary
-// contact and login identifier — required), optional email, and a password with
+// contact and login identifier — required), email (required for buyers,
+// optional for farmers and consumers), and a password with
 // live-validated rules. On success AuthContext.signUp() sets the user; the root
 // navigator then routes to onboarding (no profile yet).
 
@@ -90,7 +91,13 @@ export default function SignupScreen() {
     /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
     phone.trim().length <= 20 &&
     phone.replace(/[^0-9]/g, '').length >= 7;
-  const emailValid = email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Buyers must give an email; farmers and consumers may leave it blank, but a
+  // filled-in address still has to be well-formed.
+  const emailRequired = role === 'BUYER';
+  const emailValid =
+    email.trim() === ''
+      ? !emailRequired
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
   const formValid = nameValid && phoneValid && emailValid && passwordValid;
 
@@ -102,7 +109,9 @@ export default function SignupScreen() {
           : !phoneValid
             ? 'Enter a valid phone number'
             : !emailValid
-              ? 'Enter a valid email address'
+              ? emailRequired && email.trim() === ''
+                ? 'Email is required for buyer accounts'
+                : 'Enter a valid email address'
               : 'Password does not meet the requirements',
       );
       return;
@@ -175,7 +184,7 @@ export default function SignupScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
-          <Text style={styles.label}>Email (optional)</Text>
+          <Text style={styles.label}>{emailRequired ? 'Email' : 'Email (optional)'}</Text>
           <TextInput
             style={styles.input}
             value={email}

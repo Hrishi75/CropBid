@@ -2,8 +2,9 @@
 // SignupPage — Create a farmer or buyer account
 // =============================================================================
 // Public page. Collects name/phone/password, role, country (which fixes the
-// account currency), and optional email. Phone is the primary contact and
-// login identifier — required; email is optional. Enforces live password
+// account currency), and email. Phone is the primary contact and login
+// identifier — always required; email is required for buyers and optional for
+// farmers (the server enforces the same split). Enforces live password
 // rules before calling AuthContext.signup(), then routes to /onboarding to
 // finish the profile. The right-hand rail swaps copy based on the chosen role.
 // =============================================================================
@@ -82,7 +83,12 @@ export function SignupPage() {
     /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
     phone.trim().length <= 20 &&
     phone.replace(/[^0-9]/g, '').length >= 7;
-  const emailValid = email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Buyers must give an email; for farmers it stays optional but still has to
+  // be well-formed when filled in.
+  const emailRequired = role === 'BUYER';
+  const emailValid = email.trim() === ''
+    ? !emailRequired
+    : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
   const formValid = nameValid && phoneValid && emailValid && passwordValid;
 
@@ -90,7 +96,11 @@ export function SignupPage() {
     if (!touched[field]) return undefined;
     if (field === 'name' && !nameValid) return 'Name must be at least 2 characters';
     if (field === 'phone' && !phoneValid) return 'Enter a valid phone number';
-    if (field === 'email' && !emailValid) return 'Invalid email address';
+    if (field === 'email' && !emailValid) {
+      return emailRequired && email.trim() === ''
+        ? 'Email is required for buyer accounts'
+        : 'Invalid email address';
+    }
     if (field === 'password' && password && !passwordValid) return 'Password does not meet requirements';
     return undefined;
   }
@@ -205,13 +215,14 @@ export function SignupPage() {
               />
 
               <Input
-                label="Email (optional)"
+                label={emailRequired ? 'Email' : 'Email (optional)'}
                 type="email"
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                 error={getFieldError('email')}
+                required={emailRequired}
                 autoComplete="email"
               />
 
