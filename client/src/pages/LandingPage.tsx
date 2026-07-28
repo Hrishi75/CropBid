@@ -213,6 +213,113 @@ function pctOff(p: Produce): number {
 }
 
 // =============================================================================
+// Consumer packs — the retail tier
+// =============================================================================
+// A household does not buy a 1.2-tonne tomato lot. Every consumer-grade crop
+// carries a shop pack (1 kg tomatoes, 1 L milk, 100 g jeera) priced off the
+// farmgate floor plus a category retail margin — grading, packing, cold chain,
+// last-mile and wastage. That still lands well under supermarket shelf prices,
+// which is the whole pitch.
+//
+// The wholesale tier does not go away: it stays on the card as a second line
+// (₹/quintal × the full lot) for bulk buyers, who bid rather than add to cart.
+// Crops with no PACKS entry — cotton, soybean, maize — are bulk-only: nobody
+// shops for a kilo of Shankar-6.
+//
+// Both tiers move together, since both derive from the same farmgate floor.
+// Keep in sync with mobile/src/lib/catalog.ts.
+// =============================================================================
+
+const KG_PER_UNIT: Record<UnitCode, number> = { KG: 1, LITRE: 1, QUINTAL: 100, TONNE: 1000 };
+
+const RETAIL_MARGIN: Record<RailId, number> = {
+  veg: 0.30,     // washed, graded, crated — highest wastage
+  fruits: 0.30,
+  dairy: 0.10,   // chilled chain already priced into the procurement rate
+  grains: 0.25,  // cleaned, bagged, shelf-stable
+  spices: 0.25,
+};
+
+interface Pack {
+  label: string;   // what the shopper puts in the basket
+  kg: number;      // pack size in kg — litres for liquids
+  margin?: number; // overrides the category margin
+}
+
+const PACKS: Record<string, Pack> = {
+  // Vegetables
+  tomato: { label: '1 kg', kg: 1 },
+  onion: { label: '1 kg', kg: 1 },
+  potato: { label: '1 kg', kg: 1 },
+  okra: { label: '500 g', kg: 0.5 },
+  cauliflower: { label: '1 kg', kg: 1 },
+  brinjal: { label: '500 g', kg: 0.5 },
+  'green-chilli': { label: '250 g', kg: 0.25 },
+  spinach: { label: '250 g', kg: 0.25 },
+
+  // Dairy
+  'cow-milk': { label: '1 L', kg: 1 },
+  'buffalo-milk': { label: '1 L', kg: 1 },
+  curd: { label: '500 g', kg: 0.5 },
+  paneer: { label: '200 g', kg: 0.2 },
+  ghee: { label: '500 g', kg: 0.5 },
+
+  // Fruits
+  mango: { label: '1 kg', kg: 1 },
+  banana: { label: '1 kg', kg: 1 },
+  pomegranate: { label: '1 kg', kg: 1 },
+  grapes: { label: '500 g', kg: 0.5 },
+  guava: { label: '500 g', kg: 0.5 },
+  papaya: { label: '1 kg', kg: 1 },
+  apple: { label: '1 kg', kg: 1 },
+  watermelon: { label: '2 kg', kg: 2 },
+
+  // Grains & pulses. Paddy is not rice — the shopper pack is milled and
+  // polished, so it carries a processing uplift instead of the shelf margin.
+  wheat: { label: '5 kg', kg: 5 },
+  'basmati-rice': { label: '5 kg', kg: 5, margin: 0.85 },
+  bajra: { label: '2 kg', kg: 2 },
+  chana: { label: '1 kg', kg: 1 },
+  'tur-dal': { label: '1 kg', kg: 1 },
+  moong: { label: '1 kg', kg: 1 },
+  masoor: { label: '1 kg', kg: 1 },
+
+  // Spices & oilseeds
+  turmeric: { label: '200 g', kg: 0.2 },
+  'red-chilli': { label: '200 g', kg: 0.2 },
+  cumin: { label: '100 g', kg: 0.1 },
+  'coriander-seed': { label: '200 g', kg: 0.2 },
+  mustard: { label: '500 g', kg: 0.5 },
+  groundnut: { label: '1 kg', kg: 1 },
+};
+
+interface RetailPack {
+  label: string;      // "1 kg", "100 g"
+  suffix: string;     // label as a price suffix — "₹34/kg" reads better than "₹34/1 kg"
+  price: number;      // ₹ for one pack
+  anchor: number;     // ₹ for one pack at the wholesale ceiling — the struck-through number
+  perKg: number;      // ₹ per kg (litre for liquids), so packs stay comparable. Never
+  perKgLabel: string; // per quintal: "₹31/kg" is what a shopper checks, not "₹3,100/qtl".
+}
+
+// null for a bulk-only crop — the card then keeps its wholesale framing.
+function retailPack(p: Produce): RetailPack | null {
+  const pack = PACKS[p.slug];
+  if (!pack) return null;
+  const margin = pack.margin ?? RETAIL_MARGIN[p.cat];
+  const perUnit = p.priceMin * (1 + margin);       // ₹ per listing unit, retail
+  const packUnits = pack.kg / KG_PER_UNIT[p.unit]; // pack size in the listing's own unit
+  return {
+    label: pack.label,
+    suffix: pack.label.replace(/^1 /, ''),
+    price: Math.round(perUnit * packUnits),
+    anchor: Math.round(p.priceMax * (1 + margin) * packUnits),
+    perKg: perUnit / KG_PER_UNIT[p.unit],
+    perKgLabel: p.unit === 'LITRE' ? 'L' : 'kg',
+  };
+}
+
+// =============================================================================
 // Hooks
 // =============================================================================
 
@@ -446,7 +553,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
           <span className="italic">{t('farmer-fair')}</span> {t('prices.')}
         </h1>
         <p className="st-banner-lede">
-          {t('Buy vegetables, fruits, grains and spices straight from the grower — today\'s real mandi price on every lot, escrow-settled, delivered farm to door.')}
+          {t('Buy vegetables, fruits, grains and spices straight from the grower — today\'s real mandi price behind every pack, escrow-settled, delivered farm to door.')}
         </p>
         <div className="st-banner-actions">
           <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
@@ -582,7 +689,7 @@ function ForecastStrip() {
 
 const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string }> = [
   { tone: 'sage',  emoji: '🔨', title: 'Live auctions',        desc: 'Verified buyers bid in open rounds — watch prices climb in real time.', ctaLabel: 'Start bidding',  to: '/signup' },
-  { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Any quantity, at the farmer’s listed price. From one sack to a season’s supply.', ctaLabel: 'Shop direct', to: '/signup' },
+  { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Household packs at the farmer’s own price — a kilo of tomatoes, a litre of milk, no lot to take on.', ctaLabel: 'Shop direct', to: '/signup' },
   { tone: 'ember', emoji: '🛡️', title: 'Escrow protected',  desc: 'Money stays held on-platform and releases only when you confirm delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
 ];
 
@@ -623,8 +730,12 @@ function CategoryGrid({ onJump }: { onJump: (target: RailId) => void }) {
   );
 }
 
+// Two prices on one card: the household pack up top (what a consumer actually
+// buys), the wholesale lot on the line below it (what a bulk buyer bids for).
+// Bulk-only crops skip the pack and keep the wholesale number as the headline.
 function ProduceCard({ p, currency, shopHref }: { p: Produce; currency: CurrencyCode; shopHref: string }) {
   const off = pctOff(p);
+  const pack = retailPack(p);
   return (
     <div className="st-card">
       <Link to={shopHref} className="st-card-img" aria-label={`${p.name} — ${p.variety}`}>
@@ -636,18 +747,41 @@ function ProduceCard({ p, currency, shopHref }: { p: Produce; currency: Currency
         <div className="st-bids"><span className="st-live-dot" />{p.bids} {p.bids === 1 ? 'bid' : 'bids'} · live</div>
         <div className="st-name">{p.name}</div>
         <div className="st-meta">{p.variety} · {p.location}, {p.state}</div>
-        <div className="st-qty">{formatQty(p)} available</div>
+        {pack ? (
+          <div className="st-pack">
+            {pack.label} pack · {formatUnitPrice(pack.perKg, 'INR', currency)}/{pack.perKgLabel}
+          </div>
+        ) : (
+          <div className="st-qty">{formatQty(p)} available</div>
+        )}
         <div className="st-price-row">
           <div>
             <div className="st-price">
-              {formatUnitPrice(p.priceMin, 'INR', currency)}
-              <span className="st-unit">/{UNIT_LABEL[p.unit]}</span>
+              {formatUnitPrice(pack ? pack.price : p.priceMin, 'INR', currency)}
+              <span className="st-unit">{pack ? `/${pack.suffix}` : `/${UNIT_LABEL[p.unit]}`}</span>
             </div>
-            {off >= 5 && <div className="st-mrp">{formatUnitPrice(p.priceMax, 'INR', currency)}</div>}
+            {off >= 5 && (
+              <div className="st-mrp">{formatUnitPrice(pack ? pack.anchor : p.priceMax, 'INR', currency)}</div>
+            )}
           </div>
-          {/* fresh per-kg/per-litre produce is bought outright; bulk quintal lots are bid on */}
-          <Link to={shopHref} className="st-add">{p.unit === 'QUINTAL' ? 'BID' : 'BUY'}</Link>
+          {/* packs go in the basket outright; a whole lot is bid for */}
+          <Link to={shopHref} className="st-add">{pack ? 'ADD' : 'BID'}</Link>
         </div>
+        <Link to={shopHref} className="st-bulk">
+          {pack ? (
+            <>
+              <span className="st-bulk-l">Bulk</span>
+              {formatUnitPrice(p.priceMin, 'INR', currency)}/{UNIT_LABEL[p.unit]} · {formatQty(p)}
+            </>
+          ) : (
+            // quantity is already on the line above — this one only has to say
+            // why there is no pack to add
+            <>
+              <span className="st-bulk-l">Bulk</span>
+              not sold in packs
+            </>
+          )}
+        </Link>
       </div>
     </div>
   );
@@ -698,7 +832,7 @@ function SearchResults({ query, currency, shopHref }: { query: string; currency:
     <section className="st-results">
       <div className="st-rail-head">
         <div>
-          <span className="cb-eyebrow">{matches.length} {matches.length === 1 ? 'lot' : 'lots'} found</span>
+          <span className="cb-eyebrow">{matches.length} {matches.length === 1 ? 'item' : 'items'} found</span>
           <h2 className="st-rail-title">Results for “{query.trim()}”</h2>
         </div>
       </div>
@@ -719,7 +853,7 @@ function SearchResults({ query, currency, shopHref }: { query: string; currency:
 
 const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
   ['01', 'Farmers list from the field', 'Crop, grade, quantity, floor price — in any language, without leaving the farm.'],
-  ['02', 'You buy or bid', 'Pay the listed price for any quantity, or join a live auction for bulk lots.'],
+  ['02', 'You buy or bid', 'Households add a pack at the listed price. Bulk buyers bid on the whole lot.'],
   ['03', 'Escrow keeps it safe', 'Money held on-platform, tracked paid → shipped → delivered, released when you confirm.'],
 ];
 
