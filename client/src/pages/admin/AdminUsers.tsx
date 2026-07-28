@@ -22,6 +22,7 @@ interface AdminUser {
   location: string | null;
   country: string;
   trustScore: number;
+  suspended: boolean;
   avatar: string | null;
   createdAt: string;
 }
@@ -82,6 +83,21 @@ export function AdminUsers() {
       toast.success('Trust score updated');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to update');
+    }
+  }
+
+  async function handleToggleSuspend(user: AdminUser) {
+    const next = !user.suspended;
+    const verb = next ? 'Suspend' : 'Reinstate';
+    if (!window.confirm(`${verb} ${user.name}? ${next ? 'They will be signed out and blocked from logging in.' : 'They will be able to log in again.'}`)) {
+      return;
+    }
+    try {
+      await api.patch(`/admin/users/${user.id}`, { suspended: next });
+      setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, suspended: next } : u));
+      toast.success(next ? 'User suspended' : 'User reinstated');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || `Failed to ${verb.toLowerCase()}`);
     }
   }
 
@@ -185,6 +201,9 @@ export function AdminUsers() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
                         <div>
                           <span style={{ fontWeight: 500 }}>{u.name}</span>
+                          {u.suspended && (
+                            <span className="cb-tiny" style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: 'var(--cb-ember)', color: '#fff', fontWeight: 500 }}>suspended</span>
+                          )}
                           <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>
                         </div>
                         <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role.toLowerCase()}</span>
@@ -220,7 +239,16 @@ export function AdminUsers() {
                               ✎ Edit
                             </button>
                             <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View</button>
-                            <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>Suspend</button>
+                            {u.role !== 'ADMIN' && (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSuspend(u)}
+                                className="cb-btn cb-btn-link"
+                                style={{ fontSize: 12, color: u.suspended ? 'var(--cb-ink-3)' : 'var(--cb-ember)' }}
+                              >
+                                {u.suspended ? 'Reinstate' : 'Suspend'}
+                              </button>
+                            )}
                           </>
                         )}
                       </div>

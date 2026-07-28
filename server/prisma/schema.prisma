@@ -172,6 +172,11 @@ model User {
   avatar      String?  // URL to uploaded avatar image
   trustScore  Float    @default(50) // 0-100, builds with successful transactions
 
+  // Admin can suspend an account. A suspended user can't log in or refresh their
+  // session (both flows reject with 403), and suspending clears refreshToken so
+  // any live session dies at its next refresh. Reversible via the admin panel.
+  suspended   Boolean  @default(false)
+
   // Refresh token for JWT auth — stored hashed, null when logged out
   // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
   refreshToken String?
