@@ -91,6 +91,16 @@ function useLiveRates(): RatesBoardData | null {
 // One card on the storefront — a live API listing, a whole crop when several
 // farmers sell it (one card, "N FARMERS", cheapest price), or a static demo
 // lot from the shared catalog, normalised to what the card renders.
+// What a household pack is priced from. Held separately from the card's own
+// headline numbers because the two can come from different lots: the bulk lane
+// quotes the cheapest lot of all, the pack quotes the cheapest buyable one.
+interface ShopBasis {
+  unit: string;
+  floor: number;
+  ceiling: number;
+  retail: number | null;
+}
+
 interface CardVM {
   key: string;
   live: boolean;
@@ -110,10 +120,12 @@ interface CardVM {
   anchor: number;
   floor: number;          // ₹/unit farmgate floor — the bulk lane's headline
   retail: number | null;  // ₹/unit the farmer set for direct sale, if they did
-  // Whether ListingDetail will actually sell this lot by the pack. A lot the
-  // farmer never opened for direct sale keeps its wholesale framing, so the
-  // card never offers an ADD that dead-ends on the next screen.
-  buyable: boolean;
+  // The lot the household pack is priced off — the cheapest one a shopper can
+  // actually buy, which on a grouped card need not be the cheapest lot overall.
+  // null when nothing here is open for direct sale, so the card keeps its
+  // wholesale framing instead of offering an ADD that dead-ends on the next
+  // screen.
+  shop: ShopBasis | null;
   pack: ShopPack | null;  // household pack — set only when the viewer is shopping
   qty: number;
   location: string;
@@ -123,6 +135,13 @@ interface CardVM {
   trust: number | null;
   low: boolean;
 }
+
+// A lot is on the shelf only if the farmer opened it for direct sale AND put a
+// price on it; anything else is a bidding lot.
+const shopBasis = (l: Listing): ShopBasis | null =>
+  l.directSaleEnabled && l.retailPricePerUnit != null
+    ? { unit: l.unit, floor: l.pricePerUnitMin, ceiling: l.pricePerUnitMax, retail: l.retailPricePerUnit }
+    : null;
 
 function fromListing(l: Listing): CardVM {
   return {
@@ -140,7 +159,7 @@ function fromListing(l: Listing): CardVM {
     anchor: l.pricePerUnitMax,
     floor: l.pricePerUnitMin,
     retail: l.retailPricePerUnit ?? null,
-    buyable: l.directSaleEnabled && l.retailPricePerUnit != null,
+    shop: shopBasis(l),
     pack: null,
     qty: l.remainingQuantity,
     location: l.location,
@@ -171,10 +190,17 @@ function fromGroup(group: Listing[]): CardVM {
   const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0));
   const total = sorted.reduce((s, l) => s + inStockUnit(l, l.quantity), 0);
   const states = [...new Set(sorted.map((l) => l.state))];
+  // The cheapest lot need not be the cheapest one on the shelf — a farmer can
+  // undercut the group and still keep their lot for bidders only. The card
+  // opens CropSellers, where the shopper picks a seller, so price the pack off
+  // the cheapest lot that is genuinely for sale rather than hiding the whole
+  // group behind BID. `sorted` is already cheapest-first.
+  const shop = sorted.map(shopBasis).find((b) => b != null) ?? null;
   return {
     ...base,
     key: `crop-${base.name.trim().toLowerCase()}`,
     group: sorted,
+    shop,
     sellers: sorted.length,
     sellersMeta: states.length === 1
       ? `${sorted.length} farms · ${states[0]}`
@@ -189,9 +215,9 @@ function fromGroup(group: Listing[]): CardVM {
   };
 }
 
-function pctOff(vm: CardVM): number {
-  if (vm.price >= vm.anchor) return 0;
-  return Math.round((1 - vm.price / vm.anchor) * 100);
+function pctOff(price: number, anchor: number): number {
+  if (price >= anchor) return 0;
+  return Math.round((1 - price / anchor) * 100);
 }
 
 export default function StorefrontHomeScreen() {
@@ -269,7 +295,9 @@ export default function StorefrontHomeScreen() {
         anchor: d.anchor,
         floor: d.price,
         retail: null,
-        buyable: true, // reference cards are the showroom — they open the mandi-price note
+        // Reference cards are the showroom — they open the mandi-price note,
+        // so they price a pack off their own band.
+        shop: { unit: d.unit, floor: d.price, ceiling: d.anchor, retail: null },
         pack: null,
         qty: d.qty,
         location: d.location,
@@ -287,16 +315,7 @@ export default function StorefrontHomeScreen() {
     // offer it by the quintal, so the card says so too.
     return all.map((vm) => ({
       ...vm,
-      pack: vm.buyable
-        ? shopPack({
-            crop: vm.name,
-            cat: vm.cat,
-            unit: vm.unit,
-            floor: vm.floor,
-            ceiling: vm.anchor,
-            retail: vm.retail,
-          })
-        : null,
+      pack: vm.shop ? shopPack({ crop: vm.name, cat: vm.cat, ...vm.shop }) : null,
     }));
   }, [listings, shopping]);
 
@@ -711,14 +730,17 @@ function ProductCard({
   liveWord: string;
   shopping: boolean;
 }) {
-  const pct = pctOff(vm);
   const pack = vm.pack;
+  // Off the same pair of numbers the card prints below — a grouped card can
+  // price its pack off one farmer's lot and its bulk line off another's, and a
+  // badge computed from the other lot would advertise a discount nobody gets.
+  const pct = pack ? pctOff(pack.price, pack.anchor) : pctOff(vm.price, vm.anchor);
   const img = vm.image ? mediaUrl(vm.image) : null;
   // Whatever the next screen will actually offer: the pack goes in the basket,
   // a direct-sale lot with no household pack (cotton, maize) is bought whole by
   // the quintal, and everything else is a bidding lot. Farmers and buyers keep
   // their own verb — they never see packs.
-  const label = !shopping || pack ? action : vm.live && vm.buyable ? 'BUY' : 'BID';
+  const label = !shopping || pack ? action : vm.live && vm.shop ? 'BUY' : 'BID';
   return (
     <PressScale
       onPress={onPress}
