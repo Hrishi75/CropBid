@@ -14,6 +14,7 @@ vi.mock('../lib/prisma', () => ({
   prisma: {
     user: {
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -26,6 +27,7 @@ import { signup } from './auth.service';
 import { ApiError } from '../utils/ApiError';
 
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
+const mockFindFirst = vi.mocked(prisma.user.findFirst);
 const mockCreate = vi.mocked(prisma.user.create);
 const mockUpdate = vi.mocked(prisma.user.update);
 
@@ -50,10 +52,12 @@ const createdUser = {
 } as any;
 
 // signup looks up phone first, then email — resolve per lookup so a test can
-// make exactly one of them collide.
+// make exactly one of them collide. Phone is an exact findUnique; email is
+// matched case-insensitively, which Prisma can only express as findFirst.
 function existingAccounts({ phone = false, email = false }) {
   mockFindUnique.mockImplementation((async (args: any) =>
-    (args?.where?.phone && phone) || (args?.where?.email && email) ? createdUser : null) as any);
+    args?.where?.phone && phone ? createdUser : null) as any);
+  mockFindFirst.mockImplementation((async () => (email ? createdUser : null)) as any);
 }
 
 beforeEach(() => {
@@ -176,6 +180,35 @@ describe('signup buyer email requirement', () => {
 
     await expect(signup({ ...buyer, email: '   ' })).rejects.toMatchObject(
       new ApiError(400, 'Email is required for buyer accounts'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('stores a mixed-case email lowercased, so it is one account not two', async () => {
+    existingAccounts({});
+    mockCreate.mockResolvedValue(createdUser);
+
+    await signup({ ...buyer, email: 'Asha@Farm.IN' });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ email: 'asha@farm.in' }),
+      }),
+    );
+  });
+
+  it('rejects an email that differs from an existing one only by case', async () => {
+    existingAccounts({ email: true });
+
+    await expect(signup({ ...buyer, email: 'ASHA@farm.in' })).rejects.toMatchObject(
+      new ApiError(409, 'An account with this email already exists'),
+    );
+    // The duplicate check must be the case-insensitive one, or an older
+    // mixed-case row slips past it.
+    expect(mockFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: 'asha@farm.in', mode: 'insensitive' } },
+      }),
     );
     expect(mockCreate).not.toHaveBeenCalled();
   });

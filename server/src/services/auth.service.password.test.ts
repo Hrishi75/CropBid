@@ -55,7 +55,7 @@ beforeEach(() => {
 
 describe('requestPasswordReset', () => {
   it('does nothing for an unknown email (no enumeration signal)', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    mockFindFirst.mockResolvedValue(null);
 
     await expect(requestPasswordReset('nobody@example.com')).resolves.toBeUndefined();
 
@@ -63,8 +63,21 @@ describe('requestPasswordReset', () => {
     expect(mockSendReset).not.toHaveBeenCalled();
   });
 
+  it('finds the account when the address is typed in a different case', async () => {
+    mockFindFirst.mockResolvedValue(baseUser);
+
+    await requestPasswordReset('  Rajesh@CropBid.test ');
+
+    expect(mockFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: 'Rajesh@CropBid.test', mode: 'insensitive' } },
+      }),
+    );
+    expect(mockSendReset).toHaveBeenCalled();
+  });
+
   it('stores only the token hash; the raw token goes in the emailed link', async () => {
-    mockFindUnique.mockResolvedValue(baseUser);
+    mockFindFirst.mockResolvedValue(baseUser);
 
     await requestPasswordReset('rajesh@cropbid.test');
 
