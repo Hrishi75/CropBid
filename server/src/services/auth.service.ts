@@ -218,6 +218,12 @@ export async function login(input: LoginInput) {
     throw new ApiError(401, 'Invalid phone/email or password');
   }
 
+  // Suspended accounts can't start a new session. Checked only after the
+  // password is verified so this never leaks which accounts exist.
+  if (user.suspended) {
+    throw new ApiError(403, 'This account has been suspended. Please contact support.');
+  }
+
   // 3. Generate new tokens
   const tokens = generateTokens(user.id, user.role);
 
@@ -265,7 +271,18 @@ export async function refresh(refreshToken: string) {
     },
   });
 
-  if (!user || user.refreshToken !== refreshToken) {
+  if (!user) {
+    throw new ApiError(401, 'Refresh token has been revoked');
+  }
+
+  // Check suspension BEFORE the token match: suspending clears the stored
+  // refreshToken, so a plain token-mismatch check would return 401 "revoked"
+  // first and the suspended user would never see the 403 / its reason.
+  if (user.suspended) {
+    throw new ApiError(403, 'This account has been suspended. Please contact support.');
+  }
+
+  if (user.refreshToken !== refreshToken) {
     throw new ApiError(401, 'Refresh token has been revoked');
   }
 

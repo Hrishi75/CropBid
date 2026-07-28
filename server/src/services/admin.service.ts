@@ -92,6 +92,7 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
         location: true,
         country: true,
         trustScore: true,
+        suspended: true,
         avatar: true,
         createdAt: true,
       },
@@ -225,11 +226,36 @@ export async function updateEnquiryStatus(enquiryId: string, status: string) {
 // =============================================================================
 // UPDATE USER — Admin can modify user details (trust score, verification)
 // =============================================================================
-export async function updateUser(userId: string, data: { trustScore?: number }) {
+export async function updateUser(userId: string, data: { trustScore?: number; suspended?: boolean }) {
   const updateData: any = {};
 
   if (typeof data.trustScore === 'number') {
     updateData.trustScore = Math.max(0, Math.min(100, data.trustScore));
+  }
+
+  if (typeof data.suspended === 'boolean') {
+    if (data.suspended) {
+      // Guard at the server boundary, not just in the UI: an admin must never be
+      // suspendable, or a crafted request could lock every admin out of the
+      // platform. The role check is what makes the hidden UI button meaningful.
+      const target = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true },
+      });
+      if (!target) {
+        throw new ApiError(404, 'User not found');
+      }
+      if (target.role === 'ADMIN') {
+        throw new ApiError(403, 'Admin accounts cannot be suspended');
+      }
+      updateData.suspended = true;
+      // Suspending revokes the refresh token so any live session can't be renewed
+      // and dies once the short-lived access token expires.
+      updateData.refreshToken = null;
+    } else {
+      // Reinstating leaves the token null — the user simply logs in again.
+      updateData.suspended = false;
+    }
   }
 
   return prisma.user.update({
@@ -241,6 +267,7 @@ export async function updateUser(userId: string, data: { trustScore?: number }) 
       email: true,
       role: true,
       trustScore: true,
+      suspended: true,
     },
   });
 }
