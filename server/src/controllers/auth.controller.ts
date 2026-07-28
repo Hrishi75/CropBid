@@ -22,7 +22,8 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number');
 
-// Phone is the primary contact (required); email is optional. Forms may send
+// Phone is the primary contact (required); email is optional for farmers and
+// consumers but REQUIRED for buyers (see the superRefine below). Forms may send
 // email as an empty string — treat that as "not provided" before validating.
 export const signupSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(100),
@@ -46,6 +47,17 @@ export const signupSchema = z.object({
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI']).optional(),
+}).superRefine((data, ctx) => {
+  // Buyers must sign up with an email. The check is cross-field, so it can't
+  // live on the email property itself; the path points back at the field so a
+  // client can highlight it.
+  if (data.role === 'BUYER' && !data.email) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['email'],
+      message: 'Email is required for buyer accounts',
+    });
+  }
 });
 
 // Login accepts phone OR email in one field. Older clients send it as

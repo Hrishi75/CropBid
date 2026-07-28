@@ -51,11 +51,16 @@ const baseUser = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(baseUser);
+  // clearAllMocks wipes recorded calls but keeps implementations, so both
+  // lookups get an explicit "no match" default — otherwise a test that stubs
+  // one of them silently changes the meaning of the next one.
+  mockFindUnique.mockResolvedValue(null);
+  mockFindFirst.mockResolvedValue(null);
 });
 
 describe('requestPasswordReset', () => {
   it('does nothing for an unknown email (no enumeration signal)', async () => {
-    mockFindUnique.mockResolvedValue(null);
+    mockFindFirst.mockResolvedValue(null);
 
     await expect(requestPasswordReset('nobody@example.com')).resolves.toBeUndefined();
 
@@ -63,8 +68,32 @@ describe('requestPasswordReset', () => {
     expect(mockSendReset).not.toHaveBeenCalled();
   });
 
-  it('stores only the token hash; the raw token goes in the emailed link', async () => {
+  it('uses the exact-case account when one exists, without the fallback', async () => {
+    // Legacy rows can differ from each other by case alone. An exact hit must
+    // win outright, or an arbitrary case-variant could receive the reset link.
     mockFindUnique.mockResolvedValue(baseUser);
+
+    await requestPasswordReset('rajesh@cropbid.test');
+
+    expect(mockFindFirst).not.toHaveBeenCalled();
+    expect(mockSendReset).toHaveBeenCalled();
+  });
+
+  it('finds the account when the address is typed in a different case', async () => {
+    mockFindFirst.mockResolvedValue(baseUser);
+
+    await requestPasswordReset('  Rajesh@CropBid.test ');
+
+    expect(mockFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: 'Rajesh@CropBid.test', mode: 'insensitive' } },
+      }),
+    );
+    expect(mockSendReset).toHaveBeenCalled();
+  });
+
+  it('stores only the token hash; the raw token goes in the emailed link', async () => {
+    mockFindFirst.mockResolvedValue(baseUser);
 
     await requestPasswordReset('rajesh@cropbid.test');
 

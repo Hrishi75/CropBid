@@ -37,6 +37,22 @@ export function normalizePhone(phone: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Email normalization — the stored form of an email address
+// ---------------------------------------------------------------------------
+// Nobody thinks of "Asha@Farm.in" and "asha@farm.in" as two accounts, but
+// Postgres does: the unique index and every findUnique compare byte for byte.
+// Left alone, one buyer could hold both addresses and neither login nor the
+// password-reset link would reliably find the one they meant.
+//
+// New rows are written lowercase so they are canonical. READS stay
+// case-insensitive rather than assuming that: accounts predating this are
+// still stored however they were typed, and lowercasing only the lookup would
+// lock those people out of their own accounts.
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+// ---------------------------------------------------------------------------
 // Signup — Create a new user account
 // ---------------------------------------------------------------------------
 interface SignupInput {
@@ -51,8 +67,16 @@ interface SignupInput {
 }
 
 export async function signup(input: SignupInput) {
+  // 0. Buyers must have an email on file; farmers and consumers may sign up
+  // with a phone alone. The controller's schema rejects this first — repeated
+  // here so the rule holds for every caller of the service, not just HTTP.
+  const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
+  if (input.role === 'BUYER' && !email) {
+    throw new ApiError(400, 'Email is required for buyer accounts');
+  }
+
   // 1. Phone is the primary identifier — one account per phone. Email is
-  // optional but must also be unique when provided.
+  // optional for non-buyers but must always be unique when provided.
   const phone = normalizePhone(input.phone);
   const existingPhone = await prisma.user.findUnique({
     where: { phone },
@@ -61,9 +85,11 @@ export async function signup(input: SignupInput) {
     throw new ApiError(409, 'An account with this phone number already exists');
   }
 
-  if (input.email) {
-    const existingEmail = await prisma.user.findUnique({
-      where: { email: input.email },
+  if (email) {
+    // Case-insensitive so a lowercase signup still collides with an older
+    // mixed-case row; the unique index catches the new-against-new race.
+    const existingEmail = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
     });
     if (existingEmail) {
       throw new ApiError(409, 'An account with this email already exists');
@@ -82,7 +108,7 @@ export async function signup(input: SignupInput) {
     .create({
       data: {
         name: input.name,
-        email: input.email || null,
+        email: email || null,
         password: hashedPassword,
         role: input.role,
         phone,
@@ -153,18 +179,31 @@ export async function login(input: LoginInput) {
   // email identifier normalizes to "", which must never become a lookup arm.
   const identifier = input.identifier.trim();
   const asPhone = normalizePhone(identifier);
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        ...(asPhone.replace('+', '') ? [{ phone: asPhone }] : []),
-        { email: identifier },
-      ],
-    },
-    include: {
-      farmerProfile: true,
-      buyerProfile: true,
-    },
-  });
+  const withProfiles = { farmerProfile: true, buyerProfile: true };
+
+  // Exact match first. People capitalise their own address inconsistently and
+  // none of them expect that to be a different account, so a miss falls back to
+  // a case-insensitive match — but only as a fallback. Rows created before
+  // emails were normalized can differ from each other by case alone, and going
+  // case-insensitive first would let an arbitrary one of them answer for the
+  // address that was actually typed.
+  const user =
+    (await prisma.user.findFirst({
+      where: {
+        OR: [
+          ...(asPhone.replace('+', '') ? [{ phone: asPhone }] : []),
+          { email: identifier },
+        ],
+      },
+      include: withProfiles,
+    })) ??
+    (await prisma.user.findFirst({
+      where: { email: { equals: identifier, mode: 'insensitive' } },
+      // Oldest wins, so a repeat login always lands on the same account
+      // instead of whichever row the planner happened to return.
+      orderBy: { createdAt: 'asc' },
+      include: withProfiles,
+    }));
 
   if (!user) {
     // SECURITY: Don't reveal whether the account exists or not
@@ -289,7 +328,15 @@ export async function logout(userId: string) {
 // Unknown email → return silently; the endpoint answers the same 200 either
 // way, so an attacker can't use it to enumerate registered addresses.
 export async function requestPasswordReset(email: string) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  // Exact first, then case-insensitive — the same order login uses, so the
+  // reset link goes to the account that would actually be logged into.
+  const typed = email.trim();
+  const user =
+    (await prisma.user.findUnique({ where: { email: typed } })) ??
+    (await prisma.user.findFirst({
+      where: { email: { equals: typed, mode: 'insensitive' } },
+      orderBy: { createdAt: 'asc' },
+    }));
   // Email is optional since phone became the primary contact — an account
   // without one simply can't use the email reset flow.
   if (!user || !user.email) return;
