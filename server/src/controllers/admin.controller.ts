@@ -10,6 +10,7 @@ import { auditFromRequest } from '../services/audit.service';
 
 const updateUserSchema = z.object({
   trustScore: z.number().min(0).max(100).optional(),
+  suspended: z.boolean().optional(),
 });
 
 const userIdParamSchema = z.object({
@@ -102,7 +103,7 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     // Single column read, no extra round-trip cost beyond one query.
     const before = await prisma.user.findUnique({
       where: { id: params.data.id },
-      select: { trustScore: true },
+      select: { trustScore: true, suspended: true },
     });
 
     const user = await adminService.updateUser(params.data.id, body.data);
@@ -112,8 +113,8 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       entityType: 'User',
       entityId: params.data.id,
       metadata: {
-        before: { trustScore: before?.trustScore ?? null },
-        after: { trustScore: user.trustScore },
+        before: { trustScore: before?.trustScore ?? null, suspended: before?.suspended ?? null },
+        after: { trustScore: user.trustScore, suspended: user.suspended },
         requested: body.data,
       },
     });
