@@ -1,0 +1,54 @@
+name: Deploy API to Lightsail
+
+# Waits for the CI workflow to finish on main and only deploys if it passed.
+# Without this gate, a commit that fails tests/build could still reach
+# production the moment it lands on main — CI passing on the PR doesn't
+# guarantee CI passes again post-merge (e.g. a bad merge commit).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        # Pinned to a commit SHA, not the mutable "v1" tag: this action
+        # receives the production SSH private key, so if "v1" ever moved to a
+        # different (compromised or malicious) commit upstream, it would run
+        # with our credentials before anyone noticed. Pinning removes that
+        # trust-on-every-run exposure. (v1.2.5, the latest release as of writing.)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: |
+            set -euo pipefail
+
+            cd ~/app
+            git fetch origin
+            git checkout main
+            # Pinned to the exact commit THIS workflow_run validated, not the
+            # moving origin/main tip. Without this, a commit landing on main
+            # between CI finishing and this job running would deploy
+            # untested code — the gate above would have passed for nothing.
+            git reset --hard ${{ github.event.workflow_run.head_sha }}
+
+            cd server
+            npm install --include=dev
+            npx prisma generate
+            npx prisma migrate deploy
+            npm run build
+
+            sudo systemctl restart cropbid-api
+
+            # Give it a moment to boot, then confirm it's actually serving
+            # traffic — not just that systemd marks it "active". A crash-loop
+            # right after restart would otherwise pass silently.
+            sleep 3
+            sudo systemctl is-active --quiet cropbid-api
+            curl -sf http://127.0.0.1:5000/api/health > /dev/null
