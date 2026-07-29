@@ -26,6 +26,7 @@ import {
   type SignupInput,
 } from '../api/endpoints';
 import type { User } from '../api/types';
+import { markSynced } from '../lib/idle';
 
 interface AuthState {
   user: User | null;
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.post('/auth/refresh', { refreshToken });
         setAccessToken(data.accessToken);
         if (data.refreshToken) await setRefreshToken(data.refreshToken);
+        markSynced(); // Launch refresh re-armed the server's idle window.
         setUser(data.user);
       } catch {
         setAccessToken(null);

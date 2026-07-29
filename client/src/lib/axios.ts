@@ -21,7 +21,7 @@
 // =============================================================================
 
 import axios from 'axios';
-import { setLogoutReason } from './idle';
+import { markSynced, setLogoutReason } from './idle';
 
 // Create a custom axios instance (not the global one)
 // This lets us add interceptors without affecting other axios usage
@@ -125,6 +125,10 @@ api.interceptors.response.use(
 
         // Store the new access token
         setAccessToken(data.accessToken);
+
+        // The refresh token rotated here too, so the idle keepalive can hold
+        // off — this call already re-armed the server's window.
+        markSynced();
 
         // Retry all queued requests with the new token
         processQueue(null, data.accessToken);

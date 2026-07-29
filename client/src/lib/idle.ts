@@ -41,7 +41,25 @@ const CHECK_INTERVAL_MS = 15 * 1000;
 // when the thing we're measuring is a 15-minute gap.
 const WRITE_THROTTLE_MS = 5 * 1000;
 
+// How long an ACTIVE session may go without talking to /auth/refresh.
+//
+// WHY THIS EXISTS: marking activity here only moves a number in localStorage.
+// The server's idea of the window is the refresh token, and that is rotated
+// ONLY by /auth/refresh. Reading a long page or filling a long form is real
+// activity that makes no API calls, so without a keepalive the two clocks
+// drift apart: this tab believes the user is active while their refresh token
+// quietly ages out, and the next request — the form submit — signs them out.
+//
+// A third of the window means an active user re-arms the server roughly three
+// times per idle period, so a single failed keepalive is never fatal.
+export const KEEPALIVE_MS = IDLE_TIMEOUT_MS / 3;
+
 const LAST_ACTIVITY_KEY = 'cb_last_activity';
+
+// When we last rotated the refresh token. Shared across tabs for the same
+// reason the activity stamp is: the server has ONE session per browser, so a
+// refresh done by any tab re-arms it for all of them.
+const LAST_SYNC_KEY = 'cb_last_sync';
 
 // Why the user was signed out, read once by the login page to explain itself.
 const LOGOUT_REASON_KEY = 'cb_logout_reason';
@@ -59,15 +77,18 @@ const ACTIVITY_EVENTS = [
 
 let lastWrite = 0;
 
-export function markActivity(force = false): void {
+// Returns whether this call actually wrote, so callers can hang further
+// per-activity work off the same throttle instead of running it per mousemove.
+export function markActivity(force = false): boolean {
   const now = Date.now();
-  if (!force && now - lastWrite < WRITE_THROTTLE_MS) return;
+  if (!force && now - lastWrite < WRITE_THROTTLE_MS) return false;
   lastWrite = now;
   try {
     localStorage.setItem(LAST_ACTIVITY_KEY, String(now));
   } catch {
     /* storage unavailable (private mode / disabled) — see isIdle() */
   }
+  return true;
 }
 
 // Milliseconds since the last recorded interaction, or null when we have no
@@ -95,8 +116,38 @@ export function isIdle(): boolean {
 export function clearActivity(): void {
   try {
     localStorage.removeItem(LAST_ACTIVITY_KEY);
+    localStorage.removeItem(LAST_SYNC_KEY);
   } catch {
     /* nothing to clear */
+  }
+}
+
+// --- Keepalive bookkeeping -------------------------------------------------
+
+// Record that the refresh token was just rotated. Called after EVERY successful
+// /auth/refresh — the one in the 401 interceptor and the session restore too,
+// not just keepalives — so ordinary API traffic postpones the next keepalive
+// instead of racing it.
+export function markSynced(): void {
+  try {
+    localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+  } catch {
+    /* storage unavailable — see needsKeepalive() */
+  }
+}
+
+// A missing stamp means "no idea when we last synced", which we treat as due.
+// Worst case that costs one extra refresh; the opposite default would let the
+// drift this whole mechanism exists to prevent go unnoticed.
+function needsKeepalive(): boolean {
+  try {
+    const raw = localStorage.getItem(LAST_SYNC_KEY);
+    if (!raw) return true;
+    const at = Number(raw);
+    if (!Number.isFinite(at)) return true;
+    return Date.now() - at >= KEEPALIVE_MS;
+  } catch {
+    return false; // No storage means no way to coordinate — leave it to the 401 path.
   }
 }
 
@@ -127,7 +178,21 @@ export function takeLogoutReason(): LogoutReason | null {
 // ---------------------------------------------------------------------------
 // `onIdle` fires at most once per watch; the caller is expected to tear the
 // session down, which unmounts the watcher.
-export function watchIdle(onIdle: () => void): () => void {
+//
+// `onKeepalive` re-arms the server-side window (see KEEPALIVE_MS). It is driven
+// by real input rather than the poll timer, which matters for two reasons:
+//
+//   1. A background tab receives no pointer or key events, so only the tab the
+//      user is actually looking at can fire one. A timer would have every open
+//      tab refreshing on its own schedule.
+//   2. The server rotates strictly — it rejects any refresh token that isn't
+//      the newest one it issued — so two tabs refreshing at once would leave
+//      the loser holding a revoked token and force exactly the sign-out this
+//      is meant to prevent.
+//
+// The shared sync stamp is claimed BEFORE the callback runs, so a sibling tab
+// that wakes a moment later sees a fresh stamp and stands down.
+export function watchIdle(onIdle: () => void, onKeepalive?: () => void): () => void {
   let fired = false;
 
   function check() {
@@ -136,7 +201,16 @@ export function watchIdle(onIdle: () => void): () => void {
     onIdle();
   }
 
-  const handleActivity = () => markActivity();
+  const handleActivity = () => {
+    // Piggyback on markActivity's throttle — mousemove fires continuously and
+    // the keepalive check reads localStorage.
+    if (!markActivity()) return;
+    // Idle wins over keepalive: once the window has already lapsed, the session
+    // is over and refreshing it would resurrect a session the user lost.
+    if (!onKeepalive || fired || isIdle() || !needsKeepalive()) return;
+    markSynced();
+    onKeepalive();
+  };
 
   ACTIVITY_EVENTS.forEach((event) =>
     window.addEventListener(event, handleActivity, { passive: true }),

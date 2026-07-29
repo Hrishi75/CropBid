@@ -19,7 +19,18 @@
 export const IDLE_MINUTES = 15;
 export const IDLE_TIMEOUT_MS = IDLE_MINUTES * 60 * 1000;
 
+// How long an ACTIVE session may go without talking to /auth/refresh.
+//
+// Touching the screen only moves the number below. The server's idea of the
+// window is the refresh token, rotated ONLY by /auth/refresh — so a screen the
+// user reads or types into without triggering a request (a long requirement
+// form) drifts: the app thinks they are active while the token ages out, and
+// the submit at the end signs them out. A third of the window means an active
+// user re-arms the server about three times per idle period.
+export const KEEPALIVE_MS = IDLE_TIMEOUT_MS / 3;
+
 let lastActivityAt = Date.now();
+let lastSyncAt = Date.now();
 
 export function markActivity(): void {
   lastActivityAt = Date.now();
@@ -31,4 +42,15 @@ export function msSinceActivity(): number {
 
 export function isIdle(): boolean {
   return msSinceActivity() >= IDLE_TIMEOUT_MS;
+}
+
+// Called after EVERY successful /auth/refresh — the launch refresh and the 401
+// interceptor too, not just keepalives — so ordinary API traffic postpones the
+// next keepalive rather than racing it.
+export function markSynced(): void {
+  lastSyncAt = Date.now();
+}
+
+export function needsKeepalive(): boolean {
+  return Date.now() - lastSyncAt >= KEEPALIVE_MS;
 }

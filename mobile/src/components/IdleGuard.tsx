@@ -20,6 +20,7 @@
 import React, { useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { keepAliveSession } from '../api/client';
 import { isIdle, markActivity } from '../lib/idle';
 
 // How often we re-check while the app is in the foreground.
@@ -65,6 +66,9 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
       style={{ flex: 1 }}
       onStartShouldSetResponderCapture={() => {
         markActivity();
+        // Touching re-arms the local clock; this re-arms the server's. It
+        // self-throttles to once per KEEPALIVE_MS and no-ops when signed out.
+        if (signedIn.current) void keepAliveSession();
         return false; // Observe only — never claim the gesture.
       }}
     >

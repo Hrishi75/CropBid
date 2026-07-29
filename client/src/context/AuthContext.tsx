@@ -25,6 +25,7 @@ import {
   clearActivity,
   isIdle,
   markActivity,
+  markSynced,
   setLogoutReason,
   watchIdle,
 } from '../lib/idle';
@@ -90,6 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user);
         setSessionHint(true);
         markActivity(true); // Restored session starts its idle clock now
+        markSynced();       // ...and this call just rotated the refresh token
       } catch {
         // No valid refresh token — user is not logged in
         // This is normal for first-time visitors
@@ -120,12 +122,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
 
-    return watchIdle(() => {
-      setLogoutReason('idle');
-      // Fire-and-forget: /auth/logout clears the server-side refresh token, but
-      // local state must drop regardless of whether that call succeeds.
-      void logout();
-    });
+    return watchIdle(
+      () => {
+        setLogoutReason('idle');
+        // Fire-and-forget: /auth/logout clears the server-side refresh token, but
+        // local state must drop regardless of whether that call succeeds.
+        void logout();
+      },
+      // Keepalive: interaction that makes no API calls (reading a long page,
+      // filling a long form) still has to reach the server, or its refresh
+      // token ages out while this tab believes the user is active.
+      () => {
+        void api
+          .post('/auth/refresh')
+          .then(({ data }) => setAccessToken(data.accessToken))
+          .catch(() => {
+            // Nothing to do here. If the session is genuinely gone the next
+            // real request takes the 401 path and signs the user out with a
+            // reason; a transient network blip just retries at the next
+            // keepalive, well inside the window.
+          });
+      },
+    );
   }, [user]);
 
   // -------------------------------------------------------------------------
@@ -139,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Start the idle clock fresh — a stale stamp from an earlier session would
     // otherwise trip the watchdog the instant it starts.
     markActivity(true);
+    markSynced();
   }
 
   // -------------------------------------------------------------------------
@@ -150,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
     setSessionHint(true);
     markActivity(true);
+    markSynced();
   }
 
   // -------------------------------------------------------------------------
