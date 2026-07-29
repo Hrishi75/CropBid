@@ -20,7 +20,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
-import api, { setAccessToken } from '../lib/axios';
+import api, { keepAliveSession, setAccessToken } from '../lib/axios';
 import {
   clearActivity,
   isIdle,
@@ -131,18 +131,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       // Keepalive: interaction that makes no API calls (reading a long page,
       // filling a long form) still has to reach the server, or its refresh
-      // token ages out while this tab believes the user is active.
-      () => {
-        void api
-          .post('/auth/refresh')
-          .then(({ data }) => setAccessToken(data.accessToken))
-          .catch(() => {
-            // Nothing to do here. If the session is genuinely gone the next
-            // real request takes the 401 path and signs the user out with a
-            // reason; a transient network blip just retries at the next
-            // keepalive, well inside the window.
-          });
-      },
+      // token ages out while this tab believes the user is active. It shares
+      // the interceptor's refresh lock — see keepAliveSession in lib/axios.
+      () => void keepAliveSession(),
     );
   }, [user]);
 

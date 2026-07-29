@@ -160,4 +160,48 @@ api.interceptors.response.use(
   },
 );
 
+// ---------------------------------------------------------------------------
+// keepAliveSession — re-arm the server's idle window for an active user
+// ---------------------------------------------------------------------------
+// Marking activity re-arms the LOCAL clock only; the server's window is the
+// refresh token, which rotates only through this endpoint. The idle watcher
+// calls this on real interaction so a page the user reads or types into
+// without firing requests can't drift out of sync and sign them out on submit.
+// See lib/idle.ts for the timing and the cross-tab rules.
+//
+// This shares the interceptor's `isRefreshing` lock and `failedQueue` rather
+// than calling /auth/refresh on its own. It has to: the server rejects any
+// refresh token that isn't the newest it issued, so a keepalive overlapping a
+// 401-driven refresh would leave one of the two holding a revoked token — the
+// exact sign-out this exists to prevent. Holding the lock also means a request
+// that 401s meanwhile parks on the queue expecting us to settle it, so every
+// exit path drains it.
+export async function keepAliveSession(): Promise<void> {
+  // Already rotating — that call re-arms the window just as well as ours would.
+  if (isRefreshing) return;
+
+  isRefreshing = true;
+  try {
+    const { data } = await api.post('/auth/refresh');
+    setAccessToken(data.accessToken);
+    markSynced();
+    processQueue(null, data.accessToken);
+  } catch (err: any) {
+    const stranded = failedQueue.length > 0;
+    processQueue(err, null);
+
+    // Only end the session if a REAL request was waiting on us — a 401 followed
+    // by a failed refresh is the interceptor's own case and means the session
+    // is genuinely gone. A keepalive failing alone is a background blip with
+    // minutes of window left; the next interaction retries.
+    if (stranded) {
+      setAccessToken(null);
+      if (err?.response?.data?.code === 'SESSION_IDLE') setLogoutReason('idle');
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+  } finally {
+    isRefreshing = false;
+  }
+}
+
 export default api;

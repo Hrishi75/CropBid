@@ -145,6 +145,12 @@ api.interceptors.response.use(
 // Skipped when a 401-driven refresh is already in flight: the server rejects
 // any refresh token that isn't the newest one it issued, so two overlapping
 // rotations would leave one holding a revoked token.
+//
+// Taking `isRefreshing` means this function inherits the interceptor's
+// contract: a request that 401s while we hold the lock parks itself on `queue`
+// and waits for whoever owns the rotation to settle it. Every exit path below
+// therefore drains the queue — returning without draining would hang those
+// requests for the life of the app.
 export async function keepAliveSession(): Promise<void> {
   if (isRefreshing || isIdle() || !needsKeepalive()) return;
 
@@ -153,14 +159,30 @@ export async function keepAliveSession(): Promise<void> {
   markSynced();
   try {
     const refreshToken = await getRefreshToken();
-    if (!refreshToken) return;
+    if (!refreshToken) throw new Error('No refresh token');
+
     const { data } = await api.post('/auth/refresh', { refreshToken });
     setAccessToken(data.accessToken);
     if (data.refreshToken) await setRefreshToken(data.refreshToken);
-  } catch {
-    // Leave it. A genuinely dead session is caught by the next real request's
-    // 401 (which signs out with a reason); a network blip retries at the next
-    // keepalive, still well inside the window.
+
+    queue.forEach((p) => p.resolve(data.accessToken));
+    queue = [];
+  } catch (e) {
+    const stranded = queue.length > 0;
+    queue.forEach((p) => p.reject(e));
+    queue = [];
+
+    // Only tear the session down if a REAL request was waiting on us. That is
+    // the interceptor's own situation — a 401 followed by a failed refresh —
+    // and it means the session is genuinely gone. A keepalive failing on its
+    // own is just a background blip: the window has minutes left and the next
+    // touch retries, so signing out here would do the very thing this exists
+    // to prevent.
+    if (stranded) {
+      setAccessToken(null);
+      await setRefreshToken(null);
+      onLogout?.();
+    }
   } finally {
     isRefreshing = false;
   }
