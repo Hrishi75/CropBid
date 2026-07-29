@@ -18,18 +18,35 @@ vi.mock('../lib/prisma', () => ({
       create: vi.fn(),
       update: vi.fn(),
     },
+    pendingSignup: {
+      upsert: vi.fn(),
+      findUnique: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   },
+}));
+
+vi.mock('./email.service', () => ({
+  sendSignupOtpEmail: vi.fn(),
+  sendPasswordResetEmail: vi.fn(),
 }));
 
 import { prisma } from '../lib/prisma';
 import { Prisma } from '../generated/prisma/client';
-import { signup } from './auth.service';
+import { signup, startBuyerSignup } from './auth.service';
+import { sendSignupOtpEmail } from './email.service';
 import { ApiError } from '../utils/ApiError';
 
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
 const mockFindFirst = vi.mocked(prisma.user.findFirst);
 const mockCreate = vi.mocked(prisma.user.create);
 const mockUpdate = vi.mocked(prisma.user.update);
+const mockPendingUpsert = vi.mocked(prisma.pendingSignup.upsert);
+const mockPendingDeleteMany = vi.mocked(prisma.pendingSignup.deleteMany);
+const mockPendingDelete = vi.mocked(prisma.pendingSignup.delete);
+const mockSendOtp = vi.mocked(sendSignupOtpEmail);
 
 const input = {
   name: 'Rajesh',
@@ -63,6 +80,10 @@ function existingAccounts({ phone = false, email = false }) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(createdUser);
+  mockPendingUpsert.mockResolvedValue({ id: 'pending-1' } as any);
+  mockPendingDeleteMany.mockResolvedValue({ count: 0 } as any);
+  mockPendingDelete.mockResolvedValue({} as any);
+  mockSendOtp.mockResolvedValue(undefined);
 });
 
 describe('signup', () => {
@@ -158,49 +179,83 @@ describe('signup', () => {
   });
 });
 
-// Buyers are the one role that cannot be phone-only. The controller's schema
-// rejects the request first, but the rule is repeated in the service so it
-// holds for every caller — and so a blank-ish email can never slip through as
-// an account with no reachable address.
-describe('signup buyer email requirement', () => {
+// Buyers no longer come through signup() at all — they go through
+// startBuyerSignup and are created once the emailed code comes back. The rule
+// is enforced in the service, not just at the controller, so an unverified
+// buyer cannot be created through a second door.
+describe('signup buyer rejection', () => {
   const buyer = { ...input, role: 'BUYER' as const };
 
-  it('rejects a buyer with no email before touching the database', async () => {
+  it('refuses to create a buyer directly, before touching the database', async () => {
     existingAccounts({});
 
-    await expect(signup({ ...buyer, email: undefined })).rejects.toMatchObject(
-      new ApiError(400, 'Email is required for buyer accounts'),
+    await expect(signup(buyer)).rejects.toMatchObject(
+      new ApiError(400, 'Buyer accounts must verify their email address first'),
     );
     expect(mockFindUnique).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('rejects a buyer whose email is only whitespace', async () => {
-    existingAccounts({});
-
-    await expect(signup({ ...buyer, email: '   ' })).rejects.toMatchObject(
-      new ApiError(400, 'Email is required for buyer accounts'),
-    );
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('stores a mixed-case email lowercased, so it is one account not two', async () => {
+  it('refuses even when the buyer supplied a perfectly good email', async () => {
     existingAccounts({});
     mockCreate.mockResolvedValue(createdUser);
 
-    await signup({ ...buyer, email: 'Asha@Farm.IN' });
+    await expect(signup({ ...buyer, email: 'buyer@cropbid.test' })).rejects.toMatchObject(
+      new ApiError(400, 'Buyer accounts must verify their email address first'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+});
 
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ email: 'asha@farm.in' }),
-      }),
+// Buyers are the one role that cannot be phone-only: the email is where the
+// code goes. The controller's schema rejects a missing one first, but the rule
+// is repeated in the service so it holds for every caller — and so a blank-ish
+// email can never slip through as an account with no reachable address.
+describe('startBuyerSignup', () => {
+  const buyer = { ...input, role: 'BUYER' as const };
+
+  it('rejects a buyer with no email before touching the database', async () => {
+    existingAccounts({});
+
+    await expect(startBuyerSignup({ ...buyer, email: undefined })).rejects.toMatchObject(
+      new ApiError(400, 'Email is required for buyer accounts'),
+    );
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockPendingUpsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a buyer whose email is only whitespace', async () => {
+    existingAccounts({});
+
+    await expect(startBuyerSignup({ ...buyer, email: '   ' })).rejects.toMatchObject(
+      new ApiError(400, 'Email is required for buyer accounts'),
+    );
+    expect(mockPendingUpsert).not.toHaveBeenCalled();
+  });
+
+  it('refuses a non-buyer role', async () => {
+    existingAccounts({});
+
+    await expect(startBuyerSignup({ ...buyer, role: 'FARMER' })).rejects.toMatchObject(
+      new ApiError(400, 'Only buyer accounts use email verification'),
+    );
+    expect(mockPendingUpsert).not.toHaveBeenCalled();
+  });
+
+  it('parks a mixed-case email lowercased, so it is one signup not two', async () => {
+    existingAccounts({});
+
+    await startBuyerSignup({ ...buyer, email: 'Asha@Farm.IN' });
+
+    expect(mockPendingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { email: 'asha@farm.in' } }),
     );
   });
 
-  it('rejects an email that differs from an existing one only by case', async () => {
+  it('rejects an email that differs from an existing account only by case', async () => {
     existingAccounts({ email: true });
 
-    await expect(signup({ ...buyer, email: 'ASHA@farm.in' })).rejects.toMatchObject(
+    await expect(startBuyerSignup({ ...buyer, email: 'ASHA@farm.in' })).rejects.toMatchObject(
       new ApiError(409, 'An account with this email already exists'),
     );
     // The duplicate check must be the case-insensitive one, or an older
@@ -210,20 +265,66 @@ describe('signup buyer email requirement', () => {
         where: { email: { equals: 'asha@farm.in', mode: 'insensitive' } },
       }),
     );
+    // No code should reach an address that already has an account.
+    expect(mockSendOtp).not.toHaveBeenCalled();
+  });
+
+  it('rejects a phone that already has an account, without emailing a code', async () => {
+    existingAccounts({ phone: true });
+
+    await expect(startBuyerSignup(buyer)).rejects.toMatchObject(
+      new ApiError(409, 'An account with this phone number already exists'),
+    );
+    expect(mockSendOtp).not.toHaveBeenCalled();
+  });
+
+  it('creates NO user row — the whole point of verifying first', async () => {
+    existingAccounts({});
+
+    await startBuyerSignup(buyer);
+
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('accepts a buyer with an email, storing it trimmed', async () => {
+  it('stores the password bcrypt-hashed, never in plaintext', async () => {
     existingAccounts({});
-    mockCreate.mockResolvedValue(createdUser);
 
-    const result = await signup({ ...buyer, email: '  buyer@cropbid.test  ' });
+    await startBuyerSignup(buyer);
 
-    expect(result.accessToken).toBeTruthy();
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ email: 'buyer@cropbid.test' }),
-      }),
-    );
+    const { create } = mockPendingUpsert.mock.calls[0][0] as any;
+    expect(create.password).not.toBe(input.password);
+    expect(create.password).toMatch(/^\$2[aby]\$/);
+  });
+
+  it('emails a 6-digit code and returns the pending id', async () => {
+    existingAccounts({});
+
+    const result = await startBuyerSignup({ ...buyer, email: '  buyer@cropbid.test  ' });
+
+    expect(result.pendingId).toBe('pending-1');
+    expect(result.email).toBe('buyer@cropbid.test');
+    expect(mockSendOtp).toHaveBeenCalledTimes(1);
+    const [to, , code] = mockSendOtp.mock.calls[0];
+    expect(to).toBe('buyer@cropbid.test');
+    expect(code).toMatch(/^[0-9]{6}$/);
+  });
+
+  it('stores only the hash of the code, not the code itself', async () => {
+    existingAccounts({});
+
+    await startBuyerSignup(buyer);
+
+    const { create } = mockPendingUpsert.mock.calls[0][0] as any;
+    const [, , code] = mockSendOtp.mock.calls[0];
+    expect(create.codeHash).not.toBe(code);
+    expect(create.codeHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('drops the pending row when the email fails, so no orphan holds a dead code', async () => {
+    existingAccounts({});
+    mockSendOtp.mockRejectedValue(new Error('smtp down'));
+
+    await expect(startBuyerSignup(buyer)).rejects.toThrow('smtp down');
+    expect(mockPendingDelete).toHaveBeenCalledWith({ where: { id: 'pending-1' } });
   });
 });

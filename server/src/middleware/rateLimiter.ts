@@ -18,15 +18,34 @@ import { normalizePhone } from '../services/auth.service';
 //
 // This MUST agree with how auth.controller reads the body, or per-account
 // locking silently degrades to per-IP: login sends { identifier }, signup sends
-// { phone, email? }, and older mobile builds still send { email }. Reading only
-// one of those is how this regressed when phone became the login identifier.
+// { phone, email? }, buyer OTP verification sends { pendingId }, and older
+// mobile builds still send { email }. Reading only one of those is how this
+// regressed when phone became the login identifier.
+//
+// pendingId is the account-to-be for a buyer part-way through email
+// verification. Without it, /signup/verify and /signup/resend would share one
+// IP-only bucket — and on Indian mobile networks a single CGNAT address fronts
+// thousands of users, so one person's typos would lock out strangers.
 //
 // Phones are keyed on their normalized form for the same reason login looks
 // them up that way (see normalizePhone) — otherwise "+91 98765 43210" and
 // "+919876543210" are two buckets for one account, and an attacker just varies
 // the punctuation to multiply their attempts.
 export function accountKey(body: unknown): string {
-  const b = body as { identifier?: unknown; email?: unknown; phone?: unknown } | undefined;
+  const b = body as {
+    identifier?: unknown;
+    email?: unknown;
+    phone?: unknown;
+    pendingId?: unknown;
+  } | undefined;
+
+  // pendingId is already an opaque unique id, so it is keyed verbatim and
+  // BEFORE the phone/email arms: it must not reach normalizePhone, which would
+  // strip a UUID down to its digits and throw away most of its entropy.
+  if (typeof b?.pendingId === 'string' && b.pendingId.trim()) {
+    return `:${b.pendingId.trim()}`;
+  }
+
   const raw = b?.identifier ?? b?.email ?? b?.phone;
   if (typeof raw !== 'string') return '';
 

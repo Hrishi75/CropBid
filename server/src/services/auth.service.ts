@@ -18,7 +18,15 @@ import { prisma } from '../lib/prisma';
 import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
 import { ApiError } from '../utils/ApiError';
-import { sendPasswordResetEmail } from './email.service';
+import { sendPasswordResetEmail, sendSignupOtpEmail } from './email.service';
+import {
+  SIGNUP_OTP_MAX_ATTEMPTS,
+  SIGNUP_OTP_RESEND_COOLDOWN_MS,
+  SIGNUP_OTP_TTL_MS,
+  generateSignupOtp,
+  signupOtpExpiry,
+  signupOtpMatches,
+} from '../utils/signupOtp';
 import { recordAudit } from './audit.service';
 import { removeImage } from './imageStorage';
 import { config } from '../config';
@@ -66,21 +74,14 @@ interface SignupInput {
   language?: 'EN' | 'HI';
 }
 
-export async function signup(input: SignupInput) {
-  // 0. Buyers must have an email on file; farmers and consumers may sign up
-  // with a phone alone. The controller's schema rejects this first — repeated
-  // here so the rule holds for every caller of the service, not just HTTP.
-  const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
-  if (input.role === 'BUYER' && !email) {
-    throw new ApiError(400, 'Email is required for buyer accounts');
-  }
-
-  // 1. Phone is the primary identifier — one account per phone. Email is
-  // optional for non-buyers but must always be unique when provided.
-  const phone = normalizePhone(input.phone);
-  const existingPhone = await prisma.user.findUnique({
-    where: { phone },
-  });
+// Phone is the primary identifier — one account per phone. Email is optional
+// for non-buyers but must always be unique when provided. Shared by the direct
+// signup path and the buyer OTP path, which checks twice: once before emailing
+// a code (so we never send one to an address that already has an account) and
+// again at verification, because ten minutes is long enough for someone else to
+// have taken the number.
+async function assertIdentifiersFree(phone: string, email?: string): Promise<void> {
+  const existingPhone = await prisma.user.findUnique({ where: { phone } });
   if (existingPhone) {
     throw new ApiError(409, 'An account with this phone number already exists');
   }
@@ -95,26 +96,35 @@ export async function signup(input: SignupInput) {
       throw new ApiError(409, 'An account with this email already exists');
     }
   }
+}
 
-  // 2. Hash the password
-  // Cost factor 12 ≈ 250ms — slow enough to resist brute-force,
-  // fast enough not to annoy users
-  const hashedPassword = await bcrypt.hash(input.password, 12);
-
-  // 3. Create the user. Two concurrent signups can both pass the pre-check
-  // above; the unique index on email decides the race, so map the loser's
-  // P2002 to the same 409 instead of letting it surface as a 500.
+// Create the row and issue the session. The password arrives already hashed:
+// the buyer path hashes at the start of the flow so plaintext never reaches
+// PendingSignup, and this stays the single place that writes a User.
+async function createUserAndIssueTokens(data: {
+  name: string;
+  email: string | null;
+  hashedPassword: string;
+  role: SignupInput['role'];
+  phone: string;
+  country?: string;
+  currency?: SignupInput['currency'];
+  language?: SignupInput['language'];
+}) {
+  // Two concurrent signups can both pass the pre-check above; the unique index
+  // decides the race, so map the loser's P2002 to the same 409 instead of
+  // letting it surface as a 500.
   const user = await prisma.user
     .create({
       data: {
-        name: input.name,
-        email: email || null,
-        password: hashedPassword,
-        role: input.role,
-        phone,
-        country: input.country || 'India',
-        currency: input.currency || 'INR',
-        language: input.language || 'EN',
+        name: data.name,
+        email: data.email,
+        password: data.hashedPassword,
+        role: data.role,
+        phone: data.phone,
+        country: data.country || 'India',
+        currency: data.currency || 'INR',
+        language: data.language || 'EN',
       },
       include: {
         farmerProfile: true,
@@ -137,17 +147,15 @@ export async function signup(input: SignupInput) {
       throw err;
     });
 
-  // 4. Generate JWT tokens
   const tokens = generateTokens(user.id, user.role);
 
-  // 5. Save the refresh token in the database
-  // WHY? So we can invalidate it on logout (set to null)
+  // Save the refresh token so we can invalidate it on logout (set to null).
   await prisma.user.update({
     where: { id: user.id },
     data: { refreshToken: tokens.refreshToken },
   });
 
-  // 6. Return user data (WITHOUT password) and tokens
+  // Return user data WITHOUT password or any token material.
   const {
     password: _,
     refreshToken: __,
@@ -161,6 +169,220 @@ export async function signup(input: SignupInput) {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
   };
+}
+
+export async function signup(input: SignupInput) {
+  // 0. Buyers verify their email first and are created by verifyBuyerSignup,
+  // not here. The controller routes them to the OTP flow before reaching this,
+  // but the rule is repeated so it holds for every caller of the service — an
+  // unverified buyer must never be reachable through a second door.
+  if (input.role === 'BUYER') {
+    throw new ApiError(400, 'Buyer accounts must verify their email address first');
+  }
+
+  const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
+
+  const phone = normalizePhone(input.phone);
+  await assertIdentifiersFree(phone, email);
+
+  // Cost factor 12 ≈ 250ms — slow enough to resist brute-force, fast enough
+  // not to annoy users.
+  const hashedPassword = await bcrypt.hash(input.password, 12);
+
+  return createUserAndIssueTokens({
+    name: input.name,
+    email: email || null,
+    hashedPassword,
+    role: input.role,
+    phone,
+    country: input.country,
+    currency: input.currency,
+    language: input.language,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Buyer signup, step 1 — park the details and email a code
+// ---------------------------------------------------------------------------
+// Nothing is written to User here, so a pending signup reserves no email and no
+// phone number. That is what stops someone typing a stranger's address and
+// locking them out of ever registering it.
+export async function startBuyerSignup(input: SignupInput) {
+  if (input.role !== 'BUYER') {
+    throw new ApiError(400, 'Only buyer accounts use email verification');
+  }
+
+  // Buyers cannot be phone-only: this is the address deals and password resets
+  // reach them on. The controller's schema rejects it first; repeated here so
+  // a blank-ish email can never slip through as an unreachable account.
+  const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
+  if (!email) {
+    throw new ApiError(400, 'Email is required for buyer accounts');
+  }
+
+  const phone = normalizePhone(input.phone);
+  await assertIdentifiersFree(phone, email);
+
+  // Opportunistic sweep — cheap (indexed range delete) and keeps the table from
+  // growing without a scheduled job to run it.
+  await pruneExpiredPendingSignups();
+
+  const hashedPassword = await bcrypt.hash(input.password, 12);
+  const { code, codeHash } = generateSignupOtp();
+  const expiresAt = signupOtpExpiry();
+
+  // Upsert on email: retyping the form or asking for another code REPLACES the
+  // earlier attempt, so one address never has two live codes.
+  const pending = await prisma.pendingSignup.upsert({
+    where: { email },
+    create: {
+      email,
+      phone,
+      name: input.name,
+      password: hashedPassword,
+      role: 'BUYER',
+      country: input.country || 'India',
+      currency: input.currency || 'INR',
+      language: input.language || 'EN',
+      codeHash,
+      expiresAt,
+    },
+    update: {
+      phone,
+      name: input.name,
+      password: hashedPassword,
+      country: input.country || 'India',
+      currency: input.currency || 'INR',
+      language: input.language || 'EN',
+      codeHash,
+      expiresAt,
+      attempts: 0,
+      lastSentAt: new Date(),
+    },
+  });
+
+  // Unlike the password reset, a failed send is NOT swallowed: the buyer would
+  // be staring at a code entry box with nothing to type. Drop the row so the
+  // retry starts clean rather than leaving an orphan holding a code nobody has.
+  try {
+    await sendSignupOtpEmail(email, input.name, code, SIGNUP_OTP_TTL_MS / 60_000);
+  } catch (err) {
+    await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+    throw err;
+  }
+
+  return { pendingId: pending.id, email, expiresAt };
+}
+
+// ---------------------------------------------------------------------------
+// Buyer signup, step 2 — check the code and create the account
+// ---------------------------------------------------------------------------
+export async function verifyBuyerSignup(input: { pendingId: string; code: string }) {
+  const pending = await prisma.pendingSignup.findUnique({
+    where: { id: input.pendingId },
+  });
+
+  // An unknown id and an expired one are the same thing to the user: the
+  // request they were part-way through no longer exists.
+  if (!pending || pending.expiresAt.getTime() <= Date.now()) {
+    if (pending) {
+      await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+    }
+    throw new ApiError(400, 'This code has expired. Please start again.');
+  }
+
+  if (pending.attempts >= SIGNUP_OTP_MAX_ATTEMPTS) {
+    await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+    throw new ApiError(400, 'Too many incorrect codes. Please start again.');
+  }
+
+  if (!signupOtpMatches(input.code, pending.codeHash)) {
+    const { attempts } = await prisma.pendingSignup.update({
+      where: { id: pending.id },
+      data: { attempts: { increment: 1 } },
+    });
+    const left = SIGNUP_OTP_MAX_ATTEMPTS - attempts;
+    // Burning the last attempt ends the flow — say so rather than inviting a
+    // sixth try that will only be told to start again.
+    if (left <= 0) {
+      await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+      throw new ApiError(400, 'Too many incorrect codes. Please start again.');
+    }
+    throw new ApiError(
+      400,
+      `That code is incorrect. ${left} attempt${left === 1 ? '' : 's'} left.`,
+    );
+  }
+
+  // Re-check identifiers: the pending row reserved nothing, so someone may have
+  // registered this email or phone during the ten minutes the code was live.
+  await assertIdentifiersFree(pending.phone, pending.email);
+
+  const result = await createUserAndIssueTokens({
+    name: pending.name,
+    email: pending.email,
+    hashedPassword: pending.password, // already bcrypt — never re-hash
+    role: 'BUYER',
+    phone: pending.phone,
+    country: pending.country,
+    currency: pending.currency,
+    language: pending.language,
+  });
+
+  // Single-use: the account exists now, so the code must not work twice.
+  await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Buyer signup — send the code again
+// ---------------------------------------------------------------------------
+// Issues a FRESH code rather than resending the old one, so a code sitting in
+// an inbox from an abandoned attempt stops working the moment a new one is
+// asked for.
+export async function resendBuyerSignupOtp(input: { pendingId: string }) {
+  const pending = await prisma.pendingSignup.findUnique({
+    where: { id: input.pendingId },
+  });
+  if (!pending) {
+    throw new ApiError(400, 'This code has expired. Please start again.');
+  }
+
+  const sinceLastSend = Date.now() - pending.lastSentAt.getTime();
+  if (sinceLastSend < SIGNUP_OTP_RESEND_COOLDOWN_MS) {
+    const wait = Math.ceil((SIGNUP_OTP_RESEND_COOLDOWN_MS - sinceLastSend) / 1000);
+    throw new ApiError(429, `Please wait ${wait}s before asking for another code.`);
+  }
+
+  const { code, codeHash } = generateSignupOtp();
+  const expiresAt = signupOtpExpiry();
+
+  // attempts deliberately NOT reset: resending must not hand an attacker a
+  // fresh set of guesses against a code sent to someone else's inbox. Once the
+  // cap is hit the flow restarts from scratch with a new pending row.
+  await prisma.pendingSignup.update({
+    where: { id: pending.id },
+    data: { codeHash, expiresAt, lastSentAt: new Date() },
+  });
+
+  await sendSignupOtpEmail(
+    pending.email,
+    pending.name,
+    code,
+    SIGNUP_OTP_TTL_MS / 60_000,
+  );
+
+  return { pendingId: pending.id, email: pending.email, expiresAt };
+}
+
+// Expired rows are dead weight — no job runs to clear them, so the start of a
+// new signup pays the (indexed, tiny) cost of sweeping them.
+export async function pruneExpiredPendingSignups(): Promise<number> {
+  const { count } = await prisma.pendingSignup.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+  return count;
 }
 
 // ---------------------------------------------------------------------------

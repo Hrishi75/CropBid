@@ -19,6 +19,8 @@ import { requireRole } from '../middleware/roleGuard';
 import { uploadAvatar, processAvatar } from '../middleware/upload';
 import {
   signupHandler,
+  verifySignupHandler,
+  resendSignupOtpHandler,
   loginHandler,
   refreshHandler,
   logoutHandler,
@@ -36,7 +38,14 @@ import {
 const router = Router();
 
 // Public routes (no auth required)
+// Signup. Farmers and consumers are created outright; buyers get a 202 and an
+// emailed code, then finish at /signup/verify. All three ride the strict
+// authLimiter mounted on /api/auth in app.ts, which keys on (ip, account) — so
+// guessing a code and requesting codes are both capped per address, not just
+// per IP.
 router.post('/signup', signupHandler);
+router.post('/signup/verify', verifySignupHandler);
+router.post('/signup/resend', resendSignupOtpHandler);
 router.post('/login', loginHandler);
 router.post('/refresh', refreshHandler);
 
