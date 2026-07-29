@@ -15,7 +15,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
-import { generateTokens, verifyRefreshToken } from '../utils/jwt';
+import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
 import { ApiError } from '../utils/ApiError';
 import { sendPasswordResetEmail } from './email.service';
@@ -256,7 +256,18 @@ export async function refresh(refreshToken: string) {
   let payload;
   try {
     payload = verifyRefreshToken(refreshToken);
-  } catch {
+  } catch (err) {
+    // An EXPIRED refresh token is the inactivity timeout firing — the token was
+    // genuine, the user just stopped using the app for longer than the window.
+    // Say so, so the login screen can explain why they were signed out.
+    if (isTokenExpiredError(err)) {
+      const mins = config.auth.idleTimeoutMinutes;
+      throw new ApiError(
+        401,
+        `Signed out after ${mins} minute${mins === 1 ? '' : 's'} of inactivity. Please sign in again.`,
+        'SESSION_IDLE',
+      );
+    }
     throw new ApiError(401, 'Invalid refresh token');
   }
 

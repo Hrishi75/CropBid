@@ -6,7 +6,7 @@
 // RootRedirect sends to the role dashboard), with a marketing rail alongside.
 // =============================================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +15,7 @@ import { Input } from '../../components/ui/Input';
 import { LanguageSwitcher } from '../../components/ui/LanguageSwitcher';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import toast from 'react-hot-toast';
+import { IDLE_MINUTES, takeLogoutReason } from '../../lib/idle';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -25,6 +26,15 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  // If the idle watchdog (or an expired refresh token) landed the user here,
+  // say so — an unexplained trip back to the login screen reads like a bug.
+  // takeLogoutReason() is single-use, so this shows once.
+  useEffect(() => {
+    if (takeLogoutReason() === 'idle') {
+      toast(t('Signed out after {{minutes}} minutes of inactivity.', { minutes: IDLE_MINUTES }));
+    }
+  }, [t]);
 
   const identifierValid = identifier.trim().length > 0;
   const formValid = identifierValid && password.length > 0;
@@ -126,7 +136,7 @@ export function LoginPage() {
             <p className="cb-small" style={{ marginTop: 28, textAlign: 'center' }}>
               {t('No account on CropBid?')}{' '}
               <Link to="/signup" style={{ color: 'var(--cb-ember)', fontWeight: 500, textDecoration: 'none' }}>
-                {t('Request a buyer agent →')}
+                {t('Sign up →')}
               </Link>
             </p>
           </div>

@@ -26,6 +26,7 @@ import {
   type SignupInput,
 } from '../api/endpoints';
 import type { User } from '../api/types';
+import { markSynced } from '../lib/idle';
 
 interface AuthState {
   user: User | null;
@@ -59,6 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data } = await api.post('/auth/refresh', { refreshToken });
         setAccessToken(data.accessToken);
         if (data.refreshToken) await setRefreshToken(data.refreshToken);
+        markSynced(); // Launch refresh re-armed the server's idle window.
         setUser(data.user);
       } catch {
         setAccessToken(null);
@@ -90,7 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const applyUser = useCallback((next: User) => setUser(next), []);
 
   const signOut = useCallback(async () => {
-    await apiLogout();
+    try {
+      await apiLogout();
+    } catch {
+      // POST /auth/logout 401s when the session has already expired — which is
+      // exactly what an idle sign-out looks like. The tokens are cleared either
+      // way (apiLogout does it in a finally), so drop local state regardless or
+      // the app would sit on a signed-in UI with no credentials behind it.
+    }
     setUser(null);
   }, []);
 

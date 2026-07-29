@@ -44,6 +44,8 @@ export function errorHandler(
       error: true,
       message: err.message,
       statusCode: err.statusCode,
+      // Only present on errors the client is meant to branch on (see ApiError).
+      ...(err.code ? { code: err.code } : {}),
     });
     return;
   }

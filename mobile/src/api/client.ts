@@ -11,6 +11,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { isIdle, markSynced, needsKeepalive } from '../lib/idle';
 
 const API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? 'https://cropbid-api-oyfv.onrender.com/api';
@@ -113,6 +114,7 @@ api.interceptors.response.use(
       const { data } = await api.post('/auth/refresh', { refreshToken });
       setAccessToken(data.accessToken);
       if (data.refreshToken) await setRefreshToken(data.refreshToken);
+      markSynced(); // This rotation re-armed the server's window too.
 
       queue.forEach((p) => p.resolve(data.accessToken));
       queue = [];
@@ -131,6 +133,60 @@ api.interceptors.response.use(
     }
   },
 );
+
+// ---------------------------------------------------------------------------
+// keepAliveSession — re-arm the server's idle window for an active user
+// ---------------------------------------------------------------------------
+// Touching the screen re-arms the LOCAL clock only; the server's window is the
+// refresh token, which rotates only here. IdleGuard calls this on interaction
+// so a screen the user works in without firing requests can't drift out of
+// sync and sign them out on submit. See src/lib/idle.ts.
+//
+// Skipped when a 401-driven refresh is already in flight: the server rejects
+// any refresh token that isn't the newest one it issued, so two overlapping
+// rotations would leave one holding a revoked token.
+//
+// Taking `isRefreshing` means this function inherits the interceptor's
+// contract: a request that 401s while we hold the lock parks itself on `queue`
+// and waits for whoever owns the rotation to settle it. Every exit path below
+// therefore drains the queue — returning without draining would hang those
+// requests for the life of the app.
+export async function keepAliveSession(): Promise<void> {
+  if (isRefreshing || isIdle() || !needsKeepalive()) return;
+
+  isRefreshing = true;
+  // Claim the interval before awaiting, so a second call can't slip in behind.
+  markSynced();
+  try {
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) throw new Error('No refresh token');
+
+    const { data } = await api.post('/auth/refresh', { refreshToken });
+    setAccessToken(data.accessToken);
+    if (data.refreshToken) await setRefreshToken(data.refreshToken);
+
+    queue.forEach((p) => p.resolve(data.accessToken));
+    queue = [];
+  } catch (e) {
+    const stranded = queue.length > 0;
+    queue.forEach((p) => p.reject(e));
+    queue = [];
+
+    // Only tear the session down if a REAL request was waiting on us. That is
+    // the interceptor's own situation — a 401 followed by a failed refresh —
+    // and it means the session is genuinely gone. A keepalive failing on its
+    // own is just a background blip: the window has minutes left and the next
+    // touch retries, so signing out here would do the very thing this exists
+    // to prevent.
+    if (stranded) {
+      setAccessToken(null);
+      await setRefreshToken(null);
+      onLogout?.();
+    }
+  } finally {
+    isRefreshing = false;
+  }
+}
 
 // Pull a human-readable message out of an axios error.
 export function errorMessage(e: unknown, fallback = 'Something went wrong'): string {

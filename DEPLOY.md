@@ -51,6 +51,13 @@ Production demo stack — all free tier:
    > (Resend, Brevo, SES, Gmail app-password). With `SMTP_HOST` unset the app
    > still runs — reset emails are printed to the Render logs instead of sent.
 
+   Optional, both with sensible defaults:
+
+   | Key | Default | Value |
+   |-----|---------|-------|
+   | `SESSION_IDLE_MINUTES` | `15` | How long a session survives with no activity. The refresh token is rotated on every request, so this is a *sliding* window — active users are never interrupted. Changing it here also changes the copy on the sign-in screen (the client reads its own copy of the number from `client/src/lib/idle.ts` — keep the two in sync). |
+   | `ACCESS_TOKEN_MINUTES` | `5` | Access-token lifetime. Must stay comfortably **below** `SESSION_IDLE_MINUTES`, or an active user's two tokens expire together and the session ends at the idle timeout no matter what they're doing. |
+
 3. Deploy. The build runs: install → `prisma generate` → `prisma migrate deploy` → `tsc`.
    Watch the logs for "migrations applied".
 4. Seeding is **not** part of the deploy — it wipes every table. To load demo
