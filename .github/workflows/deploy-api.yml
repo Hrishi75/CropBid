@@ -16,7 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1
+        # Pinned to a commit SHA, not the mutable "v1" tag: this action
+        # receives the production SSH private key, so if "v1" ever moved to a
+        # different (compromised or malicious) commit upstream, it would run
+        # with our credentials before anyone noticed. Pinning removes that
+        # trust-on-every-run exposure. (v1.2.5, the latest release as of writing.)
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.LIGHTSAIL_HOST }}
           username: ${{ secrets.LIGHTSAIL_USER }}
@@ -27,7 +32,11 @@ jobs:
             cd ~/app
             git fetch origin
             git checkout main
-            git reset --hard origin/main
+            # Pinned to the exact commit THIS workflow_run validated, not the
+            # moving origin/main tip. Without this, a commit landing on main
+            # between CI finishing and this job running would deploy
+            # untested code — the gate above would have passed for nothing.
+            git reset --hard ${{ github.event.workflow_run.head_sha }}
 
             cd server
             npm install --include=dev
