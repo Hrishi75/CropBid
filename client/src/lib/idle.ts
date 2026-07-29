@@ -202,12 +202,24 @@ export function watchIdle(onIdle: () => void, onKeepalive?: () => void): () => v
   }
 
   const handleActivity = () => {
-    // Piggyback on markActivity's throttle — mousemove fires continuously and
-    // the keepalive check reads localStorage.
-    if (!markActivity()) return;
-    // Idle wins over keepalive: once the window has already lapsed, the session
-    // is over and refreshing it would resurrect a session the user lost.
-    if (!onKeepalive || fired || isIdle() || !needsKeepalive()) return;
+    // Throttle first: mousemove fires continuously and everything below reads
+    // or writes localStorage. Same interval markActivity() enforces — we do it
+    // here so the idle check below runs BEFORE the stamp is overwritten.
+    const now = Date.now();
+    if (now - lastWrite < WRITE_THROTTLE_MS) return;
+
+    // ORDER MATTERS. The stamp has to be READ before it is overwritten: an
+    // event arriving after the deadline is the user coming back to a session
+    // that already ended, so it must sign them out rather than renew it.
+    // Marking first would hide the expiry from isIdle() forever, and — now
+    // that activity also drives a keepalive — would go on to rotate the
+    // refresh token and resurrect a session the server was about to drop.
+    check();
+    if (fired) return;
+
+    markActivity(true);
+
+    if (!onKeepalive || !needsKeepalive()) return;
     markSynced();
     onKeepalive();
   };

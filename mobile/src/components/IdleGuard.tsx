@@ -31,6 +31,9 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
   // Read inside callbacks without re-subscribing the listeners on every render.
   const signedIn = useRef(false);
   signedIn.current = !!user;
+  // Lets the touch handler end an already-expired session — see the ordering
+  // note on onStartShouldSetResponderCapture below.
+  const endIfIdleRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!user) return;
@@ -50,6 +53,8 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
       }
     }
 
+    endIfIdleRef.current = () => void endIfIdle();
+
     const timer = setInterval(endIfIdle, CHECK_INTERVAL_MS);
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') void endIfIdle();
@@ -58,6 +63,7 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
     return () => {
       clearInterval(timer);
       sub.remove();
+      endIfIdleRef.current = () => {};
     };
   }, [user, signOut]);
 
@@ -65,6 +71,15 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
     <View
       style={{ flex: 1 }}
       onStartShouldSetResponderCapture={() => {
+        // ORDER MATTERS. Check the clock BEFORE re-arming it: a touch that
+        // lands after the deadline is the user returning to a session that
+        // already ended, so it has to sign them out. Marking first would hide
+        // the expiry from isIdle() and then let the keepalive rotate the
+        // refresh token, reviving a session the server was about to drop.
+        if (signedIn.current && isIdle()) {
+          endIfIdleRef.current();
+          return false;
+        }
         markActivity();
         // Touching re-arms the local clock; this re-arms the server's. It
         // self-throttles to once per KEEPALIVE_MS and no-ops when signed out.
