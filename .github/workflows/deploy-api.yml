@@ -49,6 +49,13 @@ jobs:
             # Give it a moment to boot, then confirm it's actually serving
             # traffic — not just that systemd marks it "active". A crash-loop
             # right after restart would otherwise pass silently.
+            #
+            # No `sudo` on is-active: querying a system unit's status is a
+            # read-only operation systemd allows any local user to run.
+            # `restart` above is the only step that actually needs the
+            # elevated NOPASSWD grant — keeping that the ONLY thing in
+            # sudoers means this script can grow without the sudoers file
+            # needing to grow in lockstep with it.
             sleep 3
-            sudo systemctl is-active --quiet cropbid-api
+            systemctl is-active --quiet cropbid-api
             curl -sf http://127.0.0.1:5000/api/health > /dev/null
