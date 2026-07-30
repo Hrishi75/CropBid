@@ -116,6 +116,52 @@ export async function sendPasswordResetEmail(
   await sendEmail({ to, subject, text, html });
 }
 
+// ---------------------------------------------------------------------------
+// Buyer signup verification code
+// ---------------------------------------------------------------------------
+// Unlike the password reset above, this one must NOT be swallowed by its
+// caller: if the code never leaves the building the buyer has nothing to type,
+// so startBuyerSignup lets the throw propagate and drops the pending row.
+export async function sendSignupOtpEmail(
+  to: string,
+  name: string,
+  code: string,
+  ttlMinutes: number,
+): Promise<void> {
+  const subject = `${code} is your CropBid verification code`;
+  const text = [
+    `Hi ${name},`,
+    '',
+    'Use this code to finish creating your CropBid buyer account:',
+    '',
+    code,
+    '',
+    `The code expires in ${ttlMinutes} minutes and works once.`,
+    '',
+    "If you didn't try to sign up, ignore this email — no account has been created.",
+    '',
+    '— CropBid',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; color: #1e2a1e;">
+      <h2 style="color: #2f6b3a;">Verify your email</h2>
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Use this code to finish creating your CropBid buyer account:</p>
+      <p style="margin: 28px 0;">
+        <span style="display: inline-block; background: #f2f7f2; border: 1px solid #cfe0cf; color: #2f6b3a;
+                     font-size: 30px; font-weight: 700; letter-spacing: 8px; padding: 14px 26px; border-radius: 8px;">
+          ${escapeHtml(code)}
+        </span>
+      </p>
+      <p style="font-size: 13px; color: #5a6b5a;">The code expires in <strong>${ttlMinutes} minutes</strong> and works once.</p>
+      <p style="font-size: 13px; color: #5a6b5a;">If you didn't try to sign up, ignore this email — no account has been created.</p>
+      <p>— CropBid</p>
+    </div>`;
+
+  await sendEmail({ to, subject, text, html });
+}
+
 // Minimal HTML escaping for user-supplied values interpolated into email HTML.
 function escapeHtml(value: string): string {
   return value

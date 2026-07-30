@@ -35,7 +35,9 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (data: SignupData) => Promise<void>;
+  signup: (data: SignupData) => Promise<SignupResult>;
+  verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
+  resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
 }
@@ -50,6 +52,20 @@ interface SignupData {
   currency?: string;
   language?: string;
 }
+
+// A buyer signup that has been parked pending email verification. No account
+// exists yet — pendingId identifies the parked details, not a user.
+export interface PendingSignup {
+  pendingId: string;
+  email: string;
+  expiresAt: string;
+}
+
+// signup() ends one of two ways depending on role, so callers have to branch:
+// farmers are signed in on the spot, buyers have a code to enter first.
+export type SignupResult =
+  | { status: 'created' }
+  | { status: 'verification-required'; pending: PendingSignup };
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -154,13 +170,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // -------------------------------------------------------------------------
   // Signup
   // -------------------------------------------------------------------------
-  async function signup(signupData: SignupData) {
-    const { data } = await api.post('/auth/signup', signupData);
+  // Farmers come back 201 with a session. Buyers come back 202 with a pendingId
+  // and no tokens: their account does not exist until the emailed code is
+  // returned to verifySignupOtp below.
+  async function signup(signupData: SignupData): Promise<SignupResult> {
+    const { data, status } = await api.post('/auth/signup', signupData);
+
+    if (status === 202 && data.pendingSignup) {
+      return { status: 'verification-required', pending: data.pendingSignup };
+    }
+
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);
     markActivity(true);
     markSynced();
+    return { status: 'created' };
+  }
+
+  // -------------------------------------------------------------------------
+  // Buyer signup — step 2
+  // -------------------------------------------------------------------------
+  // The account is created server-side by this call, so this is where a buyer's
+  // session actually begins — which means it starts the idle clock too, exactly
+  // like login and a farmer's signup do. Without markActivity a stale stamp
+  // from an earlier visit would trip the idle watchdog the moment the buyer
+  // lands on their dashboard.
+  async function verifySignupOtp(pendingId: string, code: string) {
+    const { data } = await api.post('/auth/signup/verify', { pendingId, code });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    setSessionHint(true);
+    markActivity(true);
+    markSynced();
+  }
+
+  // Asks for a fresh code. The previous one stops working immediately.
+  // Deliberately does NOT touch the idle clock: no session exists yet.
+  async function resendSignupOtp(pendingId: string): Promise<PendingSignup> {
+    const { data } = await api.post('/auth/signup/resend', { pendingId });
+    return data.pendingSignup;
   }
 
   // -------------------------------------------------------------------------
@@ -186,7 +235,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, updateUser }}>
+    <AuthContext.Provider
+      value={{
+        user, loading, login, signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

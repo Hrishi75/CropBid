@@ -204,6 +204,47 @@ model User {
 }
 
 // =============================================================================
+// Model 1b: PendingSignup — a buyer signup waiting on its email OTP
+// =============================================================================
+// Buyers must prove they control their email before an account exists. The
+// submitted details park here until the 6-digit code comes back; only then is a
+// User row written.
+//
+// WHY NOT A "verified" FLAG ON USER? Because the User table's unique indexes on
+// email and phone are first-come-first-served. An unverified row would let
+// anyone type a stranger's address and permanently lock that person out of ever
+// registering it. Nothing here is unique against User, so parking a signup
+// reserves nothing.
+//
+// The password arrives already bcrypt-hashed — plaintext never lands in a
+// column, even a short-lived one. Rows are deleted on success and swept on
+// expiry (see pruneExpiredPendingSignups).
+model PendingSignup {
+  id        String   @id @default(uuid())
+  // Unique so a resend or a retyped signup REPLACES the earlier attempt rather
+  // than leaving several live codes for one address.
+  email     String   @unique // normalized (lowercased)
+  phone     String            // normalized (digits, optional leading +)
+  name      String
+  password  String            // bcrypt hash, never plaintext
+  role      Role
+  country   String   @default("India")
+  currency  Currency @default(INR)
+  language  Language @default(EN)
+
+  // SHA-256 of the 6-digit code — see utils/signupOtp.ts for why not bcrypt.
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int      @default(0) // wrong guesses so far; capped at 5
+  lastSentAt DateTime @default(now()) // drives the resend cooldown
+
+  createdAt DateTime @default(now())
+
+  // Sweeping expired rows is a range scan over this column.
+  @@index([expiresAt])
+}
+
+// =============================================================================
 // Model 2: FarmerProfile — Farm-specific details
 // =============================================================================
 // WHY SEPARATE FROM USER?

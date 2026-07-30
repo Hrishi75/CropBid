@@ -23,7 +23,11 @@ import {
   login as apiLogin,
   logout as apiLogout,
   signup as apiSignup,
+  verifySignupOtp as apiVerifySignupOtp,
+  resendSignupOtp as apiResendSignupOtp,
+  type PendingSignup,
   type SignupInput,
+  type SignupResult,
 } from '../api/endpoints';
 import type { User } from '../api/types';
 import { markSynced } from '../lib/idle';
@@ -32,7 +36,11 @@ interface AuthState {
   user: User | null;
   loading: boolean; // bootstrap (silent refresh) in progress
   signIn: (identifier: string, password: string) => Promise<void>; // phone or email
-  signUp: (input: SignupInput) => Promise<void>;
+  // Resolves to 'verification-required' for buyers — they are NOT signed in
+  // until verifySignUp succeeds.
+  signUp: (input: SignupInput) => Promise<SignupResult>;
+  verifySignUp: (pendingId: string, code: string) => Promise<void>;
+  resendSignUpCode: (pendingId: string) => Promise<PendingSignup>;
   refreshUser: () => Promise<void>; // re-pull /auth/me (e.g. after onboarding)
   applyUser: (user: User) => void; // swap in a fresh user (e.g. after editing the profile)
   signOut: () => Promise<void>;
@@ -76,10 +84,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
-  const signUp = useCallback(async (input: SignupInput) => {
-    const u = await apiSignup(input);
-    setUser(u);
+  // Farmers and consumers are signed in here. Buyers are not: they come back
+  // with a pendingId and no session, and the caller sends them to the code
+  // screen. Only verifySignUp below puts a buyer into state.
+  const signUp = useCallback(async (input: SignupInput): Promise<SignupResult> => {
+    const result = await apiSignup(input);
+    if (result.status === 'created') setUser(result.user);
+    return result;
   }, []);
+
+  const verifySignUp = useCallback(async (pendingId: string, code: string) => {
+    setUser(await apiVerifySignupOtp(pendingId, code));
+  }, []);
+
+  const resendSignUpCode = useCallback(
+    (pendingId: string) => apiResendSignupOtp(pendingId),
+    [],
+  );
 
   // Onboarding sets the role profile server-side; pull the fresh user so the
   // navigator drops the onboarding gate and shows the app.
@@ -112,7 +133,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, refreshUser, applyUser, signOut, dropSession }}>
+    <AuthContext.Provider
+      value={{
+        user, loading, signIn, signUp, verifySignUp, resendSignUpCode,
+        refreshUser, applyUser, signOut, dropSession,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

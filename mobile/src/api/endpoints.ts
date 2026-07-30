@@ -40,14 +40,54 @@ export interface SignupInput {
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
 }
 
-// Signup returns the same auth payload as login (and, for X-Client: mobile, the
-// refresh token in the body). The new user has no profile yet, so the navigator
-// routes them to onboarding next.
-export async function signup(input: SignupInput): Promise<User> {
-  const { data } = await api.post<AuthResult>('/auth/signup', input);
+// A buyer signup parked pending email verification. No account exists yet —
+// pendingId identifies the parked details, not a user.
+export interface PendingSignup {
+  pendingId: string;
+  email: string;
+  expiresAt: string;
+}
+
+// Signup ends one of two ways depending on role, so callers must branch:
+//   FARMER / CONSUMER → 201, signed in on the spot (same payload as login, plus
+//                       the refresh token in the body for X-Client: mobile).
+//   BUYER             → 202, no tokens. The account does not exist until the
+//                       emailed code is returned to verifySignupOtp.
+export type SignupResult =
+  | { status: 'created'; user: User }
+  | { status: 'verification-required'; pending: PendingSignup };
+
+export async function signup(input: SignupInput): Promise<SignupResult> {
+  const { data, status } = await api.post<AuthResult & { pendingSignup?: PendingSignup }>(
+    '/auth/signup',
+    input,
+  );
+
+  if (status === 202 && data.pendingSignup) {
+    return { status: 'verification-required', pending: data.pendingSignup };
+  }
+
+  setAccessToken(data.accessToken);
+  if (data.refreshToken) await setRefreshToken(data.refreshToken);
+  return { status: 'created', user: data.user };
+}
+
+// Buyer signup, step 2. The account is created by this call, so this is where a
+// buyer's session begins.
+export async function verifySignupOtp(pendingId: string, code: string): Promise<User> {
+  const { data } = await api.post<AuthResult>('/auth/signup/verify', { pendingId, code });
   setAccessToken(data.accessToken);
   if (data.refreshToken) await setRefreshToken(data.refreshToken);
   return data.user;
+}
+
+// Asks for a fresh code. The previous one stops working immediately.
+export async function resendSignupOtp(pendingId: string): Promise<PendingSignup> {
+  const { data } = await api.post<{ pendingSignup: PendingSignup }>(
+    '/auth/signup/resend',
+    { pendingId },
+  );
+  return data.pendingSignup;
 }
 
 export async function fetchMe(): Promise<User> {

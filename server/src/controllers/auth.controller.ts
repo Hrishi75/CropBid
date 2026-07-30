@@ -61,6 +61,21 @@ export const signupSchema = z.object({
   }
 });
 
+// Buyer signup step 2. The code is retyped from an inbox, so accept the shapes
+// people actually paste — surrounding whitespace, or the "483 920" that some
+// mail clients render — and only then insist on exactly six digits.
+export const verifySignupSchema = z.object({
+  pendingId: z.string().min(1, 'Start the signup again to get a new code'),
+  code: z.preprocess(
+    (v) => (typeof v === 'string' ? v.replace(/\s/g, '') : v),
+    z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code from your email'),
+  ),
+});
+
+export const resendSignupOtpSchema = z.object({
+  pendingId: z.string().min(1, 'Start the signup again to get a new code'),
+});
+
 // Login accepts phone OR email in one field. Older clients send it as
 // `email`, newer ones as `identifier` — normalize before validating.
 const loginSchema = z.object({
@@ -158,6 +173,11 @@ const REFRESH_COOKIE_OPTIONS = {
 // ---------------------------------------------------------------------------
 // POST /api/auth/signup
 // ---------------------------------------------------------------------------
+// Two outcomes by role:
+//   FARMER / CONSUMER → 201 with the account and a session, as always.
+//   BUYER             → 202 with a pendingId. No account exists yet; the code
+//                       just emailed to them has to come back to /signup/verify
+//                       before one does.
 export async function signupHandler(req: Request, res: Response) {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -167,6 +187,21 @@ export async function signupHandler(req: Request, res: Response) {
   }
 
   const { name, email, password, role, phone, country, currency, language } = parsed.data;
+
+  if (role === 'BUYER') {
+    const pending = await authService.startBuyerSignup({
+      name, email, password, role, phone, country, currency, language,
+    });
+    // 202 Accepted: understood, not yet acted on — exactly this situation.
+    res.status(202).json({
+      pendingSignup: {
+        pendingId: pending.pendingId,
+        email: pending.email,
+        expiresAt: pending.expiresAt.toISOString(),
+      },
+    });
+    return;
+  }
 
   const result = await authService.signup({
     name, email, password, role, phone, country, currency, language,
@@ -180,6 +215,52 @@ export async function signupHandler(req: Request, res: Response) {
     user: result.user,
     accessToken: result.accessToken,
     ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/signup/verify — buyer signup, step 2
+// ---------------------------------------------------------------------------
+export async function verifySignupHandler(req: Request, res: Response) {
+  const parsed = verifySignupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  const result = await authService.verifyBuyerSignup(parsed.data);
+
+  // The account exists as of this call, so this is where the session starts —
+  // same response shape as a farmer's 201 from /signup.
+  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+
+  res.status(201).json({
+    user: result.user,
+    accessToken: result.accessToken,
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/signup/resend — email a fresh code
+// ---------------------------------------------------------------------------
+export async function resendSignupOtpHandler(req: Request, res: Response) {
+  const parsed = resendSignupOtpSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
+
+  const pending = await authService.resendBuyerSignupOtp(parsed.data);
+
+  res.status(202).json({
+    pendingSignup: {
+      pendingId: pending.pendingId,
+      email: pending.email,
+      expiresAt: pending.expiresAt.toISOString(),
+    },
   });
 }
 

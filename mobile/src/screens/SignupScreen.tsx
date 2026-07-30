@@ -4,8 +4,14 @@
 // optional for farmers and consumers), and a password with
 // live-validated rules. On success AuthContext.signUp() sets the user; the root
 // navigator then routes to onboarding (no profile yet).
+//
+// BUYERS TAKE A SECOND STEP. signUp() resolves to 'verification-required' for
+// them: the server has parked their details and emailed a 6-digit code, and no
+// account exists until verifySignUp() returns. This screen swaps to the code
+// step in place rather than pushing a route, so backing out keeps the form
+// filled in and there is no half-made account to clean up.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -25,10 +31,14 @@ import { errorMessage } from '../api/client';
 import { Button } from '../components/ui';
 import { colors, radius, spacing } from '../theme';
 import type { AuthStackParamList } from '../navigation/types';
-import type { SignupInput } from '../api/endpoints';
+import type { PendingSignup, SignupInput } from '../api/endpoints';
 
 type Currency = NonNullable<SignupInput['currency']>;
 type Role = SignupInput['role'];
+
+// Matches SIGNUP_OTP_RESEND_COOLDOWN_MS on the server. The server enforces it —
+// this only stops the button offering a request that would come back 429.
+const RESEND_COOLDOWN_SECONDS = 60;
 
 // Same country → currency mapping as the web client (client SignupPage COUNTRIES).
 const COUNTRIES: { code: string; label: string; currency: Currency; phone: string }[] = [
@@ -58,6 +68,129 @@ function Rule({ met, label }: { met: boolean; label: string }) {
   );
 }
 
+// Step 2 for buyers: type the code from the inbox.
+//
+// No one-time-code autofill props here on purpose — iOS textContentType
+// "oneTimeCode" and Android autoComplete "sms-otp" both key off an incoming
+// SMS, and this code arrives by email. Declaring them would suggest an autofill
+// that never appears.
+function VerifyStep({
+  pending,
+  onBack,
+}: {
+  pending: PendingSignup;
+  onBack: () => void;
+}) {
+  const { verifySignUp, resendSignUpCode } = useAuth();
+
+  const [code, setCode] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  const codeValid = /^[0-9]{6}$/.test(code);
+
+  async function onVerify() {
+    if (!codeValid) {
+      setError('Enter the 6-digit code from your email');
+      return;
+    }
+    setError(null);
+    setVerifying(true);
+    try {
+      await verifySignUp(pending.pendingId, code);
+      // Root navigator now routes to onboarding (new account has no profile).
+    } catch (e) {
+      const message = errorMessage(e, 'Could not verify that code');
+      setError(message);
+      // The server counts attempts and ends the flow after five. When it says
+      // so, drop back to the form rather than leaving a dead box on screen.
+      if (/start again/i.test(message)) onBack();
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  async function onResend() {
+    setError(null);
+    setNotice(null);
+    setResending(true);
+    try {
+      await resendSignUpCode(pending.pendingId);
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setCode('');
+      setNotice(`New code sent to ${pending.email}`);
+    } catch (e) {
+      setError(errorMessage(e, 'Could not send another code'));
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <Text style={styles.brand}>CropBid</Text>
+        <Text style={styles.tagline}>Check your inbox</Text>
+
+        <View style={styles.form}>
+          <Text style={styles.otpBlurb}>
+            We sent a 6-digit code to {pending.email}. It expires in 10 minutes.
+          </Text>
+
+          <Text style={styles.label}>Verification code</Text>
+          <TextInput
+            style={[styles.input, styles.otpInput]}
+            value={code}
+            // Strip everything but digits so a pasted "483 920" still fits, and
+            // the field can never hold something the server will reject.
+            onChangeText={(v) => {
+              setCode(v.replace(/[^0-9]/g, '').slice(0, 6));
+              setError(null);
+            }}
+            keyboardType="number-pad"
+            maxLength={6}
+            placeholder="000000"
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+          />
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {notice && !error ? <Text style={styles.notice}>{notice}</Text> : null}
+
+          <View style={styles.spacer} />
+          <Button label="Verify and continue" onPress={onVerify} loading={verifying} />
+
+          <Pressable
+            onPress={onResend}
+            disabled={cooldown > 0 || resending}
+            hitSlop={8}
+            style={styles.otpAction}
+          >
+            <Text style={[styles.otpActionText, cooldown > 0 && styles.otpActionTextMuted]}>
+              {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Send another code'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <Pressable onPress={onBack} hitSlop={8}>
+          <Text style={styles.switch}>
+            <Text style={styles.switchLink}>← Use a different email</Text>
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
 export default function SignupScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { signUp } = useAuth();
@@ -71,6 +204,9 @@ export default function SignupScreen() {
   const [countryOpen, setCountryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Set once a buyer's details are parked server-side; its presence is what
+  // swaps this screen to the code step.
+  const [pending, setPending] = useState<PendingSignup | null>(null);
 
   const selectedCountry = COUNTRIES.find((c) => c.code === country) ?? COUNTRIES[0];
 
@@ -119,7 +255,7 @@ export default function SignupScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      await signUp({
+      const result = await signUp({
         name: name.trim(),
         phone: phone.trim(),
         email: email.trim() || undefined,
@@ -128,12 +264,23 @@ export default function SignupScreen() {
         country,
         currency: selectedCountry.currency,
       });
+      // Buyers: no account yet, just a code in their inbox.
+      if (result.status === 'verification-required') {
+        setPending(result.pending);
+        return;
+      }
       // Root navigator now routes to onboarding (new account has no profile).
     } catch (e) {
       setError(errorMessage(e, 'Signup failed'));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  // Going back keeps everything typed, so "use a different email" means editing
+  // one field, not filling the form again.
+  if (pending) {
+    return <VerifyStep pending={pending} onBack={() => setPending(null)} />;
   }
 
   return (
@@ -314,7 +461,26 @@ const styles = StyleSheet.create({
   ruleText: { fontSize: 12, color: colors.textMuted },
   ruleTextOk: { color: colors.sage },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
+  notice: { color: colors.textSecondary, fontSize: 14, marginBottom: spacing.sm },
   spacer: { height: spacing.xs },
+
+  // --- Buyer email verification step ---
+  otpBlurb: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.lg,
+  },
+  // Wide tracking and centring so six digits read as a code, not a sentence.
+  otpInput: {
+    fontSize: 26,
+    letterSpacing: 10,
+    textAlign: 'center',
+    paddingVertical: spacing.lg,
+  },
+  otpAction: { alignItems: 'center', marginTop: spacing.lg },
+  otpActionText: { color: colors.ember, fontWeight: '600', fontSize: 14 },
+  otpActionTextMuted: { color: colors.textMuted, fontWeight: '400' },
   switch: { textAlign: 'center', marginTop: spacing.xl, color: colors.textSecondary, fontSize: 14 },
   switchLink: { color: colors.ember, fontWeight: '600' },
 
