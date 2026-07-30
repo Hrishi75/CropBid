@@ -20,13 +20,20 @@ const webp = () =>
     Buffer.from('WEBP', 'latin1'),
     Buffer.alloc(4),
   ]);
-const avif = (brand = 'avif') =>
-  Buffer.concat([
-    Buffer.from([0x00, 0x00, 0x00, 0x20]), // box size
+// major brand at 8, minor version at 12, compatible brands from 16 onwards.
+const avif = (major = 'avif', compatible: string[] = []) => {
+  const brands = Buffer.concat(compatible.map((b) => Buffer.from(b, 'latin1')));
+  const size = 16 + brands.length;
+  const head = Buffer.alloc(4);
+  head.writeUInt32BE(size, 0);
+  return Buffer.concat([
+    head,
     Buffer.from('ftyp', 'latin1'),
-    Buffer.from(brand, 'latin1'),
-    Buffer.alloc(4),
+    Buffer.from(major, 'latin1'),
+    Buffer.from([0x00, 0x00, 0x00, 0x00]), // minor version
+    brands,
   ]);
+};
 
 describe('detectImageFormat — accepts the four real formats', () => {
   it('detects JPEG', () => expect(detectImageFormat(jpeg())).toBe('jpeg'));
@@ -35,6 +42,18 @@ describe('detectImageFormat — accepts the four real formats', () => {
   it('detects AVIF', () => expect(detectImageFormat(avif())).toBe('avif'));
   it('detects AVIF image sequences (avis brand)', () =>
     expect(detectImageFormat(avif('avis'))).toBe('avif'));
+
+  // Encoders legitimately emit a GENERIC major brand and declare avif only among
+  // the compatible brands. Checking bytes 8-11 alone would 400 these — real
+  // files that sharp decodes perfectly well.
+  it('detects AVIF declared as a compatible brand under a mif1 major brand', () =>
+    expect(detectImageFormat(avif('mif1', ['avif', 'mia1']))).toBe('avif'));
+
+  it('detects AVIF declared as a compatible brand under a msf1 major brand', () =>
+    expect(detectImageFormat(avif('msf1', ['msf1', 'avis']))).toBe('avif'));
+
+  it('finds avif late in a long compatible-brands list', () =>
+    expect(detectImageFormat(avif('mif1', ['mia1', 'miaf', 'MA1B', 'avif']))).toBe('avif'));
 });
 
 describe('detectImageFormat — rejects what the MIME header would have let through', () => {
@@ -84,6 +103,26 @@ describe('detectImageFormat — container look-alikes must not pass', () => {
     expect(detectImageFormat(avif('heic'))).toBeNull();
     expect(detectImageFormat(avif('mp42'))).toBeNull();
     expect(detectImageFormat(avif('isom'))).toBeNull();
+  });
+
+  it('rejects heic even when it lists other compatible brands', () => {
+    // Widening to compatible brands must not accidentally admit the whole
+    // ISO-BMFF family — only avif/avis count, wherever they appear.
+    expect(detectImageFormat(avif('heic', ['mif1', 'heic', 'hevc']))).toBeNull();
+    expect(detectImageFormat(avif('mp42', ['isom', 'mp42', 'avc1']))).toBeNull();
+  });
+
+  it('does not read past the buffer when the box size field is absurd', () => {
+    // A hostile file can claim any size. The scan must clamp to bytes actually
+    // read rather than trusting the header.
+    const bogus = Buffer.concat([
+      Buffer.from([0xff, 0xff, 0xff, 0xff]), // claims 4 GB
+      Buffer.from('ftyp', 'latin1'),
+      Buffer.from('heic', 'latin1'),
+      Buffer.alloc(4),
+    ]);
+    expect(() => detectImageFormat(bogus)).not.toThrow();
+    expect(detectImageFormat(bogus)).toBeNull();
   });
 });
 

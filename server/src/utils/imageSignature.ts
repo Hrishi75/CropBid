@@ -19,9 +19,13 @@
 
 import fs from 'fs';
 
-// Longest signature we need to inspect: AVIF's brand sits at bytes 8-11, so 12
-// bytes is enough. Read 16 for headroom.
-const HEADER_BYTES = 16;
+// AVIF needs more than its major brand: the ftyp box is
+//   [4 size][4 "ftyp"][4 major brand][4 minor version][4 compatible brand]...
+// and a valid AVIF may declare a generic major brand (mif1/msf1) while listing
+// "avif" among the COMPATIBLE brands. Reading only bytes 8-11 would 400 files
+// that sharp decodes perfectly well, so read enough to walk that list.
+// 64 bytes covers a dozen brands, far more than any real file uses.
+const HEADER_BYTES = 64;
 
 export type ImageFormat = 'jpeg' | 'png' | 'webp' | 'avif';
 
@@ -59,13 +63,29 @@ export function detectImageFormat(header: Buffer): ImageFormat | null {
     return 'webp';
   }
 
-  // AVIF is ISO-BMFF: a 4-byte box size, then "ftyp", then the brand. Only the
-  // AVIF brands are accepted — sibling brands in the same container family
-  // (heic/heif) are deliberately NOT, because the MIME allowlist does not
-  // include them either and the two must agree.
+  // AVIF is ISO-BMFF:
+  //   [4 size][4 "ftyp"][4 major brand][4 minor version][4 compatible brand]...
+  //
+  // The major brand alone is not enough. Encoders legitimately emit a generic
+  // major brand (mif1, msf1) and declare "avif" only in the compatible-brands
+  // list, so checking bytes 8-11 in isolation rejects valid files that sharp
+  // decodes fine. Walk the major brand AND every compatible brand.
+  //
+  // Sibling brands in the same container family (heic, heif, mp42, isom) are
+  // still rejected: the MIME allowlist does not include them, and the two
+  // checks have to agree.
   if (header.subarray(4, 8).toString('latin1') === 'ftyp') {
-    const brand = header.subarray(8, 12).toString('latin1');
-    if (brand === 'avif' || brand === 'avis') return 'avif';
+    // Trust the box size only as far as the bytes we actually read — a bogus
+    // size field must not push us past the end of the buffer.
+    const declaredSize = header.readUInt32BE(0);
+    const limit = Math.min(declaredSize || header.length, header.length);
+
+    // Major brand at 8, minor version at 12 (skipped), compatible brands from 16.
+    for (let offset = 8; offset + 4 <= limit; offset += 4) {
+      if (offset === 12) continue; // minor version, not a brand
+      const brand = header.subarray(offset, offset + 4).toString('latin1');
+      if (brand === 'avif' || brand === 'avis') return 'avif';
+    }
   }
 
   return null;

@@ -25,7 +25,7 @@ import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/ApiError';
 import { detectImageFormatAtPath } from '../utils/imageSignature';
-import { storeImage } from '../services/imageStorage';
+import { removeImage, storeImage } from '../services/imageStorage';
 
 // Ensure upload directories exist
 const UPLOAD_DIR = path.join(__dirname, '../../uploads');
@@ -133,10 +133,9 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
   }
 
   const files = req.files;
+  const processedPaths: string[] = [];
 
   try {
-    const processedPaths: string[] = [];
-
     for (const file of files) {
       const webpFilename = file.filename.replace(/\.\w+$/, '.webp');
 
@@ -159,6 +158,17 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
     (req as any).processedImages = processedPaths;
     next();
   } catch (error) {
+    // Roll back images already stored for THIS request.
+    //
+    // storeImage persists as it goes, so in a five-file upload where the third
+    // fails, the first two WebPs are already in Cloudinary (or on local disk).
+    // The error skips the controller, so no listing is ever created to
+    // reference them — they become orphans that nothing will ever clean up, and
+    // repeating a [valid, invalid] pair leaks storage indefinitely.
+    //
+    // Failures here are swallowed deliberately: a rollback that throws must not
+    // replace the real error the client needs to see.
+    await Promise.allSettled(processedPaths.map((url) => removeImage(url)));
     next(error);
   } finally {
     // EVERY raw file goes, on success and on failure alike.
