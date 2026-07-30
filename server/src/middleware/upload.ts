@@ -21,8 +21,10 @@ import multer from 'multer';
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../utils/ApiError';
+import { detectImageFormatAtPath } from '../utils/imageSignature';
 import { storeImage } from '../services/imageStorage';
 
 // Ensure upload directories exist
@@ -38,19 +40,35 @@ if (!fs.existsSync(AVATARS_DIR)) {
 }
 
 // Multer disk storage config
+// Raw uploads land in a directory that IS publicly served (see app.ts:
+// app.use('/uploads', express.static(...))). So the on-disk name must not carry
+// a client-chosen extension: `path.extname(file.originalname)` would let someone
+// upload "x.html", have it briefly exist at a fetchable URL, and be served as
+// text/html. A fixed ".bin" resolves to application/octet-stream instead, which
+// browsers download rather than execute. Sharp sniffs content and does not care
+// about the extension, and these raw files are deleted either way.
+const RAW_EXT = '.bin';
+
+function rawFilename(): string {
+  return `${Date.now()}-${randomUUID()}${RAW_EXT}`;
+}
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, LISTINGS_DIR);
   },
-  filename: (_req, file, cb) => {
-    // Generate unique filename: timestamp-random.ext
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = path.extname(file.originalname);
-    cb(null, `${uniqueSuffix}${ext}`);
+  filename: (_req, _file, cb) => {
+    cb(null, rawFilename());
   },
 });
 
-// File filter — only allow images
+// File filter — first, cheap gate only.
+//
+// `file.mimetype` is the client's claim from the multipart Content-Type header,
+// not a fact about the bytes, so passing this proves nothing. It is kept because
+// it rejects honest mistakes (a PDF picked by accident) before anything is
+// written to disk — multer cannot see file content at filter time. The check
+// that actually matters is the magic-byte one in the processing middleware.
 function fileFilter(
   _req: Request,
   file: Express.Multer.File,
@@ -61,6 +79,25 @@ function fileFilter(
     cb(null, true);
   } else {
     cb(new ApiError(400, 'Only JPEG, PNG, WebP, and AVIF images are allowed'));
+  }
+}
+
+// Best-effort removal of a raw upload. Used on every exit path, so it must never
+// throw — a cleanup failure must not mask the real error being propagated.
+function discardRaw(filePath: string): void {
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    // Already gone, or never written. Nothing to do.
+  }
+}
+
+// Rejects anything whose bytes are not one of the four formats we accept, before
+// sharp/libvips parses it. See utils/imageSignature.ts for why the MIME header
+// is not sufficient.
+function assertRealImage(filePath: string): void {
+  if (detectImageFormatAtPath(filePath) === null) {
+    throw new ApiError(400, 'Only JPEG, PNG, WebP, and AVIF images are allowed');
   }
 }
 
@@ -91,15 +128,20 @@ export const upload = multer({
 // =============================================================================
 
 export async function processImages(req: Request, _res: Response, next: NextFunction) {
-  try {
-    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-      return next();
-    }
+  if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+    return next();
+  }
 
+  const files = req.files;
+
+  try {
     const processedPaths: string[] = [];
 
-    for (const file of req.files) {
+    for (const file of files) {
       const webpFilename = file.filename.replace(/\.\w+$/, '.webp');
+
+      // Content check before libvips touches the bytes.
+      assertRealImage(file.path);
 
       // Resize + convert to WebP
       const buffer = await sharp(file.path)
@@ -110,9 +152,6 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
         .webp({ quality: 80 })
         .toBuffer();
 
-      // Delete the original raw file (we only keep the WebP)
-      fs.unlinkSync(file.path);
-
       processedPaths.push(await storeImage(buffer, 'listings', webpFilename));
     }
 
@@ -121,6 +160,17 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
     next();
   } catch (error) {
     next(error);
+  } finally {
+    // EVERY raw file goes, on success and on failure alike.
+    //
+    // Previously the unlink sat inside the loop after a successful sharp call,
+    // so a throw on the first of five files left all five on disk — and these
+    // land in a publicly served directory. Any logged-in user could repeat that
+    // to consume 25 MB per request until the 20 GB disk filled, which is a
+    // denial of service needing nothing but an account. A finally block cannot
+    // be skipped by an early return or a throw, so the cleanup is now
+    // structural rather than dependent on the happy path being taken.
+    for (const file of files) discardRaw(file.path);
   }
 }
 
@@ -134,9 +184,8 @@ const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, AVATARS_DIR);
   },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+  filename: (_req, _file, cb) => {
+    cb(null, rawFilename());
   },
 });
 
@@ -150,26 +199,30 @@ export const uploadAvatar = multer({
 });
 
 export async function processAvatar(req: Request, _res: Response, next: NextFunction) {
-  try {
-    if (!req.file) return next();
+  if (!req.file) return next();
 
+  const rawPath = req.file.path;
+
+  try {
     const webpFilename = req.file.filename.replace(/\.\w+$/, '.webp');
 
-    const buffer = await sharp(req.file.path)
+    // Content check before libvips touches the bytes.
+    assertRealImage(rawPath);
+
+    const buffer = await sharp(rawPath)
       .resize(512, 512, { fit: 'cover' }) // center-crop to a square
       .webp({ quality: 82 })
       .toBuffer();
 
-    fs.unlinkSync(req.file.path);
-
     (req as any).processedAvatar = await storeImage(buffer, 'avatars', webpFilename);
     next();
   } catch (error) {
-    // Sharp failed — remove the raw file Multer already wrote, otherwise it
-    // lingers at a publicly-served path under uploads/avatars/.
-    if (req.file) {
-      fs.unlink(req.file.path, () => {});
-    }
     next(error);
+  } finally {
+    // Same guarantee as processImages: the raw file never survives this
+    // middleware, whichever way it exits. This path already cleaned up on
+    // error; moving it to `finally` means success and failure share one rule
+    // instead of two that can drift apart.
+    discardRaw(rawPath);
   }
 }
