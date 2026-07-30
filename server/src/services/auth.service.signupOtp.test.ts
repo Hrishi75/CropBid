@@ -47,6 +47,9 @@ import {
   SIGNUP_OTP_RESEND_COOLDOWN_MS,
 } from '../utils/signupOtp';
 
+// The success path re-checks identifiers before creating, so a test that wants
+// creation to happen must leave those lookups empty (the beforeEach default).
+
 const mockUserFindUnique = vi.mocked(prisma.user.findUnique);
 const mockUserFindFirst = vi.mocked(prisma.user.findFirst);
 const mockUserCreate = vi.mocked(prisma.user.create);
@@ -54,6 +57,7 @@ const mockUserUpdate = vi.mocked(prisma.user.update);
 const mockPendingFindUnique = vi.mocked(prisma.pendingSignup.findUnique);
 const mockPendingUpdate = vi.mocked(prisma.pendingSignup.update);
 const mockPendingDelete = vi.mocked(prisma.pendingSignup.delete);
+const mockPendingDeleteMany = vi.mocked(prisma.pendingSignup.deleteMany);
 const mockSendOtp = vi.mocked(sendSignupOtpEmail);
 
 const CODE = '483920';
@@ -104,6 +108,8 @@ beforeEach(() => {
   mockUserUpdate.mockResolvedValue(createdUser);
   mockPendingUpdate.mockResolvedValue(pendingRow({ attempts: 1 }));
   mockPendingDelete.mockResolvedValue({} as any);
+  // The conditional consume in verifyBuyerSignup — default to "we won the race".
+  mockPendingDeleteMany.mockResolvedValue({ count: 1 } as any);
   mockSendOtp.mockResolvedValue(undefined);
 });
 
@@ -147,12 +153,65 @@ describe('verifyBuyerSignup', () => {
     expect(result.user).not.toHaveProperty('passwordResetToken');
   });
 
-  it('deletes the pending row so the code cannot be used twice', async () => {
+  it('consumes the pending row so the code cannot be used twice', async () => {
     mockPendingFindUnique.mockResolvedValue(pendingRow());
 
     await verifyBuyerSignup({ pendingId: 'pending-1', code: CODE });
 
-    expect(mockPendingDelete).toHaveBeenCalledWith({ where: { id: 'pending-1' } });
+    // Scoped to the exact codeHash and attempt count that were validated, so a
+    // resend or a parallel verify between the read and here cannot slip past.
+    expect(mockPendingDeleteMany).toHaveBeenCalledWith({
+      where: {
+        id: 'pending-1',
+        codeHash: hashSignupOtp(CODE),
+        attempts: { lt: SIGNUP_OTP_MAX_ATTEMPTS },
+      },
+    });
+  });
+
+  it('consumes the row BEFORE creating the user, not after', async () => {
+    // Ordering is the whole point: if the account were created first, a crash
+    // in between would leave a live code that already has an account behind it.
+    const calls: string[] = [];
+    mockPendingFindUnique.mockResolvedValue(pendingRow());
+    mockPendingDeleteMany.mockImplementation((async () => {
+      calls.push('consume');
+      return { count: 1 };
+    }) as any);
+    mockUserCreate.mockImplementation((async () => {
+      calls.push('create');
+      return createdUser;
+    }) as any);
+
+    await verifyBuyerSignup({ pendingId: 'pending-1', code: CODE });
+
+    expect(calls).toEqual(['consume', 'create']);
+  });
+
+  it('creates NO user when the row was consumed by a parallel request', async () => {
+    // Two verifications race; both read the same row and both accept the code.
+    // The conditional delete is what stops the loser — count 0 means someone
+    // else already consumed it.
+    mockPendingFindUnique.mockResolvedValue(pendingRow());
+    mockPendingDeleteMany.mockResolvedValue({ count: 0 } as any);
+
+    await expect(
+      verifyBuyerSignup({ pendingId: 'pending-1', code: CODE }),
+    ).rejects.toMatchObject(new ApiError(400, 'This code has expired. Please start again.'));
+    expect(mockUserCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates NO user when a resend rotated the code after the read', async () => {
+    // The dangerous case: the code we validated has been revoked, so accepting
+    // it would let a dead code produce a real authenticated account. The
+    // codeHash in the delete condition no longer matches, so count is 0.
+    mockPendingFindUnique.mockResolvedValue(pendingRow());
+    mockPendingDeleteMany.mockResolvedValue({ count: 0 } as any);
+
+    await expect(
+      verifyBuyerSignup({ pendingId: 'pending-1', code: CODE }),
+    ).rejects.toMatchObject(new ApiError(400, 'This code has expired. Please start again.'));
+    expect(mockUserCreate).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown pending id', async () => {

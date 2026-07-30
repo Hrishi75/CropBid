@@ -264,10 +264,19 @@ export async function startBuyerSignup(input: SignupInput) {
   // Unlike the password reset, a failed send is NOT swallowed: the buyer would
   // be staring at a code entry box with nothing to type. Drop the row so the
   // retry starts clean rather than leaving an orphan holding a code nobody has.
+  //
+  // The cleanup is scoped to OUR codeHash, not just the id. The upsert above
+  // keys on email, so two concurrent submissions for the same address share one
+  // row — and an unscoped delete here would let a failed send in request A tear
+  // out the row belonging to request B, whose buyer already has a working code
+  // in their inbox and would be told it had expired. Matching codeHash means we
+  // only ever delete a row that still holds the code WE generated.
   try {
     await sendSignupOtpEmail(email, input.name, code, SIGNUP_OTP_TTL_MS / 60_000);
   } catch (err) {
-    await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
+    await prisma.pendingSignup
+      .deleteMany({ where: { id: pending.id, codeHash } })
+      .catch(() => {});
     throw err;
   }
 
@@ -314,11 +323,45 @@ export async function verifyBuyerSignup(input: { pendingId: string; code: string
     );
   }
 
+  // ATOMICALLY CONSUME THE ROW BEFORE CREATING ANYTHING.
+  //
+  // Everything above this point was decided from a row we READ, and that read
+  // is stale the instant it returns. Two things go wrong without a conditional
+  // consume here:
+  //
+  //   1. A resend between the read and now rotated codeHash — so the code we
+  //      just accepted has been revoked, and validating it against the value we
+  //      read would let a dead code create a real, authenticated account.
+  //   2. Several verifications racing on the same row would each pass the
+  //      attempts check against the same stale count, then each create a user.
+  //
+  // deleteMany is a single statement, so exactly one caller can match. Matching
+  // on codeHash AND attempts means the delete only succeeds if the row is still
+  // in precisely the state we validated — if a resend rotated the code or
+  // another request already consumed it, count is 0 and we bail out rather than
+  // proceeding on a stale decision.
+  const consumed = await prisma.pendingSignup.deleteMany({
+    where: {
+      id: pending.id,
+      codeHash: pending.codeHash,
+      attempts: { lt: SIGNUP_OTP_MAX_ATTEMPTS },
+    },
+  });
+  if (consumed.count !== 1) {
+    throw new ApiError(400, 'This code has expired. Please start again.');
+  }
+
   // Re-check identifiers: the pending row reserved nothing, so someone may have
   // registered this email or phone during the ten minutes the code was live.
   await assertIdentifiersFree(pending.phone, pending.email);
 
-  const result = await createUserAndIssueTokens({
+  // The row is already gone (consumed above), so single-use is guaranteed by
+  // construction rather than by remembering to clean up after a success. If this
+  // throws — say the email was registered in the last ten minutes and
+  // assertIdentifiersFree rejected — the pending signup is spent and the buyer
+  // must start again. That is the correct outcome: their address genuinely
+  // belongs to someone else now, and a fresh start will tell them so at step 1.
+  return createUserAndIssueTokens({
     name: pending.name,
     email: pending.email,
     hashedPassword: pending.password, // already bcrypt — never re-hash
@@ -328,11 +371,6 @@ export async function verifyBuyerSignup(input: { pendingId: string; code: string
     currency: pending.currency,
     language: pending.language,
   });
-
-  // Single-use: the account exists now, so the code must not work twice.
-  await prisma.pendingSignup.delete({ where: { id: pending.id } }).catch(() => {});
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------

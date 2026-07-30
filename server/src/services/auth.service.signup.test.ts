@@ -325,6 +325,35 @@ describe('startBuyerSignup', () => {
     mockSendOtp.mockRejectedValue(new Error('smtp down'));
 
     await expect(startBuyerSignup(buyer)).rejects.toThrow('smtp down');
-    expect(mockPendingDelete).toHaveBeenCalledWith({ where: { id: 'pending-1' } });
+    expect(cleanupCall()).toBeDefined();
+  });
+
+  it('scopes the failure cleanup to its OWN code, not just the row id', async () => {
+    // The upsert keys on email, so two concurrent submissions for one address
+    // share a row. An unscoped delete would let a failed send in THIS request
+    // tear out the row belonging to a concurrent one — whose buyer already has
+    // a working code in their inbox and would be told it had expired.
+    existingAccounts({});
+    mockSendOtp.mockRejectedValue(new Error('smtp down'));
+
+    await expect(startBuyerSignup(buyer)).rejects.toThrow('smtp down');
+
+    const where = cleanupCall();
+    expect(where.id).toBe('pending-1');
+    // The codeHash guard is the whole point — without it the delete is unscoped.
+    expect(where.codeHash).toMatch(/^[0-9a-f]{64}$/);
+    const { create } = mockPendingUpsert.mock.calls[0][0] as any;
+    expect(where.codeHash).toBe(create.codeHash);
   });
 });
+
+// startBuyerSignup calls deleteMany twice on the failure path — once to sweep
+// expired rows, once to clean up its own. Pick the cleanup out by shape rather
+// than by call order, so the assertion doesn't silently start checking the
+// prune if the sweep ever moves.
+function cleanupCall(): any {
+  const call = mockPendingDeleteMany.mock.calls
+    .map((c) => (c[0] as any)?.where)
+    .find((w) => w && 'codeHash' in w);
+  return call;
+}
