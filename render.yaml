@@ -15,7 +15,7 @@ services:
     rootDir: server       # build/start run from the server/ directory
     region: oregon        # change if you prefer; keep client/DB latency in mind
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeploy: false
     # Build: install (incl. dev deps for tsc/ts-node), generate client, apply
     # migrations, then compile TS. Seeding is NEVER part of the production
     # build — it wipes every table. Run it manually if you must (seed.ts
