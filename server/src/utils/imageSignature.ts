@@ -23,9 +23,14 @@ import fs from 'fs';
 //   [4 size][4 "ftyp"][4 major brand][4 minor version][4 compatible brand]...
 // and a valid AVIF may declare a generic major brand (mif1/msf1) while listing
 // "avif" among the COMPATIBLE brands. Reading only bytes 8-11 would 400 files
-// that sharp decodes perfectly well, so read enough to walk that list.
-// 64 bytes covers a dozen brands, far more than any real file uses.
-const HEADER_BYTES = 64;
+// that sharp decodes perfectly well, so the whole brand list has to be walked.
+//
+// Any fixed guess at how many brands that is would be wrong for some file, so
+// read a full page and let the box's own declared size bound the scan. 4 KiB is
+// one read of one page — the cost is the same as a smaller buffer — and an ftyp
+// box that large would need ~1000 brands, which no encoder emits. The cap exists
+// so a hostile size field cannot make us read an unbounded amount.
+const HEADER_BYTES = 4096;
 
 export type ImageFormat = 'jpeg' | 'png' | 'webp' | 'avif';
 

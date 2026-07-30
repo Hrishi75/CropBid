@@ -127,7 +127,7 @@ export const upload = multer({
 // All modern browsers support it (Chrome, Firefox, Safari, Edge).
 // =============================================================================
 
-export async function processImages(req: Request, _res: Response, next: NextFunction) {
+export async function processImages(req: Request, res: Response, next: NextFunction) {
   if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
     return next();
   }
@@ -156,6 +156,22 @@ export async function processImages(req: Request, _res: Response, next: NextFunc
 
     // Attach processed paths to request for the controller to use
     (req as any).processedImages = processedPaths;
+
+    // Arm a rollback for failures DOWNSTREAM of here.
+    //
+    // Once next() is called this middleware is done, so its catch block can no
+    // longer help: if the controller then rejects the request — unknown listing,
+    // not the owner, already at the image cap — the images are stored but
+    // nothing references them. Hooking 'finish' catches every such path at once
+    // instead of duplicating cleanup in each controller error branch, and keys
+    // the decision off the only thing that reliably says whether the request
+    // succeeded: the status code actually sent.
+    res.on('finish', () => {
+      if (res.statusCode >= 400) {
+        void Promise.allSettled(processedPaths.map((url) => removeImage(url)));
+      }
+    });
+
     next();
   } catch (error) {
     // Roll back images already stored for THIS request.

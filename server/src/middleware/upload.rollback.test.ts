@@ -45,6 +45,22 @@ function reqWith(count: number) {
   } as any;
 }
 
+// Minimal Response stand-in that can replay the 'finish' event, which is how the
+// middleware learns whether a DOWNSTREAM handler accepted or rejected the request.
+function resStub() {
+  const handlers: Array<() => void> = [];
+  return {
+    statusCode: 200,
+    on(event: string, cb: () => void) {
+      if (event === 'finish') handlers.push(cb);
+    },
+    finish(status: number) {
+      this.statusCode = status;
+      handlers.forEach((h) => h());
+    },
+  } as any;
+}
+
 // The middleware unlinks real paths; keep that off the filesystem.
 let unlinked: string[] = [];
 
@@ -89,7 +105,9 @@ describe('processImages rollback', () => {
 
   it('does NOT remove stored images on success', async () => {
     const req = reqWith(2);
-    const err = await new Promise<any>((res) => processImages(req, {} as any, res));
+    // Needs a real Response stub: the success path now registers a 'finish'
+    // listener to catch downstream rejections.
+    const err = await new Promise<any>((done) => processImages(req, resStub(), done));
 
     expect(err).toBeUndefined();
     expect(mockStore).toHaveBeenCalledTimes(2);
@@ -109,5 +127,44 @@ describe('processImages rollback', () => {
 
     expect(err).toBeTruthy();
     expect(err.message).not.toContain('cloudinary unreachable');
+  });
+});
+
+// Once next() is called this middleware is finished, so its catch block cannot
+// help with a controller that rejects afterwards — unknown listing, wrong owner,
+// already at the image cap. Those requests stored images that nothing will ever
+// reference.
+describe('processImages downstream rollback', () => {
+  it('removes stored images when the controller rejects the request', async () => {
+    const req = reqWith(2);
+    const res = resStub();
+    await new Promise<any>((done) => processImages(req, res, done));
+
+    expect(mockStore).toHaveBeenCalledTimes(2);
+    expect(mockRemove).not.toHaveBeenCalled(); // nothing yet — still in flight
+
+    res.finish(403); // controller rejected: not the listing's owner
+
+    expect(mockRemove).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps stored images when the controller succeeds', async () => {
+    const req = reqWith(2);
+    const res = resStub();
+    await new Promise<any>((done) => processImages(req, res, done));
+
+    res.finish(201); // listing created, images now referenced
+
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  it('rolls back on a 500 as well as a 4xx', async () => {
+    const req = reqWith(1);
+    const res = resStub();
+    await new Promise<any>((done) => processImages(req, res, done));
+
+    res.finish(500);
+
+    expect(mockRemove).toHaveBeenCalledTimes(1);
   });
 });
