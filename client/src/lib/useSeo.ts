@@ -52,7 +52,12 @@ export function useSeo() {
     // robots.txt. They still deserve a truthful tab title rather than whatever
     // the last public page left behind.
     const title = meta ? fullTitle(meta.title) : SITE.name;
-    const description = meta?.description ?? '';
+    // Falls back to the site description rather than to '' — every tag below is
+    // written unconditionally, because skipping the write would leave the
+    // PREVIOUS page's description attached to this URL. A visitor going
+    // /rates → /farmer would otherwise carry "Live government mandi rates..."
+    // onto their dashboard, and share it that way.
+    const description = meta?.description ?? SITE.description;
     const url = meta ? canonicalUrl(meta.path) : `${SITE.origin}${pathname}`;
 
     document.title = title;
@@ -60,12 +65,9 @@ export function useSeo() {
     setMeta('name', 'twitter:title', title);
     setMeta('property', 'og:url', url);
     setCanonical(url);
-
-    if (description) {
-      setMeta('name', 'description', description);
-      setMeta('property', 'og:description', description);
-      setMeta('name', 'twitter:description', description);
-    }
+    setMeta('name', 'description', description);
+    setMeta('property', 'og:description', description);
+    setMeta('name', 'twitter:description', description);
 
     // Only public pages should advertise as indexable. Everything else gets an
     // explicit noindex — belt and braces alongside the robots.txt Disallow,

@@ -41,6 +41,9 @@ export const SITE = {
   twitter: '@CropBid',
   /** Absolute — every social scraper drops relative image URLs. */
   ogImage: 'https://cropbid.in/og-cover.png',
+  /** Fallback description for routes outside the manifest (signed-in pages). */
+  description:
+    "India's crop exchange — buy and sell crops direct at live government mandi rates.",
 };
 
 // TITLE/DESCRIPTION LENGTHS: Google truncates titles past roughly 60 characters
