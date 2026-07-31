@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'dist-ssr']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -28,6 +28,15 @@ export default defineConfig([
       // Allow co-locating context hooks with their provider component
       // (e.g. AuthContext exporting both AuthProvider and useAuth).
       'react-refresh/only-export-components': 'warn',
+    },
+  },
+  {
+    // The prerender entry is loaded by Node at build time and never by the dev
+    // server, so the fast-refresh rule has nothing to say about it — it exports
+    // render() and re-exports the route manifest by design.
+    files: ['src/entry-server.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])

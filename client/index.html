@@ -6,13 +6,127 @@
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CropBid</title>
+    <!-- Tints the mobile browser chrome to match --color-surface in each mode. -->
+    <meta name="theme-color" content="#fbf9f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1a2614" media="(prefers-color-scheme: dark)" />
+
+    <!--
+      Everything between the seo markers is REPLACED PER ROUTE at build time by
+      scripts/prerender.mjs, using the titles and descriptions declared in
+      scripts/seo-routes.mjs. What sits here is the homepage version, and the
+      fallback for any route that isn't prerendered.
+
+      Do not delete the markers — the prerenderer matches them by exact string
+      and fails the build if they are missing.
+    -->
+    <!--seo-->
+    <title>CropBid — Sell &amp; Buy Crops Direct at Live Mandi Rates</title>
+    <meta
+      name="description"
+      content="India's crop exchange. Farmers sell direct to buyers at live government mandi rates from 4,600+ mandis — with escrow payments, auctions and farm-to-door delivery."
+    />
+    <link rel="canonical" href="https://cropbid.in/" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CropBid" />
+    <meta property="og:url" content="https://cropbid.in/" />
+    <meta property="og:title" content="CropBid — Sell &amp; Buy Crops Direct at Live Mandi Rates" />
+    <meta
+      property="og:description"
+      content="India's crop exchange. Farmers sell direct to buyers at live government mandi rates from 4,600+ mandis — with escrow payments, auctions and farm-to-door delivery."
+    />
+    <meta property="og:image" content="https://cropbid.in/og-cover.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_IN" />
+    <meta property="og:locale:alternate" content="hi_IN" />
+    <meta property="og:locale:alternate" content="mr_IN" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@CropBid" />
+    <meta name="twitter:title" content="CropBid — Sell &amp; Buy Crops Direct at Live Mandi Rates" />
+    <meta
+      name="twitter:description"
+      content="India's crop exchange. Farmers sell direct to buyers at live government mandi rates from 4,600+ mandis — with escrow payments, auctions and farm-to-door delivery."
+    />
+    <meta name="twitter:image" content="https://cropbid.in/og-cover.png" />
+    <!--/seo-->
+
+    <!--
+      Static JSON-LD, present in the served HTML rather than injected by React.
+      That distinction matters: the AI crawlers (GPTBot, PerplexityBot,
+      ClaudeBot, CCBot) do not execute JavaScript, so anything React adds at
+      runtime is invisible to them. Per-page structured data is appended
+      after this block by the prerenderer.
+    -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://cropbid.in/#organization",
+            "name": "CropBid",
+            "url": "https://cropbid.in/",
+            "logo": {
+              "@type": "ImageObject",
+              "url": "https://cropbid.in/cropbid.png"
+            },
+            "description": "India's crop exchange — farmers, processors, retailers and consumers trade on one platform at live government mandi rates, with AI-agent negotiation, escrow payments, live auctions and logistics built in.",
+            "areaServed": { "@type": "Country", "name": "India" },
+            "knowsLanguage": ["en", "hi", "mr"],
+            "sameAs": ["https://x.com/CropBid"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://cropbid.in/#website",
+            "url": "https://cropbid.in/",
+            "name": "CropBid",
+            "publisher": { "@id": "https://cropbid.in/#organization" },
+            "inLanguage": ["en", "hi", "mr"],
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "https://cropbid.in/?q={search_term_string}"
+              },
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://cropbid.in/#webapp",
+            "name": "CropBid",
+            "url": "https://cropbid.in/",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web, Android",
+            "publisher": { "@id": "https://cropbid.in/#organization" },
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+            "featureList": [
+              "Live government mandi rates from 4,600+ mandis",
+              "Direct farmer-to-buyer crop listings and bidding",
+              "AI-agent price negotiation",
+              "Live timed auctions",
+              "Escrow-protected payments",
+              "Farm-to-door logistics and shipment tracking"
+            ]
+          }
+        ]
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" />
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      The prerenderer replaces the app-html marker with server-rendered markup
+      for each route. React mounts with createRoot(), which discards whatever is
+      already in the container — so there is no hydration contract to honour and
+      no mismatch warning to chase. Crawlers read the static markup; browsers
+      get the live app a moment later.
+    -->
+    <div id="root"><!--app-html--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
