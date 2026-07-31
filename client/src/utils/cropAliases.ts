@@ -38,6 +38,7 @@ const CROP_ALIASES: Record<string, string[]> = {
   'Maize':                ['corn', 'makka', 'makki', 'yellow maize', 'sweet corn'],
   'Soyabean':             ['soybean', 'soya', 'soya bean', 'soy bean', 'soy'],
   'Turmeric':             ['haldi', 'turmeric fingers'],
+  'Cocoa':                ['cocoa beans', 'cocoa bean', 'koko'],
   'Milk':                 ['cow milk', 'buffalo milk', 'goat milk', 'a2 milk', 'doodh', 'dudh'],
   'Ghee':                 ['desi ghee', 'a2 ghee', 'bilona ghee', 'clarified butter'],
   'Curd':                 ['curd dahi', 'dahi', 'yogurt', 'yoghurt'],

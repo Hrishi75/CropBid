@@ -88,6 +88,10 @@ const BOARD: BoardItem[] = [
   // Spices & oilseeds
   { commodity: 'Soyabean', label: 'Soybean', emoji: '🫘', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 5420 },
   { commodity: 'Turmeric', label: 'Turmeric', emoji: '🫚', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 13800 },
+  // Cocoa reports from very few mandis (Kerala/Karnataka plantation belt), so
+  // outside those states it resolves to a 'national' modal drawn from a handful
+  // of markets — honest via `source`, but thinner than the crops above.
+  { commodity: 'Cocoa', label: 'Cocoa', emoji: '🍫', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 14800 },
 ];
 
 const BOARD_BY_COMMODITY = new Map(BOARD.map((b) => [b.commodity.toLowerCase(), b]));

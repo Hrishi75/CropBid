@@ -111,6 +111,9 @@ const SEASONS: Record<string, Season> = {
   'Maize':                { peak: [9, 10, 11],   peakLabel: 'Sep–Nov', lean: [6, 7],      leanLabel: 'Jun–Jul' },
   'Soyabean':             { peak: [10, 11, 12],  peakLabel: 'Oct–Dec', lean: [7, 8],      leanLabel: 'Jul–Aug' },
   'Turmeric':             { peak: [2, 3, 4],     peakLabel: 'Feb–Apr', lean: [10, 11],    leanLabel: 'Oct–Nov' },
+  // Cocoa in the Kerala/Karnataka belt carries a main crop harvested Nov–Feb
+  // and a lighter mid crop mid-year, so arrivals thin out around Jul–Sep.
+  'Cocoa':                { peak: [11, 12, 1, 2], peakLabel: 'Nov–Feb (main harvest)', lean: [7, 8, 9], leanLabel: 'Jul–Sep' },
 };
 
 // -----------------------------------------------------------------------------
@@ -187,6 +190,7 @@ const CROP_ALIASES: Record<string, string[]> = {
   'Maize':                ['corn', 'makka', 'makki', 'yellow maize', 'sweet corn'],
   'Soyabean':             ['soybean', 'soya', 'soya bean', 'soy bean', 'soy'],
   'Turmeric':             ['haldi', 'turmeric fingers'],
+  'Cocoa':                ['cocoa beans', 'cocoa bean', 'koko'],
   'Milk':                 ['cow milk', 'buffalo milk', 'goat milk', 'a2 milk', 'doodh', 'dudh'],
   'Ghee':                 ['desi ghee', 'a2 ghee', 'bilona ghee', 'clarified butter'],
   'Curd':                 ['curd dahi', 'dahi', 'yogurt', 'yoghurt'],
