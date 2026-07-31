@@ -337,6 +337,33 @@ export function CBFooter() {
               <span className="cb-footer-contact-label">{t('Contact')}</span>
               <a href="mailto:info@cropbid.in">info@cropbid.in</a>
             </div>
+
+            {/*
+              These are the return half of the sameAs claim in index.html's
+              Organization schema. Search engines and answer engines only merge
+              a profile into the site's entity when the link runs BOTH ways —
+              a one-directional sameAs is treated as an unverified assertion
+              and discounted. So these have to be real crawlable <a href>s in
+              the markup, not icon buttons wired up in JavaScript.
+
+              rel="me" states the same identity claim in the microformats
+              vocabulary, which is what Mastodon/IndieAuth verify against.
+            */}
+            <div className="cb-footer-social">
+              <span className="cb-footer-contact-label">{t('Follow')}</span>
+              <ul>
+                <li>
+                  <a href="https://www.linkedin.com/company/cropbid" rel="me noopener" target="_blank">
+                    LinkedIn
+                  </a>
+                </li>
+                <li>
+                  <a href="https://x.com/CropBid" rel="me noopener" target="_blank">
+                    X
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
 
           {FOOTER_COLS.map((c) => (

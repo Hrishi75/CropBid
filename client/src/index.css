@@ -636,6 +636,14 @@ body * {
   color: rgba(244,241,234,0.85); text-decoration: none; font-size: 14px;
 }
 .cb-landing .cb-footer-contact a:hover { color: #f4f1ea; }
+.cb-landing .cb-footer-social { margin-top: 18px; }
+.cb-landing .cb-footer-social ul {
+  list-style: none; padding: 0; margin: 0; display: flex; gap: 16px;
+}
+.cb-landing .cb-footer-social a {
+  color: rgba(244,241,234,0.85); text-decoration: none; font-size: 14px;
+}
+.cb-landing .cb-footer-social a:hover { color: #f4f1ea; }
 .cb-landing .cb-footer-col-title {
   font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.14em;
   text-transform: uppercase; color: rgba(244,241,234,0.5); margin-bottom: 14px;
