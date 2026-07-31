@@ -1,0 +1,68 @@
+<!--
+  Source for public/og-cover.png — the 1200x630 card that Google, WhatsApp,
+  X, LinkedIn and Slack show when a cropbid.in link is shared.
+
+  Edit this file, then regenerate the PNG (see docs/SEO.md). The PNG is what
+  ships; scrapers can't read SVG, and several of them ignore the link entirely
+  if the image isn't a raster format at a known size.
+
+  Fonts are deliberately Helvetica/Arial — this is rasterised by librsvg, which
+  only sees fonts installed on the machine, not the site's webfonts.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#fbf9f3"/>
+
+  <!-- Sage rule down the left edge, echoing the site's section markers -->
+  <rect x="0" y="0" width="14" height="630" fill="#6b8e4e"/>
+
+  <!-- Faint field rows, bottom right -->
+  <g opacity="0.10" fill="none" stroke="#1f2d18" stroke-width="2">
+    <path d="M700 630 C 820 470, 1000 420, 1200 400"/>
+    <path d="M780 630 C 900 490, 1040 450, 1200 435"/>
+    <path d="M860 630 C 975 510, 1080 480, 1200 470"/>
+    <path d="M940 630 C 1040 535, 1120 512, 1200 505"/>
+  </g>
+
+  <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+    <!-- Wordmark -->
+    <text x="80" y="118" font-size="34" font-weight="700" fill="#1f2d18" letter-spacing="0.5">
+      CropBid
+    </text>
+
+    <!-- Live badge -->
+    <circle cx="232" cy="107" r="6" fill="#6b8e4e"/>
+    <text x="250" y="113" font-size="20" font-weight="500" fill="#4a4a3f" letter-spacing="1.2">
+      LIVE GOVT MANDI RATES
+    </text>
+
+    <!-- Headline -->
+    <text x="80" y="268" font-size="76" font-weight="700" fill="#1f2d18">
+      Sell &amp; buy crops direct
+    </text>
+    <text x="80" y="356" font-size="76" font-weight="700" fill="#6b8e4e">
+      at live mandi rates.
+    </text>
+
+    <!-- Supporting line -->
+    <text x="80" y="428" font-size="30" font-weight="400" fill="#4a4a3f">
+      India&#8217;s crop exchange — farmer to buyer, no middleman.
+    </text>
+
+    <!-- Proof chips -->
+    <g font-size="24" font-weight="500" fill="#1f2d18">
+      <rect x="80"  y="482" width="268" height="58" rx="29" fill="#eef1e6"/>
+      <text x="110" y="519">4,600+ mandis</text>
+
+      <rect x="366" y="482" width="286" height="58" rx="29" fill="#eef1e6"/>
+      <text x="396" y="519">Escrow settlement</text>
+
+      <rect x="670" y="482" width="276" height="58" rx="29" fill="#eef1e6"/>
+      <text x="700" y="519">Farm-to-door</text>
+    </g>
+
+    <!-- Domain -->
+    <text x="1120" y="118" font-size="26" font-weight="600" fill="#82806f" text-anchor="end">
+      cropbid.in
+    </text>
+  </g>
+</svg>

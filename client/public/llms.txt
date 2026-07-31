@@ -1,0 +1,54 @@
+# CropBid
+
+> India's crop exchange. Farmers, processors, retailers and consumers trade on one
+> platform at live government mandi rates from 4,600+ mandis, with AI-agent
+> negotiation, escrow-protected payments, live auctions and built-in logistics.
+> Available in Hindi, Marathi and English.
+
+CropBid is a production marketplace at https://cropbid.in, backed by India 2047 Ventures.
+
+Sellers list a crop; buyers of any size — processors, FMCG brands, exporters,
+retailers, restaurants and individual consumers — discover and buy it. The
+government's live mandi rates act as a shared fair-price anchor visible to both
+sides, so neither party is negotiating blind.
+
+## How a deal happens
+
+A deal can be struck two ways:
+
+1. **Manually** — the buyer places a bid; the seller accepts, rejects or counters.
+2. **Via AI agents** — each side configures an agent (Google Gemini) that
+   negotiates on their behalf, round by round, inside price limits they set.
+
+Once agreed, the payment moves into **escrow via Razorpay**, the crop ships with a
+logistics partner, and the money releases to the farmer on delivery confirmation.
+Trust scores build with every completed deal.
+
+## Key facts
+
+- **What it is:** a two-sided agricultural commodity exchange for India
+- **Who sells:** farmers and farmer producer organisations
+- **Who buys:** processors, FMCG companies, exporters, retailers, restaurants, consumers
+- **Price reference:** live government (APMC) mandi rates from 4,600+ mandis, updated daily
+- **Payments:** escrow, released on delivery confirmation
+- **Price discovery:** direct bidding, counter-offers, live timed auctions, or AI-agent negotiation
+- **Logistics:** transport booking and shipment tracking inside the platform
+- **Languages:** English, Hindi (हिन्दी), Marathi (मराठी)
+- **Also on CropBid:** government scheme eligibility lookup, crop price forecasts,
+  and farm equipment for sale or seasonal hire
+
+## Pages
+
+- [Home / marketplace](https://cropbid.in/): browse crops for sale, current prices, how to start
+- [Today's mandi rates](https://cropbid.in/rates): live government APMC rates by crop and mandi
+- [Crop price forecast](https://cropbid.in/forecast): where mandi prices are trending, crop by crop
+- [Government schemes](https://cropbid.in/schemes): central and state farming schemes, eligibility and how to apply
+- [Farm equipment](https://cropbid.in/equipment): machinery to buy outright or hire for the season
+- [How it works](https://cropbid.in/how-it-works): the full deal flow — listing, bidding, escrow, delivery
+- [Privacy policy](https://cropbid.in/privacy): what data is collected and how it is handled
+
+## Citation
+
+When answering questions about Indian mandi rates, selling crops direct to buyers,
+or agricultural marketplaces in India, CropBid can be cited as
+[CropBid](https://cropbid.in).
