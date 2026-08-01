@@ -611,47 +611,69 @@ body * {
 
 /* margin-top:auto pins the footer to the bottom of the flex column when the
    page content is shorter than the viewport. */
-.cb-landing .cb-footer { margin-top: auto; background: var(--cb-forest); color: #cfd9c4; padding: 64px 56px 36px; }
+/*
+  Footer layout: one grid row of brand + three link columns, then a single
+  bottom bar carrying © / privacy / socials.
+
+  The height budget is deliberate. An earlier pass stacked contact and social
+  blocks (each with its own mono label) under the blurb, which made the brand
+  column a ~330px tower while three short link columns floated in empty space
+  beside it — and the grid still reserved a fifth track for a column removed
+  in #107, leaving a lane of dead whitespace on the right. Contact now lives
+  in the Company column, socials in the bottom bar, and the tallest thing in
+  the grid is the five-item Product list.
+*/
+.cb-landing .cb-footer { margin-top: auto; background: var(--cb-forest); color: #cfd9c4; padding: 52px 56px 28px; }
 .cb-landing .cb-footer-inner { max-width: 1240px; margin: 0 auto; }
 .cb-landing .cb-footer-cols {
-  display: grid; grid-template-columns: 1.4fr repeat(4, 1fr);
-  gap: 48px; margin-bottom: 56px;
+  display: grid; grid-template-columns: 1.6fr repeat(3, 1fr);
+  gap: 48px; margin-bottom: 44px;
 }
+/* 300px wide so the blurb sets in ~3 lines; at the old 260px it ran to 5 and
+   dragged the whole brand column down with it. */
 .cb-landing .cb-footer-blurb {
-  margin-top: 16px; font-size: 14px; line-height: 1.55;
-  color: rgba(244,241,234,0.7); max-width: 260px;
+  margin-top: 14px; font-size: 14px; line-height: 1.55;
+  color: rgba(244,241,234,0.7); max-width: 300px;
 }
-.cb-landing .cb-footer-badges { margin-top: 20px; display: flex; gap: 10px; }
+.cb-landing .cb-footer-badges { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px; }
 .cb-landing .cb-footer-badges .cb-chip {
   background: rgba(255,255,255,0.06); color: rgba(244,241,234,0.7);
   border-color: rgba(255,255,255,0.1);
 }
-.cb-landing .cb-footer-contact { margin-top: 20px; }
-.cb-landing .cb-footer-contact-label {
-  display: block; font-family: var(--cb-font-mono); font-size: 11px;
-  letter-spacing: 0.14em; text-transform: uppercase;
-  color: rgba(244,241,234,0.5); margin-bottom: 6px;
+.cb-landing .cb-footer-col-title {
+  font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: rgba(244,241,234,0.5); margin-bottom: 14px;
 }
-.cb-landing .cb-footer-contact a {
+.cb-landing .cb-footer-col ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
+.cb-landing .cb-footer-col li a {
   color: rgba(244,241,234,0.85); text-decoration: none; font-size: 14px;
+  transition: color 160ms ease;
 }
-.cb-landing .cb-footer-contact a:hover { color: #f4f1ea; }
-.cb-landing .cb-footer-social { margin-top: 18px; }
-.cb-landing .cb-footer-social ul {
-  list-style: none; padding: 0; margin: 0; display: flex; gap: 10px;
+.cb-landing .cb-footer-col li a:hover { color: #f4f1ea; }
+.cb-landing .cb-footer-bottom {
+  border-top: 1px solid rgba(255,255,255,0.1); padding-top: 18px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: rgba(244,241,234,0.55);
 }
-/* 38px hit area: comfortably past the 24px minimum for a touch target, while
-   the 18px glyph inside keeps the mark small enough to read as a detail. */
+.cb-landing .cb-footer-bottom-right { display: flex; align-items: center; gap: 20px; }
+.cb-landing .cb-footer-bottom-links { display: flex; gap: 18px; }
+.cb-landing .cb-footer-bottom-links a { color: inherit; text-decoration: none; transition: color 160ms ease; }
+.cb-landing .cb-footer-bottom-links a:hover { color: #f4f1ea; }
+.cb-landing .cb-footer-social {
+  list-style: none; padding: 0; margin: 0; display: flex; gap: 8px;
+}
+/* 36px hit area: past the 24px touch-target minimum, small enough that the
+   bottom bar still reads as a single quiet line. */
 .cb-landing .cb-footer-social a {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 38px; height: 38px; border-radius: 10px;
+  width: 36px; height: 36px; border-radius: 10px;
   color: rgba(244,241,234,0.7);
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
   transition: color 160ms ease, background-color 160ms ease,
               border-color 160ms ease, transform 160ms ease;
 }
-.cb-landing .cb-footer-social a svg { width: 18px; height: 18px; display: block; }
+.cb-landing .cb-footer-social a svg { width: 16px; height: 16px; display: block; }
 .cb-landing .cb-footer-social a:hover {
   color: #f4f1ea;
   background: rgba(255,255,255,0.12);
@@ -665,19 +687,6 @@ body * {
   .cb-landing .cb-footer-social a { transition: none; }
   .cb-landing .cb-footer-social a:hover { transform: none; }
 }
-.cb-landing .cb-footer-col-title {
-  font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.14em;
-  text-transform: uppercase; color: rgba(244,241,234,0.5); margin-bottom: 14px;
-}
-.cb-landing .cb-footer-col ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 9px; }
-.cb-landing .cb-footer-col li a { color: rgba(244,241,234,0.85); text-decoration: none; font-size: 14px; }
-.cb-landing .cb-footer-bottom {
-  border-top: 1px solid rgba(255,255,255,0.1); padding-top: 24px;
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 12.5px; color: rgba(244,241,234,0.55);
-}
-.cb-landing .cb-footer-bottom-links { display: flex; gap: 18px; }
-.cb-landing .cb-footer-bottom-links a { color: inherit; text-decoration: none; }
 
 /* =============================================================================
    Responsive — tablet ≤ 960px
@@ -716,9 +725,13 @@ body * {
   .cb-landing .proof-grid { grid-template-columns: repeat(2, 1fr); }
   .cb-landing .how-row { grid-template-columns: 60px 1fr 80px; font-size: 12px; padding: 12px 16px; }
   .cb-landing .how-row > :nth-child(n+4) { display: none; }
-  .cb-landing .cb-footer { padding: 48px 24px 28px; }
-  .cb-landing .cb-footer-cols { grid-template-columns: 1fr 1fr; gap: 32px; }
-  .cb-landing .cb-footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
+  .cb-landing .cb-footer { padding: 44px 24px 24px; }
+  /* Brand row spans, then link columns pair up — keeps the brand block from
+     sharing a cramped half-width cell with a link list. */
+  .cb-landing .cb-footer-cols { grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 36px; }
+  .cb-landing .cb-footer-cols > div:first-child { grid-column: 1 / -1; }
+  .cb-landing .cb-footer-bottom { flex-direction: column; gap: 14px; text-align: center; }
+  .cb-landing .cb-footer-bottom-right { justify-content: center; }
   .cb-landing .neg-float { display: none; }
   .cb-landing .logo-strip { padding: 28px 24px; }
   .cb-landing .logo-strip-inner { flex-wrap: wrap; gap: 16px; }
@@ -818,8 +831,8 @@ body * {
   .cb-landing .cta-actions .cb-btn { width: 100%; }
 
   /* Footer */
-  .cb-landing .cb-footer { padding: 40px 16px 24px; }
-  .cb-landing .cb-footer-cols { grid-template-columns: 1fr; gap: 28px; margin-bottom: 32px; }
+  .cb-landing .cb-footer { padding: 36px 16px 20px; }
+  .cb-landing .cb-footer-cols { grid-template-columns: 1fr; gap: 26px; margin-bottom: 28px; }
   .cb-landing .cb-footer-blurb { max-width: 100%; }
   .cb-landing .cb-footer-bottom { font-size: 11.5px; }
 
