@@ -300,7 +300,10 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
     title: 'Company',
     items: [
       ['About',   '/how-it-works'],
-      ['Contact', 'mailto:info@cropbid.in'],
+      // The address is its own label — a footer email you have to click to
+      // discover is worse than one you can read. (Privacy stays in the bottom
+      // bar with the © line, where legal links are expected.)
+      ['info@cropbid.in', 'mailto:info@cropbid.in'],
     ],
   },
 ];
@@ -342,47 +345,6 @@ export function CBFooter() {
                 <span key={b} className="cb-chip">{t(b)}</span>
               ))}
             </div>
-            <div className="cb-footer-contact">
-              <span className="cb-footer-contact-label">{t('Contact')}</span>
-              <a href="mailto:info@cropbid.in">info@cropbid.in</a>
-            </div>
-
-            {/*
-              These are the return half of the sameAs claim in index.html's
-              Organization schema. Search engines and answer engines only merge
-              a profile into the site's entity when the link runs BOTH ways —
-              a one-directional sameAs is treated as an unverified assertion
-              and discounted. So these have to be real crawlable <a href>s in
-              the markup, not icon buttons wired up in JavaScript.
-
-              rel="me" states the same identity claim in the microformats
-              vocabulary, which is what Mastodon/IndieAuth verify against.
-            */}
-            <div className="cb-footer-social">
-              <span className="cb-footer-contact-label">{t('Follow')}</span>
-              <ul>
-                {SOCIALS.map((s) => (
-                  <li key={s.label}>
-                    {/*
-                      aria-label carries the accessible name — the anchor has no
-                      text, so without it a screen reader announces only "link".
-                      The <svg> is aria-hidden so the name isn't read twice.
-                    */}
-                    <a
-                      href={s.href}
-                      rel="me noopener"
-                      target="_blank"
-                      aria-label={s.label}
-                      title={s.label}
-                    >
-                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d={s.path} />
-                      </svg>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
 
           {FOOTER_COLS.map((c) => (
@@ -399,8 +361,36 @@ export function CBFooter() {
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
           {/* Terms and Disclosures lived here as href="#" — restore them when
               those pages exist. /privacy is real and stays. */}
-          <span className="cb-footer-bottom-links">
-            <Link to="/privacy">{t('Privacy')}</Link>
+          <span className="cb-footer-bottom-right">
+            <span className="cb-footer-bottom-links">
+              <Link to="/privacy">{t('Privacy')}</Link>
+            </span>
+            {/*
+              The social anchors are the return half of the sameAs claim in
+              index.html's Organization schema — engines only merge a profile
+              into the site's entity when the link runs BOTH ways, so these
+              must be real crawlable <a href>s in the markup. rel="me" states
+              the same claim in the microformats vocabulary. aria-label carries
+              the accessible name (the anchors have no text) and the <svg> is
+              aria-hidden so the name isn't announced twice.
+            */}
+            <ul className="cb-footer-social">
+              {SOCIALS.map((s) => (
+                <li key={s.label}>
+                  <a
+                    href={s.href}
+                    rel="me noopener"
+                    target="_blank"
+                    aria-label={s.label}
+                    title={s.label}
+                  >
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d={s.path} />
+                    </svg>
+                  </a>
+                </li>
+              ))}
+            </ul>
           </span>
         </div>
       </div>
