@@ -268,49 +268,58 @@ export function CountrySelector({ country, onChange }: { country: Country; onCha
 
 // Cross-page links use plain <a> so the browser handles the #hash scroll on
 // the destination page; same-page routes without a hash use <Link>.
+//
+// EVERY ENTRY HERE MUST GO SOMEWHERE REAL. This list previously carried 11
+// href="#" placeholders (Careers, Press, Blog, Documentation, Trust center,
+// Status, Reports, Glossary, API, Terms, Disclosures) plus four #veg/#fruits/
+// #grains/#spices anchors pointing at ids that don't exist on the landing page.
+// Dead links cost twice over: a visitor who clicks one learns the site is
+// unfinished, and a crawler spends budget on links that resolve nowhere while
+// the real pages go undiscovered. Add the link when the page ships, not before.
 const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: string]> }> = [
   {
     title: 'Product',
     items: [
-      ['Marketplace',  '/'],
+      ['Marketplace',      '/'],
       ['Live mandi rates', '/rates'],
       ['Price forecast',   '/forecast'],
-      ['How it works', '/how-it-works#how'],
-      ['For farmers',  '/how-it-works#how'],
-      ['Buy direct',   '/how-it-works#consumers'],
-      ['Pricing',      '/how-it-works#pricing'],
+      ['Govt schemes',     '/schemes'],
+      ['Farm equipment',   '/equipment'],
     ],
   },
   {
-    title: 'Commodities',
+    title: 'Learn',
     items: [
-      ['Vegetables',      '/#veg'],
-      ['Fruits',          '/#fruits'],
-      ['Grains & pulses', '/#grains'],
-      ['Spices & oilseeds', '/#spices'],
-      ['See all',         '/'],
+      ['How it works', '/how-it-works#how'],
+      ['Buy direct',   '/how-it-works#consumers'],
+      ['Pricing',      '/how-it-works#pricing'],
+      ['Features',     '/how-it-works#features'],
     ],
   },
   {
     title: 'Company',
     items: [
       ['About',   '/how-it-works'],
-      ['Careers', '#'],
-      ['Press',   '#'],
-      ['Blog',    '#'],
       ['Contact', 'mailto:info@cropbid.in'],
     ],
   },
+];
+
+/**
+ * Brand marks are inline paths rather than an icon-library import: lucide-react
+ * dropped its brand icons, and these two need to be exact — a redrawn logo is
+ * the kind of thing a brand team notices.
+ */
+const SOCIALS: Array<{ label: string; href: string; path: string }> = [
   {
-    title: 'Resources',
-    items: [
-      ['Documentation', '#'],
-      ['Trust center',  '#'],
-      ['Status',        '#'],
-      ['Reports',       '#'],
-      ['Glossary',      '#'],
-      ['API',           '#'],
-    ],
+    label: 'LinkedIn',
+    href: 'https://www.linkedin.com/company/cropbid',
+    path: 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.225 0z',
+  },
+  {
+    label: 'X',
+    href: 'https://x.com/CropBid',
+    path: 'M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z',
   },
 ];
 
@@ -352,16 +361,26 @@ export function CBFooter() {
             <div className="cb-footer-social">
               <span className="cb-footer-contact-label">{t('Follow')}</span>
               <ul>
-                <li>
-                  <a href="https://www.linkedin.com/company/cropbid" rel="me noopener" target="_blank">
-                    LinkedIn
-                  </a>
-                </li>
-                <li>
-                  <a href="https://x.com/CropBid" rel="me noopener" target="_blank">
-                    X
-                  </a>
-                </li>
+                {SOCIALS.map((s) => (
+                  <li key={s.label}>
+                    {/*
+                      aria-label carries the accessible name — the anchor has no
+                      text, so without it a screen reader announces only "link".
+                      The <svg> is aria-hidden so the name isn't read twice.
+                    */}
+                    <a
+                      href={s.href}
+                      rel="me noopener"
+                      target="_blank"
+                      aria-label={s.label}
+                      title={s.label}
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d={s.path} />
+                      </svg>
+                    </a>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
@@ -378,10 +397,10 @@ export function CBFooter() {
 
         <div className="cb-footer-bottom">
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
+          {/* Terms and Disclosures lived here as href="#" — restore them when
+              those pages exist. /privacy is real and stays. */}
           <span className="cb-footer-bottom-links">
-            <a href="#">{t('Terms')}</a>
             <Link to="/privacy">{t('Privacy')}</Link>
-            <a href="#">{t('Disclosures')}</a>
           </span>
         </div>
       </div>
