@@ -17,6 +17,7 @@
 // =============================================================================
 
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import type { PendingSignup } from '../../context/AuthContext';
@@ -213,6 +214,7 @@ function VerifyStep({
 
 export function SignupPage() {
   const { signup } = useAuth();
+  const { i18n } = useTranslation();
   const navigate = useNavigate();
 
   const [name, setName] = useState('');
@@ -280,6 +282,10 @@ export function SignupPage() {
         email: email.trim() || undefined,
         country,
         currency: selectedCountry.currency,
+        // Whatever they picked in the switcher before signing up. Carrying it
+        // over means a Hindi speaker's account starts in Hindi instead of
+        // defaulting to EN and having to set it again.
+        language: i18n.language.slice(0, 2).toUpperCase(),
       });
 
       // Buyers: no account yet, just a code in their inbox.

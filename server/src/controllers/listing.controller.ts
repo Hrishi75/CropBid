@@ -13,6 +13,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as listingService from '../services/listing.service';
+import { queueListingTranslation } from '../services/translation.service';
 
 // Express 5 types params as string | string[]. Our routes use single :id params.
 function paramId(req: Request): string {
@@ -66,6 +67,12 @@ export async function createListing(req: Request, res: Response, next: NextFunct
     });
 
     res.status(201).json(listing);
+
+    // Translate the description in the background, AFTER the farmer has their
+    // response. Deliberately not awaited and deliberately after res.json():
+    // publishing a listing must never wait on, or fail because of, a
+    // translation API. Returns void — see services/translation.service.ts.
+    queueListingTranslation(listing.id);
   } catch (error) {
     next(error);
   }
@@ -128,6 +135,13 @@ export async function updateListing(req: Request, res: Response, next: NextFunct
       parsed.data
     );
     res.json(listing);
+
+    // Only when the text actually changed. The service has already cleared the
+    // stale translations in the same write, so the listing reads as the new
+    // original until these land.
+    if (parsed.data.description !== undefined) {
+      queueListingTranslation(listing.id);
+    }
   } catch (error) {
     next(error);
   }

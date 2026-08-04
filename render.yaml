@@ -44,6 +44,12 @@ services:
       # --- Google Gemini (AI negotiation). App runs without it; that feature won't. ---
       - key: GEMINI_API_KEY
         sync: false
+      # --- Sarvam AI (voice listing input + stored translations). Blank → the
+      #     mic button never renders and descriptions stay untranslated; already
+      #     stored translations keep working. Metered — set a spend cap in the
+      #     Sarvam dashboard. ---
+      - key: SARVAM_API_KEY
+        sync: false
       # --- Razorpay (capture-only payments). Use TEST keys (rzp_test_...) to demo
       #     without real money; swap to live keys after KYC. Blank → payments 503. ---
       - key: RAZORPAY_KEY_ID

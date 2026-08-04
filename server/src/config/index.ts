@@ -59,6 +59,16 @@ export const config = {
   // Google Gemini AI
   geminiApiKey: process.env.GEMINI_API_KEY || '',
 
+  // Sarvam AI — Indian-language speech-to-text (voice listing input) and
+  // text translation (stored translations of listing/requirement descriptions).
+  // Leave blank to run without it: the voice button never renders (the client
+  // asks GET /api/voice/status first), and translations are simply never
+  // written. Typed listings and the original descriptions are unaffected, and
+  // any translation already stored keeps working — the columns are plain text,
+  // not a live lookup. That is deliberate: the API is on trial credits, and
+  // nothing built on top of it may become load-bearing.
+  sarvamApiKey: process.env.SARVAM_API_KEY || '',
+
   // data.gov.in — daily mandi (Agmarknet) commodity prices. Defaults to the
   // public demo key data.gov.in ships for testing, so live rates work out of
   // the box; set your own key for higher rate limits. Blank/unreachable → the

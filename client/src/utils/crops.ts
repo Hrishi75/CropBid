@@ -5,6 +5,8 @@
 // MSP keys in msp.ts and any existing listing data. The server accepts any crop
 // string, so this list is purely a front-end convenience and can grow freely.
 
+import { resolveCommodity } from './cropAliases';
+
 export interface CropCategory {
   name: string;
   icon: string;
@@ -38,4 +40,62 @@ const FRESH_SET = new Set(FRESH_PRODUCE_CROPS.map((c) => c.toLowerCase()));
 
 export function isFreshProduce(cropName: string): boolean {
   return FRESH_SET.has(cropName.toLowerCase());
+}
+
+// ---------------------------------------------------------------------------
+// Spoken crop name → a value the crop <select> actually offers
+// ---------------------------------------------------------------------------
+// cropAliases.ts already knows that "kanda" and "pyaz" mean onion — but it
+// resolves to AGMARKNET BOARD COMMODITIES, and this catalogue spells several of
+// those differently. resolveCommodity('makka') returns "Maize" while the picker
+// only offers "Corn", so feeding its output straight into the form would leave
+// the crop field empty for some of the most commonly spoken words.
+//
+// This bridges the gap. It lives here, not in cropAliases.ts, because it is
+// about THIS catalogue: that file must stay byte-comparable with its mirror in
+// server/src/services/prediction.service.ts, and this mapping has no meaning
+// server-side.
+const BOARD_TO_CATALOGUE: Record<string, string> = {
+  'Paddy(Dhan)(Common)': 'Rice',
+  'Maize': 'Corn',
+  'Soyabean': 'Soybean',
+  'Green Chilli': 'Chili',
+  'Bhindi(Ladies Finger)': 'Okra',
+  'Curd': 'Curd (Dahi)',
+  // The board has one "Milk" row; the catalogue splits it by animal. Cow milk
+  // is much the most common, and the farmer can change it in one tap.
+  'Milk': 'Cow Milk',
+};
+
+const CATALOGUE_INDEX = new Map(ALL_CROPS.map((c) => [c.toLowerCase(), c]));
+
+/**
+ * Best catalogue crop for a spoken or free-text name, or null when nothing
+ * matches confidently.
+ *
+ * Used to pre-fill the crop picker from a voice note. Returning null is a
+ * perfectly good outcome — the form leaves the picker empty and tells the
+ * farmer what it heard, which is far better than silently selecting the wrong
+ * crop and having them publish it.
+ */
+export function resolveCatalogueCrop(spoken: string): string | null {
+  const trimmed = spoken?.trim();
+  if (!trimmed) return null;
+
+  // 1. Already a catalogue name ("Onion", "onion", "ONION").
+  const direct = CATALOGUE_INDEX.get(trimmed.toLowerCase());
+  if (direct) return direct;
+
+  // 2. A name the alias table knows ("kanda", "makka", "dhan").
+  const commodity = resolveCommodity(trimmed);
+  if (!commodity) return null;
+
+  // 3. Board spelling → catalogue spelling, when they differ.
+  const bridged = BOARD_TO_CATALOGUE[commodity];
+  if (bridged) return bridged;
+
+  // 4. Board and catalogue agree (e.g. "Tomato", "Wheat", "Turmeric").
+  //    Anything the catalogue does not carry at all — "Cocoa" has a board row
+  //    but no picker entry — falls through to null rather than being invented.
+  return CATALOGUE_INDEX.get(commodity.toLowerCase()) ?? null;
 }

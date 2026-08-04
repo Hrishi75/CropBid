@@ -17,7 +17,8 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { ImageUploader } from '../../components/listings/ImageUploader';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
-import { CROP_CATEGORIES, ALL_CROPS } from '../../utils/crops';
+import { CROP_CATEGORIES, ALL_CROPS, resolveCatalogueCrop } from '../../utils/crops';
+import { VoiceListingButton, type VoiceDraft } from '../../components/listings/VoiceListingButton';
 import { cropImageFor } from '../../utils/cropImages';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -64,6 +65,50 @@ export function CreateListing() {
   const [organic, setOrganic] = useState(false);
   const [location, setLocation] = useState('');
   const [state, setState] = useState('');
+
+  // What the voice note filled in, kept so the farmer can read back what was
+  // heard and check it against the fields. Null when they haven't used voice.
+  const [voiceDraft, setVoiceDraft] = useState<VoiceDraft | null>(null);
+  const [unmatchedCrop, setUnmatchedCrop] = useState('');
+
+  // Apply a voice draft to the form. Only non-null fields are written, so a
+  // second recording tops up what the first missed instead of wiping it.
+  //
+  // Auto-filling beats a separate "review these suggestions" modal for a
+  // farmer who may not read comfortably: the form IS the review, every value
+  // is visible and editable in place, and Publish stays the only commit.
+  function applyVoiceDraft(draft: VoiceDraft) {
+    const f = draft.fields;
+    setVoiceDraft(draft);
+    setUnmatchedCrop('');
+
+    if (f.cropName) {
+      // The model answers in English ("Onion"); the picker needs a catalogue
+      // value. resolveCatalogueCrop also handles spoken Hindi/Marathi names
+      // via the alias table.
+      const matched = resolveCatalogueCrop(f.cropName);
+      if (matched) setCropName(matched);
+      // Never guess wrong silently — leave the picker empty and say what we
+      // heard, so the farmer knows exactly what to fix.
+      else setUnmatchedCrop(f.cropName);
+    }
+    if (f.cropVariety) setCropVariety(f.cropVariety);
+    if (f.quantity !== null) setQuantity(String(f.quantity));
+    if (f.unit) setUnit(f.unit);
+    if (f.qualityGrade) setQualityGrade(f.qualityGrade);
+    if (f.pricePerUnitMin !== null) setPriceMin(String(f.pricePerUnitMin));
+    if (f.pricePerUnitMax !== null) setPriceMax(String(f.pricePerUnitMax));
+    if (f.harvestDate) setHarvestDate(f.harvestDate);
+    if (f.description) setDescription(f.description);
+    if (f.organic) setOrganic(true);
+    if (f.location) setLocation(f.location);
+    if (f.state) {
+      const matched = INDIAN_STATES.find((s) => s.toLowerCase() === f.state!.toLowerCase());
+      if (matched) setState(matched);
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   useEffect(() => {
     if (!editId) return;
@@ -185,6 +230,54 @@ export function CreateListing() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
         <form onSubmit={handleSubmit} className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '4px 24px' }}>
+            {/* Voice input. Renders nothing when the server reports it is
+                unavailable, so the typed form below is never affected. Edit
+                mode is excluded: dictating over an existing listing would
+                overwrite fields the farmer already settled on. */}
+            {!isEditMode && (
+              <div style={{ paddingTop: 20 }}>
+                <VoiceListingButton onDraft={applyVoiceDraft} />
+              </div>
+            )}
+
+            {voiceDraft && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  border: '1px solid var(--cb-line)',
+                  borderRadius: 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <div className="cb-small" style={{ fontWeight: 600 }}>
+                    Filled from your voice note — check every field before publishing.
+                  </div>
+                  <button
+                    type="button"
+                    className="cb-link"
+                    style={{ marginLeft: 'auto', background: 'none', border: 0, cursor: 'pointer' }}
+                    onClick={() => setVoiceDraft(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                {/* The transcript verbatim, so the farmer can see exactly what
+                    was heard rather than guessing why a field looks wrong. */}
+                <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontStyle: 'italic' }}>
+                  “{voiceDraft.transcript}”
+                </div>
+                {unmatchedCrop && (
+                  <div className="cb-tiny" style={{ color: 'var(--cb-warn, #b8860b)' }}>
+                    We heard “{unmatchedCrop}” but couldn't match it to a crop. Please pick one below.
+                  </div>
+                )}
+              </div>
+            )}
+
             <Section title="Crop">
               <div>
                 <label className="cb-label">Crop</label>

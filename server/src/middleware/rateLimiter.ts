@@ -68,6 +68,36 @@ export const apiLimiter = rateLimit({
   message: { error: true, message: 'Too many requests, please try again later' },
 });
 
+// Voice note limiter — every request past this one costs money.
+//
+// The global apiLimiter's 100/min is an anti-abuse ceiling for cheap endpoints;
+// for a metered speech API it is far too loose. Six a minute is more than any
+// farmer dictating a listing will ever need (each clip is up to 25 seconds, so
+// six is most of the minute spent talking) and it caps the burst a compromised
+// account can produce while services/voice.service.ts's daily counter catches
+// the slow drain.
+//
+// Keyed by (ip + user) for the reason spelled out above accountKey: a single
+// CGNAT address fronts thousands of users on Indian mobile networks, so an
+// IP-only bucket would let one heavy user throttle a whole town. Falls back to
+// IP-only if this somehow runs unauthenticated.
+export const voiceLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 6,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = ipKeyGenerator(rawIp);
+    const userId = (req as { user?: { userId?: string } }).user?.userId;
+    return userId ? `${ip}:${userId}` : ip;
+  },
+  message: {
+    error: true,
+    message: 'Too many voice notes in a row — wait a minute and try again.',
+  },
+});
+
 // Strict auth rate limiter — prevents brute force on login/signup/refresh.
 // Keys by (ip + account) when the body names an account so an attacker cannot
 // rotate IPs to bypass per-account locking, and cannot enumerate accounts

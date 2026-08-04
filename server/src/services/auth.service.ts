@@ -71,8 +71,14 @@ interface SignupInput {
   phone: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
-  language?: 'EN' | 'HI';
+  language?: UserLanguage;
 }
+
+// The three languages the UI actually offers. Mirrors the Language enum in
+// schema.prisma — widen both together, and remember the enum needs its own
+// standalone migration (Postgres won't let ALTER TYPE ... ADD VALUE be used in
+// the same transaction that adds it).
+export type UserLanguage = 'EN' | 'HI' | 'MR';
 
 // Phone is the primary identifier — one account per phone. Email is optional
 // for non-buyers but must always be unique when provided. Shared by the direct
@@ -995,6 +1001,7 @@ interface UpdateFarmerProfileInput {
   name?: string;
   phone?: string | null;
   location?: string | null;
+  language?: UserLanguage;
   farmSizeAcres?: number;
   cropsGrown?: string[];
   state?: string;
@@ -1017,10 +1024,16 @@ export async function updateFarmerProfile(userId: string, input: UpdateFarmerPro
   }
 
   // Split the payload across the two tables, keeping only the keys present.
-  const userData: { name?: string; phone?: string | null; location?: string | null } = {};
+  const userData: {
+    name?: string;
+    phone?: string | null;
+    location?: string | null;
+    language?: UserLanguage;
+  } = {};
   if (input.name !== undefined) userData.name = input.name;
   if (input.phone !== undefined) userData.phone = input.phone;
   if (input.location !== undefined) userData.location = input.location;
+  if (input.language !== undefined) userData.language = input.language;
 
   const profileData: { farmSizeAcres?: number; cropsGrown?: string[]; state?: string } = {};
   if (input.farmSizeAcres !== undefined) profileData.farmSizeAcres = input.farmSizeAcres;
@@ -1051,6 +1064,7 @@ interface UpdateBuyerProfileInput {
   name?: string;
   phone?: string | null;
   location?: string | null;
+  language?: UserLanguage;
   companyName?: string;
   companyType?: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
   taxId?: string | null;
@@ -1073,10 +1087,16 @@ export async function updateBuyerProfile(userId: string, input: UpdateBuyerProfi
     throw new ApiError(400, 'Complete your buyer profile before editing it');
   }
 
-  const userData: { name?: string; phone?: string | null; location?: string | null } = {};
+  const userData: {
+    name?: string;
+    phone?: string | null;
+    location?: string | null;
+    language?: UserLanguage;
+  } = {};
   if (input.name !== undefined) userData.name = input.name;
   if (input.phone !== undefined) userData.phone = input.phone;
   if (input.location !== undefined) userData.location = input.location;
+  if (input.language !== undefined) userData.language = input.language;
 
   const profileData: {
     companyName?: string;
@@ -1112,6 +1132,7 @@ interface UpdateAccountBasicsInput {
   name?: string;
   phone?: string | null;
   location?: string | null;
+  language?: UserLanguage;
 }
 
 export async function updateAccountBasics(userId: string, input: UpdateAccountBasicsInput) {
@@ -1119,6 +1140,7 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
   if (input.name !== undefined) userData.name = input.name;
   if (input.phone !== undefined) userData.phone = input.phone;
   if (input.location !== undefined) userData.location = input.location;
+  if (input.language !== undefined) userData.language = input.language;
 
   if (Object.keys(userData).length) {
     await prisma.user.update({ where: { id: userId }, data: userData });

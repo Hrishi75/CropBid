@@ -53,6 +53,7 @@ enum Currency {
 enum Language {
   EN // English
   HI // Hindi
+  MR // Marathi
 }
 
 enum Unit {
@@ -354,6 +355,20 @@ model Listing {
 
   // Description & media
   description    String?
+  // Machine translations of `description`, written fire-and-forget AFTER the
+  // row is saved (services/translation.service.ts). `description` always holds
+  // the original as the farmer wrote it; the column matching descriptionLang
+  // holds an exact copy of it, which is what makes the worker idempotent —
+  // a row is already done iff description<Lang> === description, so no job
+  // table or translatedAt column is needed.
+  //
+  // Any of these may stay null forever (Sarvam unconfigured, over quota, down,
+  // or the text too long to translate safely). Readers fall back to
+  // `description` — see client/src/utils/localized.ts.
+  descriptionEn   String?
+  descriptionHi   String?
+  descriptionMr   String?
+  descriptionLang Language?    // Language the farmer actually wrote in
   images         String[]      // Array of uploaded image URLs
   labReportUrl   String?       // Lab quality report
 
@@ -419,6 +434,12 @@ model BuyerRequirement {
   neededBy          DateTime?         // Delivery deadline
 
   description       String?
+  // Stored translations — see the matching block on Listing for the full
+  // rationale. Same worker, same idempotence rule, same null-means-fall-back.
+  descriptionEn     String?
+  descriptionHi     String?
+  descriptionMr     String?
+  descriptionLang   Language?
   organic           Boolean           @default(false) // Buyer REQUIRES organic
 
   // Copied onto the auto-created Bid so a requirement deal carries the same

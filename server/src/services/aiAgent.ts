@@ -36,60 +36,84 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 // =============================================================================
 // CALL GEMINI — Send prompt, get structured JSON response
 // =============================================================================
-async function callGemini(prompt: string): Promise<string> {
+// WHY A TIMEOUT?
+// Without one, a hung socket holds the caller's HTTP request open forever.
+// That was tolerable while the only caller was the negotiation engine (nobody
+// is staring at it), but voice.service calls this with a farmer waiting on a
+// spinner. 20s is well beyond Gemini Flash's normal sub-second latency, so it
+// only ever fires on a genuinely stuck connection.
+const GEMINI_TIMEOUT_MS = 20_000;
+
+interface GeminiOptions {
+  /** Cap on the reply. Raise it for prompts that return more than a decision. */
+  maxOutputTokens?: number;
+  temperature?: number;
+}
+
+export async function callGemini(prompt: string, options: GeminiOptions = {}): Promise<string> {
   if (!config.geminiApiKey) {
     throw new Error('GEMINI_API_KEY is not configured');
   }
 
-  const response = await fetch(GEMINI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Send the API key via header so it never lands in access logs,
-      // referrer headers, or error traces that include the request URL.
-      'x-goog-api-key': config.geminiApiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [{ text: prompt }],
-        },
-      ],
-      generationConfig: {
-        // WHY temperature 0.3?
-        // Low temperature = more deterministic responses.
-        // In negotiations, we want consistent, predictable behavior.
-        // High temperature would make the agent unpredictable — sometimes
-        // accepting a price it rejected last time. That breaks trust.
-        temperature: 0.3,
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const controller = new AbortController();
+    timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-        // WHY maxOutputTokens 256?
-        // Our JSON response is tiny (~100 tokens). 256 gives plenty of
-        // room for the reasoning field without wasting tokens on rambling.
-        maxOutputTokens: 256,
-
-        // Force JSON output — Gemini will structure its response as valid JSON
-        responseMimeType: 'application/json',
+    const response = await fetch(GEMINI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        // Send the API key via header so it never lands in access logs,
+        // referrer headers, or error traces that include the request URL.
+        'x-goog-api-key': config.geminiApiKey,
       },
-    }),
-  });
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          // WHY temperature 0.3?
+          // Low temperature = more deterministic responses.
+          // In negotiations, we want consistent, predictable behavior.
+          // High temperature would make the agent unpredictable — sometimes
+          // accepting a price it rejected last time. That breaks trust.
+          temperature: options.temperature ?? 0.3,
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error('Gemini API error:', response.status, errorBody);
-    throw new Error(`Gemini API returned ${response.status}`);
+          // WHY maxOutputTokens 256?
+          // Our JSON response is tiny (~100 tokens). 256 gives plenty of
+          // room for the reasoning field without wasting tokens on rambling.
+          // Callers extracting more fields pass a larger cap.
+          maxOutputTokens: options.maxOutputTokens ?? 256,
+
+          // Force JSON output — Gemini will structure its response as valid JSON
+          responseMimeType: 'application/json',
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('Gemini API error:', response.status, errorBody);
+      throw new Error(`Gemini API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Extract the text from Gemini's response structure
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      throw new Error('No text in Gemini response');
+    }
+
+    return text;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-
-  const data = await response.json();
-
-  // Extract the text from Gemini's response structure
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!text) {
-    throw new Error('No text in Gemini response');
-  }
-
-  return text;
 }
 
 // =============================================================================

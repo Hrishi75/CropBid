@@ -47,7 +47,7 @@ export const signupSchema = z.object({
     ),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
-  language: z.enum(['EN', 'HI']).optional(),
+  language: z.enum(['EN', 'HI', 'MR']).optional(),
 }).superRefine((data, ctx) => {
   // Buyers must sign up with an email. The check is cross-field, so it can't
   // live on the email property itself; the path points back at the field so a
@@ -109,6 +109,11 @@ const accountFields = {
   name: z.string().min(2, 'Name must be at least 2 characters').max(100).optional(),
   phone: z.string().max(20).nullable().optional(),
   location: z.string().max(120).nullable().optional(),
+  // Set by the language switcher, not by a form field. Until this existed the
+  // preference lived only in the browser's localStorage, so the server had no
+  // way to know a user reads Hindi — which is what decides whether a Devanagari
+  // description gets stored as Hindi or Marathi (services/translation.service).
+  language: z.enum(['EN', 'HI', 'MR']).optional(),
 };
 
 const updateFarmerProfileSchema = z.object({

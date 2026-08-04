@@ -303,7 +303,18 @@ export async function updateListing(listingId: string, userId: string, input: Up
       ...(input.currency && { currency: input.currency as any }),
       ...(input.harvestDate !== undefined && { harvestDate: input.harvestDate ? new Date(input.harvestDate) : null }),
       ...(input.expiryDate !== undefined && { expiryDate: input.expiryDate ? new Date(input.expiryDate) : null }),
-      ...(input.description !== undefined && { description: input.description || null }),
+      // Editing the description invalidates its stored translations, so they
+      // are cleared in the SAME write. Without this the listing would show a
+      // Hindi buyer a translation of text the farmer has already replaced —
+      // worse than showing them the new original, which is what a null falls
+      // back to. The controller re-queues a translation right after.
+      ...(input.description !== undefined && {
+        description: input.description || null,
+        descriptionEn: null,
+        descriptionHi: null,
+        descriptionMr: null,
+        descriptionLang: null,
+      }),
       ...(input.images && { images: input.images }),
       ...(input.labReportUrl !== undefined && { labReportUrl: input.labReportUrl || null }),
       ...(input.organic !== undefined && { organic: input.organic }),
