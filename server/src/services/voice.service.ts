@@ -17,9 +17,11 @@
 //
 // THE DAILY CAP IS A SOFT GUARD, NOT ACCOUNTING. It lives in memory, which has
 // two consequences worth knowing before you trust it:
-//   - counters reset when the process restarts (Render's free tier does this
-//     on every deploy and after idle spin-down), and
-//   - it is per-process, so running two instances doubles the real ceiling.
+//   - counters reset when the process restarts, which on Lightsail means on
+//     deploy (systemctl restart cropbid-api) or a crash — not on idle, since
+//     systemd keeps one long-lived process rather than spinning down, and
+//   - it is per-process, so it holds exactly as long as there is one instance
+//     behind Caddy. Put a second node in front and the real ceiling doubles.
 // Both are acceptable for protecting a pool of free credits from one runaway
 // account. Neither would be acceptable for billing. The actual backstop is the
 // spend cap on the Sarvam dashboard — see .env.example.
