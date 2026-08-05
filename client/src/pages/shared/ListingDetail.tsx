@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
@@ -15,6 +16,7 @@ import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import { cropImageFor } from '../../utils/cropImages';
+import { localizedDescription } from '../../utils/localized';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -34,6 +36,9 @@ function SpecRow({ label, value }: { label: string; value: React.ReactNode }) {
 export function ListingDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  // useTranslation (not a module-level i18n read) so the description re-renders
+  // when the reader switches language.
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [listing, setListing] = useState<(Listing & { _count?: { bids: number } }) | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,6 +67,7 @@ export function ListingDetail() {
 
   const priceMid = (listing.pricePerUnitMin + listing.pricePerUnitMax) / 2;
   const msp = mspForCrop(listing.cropName, listing.unit);
+  const description = localizedDescription(listing, i18n.language);
 
   return (
     <DashboardLayout>
@@ -109,10 +115,23 @@ export function ListingDetail() {
             )}
           </div>
 
-          {listing.description && (
+          {description.text && (
             <div className="cb-card" style={{ marginTop: 16 }}>
-              <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Description</div>
-              <p className="cb-body" style={{ whiteSpace: 'pre-wrap' }}>{listing.description}</p>
+              <div
+                className="cb-eyebrow"
+                style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                {t('Description')}
+                {/* Buyers quote prices against this text, so say plainly when
+                    they are reading a machine translation and not the
+                    seller's own words. */}
+                {description.isTranslated && (
+                  <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontWeight: 400 }}>
+                    · {t('Translated')}
+                  </span>
+                )}
+              </div>
+              <p className="cb-body" style={{ whiteSpace: 'pre-wrap' }}>{description.text}</p>
               {listing.farmer?.user && (
                 <p className="cb-tiny" style={{ marginTop: 12, fontStyle: 'italic' }}>— {listing.farmer.user.name}</p>
               )}

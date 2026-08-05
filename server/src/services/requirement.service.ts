@@ -1027,6 +1027,16 @@ export async function updateRequirement(
         deliveryCountry: input.deliveryCountry,
         neededBy,
         description: input.description,
+        // Editing the text invalidates its stored translations, so they are
+        // cleared in the SAME write — otherwise a Hindi farmer would read a
+        // translation of terms the buyer has already replaced. Null falls back
+        // to the new original; the controller re-queues a translation after.
+        ...(input.description !== undefined && {
+          descriptionEn: null,
+          descriptionHi: null,
+          descriptionMr: null,
+          descriptionLang: null,
+        }),
         organic: input.organic,
         paymentTerms: input.paymentTerms,
         deliveryTerms: input.deliveryTerms,

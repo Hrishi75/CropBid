@@ -9,7 +9,7 @@
 // --- Enums ---
 export type Role = 'FARMER' | 'BUYER' | 'ADMIN';
 export type Currency = 'INR' | 'USD' | 'EUR' | 'GBP';
-export type Language = 'EN' | 'HI';
+export type Language = 'EN' | 'HI' | 'MR';
 export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
 export type QualityGrade = 'A' | 'B' | 'C';
 export type ListingStatus = 'ACTIVE' | 'IN_AUCTION' | 'SOLD' | 'EXPIRED';
@@ -88,6 +88,13 @@ export interface Listing {
   harvestDate: string | null;
   expiryDate: string | null;
   description: string | null;
+  // Stored machine translations of `description`, written server-side after
+  // the listing is saved. Any may be null — read them via
+  // utils/localized.ts, which falls back to `description`.
+  descriptionEn?: string | null;
+  descriptionHi?: string | null;
+  descriptionMr?: string | null;
+  descriptionLang?: Language | null;
   images: string[];
   labReportUrl: string | null;
   organic: boolean;
@@ -184,6 +191,11 @@ export interface BuyerRequirement {
   deliveryCountry: string;
   neededBy: string | null;
   description: string | null;
+  // See the matching block on Listing.
+  descriptionEn?: string | null;
+  descriptionHi?: string | null;
+  descriptionMr?: string | null;
+  descriptionLang?: Language | null;
   organic: boolean;
   paymentTerms: string | null;
   deliveryTerms: string | null;

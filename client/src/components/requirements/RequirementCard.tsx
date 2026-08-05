@@ -11,9 +11,11 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
+import { localizedDescription } from '../../utils/localized';
 import type { BuyerRequirement } from '../../types';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -39,6 +41,10 @@ export function RequirementCard({
   showMspWarning,
   children,
 }: RequirementCardProps) {
+  // useTranslation (not a module-level i18n read) so the card re-renders when
+  // the reader switches language.
+  const { t, i18n } = useTranslation();
+  const description = localizedDescription(r, i18n.language);
   const status = STATUS_META[r.status] || { label: r.status.slice(0, 4), color: 'var(--cb-ink-3)' };
   const filled = r.quantity - r.remainingQuantity;
   const pct = r.quantity > 0 ? Math.min(100, (filled / r.quantity) * 100) : 0;
@@ -130,9 +136,12 @@ export function RequirementCard({
         </div>
       )}
 
-      {r.description && (
+      {description.text && (
         <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6 }}>
-          {r.description}
+          {description.text}
+          {description.isTranslated && (
+            <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}> · {t('Translated')}</span>
+          )}
         </div>
       )}
 

@@ -140,5 +140,18 @@
   "All rights reserved": "सर्व हक्क राखीव",
   "Terms": "अटी",
   "Privacy": "गोपनीयता",
-  "Disclosures": "प्रकटीकरण"
+  "Disclosures": "प्रकटीकरण",
+  "Description": "वर्णन",
+  "Translated": "भाषांतरित",
+  "Say it instead of typing": "टाइप करण्याऐवजी बोला",
+  "Say the crop, how much, the grade, and your lowest price.": "पीक, किती माल, ग्रेड आणि तुमचा किमान भाव सांगा.",
+  "For example": "उदाहरण",
+  "Record a voice note": "आवाजात सांगा",
+  "Starting…": "सुरू होत आहे…",
+  "Listening…": "ऐकत आहोत…",
+  "Stop and fill the form": "थांबा आणि फॉर्म भरा",
+  "Understanding your voice note…": "तुमचं बोलणं समजून घेत आहोत…",
+  "Allow microphone access in your browser to use voice. You can still type below.": "आवाज वापरण्यासाठी ब्राउझरमध्ये माइकला परवानगी द्या. तुम्ही खाली टाइपही करू शकता.",
+  "Couldn't understand that. Try again, or type below.": "समजलं नाही. पुन्हा प्रयत्न करा, किंवा खाली टाइप करा.",
+  "Could not start recording on this device.": "या डिव्हाइसवर रेकॉर्डिंग सुरू होऊ शकली नाही."
 }

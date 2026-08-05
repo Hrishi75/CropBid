@@ -11,6 +11,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as requirementService from '../services/requirement.service';
 import { auditFromRequest } from '../services/audit.service';
+import { queueRequirementTranslation } from '../services/translation.service';
 import { ApiError } from '../utils/ApiError';
 
 function paramId(req: Request): string {
@@ -128,6 +129,10 @@ export async function createRequirement(req: Request, res: Response, next: NextF
       },
     });
     res.status(201).json(requirement);
+
+    // Background translation, after the response. See the twin call in
+    // listing.controller.ts for why this is neither awaited nor blocking.
+    queueRequirementTranslation(requirement.id);
   } catch (error) {
     next(error);
   }
@@ -160,6 +165,12 @@ export async function updateRequirement(req: Request, res: Response, next: NextF
       },
     });
     res.json(requirement);
+
+    // Only when the text changed — the service cleared the stale translations
+    // in the same write, so it reads as the new original until these land.
+    if (parsed.data.description !== undefined) {
+      queueRequirementTranslation(requirement.id);
+    }
   } catch (error) {
     next(error);
   }
