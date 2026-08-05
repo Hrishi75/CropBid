@@ -170,6 +170,34 @@ describe('daily quota', () => {
     expect(clipsUsedToday(b)).toBe(1);
   });
 
+  it('does not refund a failed clip out of the next day’s quota', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-05T23:59:50Z'));
+
+    const user = nextUser();
+    // A clip that will fail, reserved just before midnight.
+    let failNow = false;
+    transcribeMock.mockImplementation(async () => {
+      if (failNow) throw new ApiError(503, 'nope', 'VOICE_UNAVAILABLE');
+      return GOOD_TRANSCRIPTION;
+    });
+
+    failNow = true;
+    const inFlight = draftListingFromAudio(user, AUDIO, 'audio/webm');
+
+    // Midnight passes and a new-day request resets and increments the counter.
+    vi.setSystemTime(new Date('2026-08-06T00:00:05Z'));
+    failNow = false;
+    await draftListingFromAudio(user, AUDIO, 'audio/webm');
+    expect(clipsUsedToday(user)).toBe(1);
+
+    // Yesterday's failure now resolves. Its refund belongs to a quota that no
+    // longer exists, so today's count must be untouched — otherwise the user
+    // silently gets a 31st clip.
+    await expect(inFlight).rejects.toThrow();
+    expect(clipsUsedToday(user)).toBe(1);
+  });
+
   it('resets when the date rolls over', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-04T23:59:00Z'));

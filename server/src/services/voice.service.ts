@@ -78,7 +78,8 @@ export function clipsUsedToday(userId: string): number {
 // per-minute limiter bounds how far that can overshoot, but reserving up front
 // removes the race outright — and releaseSlot below keeps the promise that a
 // failed transcription is not charged.
-function reserveSlot(userId: string): void {
+// Returns the day the slot was booked against, which releaseSlot needs.
+function reserveSlot(userId: string): string {
   const used = clipsUsedToday(userId); // also rolls the day over
   if (used >= MAX_CLIPS_PER_USER_PER_DAY) {
     throw new ApiError(
@@ -88,12 +89,18 @@ function reserveSlot(userId: string): void {
     );
   }
   clipsToday.set(userId, used + 1);
+  return quotaDay;
 }
 
-// Hand the slot back when the clip never produced anything. Guarded against
-// going negative, since a day rollover between reserve and release would
-// otherwise push the counter below zero and hand out free capacity.
-function releaseSlot(userId: string): void {
+// Hand the slot back when the clip never produced anything.
+//
+// The day has to match. A clip reserved at 23:59 that fails at 00:00 would
+// otherwise refund itself out of the NEW day's counter — yesterday's map is
+// already cleared, so there is nothing left to give back, and decrementing
+// today just hands the user a free extra transcription. Dropping the refund is
+// the correct outcome: the quota it belonged to no longer exists.
+function releaseSlot(userId: string, reservedOn: string): void {
+  if (quotaDay !== reservedOn) return;
   const used = clipsToday.get(userId) ?? 0;
   if (used > 0) clipsToday.set(userId, used - 1);
 }
@@ -120,15 +127,15 @@ export async function draftListingFromAudio(
 ): Promise<ListingDraft> {
   // Claimed BEFORE the paid call, so a user at their cap costs us nothing and
   // concurrent requests cannot both slip through on the same count.
-  reserveSlot(userId);
+  const reservedOn = reserveSlot(userId);
 
   let transcription;
   try {
     transcription = await transcribe(audio, mimeType);
   } catch (error) {
     // A farmer whose upload died on a bad connection got nothing, so it should
-    // not count against their day.
-    releaseSlot(userId);
+    // not count against their day — provided that day is still today.
+    releaseSlot(userId, reservedOn);
     throw error;
   }
 
