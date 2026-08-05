@@ -1269,6 +1269,7 @@ body * {
 .st-float-chip .d { font-family: var(--cb-font-mono); font-size: 10px; }
 .st-float-chip .d.pos { color: #3f6d2a; }
 .st-float-chip .d.neg { color: #c25e2a; }
+.st-float-chip .d.flat { color: var(--cb-ink-3); }
 .st-float-chip.c0 { top: 14%; right: 28px; }
 .st-float-chip.c1 { top: 48%; left: 38%; animation-delay: 1.7s; }
 .st-float-chip.c2 { bottom: 13%; right: 54px; animation-delay: 3.2s; }

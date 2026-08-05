@@ -399,7 +399,11 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
               <span key={`${t.key}-${i}`} className="st-tick">
                 <span className="n">{t.name}</span>
                 <span className="v">{formatUnitPrice(t.price, 'INR', currency)}/{UNIT_LABEL[t.unit]}</span>
-                {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} />}
+                {/* every tick ends in a marker — "ref", a move, or "steady".
+                    Without the flat label a live crop sitting within 0.1% of
+                    its usual price rendered nothing, so the same ticker showed
+                    a move on some crops and bare price on others. */}
+                {t.ref ? <span className="d flat">ref</span> : <Delta pct={t.delta} flatLabel="steady" />}
               </span>
             ))}
           </div>
@@ -522,7 +526,10 @@ function StoreHeader({
 // Store sections
 // =============================================================================
 
-const FLOAT_CHIP_PICKS = ['Tomato', 'Wheat', 'Mango'];
+// Hero floating chips — three fixed slots (.c0/.c1/.c2 place them over the
+// photo). Picked by slug so each chip can fall back to its catalogue reference
+// price when the govt feed has nothing for that crop.
+const FLOAT_CHIP_PICKS = ['tomato', 'wheat', 'mango'];
 
 function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
   const { t } = useTranslation();
@@ -533,13 +540,20 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
     : user?.role === 'BUYER'
       ? { to: '/buyer/bids', label: 'My bids' }
       : { to: '/signup', label: 'Sell your harvest' };
-  // Floating live-price chips over the hero photo — today's real numbers
-  // only; reference fallbacks never float as if they were live.
-  const chips = board
-    ? FLOAT_CHIP_PICKS
-        .map((label) => board.rates.find((r) => r.label === label))
-        .filter((r): r is LiveRate => r !== undefined && r.source !== 'reference')
-    : [];
+  // Floating live-price chips over the hero photo. Always three, always in the
+  // same corners: today's real number when the govt feed answered for that
+  // crop, the catalogue reference price tagged "ref" when it didn't — the same
+  // honesty rule the rates board uses. Dropping the unanswered crops instead
+  // (the old behaviour) meant the hero showed three chips, one, or none
+  // depending on the day's feed, and the survivors slid into each other's
+  // slots because the slot came from the post-filter index.
+  const chips = FLOAT_CHIP_PICKS.map((slug) => {
+    const p = PRODUCTS.find((x) => x.slug === slug)!;
+    const live = board?.rates.find((r) => r.label === p.name && r.source !== 'reference');
+    return live
+      ? { slug, emoji: live.emoji, name: live.label, price: live.modal, unit: live.unit, delta: live.changePct, ref: false }
+      : { slug, emoji: p.emoji, name: p.name, price: p.priceMin, unit: p.unit, delta: 0, ref: true };
+  });
   return (
     <section className="st-banner">
       <div className="st-banner-grid-bg" />
@@ -571,14 +585,14 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
       </div>
       <div className="st-banner-media">
         <BannerImg />
-        {chips.map((r, i) => (
-          <div key={r.commodity} className={`st-float-chip c${i}`}>
-            <span className="e" aria-hidden="true">{r.emoji}</span>
+        {chips.map((c, i) => (
+          <div key={c.slug} className={`st-float-chip c${i}`}>
+            <span className="e" aria-hidden="true">{c.emoji}</span>
             <span className="t">
-              <span className="n">{r.label}</span>
-              <span className="v">{formatUnitPrice(r.modal, 'INR', currency)}/{UNIT_LABEL[r.unit]}</span>
+              <span className="n">{c.name}</span>
+              <span className="v">{formatUnitPrice(c.price, 'INR', currency)}/{UNIT_LABEL[c.unit]}</span>
             </span>
-            <Delta pct={r.changePct} />
+            {c.ref ? <span className="d flat">ref</span> : <Delta pct={c.delta} flatLabel="steady" />}
           </div>
         ))}
       </div>
