@@ -150,6 +150,24 @@ describe('translateListingNow — writes', () => {
     });
   });
 
+  it('matches on the RAW stored description, not the trimmed one', async () => {
+    // createListing runs no zod, so descriptions reach the DB with whatever
+    // whitespace the textarea produced. If the compare-and-swap matched on the
+    // trimmed text it would find zero rows and these listings would stay
+    // untranslated forever, with every retry repeating the same mismatch.
+    findListing.mockResolvedValue(listingRow({ description: '  Fresh onions from Nashik\n' }));
+    translateMock.mockResolvedValue('अनुवाद');
+    updateListing.mockResolvedValue({ count: 1 } as never);
+
+    await translateListingNow('l1');
+
+    const call = updateListing.mock.calls[0][0];
+    expect((call.where as Record<string, unknown>).description).toBe('  Fresh onions from Nashik\n');
+    // ...while the text we translated and store is the trimmed version.
+    expect((call.data as Record<string, unknown>).descriptionEn).toBe('Fresh onions from Nashik');
+    expect(translateMock).toHaveBeenCalledWith('Fresh onions from Nashik', 'en-IN', expect.any(String));
+  });
+
   it('guards the write against an edit that landed mid-translation', async () => {
     // The farmer edits while Sarvam is still working. The write must be
     // conditional on the ORIGINAL text, so it matches zero rows rather than

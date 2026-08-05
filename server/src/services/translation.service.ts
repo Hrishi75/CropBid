@@ -90,12 +90,12 @@ interface TranslatableRow {
 // Split out from the DB calls so the decision logic is testable on its own and
 // shared by both entity types.
 //
-// Returns the source language plus the columns to set. The source-language
-// column is filled from the original at no cost — it is the same text.
+// Returns the columns to set, plus `match`: the row's description EXACTLY as
+// it sits in the database, for the caller's compare-and-swap.
 async function buildTranslations(
   row: TranslatableRow,
   authorLanguage: Lang | null,
-): Promise<{ source: string; data: Record<string, string | null> } | null> {
+): Promise<{ match: string; data: Record<string, string | null> } | null> {
   const description = row.description?.trim();
   if (!description) return null;
 
@@ -124,9 +124,15 @@ async function buildTranslations(
     if (translated) data[COLUMN[target]] = translated;
   }
 
-  // `source` is the exact text these translations describe. The caller writes
-  // conditionally on it — see the compare-and-swap note in translateListingNow.
-  return { source: description, data };
+  // `match` is the RAW stored value, not the trimmed one we translated.
+  //
+  // The compare-and-swap asks "is this row still what I read?", so it has to
+  // compare against what the database actually holds. Descriptions arrive
+  // untrimmed — createListing runs no zod at all — so matching on the trimmed
+  // text would find zero rows for anything with a stray leading space or
+  // trailing newline, and every retry and backfill would repeat the same
+  // mismatch, leaving those rows untranslated forever.
+  return { match: row.description as string, data };
 }
 
 const LISTING_SELECT = {
@@ -171,7 +177,7 @@ export async function translateListingNow(listingId: string): Promise<void> {
     // thing. That also holds if this process dies mid-flight, because nothing
     // stale was ever committed.
     await prisma.listing.updateMany({
-      where: { id: listingId, description: built.source },
+      where: { id: listingId, description: built.match },
       data: built.data as never,
     });
   } catch (error) {
@@ -198,7 +204,7 @@ export async function translateRequirementNow(requirementId: string): Promise<vo
 
     // Conditional on the description we translated — see translateListingNow.
     await prisma.buyerRequirement.updateMany({
-      where: { id: requirementId, description: built.source },
+      where: { id: requirementId, description: built.match },
       data: built.data as never,
     });
   } catch (error) {
