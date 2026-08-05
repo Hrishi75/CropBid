@@ -71,14 +71,31 @@ export function clipsUsedToday(userId: string): number {
   return clipsToday.get(userId) ?? 0;
 }
 
-function assertUnderQuota(userId: string): void {
-  if (clipsUsedToday(userId) >= MAX_CLIPS_PER_USER_PER_DAY) {
+// Claim a slot BEFORE the paid call, not after.
+//
+// Checking and then incrementing around an await is not atomic: two requests
+// from a user at 29 clips would both see 29, both pass, and both spend. The
+// per-minute limiter bounds how far that can overshoot, but reserving up front
+// removes the race outright — and releaseSlot below keeps the promise that a
+// failed transcription is not charged.
+function reserveSlot(userId: string): void {
+  const used = clipsUsedToday(userId); // also rolls the day over
+  if (used >= MAX_CLIPS_PER_USER_PER_DAY) {
     throw new ApiError(
       429,
       "You've used all your voice notes for today. You can still type your listing, or try again tomorrow.",
       'VOICE_QUOTA_EXCEEDED',
     );
   }
+  clipsToday.set(userId, used + 1);
+}
+
+// Hand the slot back when the clip never produced anything. Guarded against
+// going negative, since a day rollover between reserve and release would
+// otherwise push the counter below zero and hand out free capacity.
+function releaseSlot(userId: string): void {
+  const used = clipsToday.get(userId) ?? 0;
+  if (used > 0) clipsToday.set(userId, used - 1);
 }
 
 export interface ListingDraft {
@@ -101,15 +118,21 @@ export async function draftListingFromAudio(
   audio: Buffer,
   mimeType: string,
 ): Promise<ListingDraft> {
-  // Checked BEFORE the paid call, so a user at their cap costs us nothing.
-  assertUnderQuota(userId);
+  // Claimed BEFORE the paid call, so a user at their cap costs us nothing and
+  // concurrent requests cannot both slip through on the same count.
+  reserveSlot(userId);
 
-  const { transcript, languageCode, languageProbability } = await transcribe(audio, mimeType);
+  let transcription;
+  try {
+    transcription = await transcribe(audio, mimeType);
+  } catch (error) {
+    // A farmer whose upload died on a bad connection got nothing, so it should
+    // not count against their day.
+    releaseSlot(userId);
+    throw error;
+  }
 
-  // Counted only after a SUCCESSFUL transcription. A farmer whose upload failed
-  // on a bad connection should not have it deducted — they got nothing for it.
-  resetQuotaIfStale();
-  clipsToday.set(userId, (clipsToday.get(userId) ?? 0) + 1);
+  const { transcript, languageCode, languageProbability } = transcription;
 
   return {
     transcript,

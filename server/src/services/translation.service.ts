@@ -95,7 +95,7 @@ interface TranslatableRow {
 async function buildTranslations(
   row: TranslatableRow,
   authorLanguage: Lang | null,
-): Promise<Partial<Record<string, string | null>> | null> {
+): Promise<{ source: string; data: Record<string, string | null> } | null> {
   const description = row.description?.trim();
   if (!description) return null;
 
@@ -124,7 +124,9 @@ async function buildTranslations(
     if (translated) data[COLUMN[target]] = translated;
   }
 
-  return data;
+  // `source` is the exact text these translations describe. The caller writes
+  // conditionally on it — see the compare-and-swap note in translateListingNow.
+  return { source: description, data };
 }
 
 const LISTING_SELECT = {
@@ -150,13 +152,28 @@ export async function translateListingNow(listingId: string): Promise<void> {
     });
     if (!listing) return;
 
-    const data = await buildTranslations(
+    const built = await buildTranslations(
       listing as TranslatableRow,
       (listing.farmer?.user?.language as Lang | undefined) ?? null,
     );
-    if (!data) return;
+    if (!built) return;
 
-    await prisma.listing.update({ where: { id: listingId }, data: data as never });
+    // COMPARE-AND-SWAP on the description we actually translated.
+    //
+    // Translating takes a second or two, and the farmer can edit the listing
+    // in that window. A plain update by id would then staple a translation of
+    // the OLD text onto the NEW description — showing a buyer commercial terms
+    // the seller has already withdrawn, which is the exact thing the
+    // clear-on-edit in listing.service is there to prevent.
+    //
+    // Matching on `description` makes the write a no-op in that case: 0 rows
+    // updated, and the re-queued job started by the edit writes the right
+    // thing. That also holds if this process dies mid-flight, because nothing
+    // stale was ever committed.
+    await prisma.listing.updateMany({
+      where: { id: listingId, description: built.source },
+      data: built.data as never,
+    });
   } catch (error) {
     // Swallowed by design: this runs after the user's response was sent, so
     // there is nobody to tell. The row simply stays untranslated.
@@ -173,13 +190,17 @@ export async function translateRequirementNow(requirementId: string): Promise<vo
     });
     if (!requirement) return;
 
-    const data = await buildTranslations(
+    const built = await buildTranslations(
       requirement as TranslatableRow,
       (requirement.buyer?.language as Lang | undefined) ?? null,
     );
-    if (!data) return;
+    if (!built) return;
 
-    await prisma.buyerRequirement.update({ where: { id: requirementId }, data: data as never });
+    // Conditional on the description we translated — see translateListingNow.
+    await prisma.buyerRequirement.updateMany({
+      where: { id: requirementId, description: built.source },
+      data: built.data as never,
+    });
   } catch (error) {
     console.error('[translation] requirement failed', { requirementId, error });
   }

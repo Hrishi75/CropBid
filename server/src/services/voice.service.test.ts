@@ -140,6 +140,24 @@ describe('daily quota', () => {
     expect(clipsUsedToday(user)).toBe(0);
   });
 
+  it('does not let concurrent requests both slip through on the same count', async () => {
+    const user = nextUser();
+    for (let i = 0; i < 29; i += 1) {
+      await draftListingFromAudio(user, AUDIO, 'audio/webm');
+    }
+
+    // Both start while the count is 29. Reserving before the await is what
+    // stops them both passing the check and both spending.
+    const results = await Promise.allSettled([
+      draftListingFromAudio(user, AUDIO, 'audio/webm'),
+      draftListingFromAudio(user, AUDIO, 'audio/webm'),
+    ]);
+
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(clipsUsedToday(user)).toBe(30);
+  });
+
   it('counts per user, not globally', async () => {
     const a = nextUser();
     const b = nextUser();

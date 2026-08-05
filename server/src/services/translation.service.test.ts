@@ -11,8 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
-    listing: { findUnique: vi.fn(), update: vi.fn() },
-    buyerRequirement: { findUnique: vi.fn(), update: vi.fn() },
+    listing: { findUnique: vi.fn(), updateMany: vi.fn() },
+    buyerRequirement: { findUnique: vi.fn(), updateMany: vi.fn() },
   },
 }));
 
@@ -28,7 +28,7 @@ import {
 } from './translation.service';
 
 const findListing = vi.mocked(prisma.listing.findUnique);
-const updateListing = vi.mocked(prisma.listing.update);
+const updateListing = vi.mocked(prisma.listing.updateMany);
 const findRequirement = vi.mocked(prisma.buyerRequirement.findUnique);
 const translateMock = vi.mocked(translate);
 
@@ -139,7 +139,8 @@ describe('translateListingNow — writes', () => {
     // Source column is a copy of the original — no API call spent on it.
     expect(translateMock).toHaveBeenCalledTimes(2);
     expect(updateListing).toHaveBeenCalledWith({
-      where: { id: 'l1' },
+      // Conditional on the description we translated, not just the id.
+      where: { id: 'l1', description: 'Fresh onions from Nashik' },
       data: {
         descriptionLang: 'EN',
         descriptionEn: 'Fresh onions from Nashik',
@@ -147,6 +148,22 @@ describe('translateListingNow — writes', () => {
         descriptionMr: 'मराठी अनुवाद',
       },
     });
+  });
+
+  it('guards the write against an edit that landed mid-translation', async () => {
+    // The farmer edits while Sarvam is still working. The write must be
+    // conditional on the ORIGINAL text, so it matches zero rows rather than
+    // stapling a translation of withdrawn terms onto the new description.
+    findListing.mockResolvedValue(listingRow({ description: 'Fresh onions from Nashik' }));
+    translateMock.mockResolvedValue('अनुवाद');
+    updateListing.mockResolvedValue({ count: 0 } as never);
+
+    await translateListingNow('l1');
+
+    const where = updateListing.mock.calls[0][0].where as Record<string, unknown>;
+    expect(where.description).toBe('Fresh onions from Nashik');
+    // Matching 0 rows is a correct, silent outcome — the edit re-queued a job.
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   it('writes only the columns that succeeded when one translation fails', async () => {

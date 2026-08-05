@@ -68,6 +68,17 @@ export const uploadVoice = multer({
   limits: {
     fileSize: MAX_AUDIO_BYTES,
     files: 1,
+    // fileSize alone does NOT bound this request. Multer defaults `fields` to
+    // Infinity, so a caller could attach thousands of large TEXT parts, which
+    // memoryStorage buffers before assertRealAudio ever looks at the audio —
+    // enough to exhaust the heap and take the API down.
+    //
+    // The client sends exactly one part (the file) and no text fields, so the
+    // honest limits are zero and one. `parts` counts fields + files together
+    // and is the real backstop.
+    fields: 0,
+    parts: 1,
+    fieldSize: 1024,
   },
 });
 
