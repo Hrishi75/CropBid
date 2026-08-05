@@ -206,11 +206,13 @@ const lastGood = new Map<string, CacheEntry>();
 // reference prices.
 async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRecord[]> {
   const key = `${commodity.toLowerCase()}::${(state || '').toLowerCase()}`;
-  const records = await fetchFresh(commodity, key, state);
-  if (records.length > 0) {
-    lastGood.set(key, { records, at: Date.now() });
-    return records;
-  }
+  const { records, complete } = await fetchFresh(commodity, key, state);
+  // Only a COMPLETE page walk earns the right to be reused later. A partial
+  // one is whichever mandis the feed happened to return before it broke — a
+  // biased slice, tolerable to serve once (better than nothing today) but
+  // wrong to keep quoting as the crop's price for the next three days.
+  if (records.length > 0 && complete) lastGood.set(key, { records, at: Date.now() });
+  if (records.length > 0) return records;
   const stale = lastGood.get(key);
   return stale && Date.now() - stale.at < STALE_MAX_MS ? stale.records : [];
 }
@@ -218,11 +220,14 @@ async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRe
 // The paginated feed walk itself. The data.gov feed is paginated, so keep
 // walking until it returns a short page; otherwise high-volume crops look
 // artificially empty or capped to the first page.
-async function fetchFresh(commodity: string, key: string, state?: string): Promise<AgmarkRecord[]> {
+async function fetchFresh(
+  commodity: string, key: string, state?: string
+): Promise<{ records: AgmarkRecord[]; complete: boolean }> {
   resetCacheIfStale();
   const cached = recordCache.get(key);
   if (cached && (cached.records.length > 0 || Date.now() - cached.at < EMPTY_RETRY_MS)) {
-    return cached.records;
+    // Only complete walks are ever cached, so a cache hit is complete.
+    return { records: cached.records, complete: true };
   }
 
   try {
@@ -256,7 +261,7 @@ async function fetchFresh(commodity: string, key: string, state?: string): Promi
       }
     }
     if (complete) recordCache.set(key, { records, at: Date.now() });
-    return records;
+    return { records, complete };
   } catch (err) {
     // Log the reason — a swallowed failure here reads downstream as "the
     // storefront lost its prices", with nothing in the logs to say why.
@@ -264,7 +269,7 @@ async function fetchFresh(commodity: string, key: string, state?: string): Promi
     // Cache the empty result briefly (EMPTY_RETRY_MS) — a dead feed isn't
     // hammered on every request, but recovery is picked up within minutes.
     recordCache.set(key, { records: [], at: Date.now() });
-    return [];
+    return { records: [], complete: false };
   }
 }
 

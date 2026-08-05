@@ -81,6 +81,35 @@ describe('feed failure after a good fetch', () => {
   });
 });
 
+describe('a page walk that breaks halfway', () => {
+  it('serves the partial page but does not let it become the snapshot', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+
+    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+
+    // Next day: a full first page (so the walk continues) and then a failure.
+    // 200 mandis is a slice of the country, not the country — worth serving
+    // today, not worth quoting for the rest of the week.
+    vi.setSystemTime(new Date('2026-08-06T06:00:00Z'));
+    const slice = Array.from({ length: 200 }, () => ({ ...WHEAT[0], modal_price: 3000 }));
+    let page = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      page += 1;
+      if (page === 1) return recordsResponse(slice);
+      throw new Error('data.gov.in 503');
+    }));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(3000);
+
+    // Day after, feed fully down: the reused number must be the complete
+    // sweep from the 5th, not the biased slice from the 6th.
+    vi.setSystemTime(new Date('2026-08-07T06:00:00Z'));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+  });
+});
+
 describe('a crop the feed never answered for', () => {
   it('falls back to the reference price rather than returning null', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => recordsResponse([])));
