@@ -47,6 +47,7 @@ import {
   notifyRequirementClosed,
 } from './notification.helpers';
 import { createTransaction } from './transaction.service';
+import { alertNewOrder } from './orderAlert.service';
 
 // --- Input types ---
 export interface CreateRequirementInput {
@@ -675,6 +676,7 @@ export async function acceptRequirementNow(
     result.offer.id,
     result.transaction.id,
   ).catch(() => {});
+  void alertNewOrder(result.bid.id, 'REQUIREMENT_FILL');
   notifyExpiredOffers(result.expired, requirement.cropName, requirement.id);
 
   return result;
@@ -845,6 +847,7 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
     offer.id,
     result.transaction.id,
   ).catch(() => {});
+  void alertNewOrder(result.bid.id, 'REQUIREMENT_FILL');
   notifyExpiredOffers(result.expired, offer.requirement.cropName, offer.requirementId);
 
   return result;

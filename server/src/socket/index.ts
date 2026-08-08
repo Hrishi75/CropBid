@@ -33,6 +33,7 @@ import { config } from '../config';
 import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../lib/prisma';
 import { createTransaction } from '../services/transaction.service';
+import { alertNewOrder } from '../services/orderAlert.service';
 
 // =============================================================================
 // Types
@@ -489,6 +490,8 @@ async function endAuction(listingId: string) {
     }
 
     if (settlement.outcome === 'sold') {
+      void alertNewOrder(settlement.bidId!, 'AUCTION_WIN');
+
       // Broadcast auction end with winner
       io.to(roomName).emit('auction:ended', {
         listingId,

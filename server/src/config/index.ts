@@ -107,6 +107,10 @@ export const config = {
     from: process.env.EMAIL_FROM || 'CropBid <no-reply@cropbid.in>',
   },
 
+  // Ops inbox that gets one email per order placed, whichever way it came in
+  // (consumer buy, accepted bid, agent deal, auction win, requirement fill).
+  orderAlertEmail: process.env.ORDER_ALERT_EMAIL || 'info@cropbid.in',
+
   // Defaults
   defaultCurrency: process.env.DEFAULT_CURRENCY || 'INR',
   defaultLocale: process.env.DEFAULT_LOCALE || 'en-IN',
