@@ -21,6 +21,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
+import { alertNewOrder } from './orderAlert.service';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -258,6 +259,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
     listing.farmer.userId, bid.buyer!.name, listing.cropName,
     input.quantity, listing.unit, listing.id, bid.id
   ).catch(() => {});
+  void alertNewOrder(bid.id, 'DIRECT_PURCHASE');
 
   return bid;
 }
@@ -419,6 +421,7 @@ export async function acceptBid(bidId: string, farmerId: string) {
     bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
     bid.currency, bid.listing.unit, bid.listingId, bidId
   ).catch(() => {});
+  void alertNewOrder(bidId, 'BID_ACCEPTED');
 
   return accepted;
 }

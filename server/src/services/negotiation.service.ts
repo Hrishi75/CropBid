@@ -27,6 +27,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getAgentDecision, checkAutoAccept } from './aiAgent';
 import { createTransaction } from './transaction.service';
+import { alertNewOrder } from './orderAlert.service';
 import { notifyNegotiationResult } from './notification.helpers';
 import type { NegotiationContext } from '../utils/prompts';
 
@@ -325,6 +326,7 @@ async function runNegotiation(
 
     if (claimed) {
       notifyBoth('DEAL', currentPrice);
+      void alertNewOrder(bid.id, 'AGENT_DEAL');
     } else {
       // Lost the race — the listing was already sold elsewhere. Void this bid,
       // but ONLY if it's still PENDING. If a concurrent acceptBid happened to
