@@ -16,6 +16,11 @@ import { Link } from 'react-router-dom';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import { localizedDescription } from '../../utils/localized';
+// What kind of business is behind the demand. Worth a chip of its own: "500 qtl
+// of Grade A tomato" reads very differently from a restaurant chain (recurring,
+// spec-driven) than from an exporter (one-off, volume-driven), and the farmer
+// decides partly on that.
+import { COMPANY_TYPE_LABEL } from '../../utils/companyType';
 import type { BuyerRequirement } from '../../types';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -79,6 +84,11 @@ export function RequirementCard({
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {r.buyer?.buyerProfile?.companyType && (
+          <span className="cb-chip">
+            {COMPANY_TYPE_LABEL[r.buyer.buyerProfile.companyType] || r.buyer.buyerProfile.companyType}
+          </span>
+        )}
         <span className="cb-chip">Grade {r.qualityGrade}</span>
         {r.organic && <span className="cb-chip cb-chip-sage">Organic only</span>}
         {belowMsp && (

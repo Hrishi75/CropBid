@@ -282,6 +282,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
     items: [
       ['Marketplace',      '/'],
       ['Live mandi rates', '/rates'],
+      ['Crop demand',      '/crop-demand'],
       ['Price forecast',   '/forecast'],
       ['Govt schemes',     '/schemes'],
       ['Farm equipment',   '/equipment'],

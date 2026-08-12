@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign } from 'lucide-react';
+import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign, ShoppingCart } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/axios';
@@ -31,6 +31,7 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   AUCTION_WON: Gavel,
   DELIVERY_UPDATE: Truck,
   PAYMENT_RELEASED: DollarSign,
+  NEW_REQUIREMENT: ShoppingCart,
   REQUIREMENT_OFFER: Gavel,
   REQUIREMENT_FILLED: Check,
   REQUIREMENT_OFFER_ACCEPTED: Check,
@@ -137,6 +138,11 @@ export function NotificationDropdown() {
       navigate(`/listings/${data.listingId}`);
     } else if (data?.listingId) {
       navigate(`/listings/${data.listingId}`);
+    } else if (notification.type === 'NEW_REQUIREMENT') {
+      // Brand-new demand, so the farmer has no offer to look at yet — /offers
+      // would land them on an empty page. Send them to the board, where the
+      // Fill and Counter buttons are.
+      navigate('/demand');
     } else if (data?.requirementId) {
       // Requirement events without a transaction (a new offer, a rejection, a
       // closure). The two sides have different homes for it: the buyer owns the

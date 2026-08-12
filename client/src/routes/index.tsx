@@ -28,7 +28,7 @@ import { MyListings } from '../pages/farmer/MyListings';
 import { CreateListing } from '../pages/farmer/CreateListing';
 import { IncomingBids } from '../pages/farmer/IncomingBids';
 import { Deliveries } from '../pages/farmer/Deliveries';
-import { RequirementsFeed } from '../pages/farmer/RequirementsFeed';
+import { DemandBoard } from '../pages/shared/DemandBoard';
 import { MyOffers } from '../pages/farmer/MyOffers';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
@@ -62,6 +62,7 @@ import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
 import { RatesPage } from '../pages/RatesPage';
 import { ForecastPage } from '../pages/ForecastPage';
 import { SchemesPage } from '../pages/SchemesPage';
+import { PublicDemandPage } from '../pages/PublicDemandPage';
 import { EquipmentPage } from '../pages/EquipmentPage';
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
@@ -100,6 +101,24 @@ function RootRedirect() {
   return <LandingPage />;
 }
 
+/**
+ * /crop-demand is the anonymised, crawlable version of the demand board. A
+ * signed-in farmer or buyer has access to the real one, so they get bounced —
+ * nobody should be working off redacted data they're entitled to see in full.
+ *
+ * Renders the public page while the session check is in flight, so a cold
+ * backend never blocks a page whose whole job is being fast for a stranger.
+ * Admins have no demand board of their own, so they stay on the public view.
+ */
+function PublicDemandRoute() {
+  const { user, loading } = useAuth();
+
+  if (!loading && (user?.role === 'FARMER' || user?.role === 'BUYER')) {
+    return <Navigate to="/demand" replace />;
+  }
+  return <PublicDemandPage />;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
@@ -111,6 +130,11 @@ export function AppRoutes() {
       <Route path="/rates" element={<RatesPage />} />
       <Route path="/forecast" element={<ForecastPage />} />
       <Route path="/schemes" element={<SchemesPage />} />
+      {/* Public shop window for open demand — an acquisition surface, and the
+          reason it is prerendered. A signed-in farmer or buyer has access to
+          the real board, so send them there rather than let them work off the
+          anonymised copy. */}
+      <Route path="/crop-demand" element={<PublicDemandRoute />} />
       {/* Machinery is lead-gen, not checkout — browsing stays public so it
           works as a farmer acquisition surface; only enquiring needs a login. */}
       <Route path="/equipment" element={<EquipmentPage />} />
@@ -169,14 +193,19 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Shared demand board. Farmers act on it, buyers read it — so it lives
+          at a role-neutral path rather than under /farmer. The old
+          /farmer/requirements URL still resolves, for links already in the
+          wild and for anyone's bookmarks. */}
       <Route
-        path="/farmer/requirements"
+        path="/demand"
         element={
-          <ProtectedRoute allowedRoles={['FARMER']}>
-            <RequirementsFeed />
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+            <DemandBoard />
           </ProtectedRoute>
         }
       />
+      <Route path="/farmer/requirements" element={<Navigate to="/demand" replace />} />
       <Route
         path="/farmer/offers"
         element={

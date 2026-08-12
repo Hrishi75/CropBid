@@ -12,12 +12,14 @@
 
 import { useState, useEffect } from 'react';
 import api from '../../lib/axios';
+import { COMPANY_TYPE_LABEL } from '../../utils/companyType';
 
 export interface RequirementFilterState {
   search: string;
   crop: string;
   state: string;
   quality: string;
+  buyerType: string;
   organic: string;
   priceMin: string;
   priceMax: string;
@@ -25,7 +27,7 @@ export interface RequirementFilterState {
 }
 
 export const EMPTY_REQUIREMENT_FILTERS: RequirementFilterState = {
-  search: '', crop: '', state: '', quality: '', organic: '', priceMin: '', priceMax: '', sort: 'createdAt',
+  search: '', crop: '', state: '', quality: '', buyerType: '', organic: '', priceMin: '', priceMax: '', sort: 'createdAt',
 };
 
 interface RequirementFiltersProps {
@@ -37,6 +39,7 @@ interface AvailableFilters {
   crops: string[];
   states: string[];
   qualities: string[];
+  buyerTypes: string[];
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -49,7 +52,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function RequirementFilters({ filters, onChange }: RequirementFiltersProps) {
-  const [available, setAvailable] = useState<AvailableFilters>({ crops: [], states: [], qualities: ['A', 'B', 'C'] });
+  const [available, setAvailable] = useState<AvailableFilters>({ crops: [], states: [], qualities: ['A', 'B', 'C'], buyerTypes: [] });
   const [searchInput, setSearchInput] = useState(filters.search);
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export function RequirementFilters({ filters, onChange }: RequirementFiltersProp
   }
 
   const hasActiveFilters = filters.crop || filters.state || filters.quality
-    || filters.organic || filters.priceMin || filters.priceMax;
+    || filters.buyerType || filters.organic || filters.priceMin || filters.priceMax;
 
   return (
     <div className="cb-card" style={{ padding: 18, position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
@@ -107,6 +110,19 @@ export function RequirementFilters({ filters, onChange }: RequirementFiltersProp
           {available.states.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </Section>
+
+      {/* Hidden until some buyer type actually has open demand, so the rail
+          doesn't advertise a filter that returns nothing. */}
+      {available.buyerTypes.length > 0 && (
+        <Section title="Buyer type">
+          <select value={filters.buyerType} onChange={(e) => updateFilter('buyerType', e.target.value)} className="cb-input" style={{ fontSize: 13 }}>
+            <option value="">All buyers</option>
+            {available.buyerTypes.map((b) => (
+              <option key={b} value={b}>{COMPANY_TYPE_LABEL[b] || b}</option>
+            ))}
+          </select>
+        </Section>
+      )}
 
       <Section title="Grade wanted">
         <div className="cb-pill-group">

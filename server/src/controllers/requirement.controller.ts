@@ -70,6 +70,7 @@ const createOfferSchema = z.object({
 const QUALITY_GRADES = ['A', 'B', 'C'];
 const REQUIREMENT_STATUSES = ['OPEN', 'FULFILLED', 'CLOSED', 'EXPIRED'];
 const OFFER_STATUSES = ['PENDING', 'ACCEPTED', 'REJECTED', 'WITHDRAWN', 'EXPIRED'];
+const COMPANY_TYPES = ['PROCESSOR', 'FMCG', 'RESTAURANT', 'EXPORTER', 'RETAILER'];
 
 // Returns the value when valid, undefined when absent, and throws a 400 when
 // present but unrecognised. Silently dropping a bad value would be worse: the
@@ -93,6 +94,7 @@ function parseFeedQuery(req: Request) {
     crops: typeof q.crops === 'string' && q.crops ? q.crops.split(',') : undefined,
     state: (q.state as string) || undefined,
     quality: enumParam(q.quality, QUALITY_GRADES, 'quality grade'),
+    buyerType: enumParam(q.buyerType, COMPANY_TYPES, 'buyer type'),
     organic: q.organic === undefined ? undefined : q.organic === 'true',
     priceMin: num(q.priceMin),
     priceMax: num(q.priceMax),
@@ -195,7 +197,29 @@ export async function closeRequirement(req: Request, res: Response, next: NextFu
 // GET /api/requirements/feed — Farmer's feed of open requirements
 export async function getRequirementFeed(req: Request, res: Response, next: NextFunction) {
   try {
-    const result = await requirementService.getRequirementFeed(parseFeedQuery(req));
+    // The viewer decides how much of each buyer's identity comes back — a
+    // farmer sees who they'd deal with, another buyer does not.
+    const result = await requirementService.getRequirementFeed(parseFeedQuery(req), {
+      userId: req.user!.userId,
+      role: req.user!.role,
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/requirements/public — open demand for logged-out visitors.
+//
+// No authenticate middleware on this one. Everything it returns is anonymous
+// by construction in the service; keep it that way.
+export async function getPublicFeed(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await requirementService.getPublicRequirementFeed({
+      crop: (req.query.crop as string) || undefined,
+      state: (req.query.state as string) || undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    });
     res.json(result);
   } catch (error) {
     next(error);

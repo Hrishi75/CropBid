@@ -109,6 +109,14 @@ export const ROUTES: RouteMeta[] = [
     changefreq: 'weekly',
   },
   {
+    path: '/crop-demand',
+    title: 'Crop Demand — Buyers Looking to Purchase Now',
+    description:
+      'See what Indian buyers are purchasing right now — crop, volume, grade, price and delivery town. Processors, restaurant chains, exporters and retailers, updated daily.',
+    priority: '0.9',
+    changefreq: 'daily',
+  },
+  {
     path: '/how-it-works',
     title: 'How CropBid Works — Bidding, Escrow & Delivery Explained',
     description:

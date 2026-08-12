@@ -40,6 +40,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { orderContactDefaults } from './bid.service';
 import {
+  notifyNewRequirement,
   notifyRequirementOffer,
   notifyRequirementFilled,
   notifyRequirementOfferAccepted,
@@ -75,6 +76,9 @@ export interface RequirementFeedQuery {
   crops?: string[];
   state?: string;
   quality?: string;
+  // BuyerProfile.companyType — lets a farmer browse demand from one kind of
+  // buyer, e.g. only the restaurant chains. Validated at the controller.
+  buyerType?: string;
   organic?: boolean;
   priceMin?: number;
   priceMax?: number;
@@ -102,6 +106,64 @@ const PUBLIC_BUYER_SELECT = {
     select: { companyName: true, companyType: true, country: true, verified: true },
   },
 } as const;
+
+// What one BUYER may see of another buyer's identity on the demand board: the
+// kind of business, and nothing that names it.
+//
+// WHY: the board is open to buyers so they can read the market — what is being
+// asked for, in what volume, at what price. It is NOT there to tell a chain
+// what its competitor pays for tomatoes and how much they move. Volume and
+// price stay visible because that IS the market signal; the name attached to
+// them is what turns it into competitive intelligence.
+//
+// companyType survives on purpose: "a restaurant chain wants 200 quintal" is
+// aggregate market colour, and the buyer-type filter would be useless without
+// it. id and avatar are dropped so rows cannot be correlated back into one
+// buyer's procurement pattern across the board.
+type FeedBuyer = {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  buyerProfile: {
+    companyName: string;
+    companyType: string;
+    country: string;
+    verified: boolean;
+  } | null;
+};
+
+function redactBuyer(buyer: FeedBuyer) {
+  return {
+    name: 'A verified buyer',
+    trustScore: buyer.trustScore,
+    buyerProfile: buyer.buyerProfile
+      ? {
+          companyName: null,
+          companyType: buyer.buyerProfile.companyType,
+          country: buyer.buyerProfile.country,
+          verified: buyer.buyerProfile.verified,
+        }
+      : null,
+  };
+}
+
+/** Who is reading the board. Farmers and admins see it whole. */
+export interface FeedViewer {
+  userId: string;
+  role: string;
+}
+
+// A buyer sees their OWN requirements in full — they posted them.
+function applyBuyerRedaction<T extends { buyerId: string; buyer: FeedBuyer }>(
+  rows: T[],
+  viewer?: FeedViewer,
+) {
+  if (viewer?.role !== 'BUYER') return rows;
+  return rows.map((row) =>
+    row.buyerId === viewer.userId ? row : { ...row, buyer: redactBuyer(row.buyer) },
+  );
+}
 
 // The offer-side mirror. RequirementOffer.farmer is a User (not a FarmerProfile),
 // so this is the User-rooted twin of PUBLIC_FARMER_SELECT. No phone or email,
@@ -407,7 +469,7 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
     if (neededBy < new Date()) throw new ApiError(400, 'Needed-by date must be in the future');
   }
 
-  return prisma.buyerRequirement.create({
+  const requirement = await prisma.buyerRequirement.create({
     data: {
       buyerId,
       cropName: input.cropName,
@@ -429,12 +491,110 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
     },
     include: { buyer: { select: PUBLIC_BUYER_SELECT } },
   });
+
+  // Fire-and-forget: the requirement is already posted, and a notification
+  // fan-out that fails must not turn a successful post into a 500.
+  void announceRequirement(requirement, buyerProfile.companyName);
+
+  return requirement;
+}
+
+// One post can notify at most this many farmers. A staple crop with thousands
+// of live listings would otherwise turn a single requirement into a write
+// storm, and everyone the cap misses still has the feed.
+const REQUIREMENT_FANOUT_CAP = 200;
+
+// Tell farmers who can plausibly supply this that it exists.
+//
+// WHO GETS IT — either of:
+//   1. a LIVE listing for the same crop — the strongest signal that someone has
+//      this to sell right now, or
+//   2. a farm in the delivery state — they may not have it listed today, but
+//      they are close enough that the freight maths works.
+//
+// Still not "every farmer on the platform": that is how notifications get muted
+// and then ignored. Rule 2 is the deliberate widening — on a young platform
+// rule 1 alone reaches almost nobody, because most farmers who grow a crop have
+// no listing up for it at any given moment.
+//
+// NEVER THROWS. The requirement is already posted by the time this runs.
+async function announceRequirement(
+  requirement: {
+    id: string;
+    buyerId: string;
+    cropName: string;
+    quantity: number;
+    unit: string;
+    pricePerUnit: number;
+    currency: string;
+    deliveryLocation: string;
+    deliveryState: string;
+  },
+  buyerName: string,
+): Promise<void> {
+  try {
+    // Rooted at FarmerProfile rather than Listing so the two rules are one
+    // query and one dedupe: a farmer matching both still appears once, which a
+    // union of two listing queries would not give for free.
+    const farmers = await prisma.farmerProfile.findMany({
+      where: {
+        OR: [
+          {
+            listings: {
+              some: {
+                cropName: { equals: requirement.cropName, mode: 'insensitive' },
+                status: { in: ['ACTIVE', 'IN_AUCTION'] },
+                // Synthetic rows minted to carry an earlier fill into the
+                // Transaction pipeline. Born SOLD, so never evidence of stock —
+                // same reason listing.service and analytics filter them out.
+                isRequirementFill: false,
+              },
+            },
+          },
+          { state: { equals: requirement.deliveryState, mode: 'insensitive' } },
+        ],
+      },
+      // FarmerProfile.id is not a User id, and notifications are keyed by User.
+      select: { userId: true },
+      take: REQUIREMENT_FANOUT_CAP,
+    });
+
+    const recipients = farmers
+      .map((f) => f.userId)
+      // Defensive: an account that somehow holds both sides should not be told
+      // about its own demand.
+      .filter((userId) => userId !== requirement.buyerId);
+
+    if (recipients.length === 0) return;
+
+    // allSettled, not all: one farmer's failed insert must not silence the rest.
+    await Promise.allSettled(
+      recipients.map((userId) =>
+        notifyNewRequirement(
+          userId,
+          buyerName,
+          requirement.cropName,
+          requirement.quantity,
+          requirement.unit.toLowerCase(),
+          requirement.pricePerUnit,
+          requirement.currency,
+          requirement.deliveryLocation,
+          requirement.id,
+        ),
+      ),
+    );
+  } catch (error) {
+    console.error('[requirement] new-requirement fan-out failed', {
+      requirementId: requirement.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 // =============================================================================
 // FEED — Filtered, paginated requirement search for farmers
 // =============================================================================
-export async function getRequirementFeed(query: RequirementFeedQuery) {
+export async function getRequirementFeed(query: RequirementFeedQuery, viewer?: FeedViewer) {
   const page = Math.max(1, query.page || 1);
   const limit = Math.min(50, Math.max(1, query.limit || 20));
   const skip = (page - 1) * limit;
@@ -456,6 +616,13 @@ export async function getRequirementFeed(query: RequirementFeedQuery) {
   if (query.state) where.deliveryState = { equals: query.state, mode: 'insensitive' };
   if (query.quality) where.qualityGrade = query.quality;
   if (query.organic !== undefined) where.organic = query.organic;
+
+  // The type lives on the buyer's profile, not the requirement, so this filters
+  // through the relation. `is` rather than a bare nested object so a buyer with
+  // no profile row is excluded instead of matching everything.
+  if (query.buyerType) {
+    where.buyer = { buyerProfile: { is: { companyType: query.buyerType } } };
+  }
 
   if (query.priceMin !== undefined || query.priceMax !== undefined) {
     where.pricePerUnit = {};
@@ -498,7 +665,7 @@ export async function getRequirementFeed(query: RequirementFeedQuery) {
   ]);
 
   return {
-    requirements,
+    requirements: applyBuyerRedaction(requirements, viewer),
     pagination: {
       page,
       limit,
@@ -509,10 +676,69 @@ export async function getRequirementFeed(query: RequirementFeedQuery) {
   };
 }
 
+// =============================================================================
+// PUBLIC FEED — open demand for logged-out visitors
+// =============================================================================
+// An acquisition surface, not a working tool: it exists so a farmer searching
+// "who is buying tomatoes in Maharashtra" lands on CropBid and signs up.
+//
+// NO BUYER IDENTITY AT ALL, not even the redacted shape a signed-in buyer gets.
+// This is served to anyone on the internet and is prerendered into static HTML,
+// so anything here is permanently crawlable. Only the trade itself goes out:
+// crop, volume, grade, price, destination, deadline.
+//
+// Also no offer counts and no ids that could be walked — a scraper should be
+// able to learn what India is buying, not rebuild the order book.
+export async function getPublicRequirementFeed(query: { crop?: string; state?: string; limit?: number }) {
+  const limit = Math.min(50, Math.max(1, query.limit || 24));
+
+  const where: any = {
+    status: 'OPEN',
+    remainingQuantity: { gt: 0 },
+    OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
+  };
+  if (query.crop) where.cropName = { equals: query.crop, mode: 'insensitive' };
+  if (query.state) where.deliveryState = { equals: query.state, mode: 'insensitive' };
+
+  const [rows, total] = await Promise.all([
+    prisma.buyerRequirement.findMany({
+      where,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        cropName: true,
+        cropVariety: true,
+        remainingQuantity: true,
+        unit: true,
+        qualityGrade: true,
+        pricePerUnit: true,
+        currency: true,
+        organic: true,
+        deliveryLocation: true,
+        deliveryState: true,
+        neededBy: true,
+        createdAt: true,
+        buyer: { select: { buyerProfile: { select: { companyType: true } } } },
+      },
+    }),
+    prisma.buyerRequirement.count({ where }),
+  ]);
+
+  return {
+    // Flattened to buyerType so no buyer object — even an empty one — reaches
+    // a public response and invites something to be added to it later.
+    requirements: rows.map(({ buyer, ...r }) => ({
+      ...r,
+      buyerType: buyer?.buyerProfile?.companyType ?? null,
+    })),
+    total,
+  };
+}
+
 // Dynamic filter options — only show crops and states that actually have open
 // requirements, so a farmer never filters their way into an empty result.
 export async function getFeedFilters() {
-  const [crops, states] = await Promise.all([
+  const [crops, states, buyerTypes] = await Promise.all([
     prisma.buyerRequirement.findMany({
       where: { status: 'OPEN' },
       select: { cropName: true },
@@ -525,6 +751,14 @@ export async function getFeedFilters() {
       distinct: ['deliveryState'],
       orderBy: { deliveryState: 'asc' },
     }),
+    // Same "never filter into an empty result" rule as crops and states: only
+    // offer RESTAURANT once a restaurant chain actually has demand standing.
+    prisma.buyerProfile.findMany({
+      where: { user: { buyerRequirements: { some: { status: 'OPEN' } } } },
+      select: { companyType: true },
+      distinct: ['companyType'],
+      orderBy: { companyType: 'asc' },
+    }),
   ]);
 
   return {
@@ -532,6 +766,7 @@ export async function getFeedFilters() {
     states: states.map((s) => s.deliveryState),
     qualities: ['A', 'B', 'C'],
     units: ['KG', 'QUINTAL', 'TONNE'],
+    buyerTypes: buyerTypes.map((b) => b.companyType),
   };
 }
 
@@ -559,7 +794,12 @@ export async function getRequirementById(id: string, userId: string, role: strin
     orderBy: { createdAt: 'desc' },
   });
 
-  return { ...requirement, offers };
+  // Same redaction the board applies. Without it a buyer could read a
+  // competitor's name straight off /requirements/:id and the board's redaction
+  // would be decoration.
+  const [visible] = applyBuyerRedaction([requirement], { userId, role });
+
+  return { ...visible, offers };
 }
 
 // =============================================================================

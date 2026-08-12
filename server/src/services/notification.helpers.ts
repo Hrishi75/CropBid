@@ -65,6 +65,31 @@ export async function notifyDirectPurchase(farmerId: string, buyerName: string, 
 // so the two "deal is done" events deep-link both parties straight to the deal.
 // The others carry `requirementId` and land on the relevant inbox instead.
 
+// The only requirement notification that goes to someone NOT already in the
+// loop. The other four are replies within a conversation the recipient started;
+// this one is how a farmer finds out a conversation is available at all.
+// Routed to the farmer's feed rather than a detail page, so they land somewhere
+// they can act on it — and on the rest of the open demand while they are there.
+export async function notifyNewRequirement(
+  farmerUserId: string,
+  buyerName: string,
+  cropName: string,
+  quantity: number,
+  unit: string,
+  price: number,
+  currency: string,
+  deliveryLocation: string,
+  requirementId: string,
+) {
+  await createNotification({
+    userId: farmerUserId,
+    type: 'NEW_REQUIREMENT',
+    title: `${buyerName} wants ${quantity} ${unit} of ${cropName}`,
+    message: `${currency} ${price}/${unit}, delivered to ${deliveryLocation}. Fill it at their price or counter with yours.`,
+    data: { requirementId },
+  });
+}
+
 export async function notifyRequirementOffer(buyerId: string, farmerName: string, cropName: string, price: number, currency: string, unit: string, requirementId: string, offerId: string) {
   await createNotification({
     userId: buyerId,
