@@ -1,10 +1,16 @@
 // =============================================================================
-// VoiceListingButton — dictate a listing instead of typing it
+// VoiceCaptureButton — dictate a form instead of typing it
 // =============================================================================
-// The farmer taps, speaks for up to ~25 seconds, and the form above fills in.
-// Every field is a suggestion they then check; publishing still goes through
-// the normal Publish button, so a mis-hearing costs a correction, not a bad
-// listing.
+// Used by both sides of the trade: a farmer dictating a crop to SELL, and a
+// bulk buyer dictating produce they want to BUY. All of the machinery below —
+// permissions, MIME negotiation, the countdown, mic release — is identical for
+// both, so the two callers differ only in `endpoint` and their priming copy.
+// (Contrast RequirementFilters, which is a genuine clone of ListingFilters
+// because there the FIELDS differ throughout. Here nothing does.)
+//
+// The user taps, speaks for up to ~25 seconds, and the form above fills in.
+// Every field is a suggestion they then check; submitting still goes through
+// the normal button, so a mis-hearing costs a correction, not a bad post.
 //
 // WHY 25 SECONDS: Sarvam's REST speech endpoint rejects audio of 30s or more.
 // The server sends the real ceiling via GET /api/voice/status, and we stop a
@@ -41,11 +47,28 @@ export interface VoiceDraftFields {
   state: string | null;
 }
 
-export interface VoiceDraft {
+// The demand-side shape. Mirrors RequirementDraftFields on the server: one
+// price rather than a range, a delivery destination rather than a farm origin,
+// and a deadline rather than a harvest date.
+export interface VoiceRequirementFields {
+  cropName: string | null;
+  cropVariety: string | null;
+  quantity: number | null;
+  unit: 'KG' | 'QUINTAL' | 'TONNE' | null;
+  qualityGrade: 'A' | 'B' | 'C' | null;
+  pricePerUnit: number | null;
+  neededBy: string | null;
+  description: string | null;
+  organic: boolean | null;
+  deliveryLocation: string | null;
+  deliveryState: string | null;
+}
+
+export interface VoiceDraft<F = VoiceDraftFields> {
   transcript: string;
   language: string | null;
   languageConfidence: number | null;
-  fields: VoiceDraftFields;
+  fields: F;
 }
 
 type Phase = 'idle' | 'requesting' | 'denied' | 'recording' | 'transcribing' | 'error';
@@ -65,19 +88,39 @@ function pickMimeType(): string | undefined {
   return MIME_PREFERENCES.find((type) => MediaRecorder.isTypeSupported(type));
 }
 
-// A worked example per language. Shown under the prompt so the farmer hears
+// A worked example per language. Shown under the prompt so the speaker hears
 // the shape of a good answer before they start.
-const EXAMPLES: Record<string, string> = {
+export const LISTING_EXAMPLES: Record<string, string> = {
   hi: 'पचास क्विंटल प्याज़, ए ग्रेड, नाशिक, दाम दो हज़ार से कम नहीं',
   mr: 'पन्नास क्विंटल कांदा, ए ग्रेड, नाशिक, भाव दोन हजारपेक्षा कमी नाही',
   en: 'Fifty quintal onions, A grade, from Nashik, lowest price two thousand',
 };
 
-interface VoiceListingButtonProps {
-  onDraft: (draft: VoiceDraft) => void;
+// The buyer's version names a DELIVERY town and a single price, because that is
+// what the requirement form has boxes for. Keeping the example in step with the
+// server prompt matters more than it looks: it is what teaches the speaker to
+// say "deliver to Pune" rather than just "Pune".
+export const REQUIREMENT_EXAMPLES: Record<string, string> = {
+  hi: 'दो सौ क्विंटल टमाटर, ए ग्रेड, पुणे में डिलीवरी, दाम बाईस सौ, अगले शुक्रवार तक',
+  mr: 'दोनशे क्विंटल टोमॅटो, ए ग्रेड, पुण्यात डिलिव्हरी, भाव बावीसशे, पुढच्या शुक्रवारपर्यंत',
+  en: 'Two hundred quintal tomatoes, A grade, delivered to Pune, paying two thousand two hundred, by next Friday',
+};
+
+interface VoiceCaptureButtonProps<F> {
+  onDraft: (draft: VoiceDraft<F>) => void;
+  /** Which draft endpoint to post the clip to. Defaults to the listing one. */
+  endpoint?: string;
+  /** One line telling the speaker what to say. */
+  prompt?: string;
+  examples?: Record<string, string>;
 }
 
-export function VoiceListingButton({ onDraft }: VoiceListingButtonProps) {
+export function VoiceCaptureButton<F = VoiceDraftFields>({
+  onDraft,
+  endpoint = '/voice/listing-draft',
+  prompt,
+  examples = LISTING_EXAMPLES,
+}: VoiceCaptureButtonProps<F>) {
   const { t, i18n } = useTranslation();
 
   const [enabled, setEnabled] = useState(false);
@@ -132,11 +175,11 @@ export function VoiceListingButton({ onDraft }: VoiceListingButtonProps) {
       // Extension is cosmetic; the server identifies the format from the bytes.
       form.append('audio', blob, 'voice-note');
 
-      const { data } = await api.post('/voice/listing-draft', form, {
+      const { data } = await api.post(endpoint, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      onDraft(data as VoiceDraft);
+      onDraft(data as VoiceDraft<F>);
       setPhase('idle');
     } catch (err: unknown) {
       const response = (err as { response?: { data?: { code?: string; message?: string } } }).response;
@@ -207,7 +250,7 @@ export function VoiceListingButton({ onDraft }: VoiceListingButtonProps) {
   if (!enabled) return null;
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return null;
 
-  const example = EXAMPLES[i18n.language.slice(0, 2)] ?? EXAMPLES.en;
+  const example = examples[i18n.language.slice(0, 2)] ?? examples.en;
   const busy = phase === 'requesting' || phase === 'transcribing';
 
   return (
@@ -228,7 +271,7 @@ export function VoiceListingButton({ onDraft }: VoiceListingButtonProps) {
             {t('Say it instead of typing')}
           </div>
           <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-            {t('Say the crop, how much, the grade, and your lowest price.')}
+            {prompt ?? t('Say the crop, how much, the grade, and your lowest price.')}
           </div>
           <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontStyle: 'italic' }}>
             {t('For example')}: “{example}”

@@ -18,7 +18,7 @@ import { ImageUploader } from '../../components/listings/ImageUploader';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import { CROP_CATEGORIES, ALL_CROPS, resolveCatalogueCrop } from '../../utils/crops';
-import { VoiceListingButton, type VoiceDraft } from '../../components/listings/VoiceListingButton';
+import { VoiceCaptureButton, type VoiceDraft } from '../../components/voice/VoiceCaptureButton';
 import { cropImageFor } from '../../utils/cropImages';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -236,7 +236,7 @@ export function CreateListing() {
                 overwrite fields the farmer already settled on. */}
             {!isEditMode && (
               <div style={{ paddingTop: 20 }}>
-                <VoiceListingButton onDraft={applyVoiceDraft} />
+                <VoiceCaptureButton onDraft={applyVoiceDraft} />
               </div>
             )}
 

@@ -13,7 +13,7 @@ vi.mock('./aiAgent', () => ({ callGemini: vi.fn() }));
 
 import { transcribe } from './sarvam.service';
 import { callGemini } from './aiAgent';
-import { draftListingFromAudio, clipsUsedToday } from './voice.service';
+import { draftListingFromAudio, draftRequirementFromAudio, clipsUsedToday } from './voice.service';
 import { ApiError } from '../utils/ApiError';
 
 const transcribeMock = vi.mocked(transcribe);
@@ -102,7 +102,85 @@ describe('draftListingFromAudio', () => {
   });
 });
 
+describe('draftRequirementFromAudio', () => {
+  const BUYER_TRANSCRIPTION = {
+    transcript: 'दो सौ क्विंटल टमाटर, ए ग्रेड, पुणे में डिलीवरी, दाम बाईस सौ',
+    languageCode: 'hi-IN',
+    languageProbability: 0.91,
+  };
+
+  it('extracts the demand-side fields, not the listing ones', async () => {
+    transcribeMock.mockResolvedValue(BUYER_TRANSCRIPTION);
+    geminiMock.mockResolvedValue(
+      JSON.stringify({
+        cropName: 'Tomato',
+        quantity: 200,
+        unit: 'QUINTAL',
+        qualityGrade: 'A',
+        pricePerUnit: 2200,
+        deliveryLocation: 'Pune',
+        deliveryState: 'Maharashtra',
+        neededBy: '2026-08-21',
+      }),
+    );
+
+    const draft = await draftRequirementFromAudio(nextUser(), AUDIO, 'audio/webm');
+
+    expect(draft.transcript).toBe(BUYER_TRANSCRIPTION.transcript);
+    expect(draft.fields).toMatchObject({
+      cropName: 'Tomato',
+      quantity: 200,
+      pricePerUnit: 2200,
+      deliveryLocation: 'Pune',
+      deliveryState: 'Maharashtra',
+      neededBy: '2026-08-21',
+    });
+  });
+
+  it('still returns the transcript when field extraction fails', async () => {
+    geminiMock.mockRejectedValue(new Error('gemini down'));
+
+    const draft = await draftRequirementFromAudio(nextUser(), AUDIO, 'audio/webm');
+
+    expect(draft.transcript).toBe(GOOD_TRANSCRIPTION.transcript);
+    expect(draft.fields.cropName).toBeNull();
+    expect(draft.fields.pricePerUnit).toBeNull();
+  });
+
+  it('drops a price the model returned as a string rather than a number', async () => {
+    // A model that ignored "a number only" may have ignored other rules too, so
+    // the field is dropped rather than coerced — an empty box costs one tap, a
+    // wrong price costs the buyer an order.
+    geminiMock.mockResolvedValue(JSON.stringify({ cropName: 'Tomato', pricePerUnit: '2200' }));
+
+    const draft = await draftRequirementFromAudio(nextUser(), AUDIO, 'audio/webm');
+
+    expect(draft.fields.cropName).toBe('Tomato');
+    expect(draft.fields.pricePerUnit).toBeNull();
+  });
+
+  it('drops a deadline that is not a real calendar date', async () => {
+    geminiMock.mockResolvedValue(JSON.stringify({ neededBy: '2026-02-31' }));
+
+    const draft = await draftRequirementFromAudio(nextUser(), AUDIO, 'audio/webm');
+
+    expect(draft.fields.neededBy).toBeNull();
+  });
+});
+
 describe('daily quota', () => {
+  it('is one pool per user, shared across listing and requirement drafts', async () => {
+    // The cap protects the credit pool, and the pool does not care which form
+    // the clip was filling. A buyer-turned-farmer must not get 60 clips.
+    const user = nextUser();
+
+    await draftListingFromAudio(user, AUDIO, 'audio/webm');
+    await draftRequirementFromAudio(user, AUDIO, 'audio/webm');
+
+    expect(clipsUsedToday(user)).toBe(2);
+  });
+
+
   it('allows 30 clips and rejects the 31st', async () => {
     const user = nextUser();
 

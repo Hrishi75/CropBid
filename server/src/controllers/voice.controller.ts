@@ -60,3 +60,26 @@ export async function createListingDraft(req: Request, res: Response, next: Next
     next(error);
   }
 }
+
+// POST /api/voice/requirement-draft — the demand-side twin of the above.
+//
+// ⚠️ Same rule: THIS CREATES NOTHING. The buyer reviews every suggested field
+// and POST /requirements is still the only thing that posts demand.
+export async function createRequirementDraft(req: Request, res: Response, next: NextFunction) {
+  try {
+    const audio = (req as Request & { verifiedAudio?: VerifiedAudio }).verifiedAudio;
+    if (!audio) {
+      throw new ApiError(400, 'No recording was uploaded.');
+    }
+
+    const draft = await voiceService.draftRequirementFromAudio(
+      req.user!.userId,
+      audio.buffer,
+      audio.mimeType,
+    );
+
+    res.json(draft);
+  } catch (error) {
+    next(error);
+  }
+}

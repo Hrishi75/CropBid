@@ -1,10 +1,14 @@
 // =============================================================================
-// Voice Service — spoken listing → draft form fields
+// Voice Service — spoken listing or requirement → draft form fields
 // =============================================================================
+// Serves both sides of the trade: a farmer dictating a crop they want to SELL,
+// and a bulk buyer dictating produce they want to BUY. Same pipeline and same
+// per-user quota; only the extraction prompt differs.
+//
 // THE PIPELINE:
 //   1. Sarvam speech-to-text turns the clip into a transcript (metered).
 //   2. Gemini turns the transcript into structured fields (free tier).
-//   3. The farmer reviews and edits every one of them before publishing.
+//   3. The speaker reviews and edits every one of them before publishing.
 //
 // Step 2 uses Gemini rather than Sarvam's LLM on purpose — see the note at the
 // top of utils/voicePrompts.ts. Short version: it keeps the metered dependency
@@ -34,7 +38,11 @@ import {
   buildListingDraftPrompt,
   parseListingDraft,
   emptyListingDraft,
+  buildRequirementDraftPrompt,
+  parseRequirementDraft,
+  emptyRequirementDraft,
   type ListingDraftFields,
+  type RequirementDraftFields,
 } from '../utils/voicePrompts';
 
 // 30 clips/user/day. At ~25s each that is a worst case of about Rs 6 per user
@@ -84,7 +92,7 @@ function reserveSlot(userId: string): string {
   if (used >= MAX_CLIPS_PER_USER_PER_DAY) {
     throw new ApiError(
       429,
-      "You've used all your voice notes for today. You can still type your listing, or try again tomorrow.",
+      "You've used all your voice notes for today. You can still type it in, or try again tomorrow.",
       'VOICE_QUOTA_EXCEEDED',
     );
   }
@@ -105,12 +113,49 @@ function releaseSlot(userId: string, reservedOn: string): void {
   if (used > 0) clipsToday.set(userId, used - 1);
 }
 
-export interface ListingDraft {
+export interface VoiceDraft<F> {
   transcript: string;
   /** Sarvam's guess at the spoken language, e.g. 'hi-IN'. May be null. */
   language: string | null;
   languageConfidence: number | null;
-  fields: ListingDraftFields;
+  fields: F;
+}
+
+export type ListingDraft = VoiceDraft<ListingDraftFields>;
+export type RequirementDraft = VoiceDraft<RequirementDraftFields>;
+
+// Everything both sides share: the quota claim, the metered transcription, and
+// the refund when the clip never produced anything. Only the extraction step
+// differs, so it comes in as a function. The daily cap is per USER, not per
+// draft kind — one account gets 30 clips whether they are listing or buying.
+async function draftFromAudio<F>(
+  userId: string,
+  audio: Buffer,
+  mimeType: string,
+  extract: (transcript: string) => Promise<F>,
+): Promise<VoiceDraft<F>> {
+  // Claimed BEFORE the paid call, so a user at their cap costs us nothing and
+  // concurrent requests cannot both slip through on the same count.
+  const reservedOn = reserveSlot(userId);
+
+  let transcription;
+  try {
+    transcription = await transcribe(audio, mimeType);
+  } catch (error) {
+    // Someone whose upload died on a bad connection got nothing, so it should
+    // not count against their day — provided that day is still today.
+    releaseSlot(userId, reservedOn);
+    throw error;
+  }
+
+  const { transcript, languageCode, languageProbability } = transcription;
+
+  return {
+    transcript,
+    language: languageCode,
+    languageConfidence: languageProbability,
+    fields: await extract(transcript),
+  };
 }
 
 /**
@@ -125,42 +170,46 @@ export async function draftListingFromAudio(
   audio: Buffer,
   mimeType: string,
 ): Promise<ListingDraft> {
-  // Claimed BEFORE the paid call, so a user at their cap costs us nothing and
-  // concurrent requests cannot both slip through on the same count.
-  const reservedOn = reserveSlot(userId);
+  return draftFromAudio(userId, audio, mimeType, extractListingFields);
+}
 
-  let transcription;
-  try {
-    transcription = await transcribe(audio, mimeType);
-  } catch (error) {
-    // A farmer whose upload died on a bad connection got nothing, so it should
-    // not count against their day — provided that day is still today.
-    releaseSlot(userId, reservedOn);
-    throw error;
-  }
-
-  const { transcript, languageCode, languageProbability } = transcription;
-
-  return {
-    transcript,
-    language: languageCode,
-    languageConfidence: languageProbability,
-    fields: await extractFields(transcript),
-  };
+/**
+ * Transcribe a voice note and extract BUYER REQUIREMENT fields from it.
+ *
+ * Same error contract as draftListingFromAudio. Also writes nothing — the
+ * buyer's Post button remains the only thing that commits a requirement.
+ */
+export async function draftRequirementFromAudio(
+  userId: string,
+  audio: Buffer,
+  mimeType: string,
+): Promise<RequirementDraft> {
+  return draftFromAudio(userId, audio, mimeType, extractRequirementFields);
 }
 
 // Extraction is best-effort and deliberately non-fatal. If Gemini is
-// unconfigured, slow or nonsensical, the farmer still gets their transcript and
+// unconfigured, slow or nonsensical, the speaker still gets their transcript and
 // an empty form — strictly better than an error page, because they can read
 // what was heard and type the rest. The paid part of the request already
 // succeeded by this point; throwing it away would be the wasteful choice.
-async function extractFields(transcript: string): Promise<ListingDraftFields> {
+async function extractListingFields(transcript: string): Promise<ListingDraftFields> {
   try {
     const prompt = buildListingDraftPrompt(transcript, today());
     const raw = await callGemini(prompt, { maxOutputTokens: EXTRACTION_MAX_TOKENS });
     return parseListingDraft(raw);
   } catch (error) {
-    console.error('[voice] field extraction failed', error);
+    console.error('[voice] listing field extraction failed', error);
     return emptyListingDraft();
+  }
+}
+
+async function extractRequirementFields(transcript: string): Promise<RequirementDraftFields> {
+  try {
+    const prompt = buildRequirementDraftPrompt(transcript, today());
+    const raw = await callGemini(prompt, { maxOutputTokens: EXTRACTION_MAX_TOKENS });
+    return parseRequirementDraft(raw);
+  } catch (error) {
+    console.error('[voice] requirement field extraction failed', error);
+    return emptyRequirementDraft();
   }
 }
