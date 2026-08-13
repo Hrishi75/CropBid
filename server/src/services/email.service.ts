@@ -162,6 +162,115 @@ export async function sendSignupOtpEmail(
   await sendEmail({ to, subject, text, html });
 }
 
+// ---------------------------------------------------------------------------
+// New order alert (ops inbox)
+// ---------------------------------------------------------------------------
+// Sent to the platform, NOT to either party — it's the "an order just came in"
+// ping, so it carries both sides' contact details and the money breakdown that
+// the buyer- and farmer-facing emails deliberately never mix in one place.
+export interface NewOrderEmail {
+  reference: string;      // Short human-quotable order ref
+  channel: string;        // How the order came in, already in plain English
+  placedAt: Date;
+  cropName: string;
+  cropVariety: string | null;
+  quantity: number;
+  unit: string;
+  pricePerUnit: number;
+  totalAmount: number;
+  platformFeeAmount: number;
+  currency: string;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhone: string | null;
+  deliveryAddress: string | null;
+  farmerName: string;
+  farmerPhone: string | null;
+  farmerLocation: string | null;
+  adminUrl: string;
+}
+
+export async function sendNewOrderEmail(to: string, order: NewOrderEmail): Promise<void> {
+  const qty = `${formatNumber(order.quantity)} ${order.unit}`;
+  const total = formatMoney(order.totalAmount, order.currency);
+  const crop = order.cropVariety ? `${order.cropName} (${order.cropVariety})` : order.cropName;
+
+  const subject = `New order · ${total} · ${qty} ${order.cropName} · #${order.reference}`;
+
+  // Ordered pairs, rendered once as text lines and once as HTML rows.
+  const rows: Array<[string, string]> = [
+    ['Order', `#${order.reference}`],
+    ['Placed', order.placedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST'],
+    ['Channel', order.channel],
+    ['Crop', crop],
+    ['Quantity', qty],
+    ['Rate', `${formatMoney(order.pricePerUnit, order.currency)} / ${order.unit}`],
+    ['Order value', total],
+    ['Platform fee', formatMoney(order.platformFeeAmount, order.currency)],
+    ['Buyer', order.buyerName],
+    ['Buyer email', order.buyerEmail],
+    ['Buyer phone', order.buyerPhone || '—'],
+    ['Deliver to', order.deliveryAddress || '—'],
+    ['Farmer', order.farmerName],
+    ['Farmer phone', order.farmerPhone || '—'],
+    ['Farmer location', order.farmerLocation || '—'],
+  ];
+
+  const text = [
+    `A new order was placed on CropBid.`,
+    '',
+    ...rows.map(([label, value]) => `${label.padEnd(16)} ${value}`),
+    '',
+    `Open it: ${order.adminUrl}`,
+    '',
+    '— CropBid',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 560px; margin: 0 auto; color: #1e2a1e;">
+      <h2 style="color: #2f6b3a; margin-bottom: 4px;">New order — ${escapeHtml(total)}</h2>
+      <p style="margin-top: 0; color: #5a6b5a;">${escapeHtml(qty)} of ${escapeHtml(crop)} · ${escapeHtml(order.channel)}</p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 20px 0;">
+        ${rows
+          .map(
+            ([label, value]) => `
+        <tr>
+          <td style="padding: 7px 12px 7px 0; color: #5a6b5a; white-space: nowrap; border-bottom: 1px solid #eef2ee;">${escapeHtml(label)}</td>
+          <td style="padding: 7px 0; border-bottom: 1px solid #eef2ee;"><strong>${escapeHtml(value)}</strong></td>
+        </tr>`,
+          )
+          .join('')}
+      </table>
+      <p style="margin: 24px 0;">
+        <a href="${escapeHtml(order.adminUrl)}"
+           style="background: #2f6b3a; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+          Open in admin
+        </a>
+      </p>
+      <p>— CropBid</p>
+    </div>`;
+
+  await sendEmail({ to, subject, text, html });
+}
+
+// Indian grouping for INR (₹1,25,000), Western grouping for everything else.
+// Falls back to a plain "INR 125000.00" if the runtime lacks the locale data.
+function formatMoney(amount: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
 // Minimal HTML escaping for user-supplied values interpolated into email HTML.
 function escapeHtml(value: string): string {
   return value

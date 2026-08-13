@@ -47,15 +47,18 @@ Production demo stack — all free tier:
    | `SMTP_USER` / `SMTP_PASS` | SMTP credentials from your email provider |
    | `EMAIL_FROM` | e.g. `CropBid <no-reply@cropbid.in>` |
 
-   > **Email:** password-reset links are emailed via SMTP. Any provider works
-   > (Resend, Brevo, SES, Gmail app-password). With `SMTP_HOST` unset the app
-   > still runs — reset emails are printed to the Render logs instead of sent.
+   > **Email:** password-reset links, buyer signup codes and the new-order ops
+   > alert are emailed via SMTP. Any provider works (Resend, Brevo, SES, Gmail
+   > app-password). With `SMTP_HOST` unset the app still runs — those emails are
+   > printed to the server logs instead of sent, so **the order alerts only reach
+   > an inbox once SMTP is configured.**
 
    Optional, both with sensible defaults:
 
    | Key | Default | Value |
    |-----|---------|-------|
    | `DATA_GOV_API_KEY` | *(shared demo key)* | Your own [data.gov.in](https://data.gov.in/user/register) key for the daily Agmarknet mandi feed. **Set this.** The built-in default is data.gov.in's public demo key, shared by every project that never registered one — it spends most of the day returning `429 Rate limit exceeded`, and the storefront then falls back to static reference prices, so the hero chips and the ticker show `ref` instead of today's real move. A registered key is free and instant. |
+   | `ORDER_ALERT_EMAIL` | `info@cropbid.in` | Inbox that gets one email per order placed — consumer buy, accepted bid, agent deal, auction win or requirement fill. Needs `SMTP_HOST` set, or the alert only reaches the server logs. |
    | `SESSION_IDLE_MINUTES` | `15` | How long a session survives with no activity. The refresh token is rotated on every request, so this is a *sliding* window — active users are never interrupted. Changing it here also changes the copy on the sign-in screen (the client reads its own copy of the number from `client/src/lib/idle.ts` — keep the two in sync). |
    | `ACCESS_TOKEN_MINUTES` | `5` | Access-token lifetime. Must stay comfortably **below** `SESSION_IDLE_MINUTES`, or an active user's two tokens expire together and the session ends at the idle timeout no matter what they're doing. |
 
