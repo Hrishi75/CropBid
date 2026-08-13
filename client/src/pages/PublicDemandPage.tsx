@@ -228,9 +228,9 @@ export function PublicDemandPage() {
         )}
 
         <p className="cb-small rp-foot">
-          Demand shown here is live and posted by verified CropBid buyers. Quantities move as
-          requirements get filled, so what you see is what is still open. Prices are the buyer's
-          posted price — a farmer can always counter with their own.
+          Demand shown here is live. Quantities move as requirements get filled, so what you see
+          is what is still open. Prices are the buyer's posted price — a farmer can always counter
+          with their own.
         </p>
       </main>
 
