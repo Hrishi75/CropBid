@@ -17,7 +17,13 @@ import { Input } from '../../components/ui/Input';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
-import { CROP_CATEGORIES, ALL_CROPS } from '../../utils/crops';
+import { CROP_CATEGORIES, ALL_CROPS, resolveCatalogueCrop } from '../../utils/crops';
+import {
+  VoiceCaptureButton,
+  REQUIREMENT_EXAMPLES,
+  type VoiceDraft,
+  type VoiceRequirementFields,
+} from '../../components/voice/VoiceCaptureButton';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -61,6 +67,41 @@ export function CreateRequirement() {
   // Only meaningful in edit mode — how much is already spoken for, which is the
   // floor the quantity can be edited down to.
   const [filled, setFilled] = useState(0);
+
+  // Voice dictation. `unmatchedCrop` holds a crop we heard but could not map to
+  // the catalogue, so the buyer is told what to fix rather than left with a
+  // silently empty picker.
+  const [voiceDraft, setVoiceDraft] = useState<VoiceDraft<VoiceRequirementFields> | null>(null);
+  const [unmatchedCrop, setUnmatchedCrop] = useState('');
+
+  function applyVoiceDraft(draft: VoiceDraft<VoiceRequirementFields>) {
+    const f = draft.fields;
+    setVoiceDraft(draft);
+    setUnmatchedCrop('');
+
+    if (f.cropName) {
+      // The model answers in English ("Tomato"); the picker needs a catalogue
+      // value. resolveCatalogueCrop also handles spoken Hindi/Marathi names.
+      const matched = resolveCatalogueCrop(f.cropName);
+      if (matched) setCropName(matched);
+      else setUnmatchedCrop(f.cropName);
+    }
+    if (f.cropVariety) setCropVariety(f.cropVariety);
+    if (f.quantity !== null) setQuantity(String(f.quantity));
+    if (f.unit) setUnit(f.unit);
+    if (f.qualityGrade) setQualityGrade(f.qualityGrade);
+    if (f.pricePerUnit !== null) setPricePerUnit(String(f.pricePerUnit));
+    if (f.neededBy) setNeededBy(f.neededBy);
+    if (f.description) setDescription(f.description);
+    if (f.organic) setOrganic(true);
+    if (f.deliveryLocation) setDeliveryLocation(f.deliveryLocation);
+    if (f.deliveryState) {
+      const matched = INDIAN_STATES.find((s) => s.toLowerCase() === f.deliveryState!.toLowerCase());
+      if (matched) setDeliveryState(matched);
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   useEffect(() => {
     if (!editId) return;
@@ -170,6 +211,60 @@ export function CreateRequirement() {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
         <form onSubmit={handleSubmit} className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '4px 24px' }}>
+            {/* Voice input. Renders nothing when the server reports it is
+                unavailable, so the typed form below is never affected — typing
+                remains the primary path, dictation just pre-fills it. Edit mode
+                is excluded: dictating over a live requirement would overwrite
+                terms farmers may already be responding to. */}
+            {!isEditMode && (
+              <div style={{ paddingTop: 20 }}>
+                <VoiceCaptureButton<VoiceRequirementFields>
+                  onDraft={applyVoiceDraft}
+                  endpoint="/voice/requirement-draft"
+                  prompt="Say the crop, how much you need, the grade, where to deliver, and your price."
+                  examples={REQUIREMENT_EXAMPLES}
+                />
+              </div>
+            )}
+
+            {voiceDraft && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  border: '1px solid var(--cb-line)',
+                  borderRadius: 8,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <div className="cb-small" style={{ fontWeight: 600 }}>
+                    Filled from your voice note — check every field before posting.
+                  </div>
+                  <button
+                    type="button"
+                    className="cb-link"
+                    style={{ marginLeft: 'auto', background: 'none', border: 0, cursor: 'pointer' }}
+                    onClick={() => setVoiceDraft(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                {/* The transcript verbatim, so the buyer can see exactly what
+                    was heard rather than guessing why a field looks wrong. */}
+                <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontStyle: 'italic' }}>
+                  “{voiceDraft.transcript}”
+                </div>
+                {unmatchedCrop && (
+                  <div className="cb-tiny" style={{ color: 'var(--cb-warn, #b8860b)' }}>
+                    We heard “{unmatchedCrop}” but couldn't match it to a crop. Please pick one below.
+                  </div>
+                )}
+              </div>
+            )}
+
             <Section title="Crop">
               <div>
                 <label className="cb-label">Crop</label>

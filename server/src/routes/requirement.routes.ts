@@ -2,7 +2,8 @@
 // Requirement Routes — The reverse marketplace
 // =============================================================================
 // ROUTE DESIGN:
-//   GET    /api/requirements/feed                    → Farmer's feed of open demand
+//   GET    /api/requirements/public                  → Anonymous open demand (no auth)
+//   GET    /api/requirements/feed                    → Open demand board (farmer + buyer)
 //   GET    /api/requirements/filters                 → Dynamic filter options
 //   GET    /api/requirements/my                      → Buyer's own requirements
 //   GET    /api/requirements/offers/my               → Farmer's own offers
@@ -32,12 +33,22 @@ import * as requirementController from '../controllers/requirement.controller';
 
 const router = Router();
 
-// All requirement routes require authentication
+// PUBLIC — declared before the authenticate middleware below, which is the only
+// thing keeping it open. Its response carries no buyer identity at all (see
+// getPublicRequirementFeed); do not move it under the auth line and do not add
+// identifying fields to it.
+router.get('/public', requirementController.getPublicFeed);
+
+// Everything below this line requires authentication.
 router.use(authenticate);
 
 // --- Literal paths first ---
-router.get('/feed', requireRole('FARMER'), requirementController.getRequirementFeed);
-router.get('/filters', requireRole('FARMER'), requirementController.getFeedFilters);
+// The demand board is readable by both sides. Farmers read it to find work;
+// buyers read it to see what else is being asked for and at what price, which
+// is the only view of procurement rates the platform gives them. Read-only for
+// buyers is enforced further down, where the fill/counter actions stay FARMER.
+router.get('/feed', requireRole('FARMER', 'BUYER'), requirementController.getRequirementFeed);
+router.get('/filters', requireRole('FARMER', 'BUYER'), requirementController.getFeedFilters);
 router.get('/my', requireRole('BUYER'), requirementController.getMyRequirements);
 router.get('/offers/my', requireRole('FARMER'), requirementController.getMyOffers);
 router.put('/offers/:offerId/accept', requireRole('BUYER'), requirementController.acceptOffer);

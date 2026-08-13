@@ -60,7 +60,7 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
           { label: 'Overview', path: '/farmer' },
           { label: 'Listings', path: '/farmer/listings' },
           { label: 'Bids', path: '/farmer/bids', badge: pendingCounts?.bids },
-          { label: 'Requirements', path: '/farmer/requirements' },
+          { label: 'Demand board', path: '/demand' },
           { label: 'Offers', path: '/farmer/offers' },
           { label: 'Auctions', path: '/auctions' },
           { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
@@ -88,7 +88,10 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
         { label: 'Overview', path: '/buyer' },
         { label: 'Browse', path: '/buyer/browse' },
         { label: 'Bids', path: '/buyer/bids', badge: pendingCounts?.bids },
-        { label: 'Requirements', path: '/buyer/requirements' },
+        // Two different things, so they get two different labels: the first is
+        // this buyer's own demand, the second is everyone's.
+        { label: 'My requirements', path: '/buyer/requirements' },
+        { label: 'Demand board', path: '/demand' },
         { label: 'Auctions', path: '/auctions' },
         { label: 'Negotiations', path: '/negotiations', badge: pendingCounts?.negotiations },
         { label: 'Transactions', path: '/transactions' },

@@ -96,7 +96,7 @@ export function MyOffers() {
               : 'Try another status tab.'
           }
           actionLabel={offers.length === 0 ? 'Browse requirements' : undefined}
-          onAction={offers.length === 0 ? () => navigate('/farmer/requirements') : undefined}
+          onAction={offers.length === 0 ? () => navigate('/demand') : undefined}
         />
       ) : (
         <div className="cb-card" style={{ padding: 0 }}>

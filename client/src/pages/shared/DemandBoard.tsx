@@ -1,18 +1,26 @@
 // =============================================================================
-// RequirementsFeed — Farmers browse open buyer demand
+// DemandBoard — every open buyer requirement, for both sides of the market
 // =============================================================================
 // The demand-side twin of BrowseListings: same filter rail, same debounce,
-// same pagination block. Each card carries two inline-expanding actions:
-//   Fill  → POST /requirements/:id/accept — closes the deal on the spot at the
-//           buyer's posted price
-//   Counter → POST /requirements/:id/offers — proposes the farmer's own price,
-//           which the buyer accepts or rejects
+// same pagination block.
+//
+// TWO AUDIENCES, ONE BOARD:
+//   FARMER — this is work to win. Each card carries two inline actions:
+//     Fill    → POST /requirements/:id/accept — closes the deal on the spot at
+//               the buyer's posted price
+//     Counter → POST /requirements/:id/offers — proposes the farmer's own
+//               price, which the buyer accepts or rejects
+//   BUYER  — this is read-only market intelligence: what else is being asked
+//     for, in what volume, at what price. The actions are hidden here AND
+//     refused by the server (both action routes stay FARMER-only), so the
+//     hiding is a courtesy, not the security boundary.
 //
 // Quantity defaults to the whole remaining amount but can be reduced, because
 // requirements support partial fills.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { RequirementCard } from '../../components/requirements/RequirementCard';
 import {
@@ -29,7 +37,10 @@ import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { BuyerRequirement } from '../../types';
 
-export function RequirementsFeed() {
+export function DemandBoard() {
+  const { user } = useAuth();
+  const isFarmer = user?.role === 'FARMER';
+
   const [requirements, setRequirements] = useState<BuyerRequirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -57,6 +68,7 @@ export function RequirementsFeed() {
       if (filters.crop) params.set('crop', filters.crop);
       if (filters.state) params.set('state', filters.state);
       if (filters.quality) params.set('quality', filters.quality);
+      if (filters.buyerType) params.set('buyerType', filters.buyerType);
       if (filters.organic) params.set('organic', filters.organic);
       if (filters.priceMin) params.set('priceMin', filters.priceMin);
       if (filters.priceMax) params.set('priceMax', filters.priceMax);
@@ -136,12 +148,14 @@ export function RequirementsFeed() {
 
   return (
     <DashboardLayout>
-      <div className="cb-page-eyebrow">Requirements</div>
+      <div className="cb-page-eyebrow">Demand board</div>
       <h1 className="cb-page-title" style={{ marginTop: 12 }}>
         Buyers are <span className="cb-italic">looking.</span>
       </h1>
       <p className="cb-page-lede">
-        Standing demand from verified buyers. Fill it at their price, or counter with yours.
+        {isFarmer
+          ? 'Standing demand from verified buyers. Fill it at their price, or counter with yours.'
+          : 'Every open requirement on CropBid — what is being asked for, in what volume, and at what price. Yours are marked.'}
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 260px) minmax(0, 1fr)', gap: 24, marginTop: 28, alignItems: 'start' }}>
@@ -168,16 +182,32 @@ export function RequirementsFeed() {
               {requirements.map((r) => {
                 const isOpen = openAction?.id === r.id;
                 const mode = isOpen ? openAction!.mode : null;
+                // A buyer looking at their own row gets a way back to manage it;
+                // MSP warnings are a farmer's concern, so they stay farmer-side.
+                const isOwn = !isFarmer && r.buyer?.id === user?.id;
                 return (
-                  <RequirementCard key={r.id} requirement={r} showMspWarning>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
-                      <Button size="sm" onClick={() => toggleAction(r, 'fill')}>
-                        Fill at {formatCurrency(r.pricePerUnit, r.currency)}
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => toggleAction(r, 'counter')}>
-                        Counter
-                      </Button>
-                    </div>
+                  <RequirementCard
+                    key={r.id}
+                    requirement={r}
+                    showMspWarning={isFarmer}
+                    href={isOwn ? `/buyer/requirements/${r.id}` : undefined}
+                  >
+                    {isOwn && (
+                      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>
+                        ● YOUR REQUIREMENT
+                      </div>
+                    )}
+
+                    {isFarmer && (
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
+                        <Button size="sm" onClick={() => toggleAction(r, 'fill')}>
+                          Fill at {formatCurrency(r.pricePerUnit, r.currency)}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => toggleAction(r, 'counter')}>
+                          Counter
+                        </Button>
+                      </div>
+                    )}
 
                     {isOpen && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4, padding: 12, background: 'var(--cb-paper-2)', borderRadius: 6 }}>
