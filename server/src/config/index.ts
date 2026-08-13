@@ -75,6 +75,10 @@ export const config = {
   // rates service falls back to static reference prices (board never empty).
   dataGov: {
     apiKey: process.env.DATA_GOV_API_KEY || '579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b',
+    // True when we fell back to that shared demo key. The rates service warns
+    // on it, because its quota is exhausted for most of the day and the whole
+    // rates board then silently degrades to static reference prices.
+    usingDemoKey: !process.env.DATA_GOV_API_KEY,
     // Resource id for "Current Daily Price of Various Commodities from Markets (Mandi)"
     resourceId: process.env.DATA_GOV_MANDI_RESOURCE || '9ef84268-d588-465a-a308-a864a43d0070',
   },

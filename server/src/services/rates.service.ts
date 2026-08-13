@@ -157,22 +157,88 @@ function resetCacheIfStale() {
 const PAGE_SIZE = 200;
 const MAX_PAGES = 25;
 
+// With no DATA_GOV_API_KEY set, config falls back to data.gov.in's shared demo
+// key — every project that never registered its own competes for that one
+// quota, so it spends most of the day returning 429 and the whole board
+// silently degrades to reference prices. Say so once, loudly, instead of
+// letting it look like a UI bug.
+let warnedDemoKey = false;
+
+function warnDemoKeyOnce() {
+  if (warnedDemoKey || !config.dataGov.usingDemoKey) return;
+  warnedDemoKey = true;
+  console.warn(
+    '[rates] DATA_GOV_API_KEY is not set — using data.gov.in\'s shared demo key, ' +
+    'which is rate-limited. Expect the board to fall back to reference prices. ' +
+    'Register a free key at https://data.gov.in and set DATA_GOV_API_KEY.'
+  );
+}
+
+// A dead feed fails on all 30 board commodities and retries every 10 minutes,
+// so log one line per distinct failure mode per hour — enough to see "429, all
+// day" in the logs without burying everything else.
+const WARN_THROTTLE_MS = 60 * 60 * 1000;
+const lastWarnAt = new Map<string, number>();
+
+function warnFetchFailed(reason: string, commodity: string, state?: string) {
+  warnDemoKeyOnce();
+  const at = lastWarnAt.get(reason) ?? 0;
+  if (Date.now() - at < WARN_THROTTLE_MS) return;
+  lastWarnAt.set(reason, Date.now());
+  console.warn('[rates] feed fetch failed, falling back to reference prices', {
+    reason, example: commodity, state: state ?? null,
+  });
+}
+
+// Last successful records per key, kept ACROSS the daily cache reset. A single
+// upstream hiccup (a 429 in the burst getBoard fires, an 8s timeout) used to
+// knock that one crop back to its static reference for the next ten minutes,
+// so the storefront showed a live price with a real move on one load and a
+// flat "ref" on the next. Reusing the last real records rides that out. Bounded
+// to STALE_MAX_MS so a crop that genuinely stops reporting (end of season)
+// ages out to reference instead of quoting a months-old price as today's.
+const STALE_MAX_MS = 3 * 24 * 60 * 60 * 1000;
+const lastGood = new Map<string, CacheEntry>();
+
 // Fetch (and cache for the day) all recent records for one board commodity,
-// optionally scoped to a state. Returns [] on any failure — callers fall back
-// to reference. The data.gov feed is paginated, so keep walking until the feed
-// returns a short page; otherwise high-volume crops look artificially empty or
-// capped to the first page.
+// optionally scoped to a state. Returns [] only when the feed is down AND
+// there is no recent good result to reuse — callers then fall back to
+// reference prices.
 async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRecord[]> {
-  resetCacheIfStale();
   const key = `${commodity.toLowerCase()}::${(state || '').toLowerCase()}`;
+  const { records, complete } = await fetchFresh(commodity, key, state);
+  // Only a COMPLETE page walk earns the right to be reused later. A partial
+  // one is whichever mandis the feed happened to return before it broke — a
+  // biased slice, tolerable to serve once (better than nothing today) but
+  // wrong to keep quoting as the crop's price for the next three days.
+  if (records.length > 0 && complete) lastGood.set(key, { records, at: Date.now() });
+  if (records.length > 0) return records;
+  const stale = lastGood.get(key);
+  return stale && Date.now() - stale.at < STALE_MAX_MS ? stale.records : [];
+}
+
+// The paginated feed walk itself. The data.gov feed is paginated, so keep
+// walking until it returns a short page; otherwise high-volume crops look
+// artificially empty or capped to the first page.
+async function fetchFresh(
+  commodity: string, key: string, state?: string
+): Promise<{ records: AgmarkRecord[]; complete: boolean }> {
+  resetCacheIfStale();
   const cached = recordCache.get(key);
   if (cached && (cached.records.length > 0 || Date.now() - cached.at < EMPTY_RETRY_MS)) {
-    return cached.records;
+    // Only complete walks are ever cached, so a cache hit is complete.
+    return { records: cached.records, complete: true };
   }
 
   try {
     const records: AgmarkRecord[] = [];
-    let complete = true;
+    // Proven complete ONLY by a short page, which is the upstream's way of
+    // saying the result set ended. Exhausting the page budget looks identical
+    // from in here but means the opposite, so completeness cannot be the
+    // default: a truncated prefix cached as authoritative would drive rates,
+    // market breakdowns and forecasts all day, and be reused as `lastGood` for
+    // three more.
+    let complete = false;
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
       url.searchParams.set('api-key', config.dataGov.apiKey);
@@ -191,22 +257,28 @@ async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRe
         const json = (await res.json()) as { records?: AgmarkRecord[] };
         const pageRecords = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
         records.push(...pageRecords);
-        if ((json.records ?? []).length < PAGE_SIZE) break;
+        if ((json.records ?? []).length < PAGE_SIZE) {
+          complete = true;
+          break;
+        }
       } catch (err) {
         if (records.length === 0) throw err;
-        complete = false;
+        // Already false; a partial walk is never cacheable.
         break;
       } finally {
         if (timer) clearTimeout(timer);
       }
     }
     if (complete) recordCache.set(key, { records, at: Date.now() });
-    return records;
+    return { records, complete };
   } catch (err) {
+    // Log the reason — a swallowed failure here reads downstream as "the
+    // storefront lost its prices", with nothing in the logs to say why.
+    warnFetchFailed(err instanceof Error ? err.message : String(err), commodity, state);
     // Cache the empty result briefly (EMPTY_RETRY_MS) — a dead feed isn't
     // hammered on every request, but recovery is picked up within minutes.
     recordCache.set(key, { records: [], at: Date.now() });
-    return [];
+    return { records: [], complete: false };
   }
 }
 
