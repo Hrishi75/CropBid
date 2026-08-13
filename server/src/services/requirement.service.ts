@@ -135,7 +135,11 @@ type FeedBuyer = {
 
 function redactBuyer(buyer: FeedBuyer) {
   return {
-    name: 'A verified buyer',
+    // Must track the real flag. Anonymising is not a licence to upgrade
+    // someone's standing: BuyerProfile.verified defaults to false, so a blanket
+    // "A verified buyer" would assert a verification the platform never granted
+    // — to precisely the audience least able to check it.
+    name: buyer.buyerProfile?.verified ? 'A verified buyer' : 'A buyer',
     trustScore: buyer.trustScore,
     buyerProfile: buyer.buyerProfile
       ? {
