@@ -110,6 +110,31 @@ describe('a page walk that breaks halfway', () => {
   });
 });
 
+describe('a page walk that hits the page cap', () => {
+  it('does not let a truncated prefix become the snapshot', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+
+    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+
+    // Next day every page comes back FULL, so the walk runs out of page budget
+    // instead of ever seeing the short page that proves the result set ended.
+    // That looks identical to success from inside the loop and means the
+    // opposite: 5,000 records is a prefix of the country, not the country.
+    vi.setSystemTime(new Date('2026-08-06T06:00:00Z'));
+    const fullPage = Array.from({ length: 200 }, () => ({ ...WHEAT[0], modal_price: 3000 }));
+    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(fullPage)));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(3000);
+
+    // Day after, feed fully down. The reused number must be the complete sweep
+    // from the 5th — not the capped prefix from the 6th.
+    vi.setSystemTime(new Date('2026-08-07T06:00:00Z'));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
+    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+  });
+});
+
 describe('a crop the feed never answered for', () => {
   it('falls back to the reference price rather than returning null', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => recordsResponse([])));

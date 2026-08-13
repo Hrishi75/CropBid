@@ -232,7 +232,13 @@ async function fetchFresh(
 
   try {
     const records: AgmarkRecord[] = [];
-    let complete = true;
+    // Proven complete ONLY by a short page, which is the upstream's way of
+    // saying the result set ended. Exhausting the page budget looks identical
+    // from in here but means the opposite, so completeness cannot be the
+    // default: a truncated prefix cached as authoritative would drive rates,
+    // market breakdowns and forecasts all day, and be reused as `lastGood` for
+    // three more.
+    let complete = false;
     for (let page = 0; page < MAX_PAGES; page += 1) {
       const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
       url.searchParams.set('api-key', config.dataGov.apiKey);
@@ -251,10 +257,13 @@ async function fetchFresh(
         const json = (await res.json()) as { records?: AgmarkRecord[] };
         const pageRecords = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
         records.push(...pageRecords);
-        if ((json.records ?? []).length < PAGE_SIZE) break;
+        if ((json.records ?? []).length < PAGE_SIZE) {
+          complete = true;
+          break;
+        }
       } catch (err) {
         if (records.length === 0) throw err;
-        complete = false;
+        // Already false; a partial walk is never cacheable.
         break;
       } finally {
         if (timer) clearTimeout(timer);
