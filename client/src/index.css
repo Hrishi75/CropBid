@@ -1616,6 +1616,14 @@ body * {
   font-size: 13px; line-height: 1.55; color: var(--cb-ink-2);
 }
 .cb-landing .qc-note strong { color: var(--cb-ink); font-weight: 600; }
+/* the honest bit — what the A/B/C grade on a listing actually is */
+.cb-landing .qc-grade-note {
+  padding: 15px 17px;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-left: 3px solid var(--cb-sage); border-radius: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--cb-ink-2);
+}
+.cb-landing .qc-grade-note strong { color: var(--cb-ink); font-weight: 600; }
 .cb-landing .qc-foot { text-align: center; line-height: 1.6; }
 
 @media (max-width: 620px) {

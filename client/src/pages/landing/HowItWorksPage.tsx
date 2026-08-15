@@ -57,11 +57,19 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
 ];
 
 // =============================================================================
-// Quality standards — the published Indian norms behind Grade A / B / C
+// Quality standards — the published Indian norms a lot gets judged against
 // =============================================================================
-// Every listing carries a quality grade, and buyers set a minimum grade on a
-// requirement. This section says what that grade is actually measured against,
-// so neither side has to take the word "Grade A" on trust.
+// This section is REFERENCE, not a description of our grading. It shows the
+// limits a lot is measured against once it reaches a mandi, a processor or a
+// procurement centre — so a farmer knows the numbers before harvest and a buyer
+// knows what to ask for.
+//
+// DO NOT rewrite this as "what CropBid's Grade A means". Listing.qualityGrade is
+// a self-declared A/B/C pill on the create-listing form (defaults to 'A'); there
+// is no crop-specific threshold behind it and nothing validates it. Tying these
+// figures to that grade would tell buyers a declaration had been measured when
+// it hasn't. If the grade ever becomes derived from entered parameters, this
+// comment is the thing to revisit.
 //
 // NOTHING HERE IS INVENTED. Every limit below is a published government figure
 // — FCI/DFPD uniform specifications for foodgrains, the PSS FAQ specification
@@ -289,9 +297,9 @@ function Quality() {
     <section id="quality" className="hiw-sec">
       <div className="hiw-inner">
         <SectionHead
-          eyebrow="Quality · what the grade means"
-          title={<>Grade A isn't a feeling.<br /><span className="italic">It's a number.</span></>}
-          sub="Every listing on CropBid carries a quality grade, and buyers can demand a minimum grade before anyone bids. Pick a crop to see exactly what that grade is measured against — India already publishes the limits."
+          eyebrow="Quality · what gets checked"
+          title={<>Know the numbers<br /><span className="italic">before you harvest.</span></>}
+          sub="A lot doesn't get judged on how it looks. At a mandi, a processor's gate or a procurement centre, it is weighed against limits India publishes in the open — and most farmers never see them. Pick a crop to read them."
         />
 
         <div className="hiw-panel qc-panel">
@@ -335,12 +343,19 @@ function Quality() {
             )}
           </div>
 
+          <p className="qc-grade-note">
+            <strong>About the grade on a listing.</strong> The A/B/C grade you see on CropBid is the
+            farmer's own declaration — we don't test lots, and the grade is not calculated from the
+            limits above. Treat it as the seller's claim, and use what sits alongside it: photos of
+            the actual lot, a lab report where the farmer has one, and a minimum grade you can set
+            on a requirement so nobody wastes a trip.
+          </p>
+
           <p className="cb-tiny qc-foot">
             Limits are the published Indian norms: FCI and Dept. of Food &amp; Public Distribution
             uniform specifications for foodgrains, the Price Support Scheme FAQ specification for
             oilseeds, FSSAI food product standards, and AGMARK grades. Foodgrains are analysed by
-            the BIS methods in IS&nbsp;4333 (Part&nbsp;I and Part&nbsp;II). Farmers set the grade on
-            the listing and attach photos of the lot — plus a lab report where they have one.
+            the BIS methods in IS&nbsp;4333 (Part&nbsp;I and Part&nbsp;II).
           </p>
         </div>
       </div>
