@@ -30,6 +30,7 @@ import {
 
 const NAV_LINKS = [
   ['How it works', '#how'],
+  ['Quality',      '#quality'],
   ['Live rates',   '#rates'],
   ['Forecast',     '#forecast'],
   ['What you get', '#features'],
@@ -53,6 +54,125 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🧺', 'Buy any quantity', 'One sack or a truckload — anyone can buy straight from a farmer, no bidding needed.'],
   ['🚚', 'Delivery & tracking', 'Book a transport partner in-app and follow every deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
+];
+
+// =============================================================================
+// Quality standards — the published Indian norms a lot gets judged against
+// =============================================================================
+// This section is REFERENCE, not a description of our grading. It shows the
+// limits a lot is measured against once it reaches a mandi, a processor or a
+// procurement centre — so a farmer knows the numbers before harvest and a buyer
+// knows what to ask for.
+//
+// DO NOT rewrite this as "what CropBid's Grade A means". Listing.qualityGrade is
+// a self-declared A/B/C pill on the create-listing form (defaults to 'A'); there
+// is no crop-specific threshold behind it and nothing validates it. Tying these
+// figures to that grade would tell buyers a declaration had been measured when
+// it hasn't. If the grade ever becomes derived from entered parameters, this
+// comment is the thing to revisit.
+//
+// NOTHING HERE IS INVENTED. Every limit below is a published government figure
+// — FCI/DFPD uniform specifications for foodgrains, the PSS FAQ specification
+// for oilseeds, FSSAI food product standards, AGMARK grades. Sources are cited
+// per crop in `source`, and the section footnote names them. If you edit a
+// number, bring the citation with it.
+
+interface QCheck {
+  test: string;
+  limit: string;
+  why: string;
+}
+
+interface QStandard {
+  id: string;
+  label: string;
+  emoji: string;
+  source: string;   // The document the limits come from — shown on the panel.
+  checks: QCheck[];
+  note?: string;    // Caveat or sub-limit that doesn't fit a row.
+}
+
+const QUALITY_STANDARDS: QStandard[] = [
+  {
+    id: 'soybean',
+    label: 'Soybean',
+    emoji: '🫘',
+    source: 'FAQ specification · Price Support Scheme (NAFED / NCCF)',
+    checks: [
+      { test: 'Moisture', limit: '≤ 12%', why: 'Damp beans heat up inside the bag and turn mouldy before they ever reach the crusher.' },
+      { test: 'Foreign matter & impurities', limit: '≤ 2%', why: 'Soil, stones and stray pods — weight the buyer would otherwise pay soybean rates for.' },
+      { test: 'Shrivelled, immature & pale beans', limit: '≤ 5%', why: 'Thin beans crush to less oil, so the lot is worth less than the scale says.' },
+      { test: 'Weevilled & damaged beans', limit: '≤ 5%', why: 'Insect-bored beans carry the infestation into the rest of the consignment.' },
+    ],
+    note: 'After unseasonal rain in Kharif 2024–25 the centre relaxed procurement to 15% moisture — but MSP was still paid on the 12% basis, with the difference adjusted down the chain.',
+  },
+  {
+    id: 'wheat',
+    label: 'Wheat',
+    emoji: '🌾',
+    source: 'FCI Uniform Specification · Rabi Marketing Season',
+    checks: [
+      { test: 'Moisture', limit: '≤ 12%', why: 'The single number that decides whether a lot can be stored for a season or has to move this week.' },
+      { test: 'Foreign matter', limit: '≤ 0.75%', why: 'The tightest foreign-matter limit of any Indian foodgrain — wheat is held to three-quarters of one percent.' },
+      { test: 'Damaged grains', limit: '≤ 2%', why: 'Grain visibly damaged by weather, heat or sprouting mills into poor flour.' },
+      { test: 'Slightly damaged grains', limit: '≤ 4%', why: 'Counted separately and allowed more room, because light discolouration does not ruin the flour.' },
+      { test: 'Shrivelled & broken grains', limit: '≤ 6%', why: 'Broken kernels lose flour yield and attract insects faster in storage.' },
+      { test: 'Weevilled grains', limit: '≤ 1%', why: 'Live infestation spreads through a godown — so this limit is the strictest of the six.' },
+    ],
+  },
+  {
+    id: 'paddy',
+    label: 'Paddy / Rice',
+    emoji: '🍚',
+    source: 'Uniform Specification for paddy · Dept. of Food & Public Distribution (KMS)',
+    checks: [
+      { test: 'Moisture', limit: '≤ 17%', why: 'Paddy is allowed far more moisture than wheat — it is bought straight off a wet-season harvest.' },
+      { test: 'Inorganic foreign matter', limit: '≤ 1%', why: 'Sand, grit and stones, weighed apart from the organic kind.' },
+      { test: 'Organic foreign matter', limit: '≤ 1%', why: 'Straw, chaff and weed seed — light, bulky, and easy to hide in a full bag.' },
+      { test: 'Damaged, discoloured, sprouted & weevilled', limit: '≤ 5%', why: 'The catch-all defect count. Sprouted grain in particular means the lot got rained on before it was dried.' },
+      { test: 'Immature, shrunken & shrivelled', limit: '≤ 3%', why: 'Under-filled grain shatters in the huller, so the miller gets broken rice instead of whole.' },
+    ],
+    note: 'Inside that 5% band, damaged + sprouted + weevilled grains together may not cross 4% — a sub-limit specifically to stop one bad defect filling the whole allowance.',
+  },
+  {
+    id: 'maize',
+    label: 'Maize / Corn',
+    emoji: '🌽',
+    source: 'FSSAI Food Product Standards 2.4 · whole maize',
+    checks: [
+      { test: 'Moisture', limit: '≤ 16%', why: 'Maize goes into feed and starch mills, which tolerate more moisture than a flour mill would.' },
+      { test: 'Other edible grains', limit: '≤ 3%', why: 'Admixture from a shared threshing floor — still food, but not what the buyer ordered.' },
+      { test: 'Damaged grains', limit: '≤ 5%', why: 'Mould-damaged maize is the main route aflatoxin takes into the feed chain.' },
+      { test: 'Weevilled grains', limit: '≤ 10% by count', why: 'Counted per grain, not weighed — the only parameter on this list scored that way.' },
+      { test: 'Uric acid', limit: '≤ 100 mg/kg', why: 'The lab marker for rodent and insect filth. This is the one test nobody can do by eye.' },
+    ],
+  },
+  {
+    id: 'pulses',
+    label: 'Pulses — Chana, Tur, Moong, Urad',
+    emoji: '🫛',
+    source: 'FSSAI standards for whole pulses · AGMARK grades',
+    checks: [
+      { test: 'Extraneous matter', limit: '≤ 3%', why: 'Of which inorganic matter and impurities of animal origin together may not exceed 0.5%.' },
+      { test: 'Total aflatoxin', limit: '≤ 15 µg/kg', why: 'India\'s limit for pulses, cereals, nuts and oilseeds — three times tighter than the 30 µg/kg allowed in spices.' },
+      { test: 'Uric acid', limit: '≤ 100 mg/kg', why: 'Storage hygiene, measured. It rises with every week a lot sits in an infested godown.' },
+      { test: 'Kesari dal (Lathyrus sativus)', limit: 'nil', why: 'Long prohibited as an adulterant in Indian pulses — sustained consumption causes lathyrism.' },
+      { test: 'Live infestation', limit: 'nil', why: 'Weevils breed in transit. A clean lot at loading is not a clean lot at delivery.' },
+    ],
+  },
+  {
+    id: 'fresh',
+    label: 'Vegetables & fruits',
+    emoji: '🥬',
+    source: 'FSSAI contaminant & residue rules · AGMARK size grades',
+    checks: [
+      { test: 'Pesticide residues', limit: 'within FSSAI MRLs', why: 'Screened by GC-MS/MS and LC-MS/MS at NABL labs accredited to ISO/IEC 17025.' },
+      { test: 'Artificial ripening', limit: 'no calcium carbide', why: 'Carbide ripening is prohibited in India outright — it is not a limit, it is a ban.' },
+      { test: 'Rot, mould & off smell', limit: 'nil', why: 'One rotting crate spoils the pallet around it. This is judged at loading, not on arrival.' },
+      { test: 'Size & colour uniformity', limit: 'per AGMARK grade', why: 'The parameter a restaurant buyer actually cares about — portioning depends on it.' },
+    ],
+    note: 'The national residue programme (MPRNL) puts roughly 70,000 fruit and vegetable samples through 40-odd accredited labs; 3.1% crossed the MRL over the last three years.',
+  },
 ];
 
 const PRICING: Array<[big: string, label: string, desc: string]> = [
@@ -169,9 +289,83 @@ function Steps() {
   );
 }
 
+function Quality() {
+  const [cropId, setCropId] = useState(QUALITY_STANDARDS[0].id);
+  const std = QUALITY_STANDARDS.find((s) => s.id === cropId) ?? QUALITY_STANDARDS[0];
+
+  return (
+    <section id="quality" className="hiw-sec">
+      <div className="hiw-inner">
+        <SectionHead
+          eyebrow="Quality · what gets checked"
+          title={<>Know the numbers<br /><span className="italic">before you harvest.</span></>}
+          sub="A lot doesn't get judged on how it looks. At a mandi, a processor's gate or a procurement centre, it is weighed against limits India publishes in the open — and most farmers never see them. Pick a crop to read them."
+        />
+
+        <div className="hiw-panel qc-panel">
+          <label className="qc-picker">
+            <span className="cb-mono qc-picker-l">Choose a crop</span>
+            <select
+              className="qc-select"
+              value={cropId}
+              onChange={(e) => setCropId(e.target.value)}
+            >
+              {QUALITY_STANDARDS.map((s) => (
+                <option key={s.id} value={s.id}>{s.emoji}  {s.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="qc-card">
+            <div className="qc-card-head">
+              <span className="qc-card-e" aria-hidden="true">{std.emoji}</span>
+              <div>
+                <h3>{std.label}</h3>
+                <span className="cb-mono qc-src">{std.source}</span>
+              </div>
+              <span className="cb-chip cb-chip-sage qc-count">{std.checks.length} checks</span>
+            </div>
+
+            <ul className="qc-list">
+              {std.checks.map((c) => (
+                <li key={c.test} className="qc-row">
+                  <div className="qc-row-top">
+                    <span className="qc-test">{c.test}</span>
+                    <span className="cb-mono qc-limit">{c.limit}</span>
+                  </div>
+                  <p className="qc-why">{c.why}</p>
+                </li>
+              ))}
+            </ul>
+
+            {std.note && (
+              <p className="qc-note"><strong>Worth knowing —</strong> {std.note}</p>
+            )}
+          </div>
+
+          <p className="qc-grade-note">
+            <strong>About the grade on a listing.</strong> The A/B/C grade you see on CropBid is the
+            farmer's own declaration — we don't test lots, and the grade is not calculated from the
+            limits above. Treat it as the seller's claim, and use what sits alongside it: photos of
+            the actual lot, a lab report where the farmer has one, and a minimum grade you can set
+            on a requirement so nobody wastes a trip.
+          </p>
+
+          <p className="cb-tiny qc-foot">
+            Limits are the published Indian norms: FCI and Dept. of Food &amp; Public Distribution
+            uniform specifications for foodgrains, the Price Support Scheme FAQ specification for
+            oilseeds, FSSAI food product standards, and AGMARK grades. Foodgrains are analysed by
+            the BIS methods in IS&nbsp;4333 (Part&nbsp;I and Part&nbsp;II).
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LiveRates() {
   return (
-    <section id="rates" className="hiw-sec">
+    <section id="rates" className="hiw-sec alt">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Before any deal · know the price"
@@ -215,7 +409,7 @@ function Forecast() {
   }, []);
 
   return (
-    <section id="forecast" className="hiw-sec alt">
+    <section id="forecast" className="hiw-sec">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="New · the prediction engine"
@@ -261,7 +455,7 @@ function Forecast() {
 
 function Features() {
   return (
-    <section id="features" className="hiw-sec">
+    <section id="features" className="hiw-sec alt">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="What you get · all live today"
@@ -284,7 +478,7 @@ function Features() {
 
 function BuyDirect() {
   return (
-    <section id="consumers" className="hiw-sec alt">
+    <section id="consumers" className="hiw-sec">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Not a trader?"
@@ -304,7 +498,7 @@ function BuyDirect() {
 
 function Pricing() {
   return (
-    <section id="pricing" className="hiw-sec">
+    <section id="pricing" className="hiw-sec alt">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Pricing"
@@ -395,6 +589,7 @@ export function HowItWorksPage() {
       <Nav country={country} onChangeCountry={handleChangeCountry} />
       <Hero />
       <Steps />
+      <Quality />
       <LiveRates />
       <Forecast />
       <Features />

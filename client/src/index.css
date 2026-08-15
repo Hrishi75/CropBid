@@ -1566,6 +1566,73 @@ body * {
   .cb-landing .hiw-facts { gap: 28px; }
 }
 
+/* --- quality standards (.qc-*) — crop dropdown + the checks behind a grade --- */
+.cb-landing .qc-panel { display: flex; flex-direction: column; gap: 16px; }
+
+/* the dropdown */
+.cb-landing .qc-picker { display: flex; flex-direction: column; gap: 8px; }
+.cb-landing .qc-picker-l { font-size: 10.5px; letter-spacing: 0.12em; color: var(--cb-ink-3); }
+.cb-landing .qc-select {
+  appearance: none; -webkit-appearance: none;
+  width: 100%; padding: 15px 44px 15px 18px;
+  font-family: inherit; font-size: 16px; font-weight: 500; color: var(--cb-ink);
+  background-color: var(--cb-paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2382806f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 18px center;
+  border: 1px solid var(--cb-line); border-radius: var(--cb-r-lg);
+  cursor: pointer; transition: border-color 0.15s ease;
+}
+.cb-landing .qc-select:hover { border-color: var(--cb-sage); }
+.cb-landing .qc-select:focus-visible { outline: 2px solid var(--cb-sage); outline-offset: 2px; }
+
+/* the panel of checks for the chosen crop */
+.cb-landing .qc-card {
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-radius: var(--cb-r-lg); padding: 22px;
+}
+.cb-landing .qc-card-head {
+  display: flex; align-items: center; gap: 12px;
+  padding-bottom: 16px; border-bottom: 1px solid var(--cb-line);
+}
+.cb-landing .qc-card-e { font-size: 26px; line-height: 1; }
+.cb-landing .qc-card-head h3 { font-size: 17.5px; font-weight: 600; letter-spacing: -0.01em; }
+.cb-landing .qc-src { display: block; margin-top: 3px; font-size: 10.5px; line-height: 1.4; color: var(--cb-ink-3); }
+.cb-landing .qc-count { margin-left: auto; flex-shrink: 0; align-self: flex-start; }
+
+.cb-landing .qc-list { list-style: none; margin: 0; padding: 0; }
+.cb-landing .qc-row { padding: 14px 0; border-bottom: 1px solid var(--cb-line-2); }
+.cb-landing .qc-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.cb-landing .qc-row-top { display: flex; align-items: baseline; gap: 14px; }
+.cb-landing .qc-test { flex: 1; font-size: 15px; font-weight: 600; color: var(--cb-ink); }
+.cb-landing .qc-limit {
+  flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--cb-forest);
+  background: #fff; border: 1px solid var(--cb-line);
+  border-radius: 999px; padding: 4px 11px;
+}
+.cb-landing .qc-why { margin-top: 5px; font-size: 13.5px; line-height: 1.55; color: var(--cb-ink-2); }
+.cb-landing .qc-note {
+  margin-top: 18px; padding: 13px 15px;
+  background: #fff; border: 1px solid var(--cb-line); border-radius: 10px;
+  font-size: 13px; line-height: 1.55; color: var(--cb-ink-2);
+}
+.cb-landing .qc-note strong { color: var(--cb-ink); font-weight: 600; }
+/* the honest bit — what the A/B/C grade on a listing actually is */
+.cb-landing .qc-grade-note {
+  padding: 15px 17px;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-left: 3px solid var(--cb-sage); border-radius: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--cb-ink-2);
+}
+.cb-landing .qc-grade-note strong { color: var(--cb-ink); font-weight: 600; }
+.cb-landing .qc-foot { text-align: center; line-height: 1.6; }
+
+@media (max-width: 620px) {
+  .cb-landing .qc-card { padding: 18px; }
+  .cb-landing .qc-card-head { flex-wrap: wrap; }
+  .cb-landing .qc-count { margin-left: 0; }
+  .cb-landing .qc-row-top { flex-direction: column; gap: 6px; align-items: flex-start; }
+}
+
 .cb-landing .fc-hiw-cards {
   background: var(--cb-paper); border: 1px solid var(--cb-line);
   border-radius: var(--cb-r-lg); padding: 18px;
