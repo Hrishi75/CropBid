@@ -44,16 +44,21 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   // Logged in but no profile yet → onboarding
-  // Admin users don't need a profile
-  if (user.role !== 'ADMIN' && !user.farmerProfile && !user.buyerProfile) {
+  // Admins don't need a profile, and neither do consumers: a household has no
+  // farm and no company, so there is no FarmerProfile or BuyerProfile to fill
+  // in. Without this exemption a shopper would bounce off /onboarding forever,
+  // since that page only knows how to build the other two.
+  if (user.role !== 'ADMIN' && user.role !== 'CONSUMER' && !user.farmerProfile && !user.buyerProfile) {
     return <Navigate to="/onboarding" replace />;
   }
 
   // Role check — if route specifies allowed roles and user doesn't match
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Redirect to their own dashboard instead of showing 403
+    // Redirect to their own dashboard instead of showing 403.
+    // A consumer's home is the storefront — they have no dashboard by design.
     const home = user.role === 'FARMER' ? '/farmer'
       : user.role === 'BUYER' ? '/buyer'
+      : user.role === 'CONSUMER' ? '/'
       : '/admin';
     return <Navigate to={home} replace />;
   }
