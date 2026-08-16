@@ -57,12 +57,16 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
 ];
 
 // =============================================================================
-// Quality standards — the published Indian norms a lot gets judged against
+// Quality standards — the published norms a lot gets judged against
 // =============================================================================
 // This section is REFERENCE, not a description of our grading. It shows the
 // limits a lot is measured against once it reaches a mandi, a processor or a
 // procurement centre — so a farmer knows the numbers before harvest and a buyer
 // knows what to ask for.
+//
+// Mostly Indian standards, but not exclusively: cocoa is graded on ISO 2451 and
+// its cadmium ceiling is the EU's, because that is what actually gates the
+// export. Keep `source` on each entry honest about which body sets the number.
 //
 // DO NOT rewrite this as "what CropBid's Grade A means". Listing.qualityGrade is
 // a self-declared A/B/C pill on the create-listing form (defaults to 'A'); there
@@ -159,6 +163,22 @@ const QUALITY_STANDARDS: QStandard[] = [
       { test: 'Kesari dal (Lathyrus sativus)', limit: 'nil', why: 'Long prohibited as an adulterant in Indian pulses — sustained consumption causes lathyrism.' },
       { test: 'Live infestation', limit: 'nil', why: 'Weevils breed in transit. A clean lot at loading is not a clean lot at delivery.' },
     ],
+  },
+  {
+    id: 'cocoa',
+    label: 'Cocoa',
+    emoji: '🍫',
+    source: 'ISO 2451 grades · cut test per IS 8832 / ISO 1114',
+    checks: [
+      { test: 'Mouldy beans', limit: 'I ≤ 3% · II ≤ 4%', why: 'Internal mould is invisible until the bean is cut open, and it carries into the chocolate as off-flavour.' },
+      { test: 'Slaty beans', limit: 'I ≤ 3% · II ≤ 8%', why: 'A slate-grey cotyledon means the bean was never properly fermented. No amount of roasting brings the flavour back.' },
+      { test: 'Insect-damaged, germinated & flat', limit: 'I ≤ 3% · II ≤ 6%', why: 'Counted together as one allowance. A germinated bean has been pierced by its own shoot, so it is already open to infection.' },
+      { test: 'Bean size uniformity', limit: '≤ 12% off-average', why: 'No more than 12% may sit outside ±⅓ of the average bean weight — uneven beans roast unevenly.' },
+      { test: 'Moisture', limit: '≤ 8%', why: 'Above this the heap moulds inside the sack. Too far below and the beans turn brittle and shatter in transit.' },
+      { test: 'Free fatty acids in the butter', limit: '≤ 1.75%', why: 'The lab measure of bad drying or storage. Past 1.75% the butter is graded inferior, whatever the beans looked like.' },
+      { test: 'Cadmium', limit: '≤ 0.60 mg/kg', why: 'The EU limit for cocoa powder. Many buyers reject beans over 0.30 mg/kg outright, so it decides export access.' },
+    ],
+    note: 'Cocoa is the odd one out on this list: it is graded by a cut test, not by weighing. 300 beans are drawn at random and sliced lengthwise, and each bean is scored on the single most serious defect it shows — so no bean is counted twice. Every percentage above is by count of those 300.',
   },
   {
     id: 'fresh',
@@ -299,7 +319,7 @@ function Quality() {
         <SectionHead
           eyebrow="Quality · what gets checked"
           title={<>Know the numbers<br /><span className="italic">before you harvest.</span></>}
-          sub="A lot doesn't get judged on how it looks. At a mandi, a processor's gate or a procurement centre, it is weighed against limits India publishes in the open — and most farmers never see them. Pick a crop to read them."
+          sub="A lot doesn't get judged on how it looks. At a mandi, a processor's gate or an exporter's warehouse, it is measured against limits that are published in the open — and most farmers never see them. Pick a crop to read them."
         />
 
         <div className="hiw-panel qc-panel">
@@ -352,10 +372,12 @@ function Quality() {
           </p>
 
           <p className="cb-tiny qc-foot">
-            Limits are the published Indian norms: FCI and Dept. of Food &amp; Public Distribution
-            uniform specifications for foodgrains, the Price Support Scheme FAQ specification for
-            oilseeds, FSSAI food product standards, and AGMARK grades. Foodgrains are analysed by
-            the BIS methods in IS&nbsp;4333 (Part&nbsp;I and Part&nbsp;II).
+            Every limit is a published standard, none of them ours: FCI and Dept. of Food &amp;
+            Public Distribution uniform specifications for foodgrains, the Price Support Scheme FAQ
+            specification for oilseeds, FSSAI food product standards, AGMARK grades, and
+            ISO&nbsp;2451 for cocoa. Foodgrains are analysed by the BIS methods in IS&nbsp;4333
+            (Part&nbsp;I and Part&nbsp;II), cocoa by the cut test in IS&nbsp;8832. Cocoa's cadmium
+            figure is the EU limit, because that is the one that governs the export.
           </p>
         </div>
       </div>
