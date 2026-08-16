@@ -156,7 +156,13 @@ export function LiveShelf({ query }: { query?: string }) {
   const { user, updateUser } = useAuth();
   const city = user?.location?.trim() || '';
 
-  const [listings, setListings] = useState<Listing[] | null>(null);
+  // The shelf is stored WITH the city it was fetched for, so "still loading"
+  // can be derived rather than set. Two things fall out of that: no synchronous
+  // setState inside the effect (which cascades renders, and which the lint rule
+  // rightly rejects), and no window where the previous city's produce is on
+  // screen under the new city's heading — changing city makes the tag stop
+  // matching, which IS the loading state.
+  const [shelf, setShelf] = useState<{ city: string; listings: Listing[] } | null>(null);
   const [cities, setCities] = useState<RetailCity[]>([]);
   const [changingCity, setChangingCity] = useState(false);
 
@@ -171,19 +177,21 @@ export function LiveShelf({ query }: { query?: string }) {
   }, []);
 
   useEffect(() => {
-    // No city means no shelf to fetch — the picker is showing instead. Skipping
-    // the request also avoids briefly rendering another city's produce.
-    if (!city) { setListings([]); return; }
+    // No city means no shelf to fetch — the picker is rendering instead, and it
+    // never reads this state.
+    if (!city) return;
 
     let on = true;
-    setListings(null);
     api.get('/browse', { params: { directSale: true, location: city, limit: SHELF_LIMIT } })
       // An empty shelf and a failed fetch look the same to the shopper, and both
       // are "nothing to buy right now" — no error state worth its own UI.
-      .then(({ data }) => { if (on) setListings(data.listings ?? []); })
-      .catch(() => { if (on) setListings([]); });
+      .then(({ data }) => { if (on) setShelf({ city, listings: data.listings ?? [] }); })
+      .catch(() => { if (on) setShelf({ city, listings: [] }); });
     return () => { on = false; };
   }, [city]);
+
+  // Null until this city's own results have landed.
+  const listings = shelf?.city === city ? shelf.listings : null;
 
   function handleCitySaved(next: string) {
     if (user) updateUser({ ...user, location: next });

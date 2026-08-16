@@ -27,7 +27,8 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { localizedDescription } from '../../utils/localized';
-import { QuantityStepper, KG_PER_UNIT } from './QuantityStepper';
+import { QuantityStepper } from './QuantityStepper';
+import { toKg } from '../../utils/units';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
@@ -184,7 +185,7 @@ export function ProductDetail() {
                   </div>
                   {listing.unit !== 'KG' && (
                     <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', textAlign: 'right', marginTop: 2 }}>
-                      that's {+(qty * KG_PER_UNIT[listing.unit]).toFixed(2)} kg
+                      that's {toKg(qty, listing.unit)} kg
                     </div>
                   )}
                 </div>

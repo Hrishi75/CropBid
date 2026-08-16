@@ -14,8 +14,6 @@
 
 import type { Unit } from '../../types';
 
-export const KG_PER_UNIT: Record<Unit, number> = { KG: 1, QUINTAL: 100, TONNE: 1000 };
-
 // Roughly a half-kilo of resolution in every denomination, so the buttons move
 // by an amount a household actually thinks in.
 const STEP: Record<Unit, number> = { KG: 0.5, QUINTAL: 0.05, TONNE: 0.005 };
