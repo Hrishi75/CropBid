@@ -2075,6 +2075,17 @@ body * {
   .cb-page { padding: 16px 12px 40px; }
   .cb-kpi-strip { grid-template-columns: 1fr; }
   .cb-app .cb-form-grid-2 { grid-template-columns: 1fr; }
+  /* The auth header is a wordmark and three or four links on one flex row. At
+     phone width they wrap onto two lines and ride over the wordmark. Marketing
+     links are not why anyone opened /login or /signup, so drop those and keep
+     the link that continues the journey (Sign in / Sign up).
+
+     Matched on href rather than position: /login ends its nav with a language
+     switcher while /signup ends with the auth link, so any :last-child rule
+     hides the wrong element on one of the two pages. */
+  .cb-auth-nav { padding: 14px 16px; }
+  .cb-auth-nav-links { gap: 14px; align-items: center; }
+  .cb-auth-nav-links a[href^="/#"] { display: none; }
 }
 
 /* =============================================================================
@@ -2132,3 +2143,52 @@ body * {
 }
 .cb-lang-select:hover { border-color: var(--cb-ink-3); }
 .cb-lang-select:focus-visible { outline: 2px solid var(--cb-forest, #2f5233); outline-offset: 1px; }
+
+/* ===========================================================================
+   Consumer (retail) surface — pages/consumer/*
+   ===========================================================================
+   The B2B dashboard pages hard-code their grids inline and are desktop-first.
+   The shop is the opposite case: a household buying two kilos is on a phone,
+   so these classes are the responsive layer those pages lack.
+
+   Three layouts, and that is deliberately all:
+     .cn-split  media + buy panel (product, checkout) — stacks below 900px
+     .cn-pair   two info cards side by side (order detail) — stacks below 640px
+     .cn-grid   the product shelf — already fluid, just retuned per breakpoint
+   =========================================================================== */
+
+.cn-split {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  gap: 24px;
+}
+/* The buy panel follows the photo down the page on desktop. On a phone it is
+   already the thing under your thumb, and a sticky block inside a scrolling
+   column just fights the page. */
+.cn-aside { position: sticky; top: 76px; align-self: flex-start; }
+
+.cn-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.cn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 16px; }
+
+/* Order row: image, details, then price. The price block must not be squeezed
+   into a two-line wrap by a long crop name, so it keeps its own column and the
+   details column is the one allowed to shrink. */
+.cn-order-row { display: flex; gap: 14px; align-items: center; padding: 16px; }
+.cn-order-main { flex: 1; min-width: 0; }
+.cn-order-amt { text-align: right; flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .cn-split { grid-template-columns: 1fr; gap: 16px; }
+  .cn-aside { position: static; }
+}
+@media (max-width: 640px) {
+  .cn-pair { grid-template-columns: 1fr; }
+  /* Two across stays readable at 360px once the card min drops; one giant card
+     per row wastes the fold on a phone. */
+  .cn-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .cn-order-row { padding: 14px; gap: 12px; }
+}
+@media (max-width: 380px) {
+  .cn-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}

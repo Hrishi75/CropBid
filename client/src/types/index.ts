@@ -7,7 +7,10 @@
 // =============================================================================
 
 // --- Enums ---
-export type Role = 'FARMER' | 'BUYER' | 'ADMIN';
+// CONSUMER is the retail tier: a household buying a kilo, not a company buying a
+// lot. They instant-buy at a listing's fixed retail price and never bid,
+// negotiate, or hold a company profile. See Role in prisma/schema.prisma.
+export type Role = 'FARMER' | 'BUYER' | 'CONSUMER' | 'ADMIN';
 export type Currency = 'INR' | 'USD' | 'EUR' | 'GBP';
 export type Language = 'EN' | 'HI' | 'MR';
 export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
@@ -80,11 +83,19 @@ export interface Listing {
   cropName: string;
   cropVariety: string | null;
   quantity: number;
+  // Stock left for direct sale — decremented on every consumer purchase. Equals
+  // `quantity` on a listing that has never had a retail sale.
+  remainingQuantity: number;
   unit: Unit;
   qualityGrade: QualityGrade;
   pricePerUnitMin: number;
   pricePerUnitMax: number;
   currency: Currency;
+  // The retail channel, running alongside bidding. When directSaleEnabled is on,
+  // a CONSUMER can instant-buy any quantity up to remainingQuantity at
+  // retailPricePerUnit — no bid, no negotiation.
+  directSaleEnabled: boolean;
+  retailPricePerUnit: number | null;
   harvestDate: string | null;
   expiryDate: string | null;
   description: string | null;
