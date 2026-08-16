@@ -314,8 +314,8 @@ export function SignupPage() {
           <span className="wordmark-text">CropBid</span>
         </Link>
         <nav className="cb-auth-nav-links">
-          <a href="/#how">How it works</a>
-          <a href="/#marketplace">Marketplace</a>
+          <a href="/#how" className="cb-auth-nav-extra">How it works</a>
+          <a href="/#marketplace" className="cb-auth-nav-extra">Marketplace</a>
           <Link to="/login">Sign in</Link>
         </nav>
       </header>
@@ -422,7 +422,7 @@ export function SignupPage() {
                 {password.length > 0 && (
                   <div
                     id="password-rules"
-                    style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 8 }}
+                    className="cb-cols-2" style={{ gap: 6, marginTop: 8 }}
                   >
                     <PasswordRule met={passwordRules.length} label="8+ characters" />
                     <PasswordRule met={passwordRules.upper} label="Uppercase letter" />

@@ -299,7 +299,7 @@ export function OnboardingPage() {
           {isFarmer ? (
             <>
               <SectionCard title="Operation">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div className="cb-cols-2" style={{ gap: 14 }}>
                   <Input
                     label="Farm size (acres)"
                     type="number"
@@ -405,7 +405,7 @@ export function OnboardingPage() {
             </>
           )}
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
             <Link to={isFarmer ? '/farmer' : '/buyer'} className="cb-btn cb-btn-link">Skip for now</Link>
             <Button type="submit" size="lg" loading={loading}>
               Activate agent

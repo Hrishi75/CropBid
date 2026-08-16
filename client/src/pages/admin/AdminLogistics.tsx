@@ -153,7 +153,7 @@ export function AdminLogistics() {
         </Button>
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 8, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Active</div>
           <div className="cb-kpi-value">{active}</div>
@@ -194,7 +194,7 @@ export function AdminLogistics() {
 
       {showForm && (
         <div className="cb-card" style={{ marginBottom: 20, borderLeft: '4px solid var(--cb-forest)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <div className="cb-eyebrow">{editingId ? 'Edit partner' : 'New partner'}</div>
             <button type="button" onClick={() => setShowForm(false)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>✕ Close</button>
           </div>
@@ -202,7 +202,7 @@ export function AdminLogistics() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div>
               <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Identity</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="cb-cols-2" style={{ gap: 12 }}>
                 <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 <div>
                   <label className="cb-label">Type</label>
@@ -215,7 +215,7 @@ export function AdminLogistics() {
 
             <div>
               <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Coverage</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="cb-cols-2" style={{ gap: 12 }}>
                 <Input label="Regions (comma sep)" value={form.coverageRegions} onChange={(e) => setForm({ ...form, coverageRegions: e.target.value })} />
                 <Input label="Countries (comma sep)" value={form.coverageCountries} onChange={(e) => setForm({ ...form, coverageCountries: e.target.value })} />
               </div>
@@ -224,7 +224,7 @@ export function AdminLogistics() {
 
             <div>
               <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Capacity & pricing</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+              <div className="cb-cols-4" style={{ gap: 12 }}>
                 <Input label="Min kg" type="number" value={form.minQuantityKg} onChange={(e) => setForm({ ...form, minQuantityKg: e.target.value })} />
                 <Input label="Max kg" type="number" value={form.maxQuantityKg} onChange={(e) => setForm({ ...form, maxQuantityKg: e.target.value })} />
                 <Input label="Rate /km·kg" type="number" step="0.0001" value={form.costPerKmPerKg} onChange={(e) => setForm({ ...form, costPerKmPerKg: e.target.value })} />
@@ -235,13 +235,13 @@ export function AdminLogistics() {
 
             <div>
               <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Contact</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="cb-cols-2" style={{ gap: 12 }}>
                 <Input label="Email" type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} />
                 <Input label="Phone" value={form.contactPhone} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} />
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               <Button onClick={handleSave} loading={saving}>
                 ✓ {editingId ? 'Update' : 'Create'}
               </Button>
@@ -277,7 +277,7 @@ export function AdminLogistics() {
               <div className="cb-tiny" style={{ marginTop: 4 }}>
                 ☎ {p.contactPhone} · {p.contactEmail}
               </div>
-              <div style={{ marginTop: 10, display: 'flex', gap: 12 }}>
+              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                 <button type="button" onClick={() => openEdit(p)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>✎ Edit</button>
                 <button type="button" onClick={() => handleToggle(p.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>
                   {p.active ? '⏸ Pause' : '▶ Resume'}

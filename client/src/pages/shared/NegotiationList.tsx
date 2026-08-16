@@ -71,7 +71,7 @@ export function NegotiationList() {
         <span className="cb-italic">ledger.</span>
       </h1>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 28, marginBottom: 20 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 28, marginBottom: 20 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">In progress</div>
           <div className="cb-kpi-value">{summary.inProgress}</div>

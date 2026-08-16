@@ -145,7 +145,7 @@ export function AgentConfigPage() {
 
       <div className="cb-card cb-card-forest" style={{ marginTop: 28, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
             <span className="cb-live-dot" />
             <span className="cb-mono" style={{ color: '#e6efd9', fontWeight: 500 }}>
               {config?.active ? 'ACTIVE' : 'PAUSED'} · style {style}
@@ -164,7 +164,7 @@ export function AgentConfigPage() {
 
       <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Section title="Style · drives negotiation cadence">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+          <div className="cb-cols-3" style={{ gap: 10 }}>
             {STYLE_META.map((s) => (
               <button
                 key={s.value}
@@ -186,7 +186,7 @@ export function AgentConfigPage() {
         </Section>
 
         <Section title="Guardrails · hard stops" hint="Agent will never cross these.">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="cb-cols-2" style={{ gap: 14 }}>
             {isFarmer ? (
               <>
                 <Input
@@ -290,7 +290,7 @@ export function AgentConfigPage() {
           </div>
         </Section>
 
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
           <Button type="submit" size="lg" loading={saving}>
             Save & restart agent
             <ArrowIcon />

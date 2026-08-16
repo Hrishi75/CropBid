@@ -75,7 +75,7 @@ export function ListingDetail() {
         Marketplace / Lot #{listing.id.slice(-6).toUpperCase()}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(280px, 2fr)', gap: 24, marginTop: 16 }}>
+      <div className="cb-split-3-2" style={{ gap: 24, marginTop: 16 }}>
         <div>
           <div className="cb-card" style={{ padding: 8 }}>
             <div style={{ aspectRatio: '4/3', borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)' }}>
@@ -140,7 +140,7 @@ export function ListingDetail() {
 
           <div className="cb-card" style={{ marginTop: 16 }}>
             <div className="cb-eyebrow" style={{ marginBottom: 12 }}>Market position</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            <div className="cb-cols-2" style={{ gap: 12 }}>
               <SpecRow label="This lot · mid" value={<span className="cb-mono">{formatCurrency(priceMid, listing.currency)}</span>} />
               <SpecRow label="Mkt avg" value={<span className="cb-mono">{formatCurrency(priceMid * 0.985, listing.currency)}</span>} />
               {msp != null && listing.currency === 'INR' && (
@@ -158,7 +158,7 @@ export function ListingDetail() {
           </div>
 
           <div className="cb-card" style={{ marginTop: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
               <div className="cb-eyebrow">Bid history</div>
               {listing._count && listing._count.bids > 0 && (
                 <Link to="#" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View thread →</Link>
