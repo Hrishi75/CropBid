@@ -1125,7 +1125,10 @@ body * {
 .st-ticker-track {
   display: flex; align-items: center;
   padding: 7px 0; width: max-content;
-  animation: st-marquee 60s linear infinite;
+  /* Duration is set per render from the tick count (see Ticker) so the marquee
+     keeps a constant speed when the static ticks are replaced by the live
+     board. The fallback only applies if that inline value ever goes missing. */
+  animation: st-marquee var(--st-ticker-dur, 60s) linear infinite;
 }
 /* Each copy carries a trailing gap so the two copies are exactly equal in
    width — that is what makes -50% land on a seamless loop point. Putting the
@@ -1213,10 +1216,16 @@ body * {
 
 /* --- page scaffold + reveal-on-scroll --- */
 .st-main { max-width: 1280px; margin: 0 auto; padding: 18px 24px 72px; }
-.st-reveal { opacity: 0; transform: translateY(18px); transition: opacity .55s ease, transform .55s ease; }
-.st-reveal.is-in { opacity: 1; transform: none; }
+/* Reveal-on-scroll is OPT-OUT, not opt-in: a section is visible unless JS has
+   hidden it. useReveal only hides sections that mount below the fold, so the
+   prerendered HTML paints complete and a reload never flashes the page from
+   empty to filled. Never give .st-reveal a hidden state here — that rule runs
+   before the bundle does, on markup that is already on screen. */
+.st-reveal { transition: opacity .55s ease, transform .55s ease; }
+.st-reveal.is-out { opacity: 0; transform: translateY(18px); }
+.st-reveal.no-anim { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .st-reveal { opacity: 1; transform: none; transition: none; }
+  .st-reveal, .st-reveal.is-out { opacity: 1; transform: none; transition: none; }
   .st-ticker-track, .st-roll-word { animation: none; }
 }
 
@@ -1311,8 +1320,23 @@ body * {
 .st-rate-v { font-size: 15px; font-weight: 700; margin-top: 2px; color: var(--cb-ink); }
 .st-rate-v .u { font-size: 10px; font-weight: 400; color: var(--cb-ink-3); }
 .st-rate-band { font-size: 10.5px; color: var(--cb-ink-3); margin-top: 2px; }
+
+/* --- loading placeholders (rates board + forecast strip) ---
+   Wraps real text and hides it, so the placeholder's line box is exactly the
+   one the live value will occupy. That is what makes the swap to real data
+   move nothing — no reserved heights to keep in sync with the font sizes. */
+.st-sk {
+  display: inline-block;
+  color: transparent;
+  background: var(--cb-line-2);
+  border-radius: 5px;
+  user-select: none;
+  animation: st-sk-pulse 1.7s ease-in-out infinite;
+}
+.st-sk-emoji { width: 18px; }
+@keyframes st-sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
-  .st-float-chip { animation: none; }
+  .st-float-chip, .st-sk { animation: none; }
 }
 
 /* =============================================================================
