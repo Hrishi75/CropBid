@@ -23,6 +23,7 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../utils/ApiError';
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
+import { redactTransactionContact, redactTransactionContacts } from './contactVisibility';
 
 const PLATFORM_FEE_PERCENT = 2.0;
 
@@ -107,8 +108,9 @@ export async function getMyTransactions(userId: string, role: string) {
     include: {
       listing: true,
       // The farmer's phone is NEVER exposed to the counterparty — only the
-      // platform (admin endpoints) may see it. The buyer's phone is included so
-      // the SELLER can arrange delivery.
+      // platform (admin endpoints) may see it. The buyer's phone is selected
+      // here but redacted below unless the money is actually in escrow: a row
+      // exists from bid-acceptance onward, i.e. before the buyer has paid.
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
@@ -121,7 +123,17 @@ export async function getMyTransactions(userId: string, role: string) {
     },
   });
 
-  return transactions;
+  // Redact both the buyer's phone AND the contact snapshotted onto the bid.
+  // Skipping the second one would leave the gate wide open — the Deliveries
+  // page reads tx.bid.contactPhone first and only falls back to tx.buyer.phone.
+  //
+  // contactReleased already encodes the whole decision (admin, own row, or
+  // paid), so the bid snapshot follows it rather than re-deriving the rule.
+  return redactTransactionContacts(transactions, { userId, role }).map((t) =>
+    t.contactReleased
+      ? t
+      : { ...t, bid: { ...t.bid, deliveryAddress: null, contactPhone: null } },
+  );
 }
 
 // =============================================================================
@@ -132,11 +144,12 @@ export async function getTransaction(transactionId: string, userId: string) {
     where: { id: transactionId },
     include: {
       listing: true,
-      // The farmer's contact details (email/phone) are NEVER exposed to the
-      // counterparty — only the platform (admin) may see them. The buyer's
-      // contact is included so the SELLER can arrange delivery.
+      // Neither side's email is ever exposed to the other — a phone number is
+      // what a delivery needs, an email address is what a direct-sourcing
+      // relationship starts with. The farmer's phone is likewise never exposed;
+      // the buyer's is redacted below until the money is in escrow.
       farmer: { select: { id: true, name: true, trustScore: true } },
-      buyer: { select: { id: true, name: true, trustScore: true, email: true, phone: true } },
+      buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
     },
   });
@@ -148,7 +161,12 @@ export async function getTransaction(transactionId: string, userId: string) {
     throw new ApiError(403, 'You are not involved in this transaction');
   }
 
-  return transaction;
+  // Only the two counterparties reach this point, so "not the buyer" means the
+  // farmer — the side the gate is for.
+  const viewed = redactTransactionContact(transaction, { userId, role: 'FARMER' });
+  return viewed.contactReleased
+    ? viewed
+    : { ...viewed, bid: { ...viewed.bid, deliveryAddress: null, contactPhone: null } };
 }
 
 // =============================================================================
