@@ -12,6 +12,8 @@ export const COMPANY_TYPE_LABEL: Record<string, string> = {
   RESTAURANT: 'Restaurant chain',
   EXPORTER: 'Exporter',
   RETAILER: 'Retail chain',
+  WHOLESALER: 'Wholesaler',
+  SMALL_BUSINESS: 'Small business',
 };
 
 /** The label, falling back to the raw enum value for anything unmapped. */

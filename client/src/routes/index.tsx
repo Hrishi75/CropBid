@@ -22,6 +22,12 @@ import { OnboardingPage } from '../pages/auth/OnboardingPage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 
+// Partner flow — the seller/buyer door. The landing is public; the status
+// page manages its own auth (it must stay reachable to PENDING partners, so
+// it cannot sit behind ProtectedRoute's approval gate).
+import { PartnerPage } from '../pages/partner/PartnerPage';
+import { PartnerStatusPage } from '../pages/partner/PartnerStatusPage';
+
 // Dashboard pages (protected)
 import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
 import { MyListings } from '../pages/farmer/MyListings';
@@ -39,6 +45,7 @@ import { RequirementDetail } from '../pages/buyer/RequirementDetail';
 import { PlaceBid } from '../pages/buyer/PlaceBid';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
+import { AdminPartners } from '../pages/admin/AdminPartners';
 import { AdminListings } from '../pages/admin/AdminListings';
 import { AdminTransactions } from '../pages/admin/AdminTransactions';
 import { AdminEnquiries } from '../pages/admin/AdminEnquiries';
@@ -153,6 +160,8 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
+      <Route path="/partner" element={<PartnerPage />} />
+      <Route path="/partner/status" element={<PartnerStatusPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
 
@@ -458,6 +467,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminUsers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/partners"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminPartners />
           </ProtectedRoute>
         }
       />

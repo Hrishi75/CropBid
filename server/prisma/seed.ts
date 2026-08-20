@@ -290,6 +290,7 @@ async function main() {
     const profile = await prisma.farmerProfile.create({
       data: {
         userId: user.id,
+        status: 'APPROVED', // seeded demo partners skip the review queue
         farmSizeAcres: f.farmSize,
         cropsGrown: f.crops,
         country: 'India',
@@ -328,6 +329,7 @@ async function main() {
     const profile = await prisma.farmerProfile.create({
       data: {
         userId: user.id,
+        status: 'APPROVED', // seeded demo partners skip the review queue
         farmSizeAcres: f.farmSize,
         cropsGrown: f.crops,
         country: f.country,
@@ -366,6 +368,7 @@ async function main() {
     await prisma.buyerProfile.create({
       data: {
         userId: user.id,
+        status: 'APPROVED', // seeded demo partners skip the review queue
         companyName: b.company,
         companyType: b.type,
         country: 'India',
@@ -400,6 +403,7 @@ async function main() {
     await prisma.buyerProfile.create({
       data: {
         userId: user.id,
+        status: 'APPROVED', // seeded demo partners skip the review queue
         companyName: b.company,
         companyType: b.type,
         country: b.country,

@@ -43,4 +43,10 @@ router.get('/enquiries', adminController.getEquipmentEnquiries);
 // PATCH /api/admin/enquiries/:id — Move a lead through the triage queue
 router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
 
+// --- Partner applications: the approval queue ---
+// GET  /api/admin/partners            — list applications (+ per-status counts)
+// POST /api/admin/partners/:id/review — approve / request info / reject / suspend
+router.get('/partners', adminController.getPartnerApplications);
+router.post('/partners/:id/review', adminController.reviewPartnerApplication);
+
 export default router;

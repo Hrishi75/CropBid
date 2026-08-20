@@ -297,6 +297,18 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
       ['Features',     '/how-it-works#features'],
     ],
   },
+  // The three doors into CropBid, repeated here because the footer is where
+  // people look once they've scrolled the whole page and decided they're
+  // interested — the header CTA is long gone by then. All three land on
+  // /partner; the anchors drop you straight at the right set of cards.
+  {
+    title: 'Partner with us',
+    items: [
+      ['Become a partner', '/partner'],
+      ['Become a seller',  '/partner#sell'],
+      ['Buy for a business', '/partner#buy'],
+    ],
+  },
   {
     title: 'Company',
     items: [

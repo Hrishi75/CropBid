@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import { ArcMark, ArrowIcon, CBFooter, SearchIcon } from './landing/shared';
+import { SignInLink } from '../components/auth/SignInLink';
 
 // --- data shapes (mirror server/src/services/equipment.service.ts) ---
 
@@ -182,11 +183,10 @@ export function EquipmentPage() {
           <Link to="/">Marketplace</Link>
           <Link to="/rates">Live rates</Link>
           <Link to="/schemes">Yojana</Link>
-          <Link to="/login" className="nav-signin">Sign in</Link>
-          <Link to="/signup" className="cb-btn cb-btn-primary">
-            Start trading
+          <Link to="/partner" className="nav-signin">Become a partner</Link>
+          <SignInLink className="cb-btn cb-btn-primary">
             <ArrowIcon />
-          </Link>
+          </SignInLink>
         </nav>
       </header>
 

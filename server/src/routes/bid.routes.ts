@@ -16,7 +16,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { requireRole } from '../middleware/roleGuard';
+import { requireRole, requireApprovedPartner } from '../middleware/roleGuard';
 import * as bidController from '../controllers/bid.controller';
 
 const router = Router();
@@ -25,19 +25,19 @@ const router = Router();
 router.use(authenticate);
 
 // Buyer actions
-router.post('/', requireRole('BUYER'), bidController.placeBid);
-router.get('/my', requireRole('BUYER'), bidController.getMyBids);
-router.put('/:id/update', requireRole('BUYER'), bidController.updateBid);
-router.delete('/:id', requireRole('BUYER'), bidController.withdrawBid);
+router.post('/', requireRole('BUYER'), requireApprovedPartner, bidController.placeBid);
+router.get('/my', requireRole('BUYER'), requireApprovedPartner, bidController.getMyBids);
+router.put('/:id/update', requireRole('BUYER'), requireApprovedPartner, bidController.updateBid);
+router.delete('/:id', requireRole('BUYER'), requireApprovedPartner, bidController.withdrawBid);
 
 // Consumer actions
 router.post('/direct-purchase', requireRole('CONSUMER'), bidController.createDirectPurchase);
 
 // Farmer actions
-router.get('/incoming', requireRole('FARMER'), bidController.getIncomingBids);
-router.get('/listing/:id', requireRole('FARMER'), bidController.getBidsForListing);
-router.put('/:id/accept', requireRole('FARMER'), bidController.acceptBid);
-router.put('/:id/reject', requireRole('FARMER'), bidController.rejectBid);
-router.put('/:id/counter', requireRole('FARMER'), bidController.counterBid);
+router.get('/incoming', requireRole('FARMER'), requireApprovedPartner, bidController.getIncomingBids);
+router.get('/listing/:id', requireRole('FARMER'), requireApprovedPartner, bidController.getBidsForListing);
+router.put('/:id/accept', requireRole('FARMER'), requireApprovedPartner, bidController.acceptBid);
+router.put('/:id/reject', requireRole('FARMER'), requireApprovedPartner, bidController.rejectBid);
+router.put('/:id/counter', requireRole('FARMER'), requireApprovedPartner, bidController.counterBid);
 
 export default router;

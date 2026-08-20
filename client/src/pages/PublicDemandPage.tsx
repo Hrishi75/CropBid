@@ -21,6 +21,7 @@ import api from '../lib/axios';
 import { formatCurrency } from '../utils/currency';
 import { companyTypeLabel } from '../utils/companyType';
 import { ArcMark, ArrowIcon, CBFooter, SearchIcon } from './landing/shared';
+import { SignInLink } from '../components/auth/SignInLink';
 
 interface PublicRequirement {
   cropName: string;
@@ -97,12 +98,10 @@ export function PublicDemandPage() {
         <nav className="rp-nav-links" aria-label="Primary">
           <Link to="/">Marketplace</Link>
           <Link to="/rates">Live rates</Link>
-          <Link to="/how-it-works">How it works</Link>
-          <Link to="/login" className="nav-signin">Sign in</Link>
-          <Link to="/signup" className="cb-btn cb-btn-primary">
-            Start trading
+          <Link to="/partner" className="nav-signin">Become a partner</Link>
+          <SignInLink className="cb-btn cb-btn-primary">
             <ArrowIcon />
-          </Link>
+          </SignInLink>
         </nav>
       </header>
 
@@ -145,7 +144,7 @@ export function PublicDemandPage() {
               No demand is open at this moment. New requirements are posted most days — create a
               free account and we'll notify you when a buyer wants your crop.
             </p>
-            <Link to="/signup" className="cb-btn cb-btn-primary">
+            <Link to="/partner" className="cb-btn cb-btn-primary">
               Create a free account
               <ArrowIcon />
             </Link>
@@ -220,7 +219,7 @@ export function PublicDemandPage() {
               Sign up free as a farmer to see who is asking, fill any requirement at the posted
               price, and get told the moment a buyer wants your crop.
             </p>
-            <Link to="/signup" className="cb-btn cb-btn-primary">
+            <Link to="/partner" className="cb-btn cb-btn-primary">
               Start selling on CropBid
               <ArrowIcon />
             </Link>

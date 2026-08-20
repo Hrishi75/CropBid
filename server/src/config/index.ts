@@ -100,6 +100,22 @@ export const config = {
   // Client URL (for CORS + links inside transactional emails)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
+  // SMS (phone sign-in codes). Provider-agnostic: set SMS_PROVIDER to
+  // "msg91" or "twilio" and fill that provider's keys. Leave it unset in
+  // development — codes are printed to the server console instead of sent, so
+  // the whole sign-in flow is testable without a provider or a real handset.
+  sms: {
+    provider: (process.env.SMS_PROVIDER || '').toLowerCase(), // '' | 'msg91' | 'twilio'
+    senderId: process.env.SMS_SENDER_ID || 'CROPBD',
+    // MSG91 (India): an auth key and an approved DLT template id.
+    msg91AuthKey: process.env.MSG91_AUTH_KEY || '',
+    msg91TemplateId: process.env.MSG91_TEMPLATE_ID || '',
+    // Twilio: account SID, auth token, and the sending number in E.164.
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+    twilioFrom: process.env.TWILIO_FROM || '',
+  },
+
   // SMTP (transactional email — password resets etc.).
   // Leave SMTP_HOST unset in development: emails are printed to the server
   // console instead of sent, so the flow is fully testable without a provider.

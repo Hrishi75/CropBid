@@ -9,6 +9,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { requireApprovedPartner } from '../middleware/roleGuard';
 import * as negotiationController from '../controllers/negotiation.controller';
 
 const router = Router();
@@ -17,7 +18,7 @@ const router = Router();
 router.use(authenticate);
 
 // POST /api/negotiations/start — Kick off an AI negotiation for a bid
-router.post('/start', negotiationController.startNegotiation);
+router.post('/start', requireApprovedPartner, negotiationController.startNegotiation);
 
 // GET /api/negotiations — List all my negotiations
 router.get('/', negotiationController.getMyNegotiations);

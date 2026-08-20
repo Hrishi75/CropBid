@@ -2,6 +2,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
+import { AuthModalProvider } from './context/AuthModalContext';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -12,7 +13,10 @@ import { useSeo } from './lib/useSeo';
  *   └─ AppContent
  *       └─ AuthProvider — provides user state (needs router for nothing, but
  *                         routes need auth, so auth wraps routes)
- *           └─ AppRoutes — actual page rendering
+ *           └─ AuthModalProvider — holds the one sign-in dialog, which any
+ *                         page can raise; it needs auth, and its modal needs
+ *                         router context to redirect after signing in
+ *               └─ AppRoutes — actual page rendering
  *
  * Toaster sits outside the tree — it's a portal that renders toast
  * notifications in a fixed position regardless of page structure.
@@ -35,7 +39,9 @@ export function AppContent() {
 
   return (
     <AuthProvider>
-      <AppRoutes />
+      <AuthModalProvider>
+        <AppRoutes />
+      </AuthModalProvider>
     </AuthProvider>
   );
 }

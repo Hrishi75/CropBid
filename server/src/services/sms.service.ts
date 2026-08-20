@@ -1,0 +1,93 @@
+// =============================================================================
+// SMS Service — one-time codes to a handset
+// =============================================================================
+// Mirrors email.service.ts: provider-agnostic, and a no-op-with-console-output
+// in development so the sign-in flow is fully testable without a provider or a
+// real phone. Set SMS_PROVIDER=msg91|twilio plus that provider's keys to send
+// for real.
+//
+// WHY THE DEV FALLBACK PRINTS THE CODE: phone sign-in is the ONLY way into a
+// consumer account. Without this, nobody could log into a local or preview
+// environment at all. It is gated on the provider being unconfigured, and in
+// production an unconfigured provider throws instead of printing (see below) —
+// silently "succeeding" would let people request codes that never arrive and
+// leave them locked out with no error to act on.
+// =============================================================================
+
+import { config } from '../config';
+
+function isConfigured(): boolean {
+  if (config.sms.provider === 'msg91') {
+    return Boolean(config.sms.msg91AuthKey && config.sms.msg91TemplateId);
+  }
+  if (config.sms.provider === 'twilio') {
+    return Boolean(config.sms.twilioAccountSid && config.sms.twilioAuthToken && config.sms.twilioFrom);
+  }
+  return false;
+}
+
+async function sendViaMsg91(phone: string, code: string): Promise<void> {
+  // MSG91's OTP endpoint takes the code as a template variable — the message
+  // body itself is the DLT-approved template registered with the operator.
+  const url = new URL('https://control.msg91.com/api/v5/otp');
+  url.searchParams.set('template_id', config.sms.msg91TemplateId);
+  url.searchParams.set('mobile', phone.replace(/[^0-9]/g, ''));
+  url.searchParams.set('otp', code);
+  url.searchParams.set('sender', config.sms.senderId);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { authkey: config.sms.msg91AuthKey, 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error(`MSG91 responded ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  const body = (await res.json().catch(() => ({}))) as { type?: string; message?: string };
+  // MSG91 returns HTTP 200 with {"type":"error"} for things like an unapproved
+  // template, so the status code alone is not proof of delivery.
+  if (body.type && body.type !== 'success') {
+    throw new Error(`MSG91 rejected the send: ${body.message || 'unknown error'}`);
+  }
+}
+
+async function sendViaTwilio(phone: string, code: string): Promise<void> {
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${config.sms.twilioAccountSid}/Messages.json`;
+  const auth = Buffer.from(`${config.sms.twilioAccountSid}:${config.sms.twilioAuthToken}`).toString('base64');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      To: phone,
+      From: config.sms.twilioFrom,
+      Body: `${code} is your CropBid sign-in code. It expires in 5 minutes.`,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Twilio responded ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
+/**
+ * Send a sign-in code. Throws when a configured provider fails — the caller
+ * drops the challenge row so the person can retry cleanly rather than staring
+ * at a code box with nothing to type.
+ */
+export async function sendPhoneOtp(phone: string, code: string, ttlMinutes: number): Promise<void> {
+  if (!isConfigured()) {
+    if (config.nodeEnv === 'production') {
+      throw new Error('No SMS provider configured — set SMS_PROVIDER and its keys');
+    }
+    console.log(
+      `\n📱 [sms:dev] Sign-in code for ${phone}: ${code}  (expires in ${ttlMinutes} min)\n`,
+    );
+    return;
+  }
+
+  if (config.sms.provider === 'msg91') return sendViaMsg91(phone, code);
+  if (config.sms.provider === 'twilio') return sendViaTwilio(phone, code);
+  throw new Error(`Unknown SMS_PROVIDER "${config.sms.provider}"`);
+}

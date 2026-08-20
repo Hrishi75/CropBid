@@ -118,9 +118,9 @@ export const ROUTES: RouteMeta[] = [
   },
   {
     path: '/how-it-works',
-    title: 'How CropBid Works — Bidding, Escrow & Delivery Explained',
+    title: 'How CropBid Works — Reviewed Sellers, Bidding & Escrow',
     description:
-      'List a crop, take bids or let an AI agent negotiate, settle through escrow and ship farm-to-door. The whole CropBid deal flow, step by step.',
+      'Farmers, local shops and wholesalers are reviewed before they can sell. Then they list at their own price, buyers bid or buy outright, and escrow pays out on delivery. The whole CropBid flow, step by step.',
     priority: '0.7',
     changefreq: 'monthly',
     // An FAQPage block is the single highest-leverage bit of structured data for
@@ -133,7 +133,7 @@ export const ROUTES: RouteMeta[] = [
           name: 'How do farmers sell crops on CropBid?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'A farmer lists the crop with quantity, quality grade and an asking price. Buyers place bids; the farmer accepts, rejects or counters. The listing can also be run as a live timed auction, or handed to an AI agent that negotiates within price limits the farmer sets. Live government mandi rates sit alongside every listing so both sides negotiate against the same reference price.',
+            text: 'Sellers apply first: farmers, local shops and wholesalers submit an application with their location, licence numbers and payout details, and CropBid reviews it before the account can trade. Once approved, a seller lists the crop with quantity, quality grade and an asking price. Buyers place bids; the farmer accepts, rejects or counters. The listing can also be run as a live timed auction, or handed to an AI agent that negotiates within price limits the farmer sets. Live government mandi rates sit alongside every listing so both sides negotiate against the same reference price.',
           },
         },
         {
@@ -157,7 +157,7 @@ export const ROUTES: RouteMeta[] = [
           name: 'Does it cost anything to join CropBid?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Creating an account, listing crops and checking mandi rates are free. CropBid is available in English, Hindi and Marathi.',
+            text: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Signing in needs nothing but a phone number and a 6-digit code — there is no password. CropBid is available in English, Hindi and Marathi.',
           },
         },
         {
@@ -165,7 +165,7 @@ export const ROUTES: RouteMeta[] = [
           name: 'Who buys on CropBid?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Buyers of every size use the same exchange — food processors, FMCG companies, exporters, retailers and restaurants buying in bulk, alongside individual consumers buying household quantities direct from the grower.',
+            text: 'Buyers of every size use the same exchange — restaurants and cafés, small food businesses, wholesalers, food processors, FMCG companies, exporters and retailers buying in bulk, alongside individual consumers buying household quantities direct from the seller. Business buyers apply and are reviewed the same way sellers are.',
           },
         },
       ],
@@ -191,8 +191,17 @@ export const ROUTES: RouteMeta[] = [
   {
     path: '/signup',
     title: 'Create an account',
-    description: 'Create a free CropBid account as a farmer or a buyer.',
+    description: 'Create a free CropBid account and shop farm-direct produce.',
     index: false,
+  },
+
+  // The partner door — indexable on purpose: "sell on cropbid" searches
+  // should land here, not on the shopper signup.
+  {
+    path: '/partner',
+    title: 'Become a partner',
+    description: 'Sell on CropBid as a farmer, local shop or wholesaler — or source for your restaurant or business. Apply in minutes, reviewed within 48 hours.',
+    changefreq: 'monthly',
   },
 ];
 

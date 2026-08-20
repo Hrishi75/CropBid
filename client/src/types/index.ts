@@ -16,7 +16,14 @@ export type Language = 'EN' | 'HI' | 'MR';
 export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
 export type QualityGrade = 'A' | 'B' | 'C';
 export type ListingStatus = 'ACTIVE' | 'IN_AUCTION' | 'SOLD' | 'EXPIRED';
-export type CompanyType = 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
+export type CompanyType = 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER' | 'WHOLESALER' | 'SMALL_BUSINESS';
+// Which kind of seller a partner is — drives the fulfilment tier and which
+// application fields they must provide. Lives on FarmerProfile (the seller
+// profile; the model name is legacy).
+export type SellerType = 'FARMER' | 'LOCAL_SHOP' | 'WHOLESALER';
+// Partner application lifecycle. Dashboards stay locked until APPROVED —
+// ProtectedRoute routes everything else to /partner/status.
+export type PartnerStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'NEEDS_INFO' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
 export type AgentType = 'FARMER_AGENT' | 'BUYER_AGENT';
 export type NegotiationStyle = 'AGGRESSIVE' | 'BALANCED' | 'CONSERVATIVE';
 export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED';
@@ -49,8 +56,21 @@ export interface User {
 export interface FarmerProfile {
   id: string;
   userId: string;
-  farmSizeAcres: number;
+  sellerType: SellerType;
+  status: PartnerStatus;
+  statusNote: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  // A shop or wholesaler has no acreage — null for those seller types.
+  farmSizeAcres: number | null;
   cropsGrown: string[];
+  businessName: string | null;
+  shopType: string | null;
+  address: string | null;
+  fssaiLicense: string | null;
+  gstin: string | null;
+  minOrderValue: number | null;
+  leadTimeDays: number | null;
   country: string;
   state: string;
   fpoName: string | null;
@@ -68,6 +88,11 @@ export interface BuyerProfile {
   userId: string;
   companyName: string;
   companyType: CompanyType;
+  status: PartnerStatus;
+  statusNote: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  outletCount: number | null;
   country: string;
   taxId: string | null;
   annualProcurementVolume: string | null;

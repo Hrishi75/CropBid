@@ -20,6 +20,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
+import { useAuthModal } from '../context/AuthModalContext';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 import { LiveShelf } from './consumer/LiveShelf';
 import type { User } from '../types';
@@ -425,6 +426,7 @@ function StoreHeader({
   user: User | null;
 }) {
   const { t } = useTranslation();
+  const { openAuth } = useAuthModal();
   const [scrolled, setScrolled] = useState(false);
   const [wordIdx, setWordIdx] = useState(0);
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
@@ -509,12 +511,18 @@ function StoreHeader({
             </>
           ) : (
             <>
-              <Link to="/how-it-works" className="st-header-link">{t('How it works')}</Link>
-              <Link to="/login" className="nav-signin">{t('Sign in')}</Link>
-              <Link to="/signup" className="cb-btn cb-btn-primary">
-                {t('Start selling')}
+              {/* Sign in is the loud one: on a storefront most people arriving
+                  signed-out are here to shop, and becoming a partner is the
+                  rarer, more deliberate act — it gets the quiet link. */}
+              <Link to="/partner" className="nav-signin">{t('Become a partner')}</Link>
+              {/* Opens the sign-in window over the shelf. Navigating away to a
+                  login page loses the scroll position and whatever was in the
+                  basket, and a shopper who leaves the shelf often doesn't
+                  come back. */}
+              <button type="button" className="cb-btn cb-btn-primary" onClick={() => openAuth()}>
+                {t('Sign in')}
                 <ArrowIcon />
-              </Link>
+              </button>
             </>
           )}
         </nav>

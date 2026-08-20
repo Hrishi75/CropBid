@@ -35,6 +35,7 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
         items: [
           { label: 'Overview', path: '/admin' },
           { label: 'Users', path: '/admin/users' },
+          { label: 'Partners', path: '/admin/partners' },
           { label: 'Listings', path: '/admin/listings' },
           { label: 'Transactions', path: '/admin/transactions' },
           { label: 'Equipment leads', path: '/admin/enquiries' },
