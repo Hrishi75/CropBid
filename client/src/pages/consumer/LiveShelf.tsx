@@ -26,15 +26,22 @@
 // A FLAT GRID, NOT FIVE RAILS. Real retail inventory starts small — a handful
 // of listings in one city — and five category rails holding one item each looks
 // broken. One grid stays honest at any size, and the header search narrows it.
+//
+// ADDING HAPPENS ON THE CARD. The shelf is where a basket gets filled, so ADD
+// puts the lot straight in the cart and then turns into the quantity control
+// for it. Making the shopper open a product page to add each of six items
+// would be six page loads to buy a week's vegetables.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Button } from '../../components/ui/Button';
+import { QuantityStepper } from './QuantityStepper';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
@@ -45,10 +52,16 @@ const SHELF_LIMIT = 50;
 interface RetailCity { city: string; state: string }
 
 function ShelfCard({ listing }: { listing: Listing }) {
+  const { quantityOf, add, setQuantity, remove } = useCart();
   const unit = listing.unit.toLowerCase();
   const image = listing.images[0] || cropImageFor(listing.cropName);
   const price = listing.retailPricePerUnit;
   const href = `/shop/${listing.id}`;
+  const inCart = quantityOf(listing.id);
+
+  // The opening quantity, matching the product page: one kilo, or the smallest
+  // sensible slice of a bigger denomination.
+  const firstQty = Math.min(listing.unit === 'KG' ? 1 : 0.5, listing.remainingQuantity);
 
   return (
     <div className="st-card">
@@ -71,7 +84,28 @@ function ShelfCard({ listing }: { listing: Listing }) {
               <span className="st-unit">/{unit}</span>
             </div>
           </div>
-          <Link to={href} className="st-add">ADD</Link>
+          {inCart > 0 ? (
+            <QuantityStepper
+              value={inCart}
+              onChange={(q) => setQuantity(listing.id, q)}
+              unit={listing.unit}
+              max={listing.remainingQuantity}
+              size="sm"
+              showUnit={false}
+              onEmpty={() => remove(listing.id)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="st-add"
+              onClick={() => add(listing, firstQty)}
+              // Nothing left to add, and a card that lets you add zero kilos
+              // would only fail at the checkout.
+              disabled={price == null || listing.remainingQuantity <= 0}
+            >
+              ADD
+            </button>
+          )}
         </div>
       </div>
     </div>

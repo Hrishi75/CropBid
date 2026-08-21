@@ -1809,7 +1809,18 @@ body * {
 .st-qty { font-size: 11px; color: var(--cb-ink-3); }
 /* consumer pack size + the per-kg rate behind it, so packs stay comparable */
 .st-pack { font-size: 11px; color: var(--cb-ink-3); }
-.st-price-row { margin-top: auto; padding-top: 9px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Wraps rather than overflows. A 150px card has to hold a price and a control,
+   and either one can be wide — "₹3,200/quintal" is 93px on its own, and the
+   quantity pill is wider still. When both fit they sit on one line; when they
+   don't the control drops to a line of its own, right-aligned, instead of
+   spilling out of the card. */
+.st-price-row {
+  margin-top: auto; padding-top: 9px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px;
+}
+.st-price-row > div { min-width: 0; }
+.st-price-row > .cn-step, .st-price-row > .st-add { margin-left: auto; }
 .st-price { font-size: 14.5px; font-weight: 700; color: var(--cb-ink); }
 .st-unit { font-size: 11px; font-weight: 400; color: var(--cb-ink-3); margin-left: 2px; }
 .st-mrp { font-size: 11.5px; color: var(--cb-ink-3); text-decoration: line-through; }
@@ -2191,4 +2202,111 @@ body * {
 }
 @media (max-width: 380px) {
   .cn-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Cart — the basket, its rows, and the bar that carries the total
+   ---------------------------------------------------------------------------
+   The stepper pill (.cn-step) is deliberately the same object on a shelf card
+   and in a cart row: once a shopper learns that − and + change a quantity in
+   one place, it should not look like a different control in the other.
+   --------------------------------------------------------------------------- */
+
+.cn-step {
+  display: inline-flex; align-items: center; flex-shrink: 0;
+  border: 1.5px solid var(--cb-forest); border-radius: 9px;
+  background: var(--cb-forest); color: #f4f1ea;
+  overflow: hidden;
+}
+.cn-step button {
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 6px 9px;
+  transition: background .15s ease;
+}
+.cn-step button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
+.cn-step button:disabled { opacity: 0.45; cursor: default; }
+.cn-step-val { font-size: 12.5px; font-weight: 600; min-width: 54px; text-align: center; }
+.cn-step-unit { font-weight: 400; opacity: 0.75; }
+/* Shelf-card variant: no unit inside the pill, so it can be narrow enough to
+   share a line with the price on the smallest card. */
+.cn-step.tight button { padding: 6px 8px; }
+.cn-step.tight .cn-step-val { min-width: 28px; }
+
+/* A shelf card that has nothing left to sell keeps the button in place so the
+   grid doesn't reflow — it just stops being pressable. */
+.st-add:disabled { opacity: 0.4; cursor: default; }
+.st-add:disabled:hover { background: rgba(31, 45, 24, 0.05); color: var(--cb-forest); }
+
+/* --- cart rows --- */
+.cn-cart-row { display: flex; gap: 14px; align-items: center; padding: 16px; }
+.cn-cart-img {
+  width: 64px; height: 64px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; overflow: hidden; background: var(--cb-paper-2);
+}
+.cn-cart-img img { width: 100%; height: 100%; object-fit: cover; }
+.cn-cart-main { flex: 1; min-width: 0; }
+.cn-cart-name {
+  display: block; font-size: 14.5px; font-weight: 600;
+  color: var(--cb-ink); text-decoration: none;
+}
+.cn-cart-name:hover { color: var(--cb-forest); text-decoration: underline; }
+.cn-cart-side {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0;
+}
+.cn-cart-amt { font-size: 14.5px; font-weight: 600; }
+.cn-cart-remove {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font-size: 11.5px; color: var(--cb-ink-3); text-decoration: underline;
+}
+.cn-cart-remove:hover { color: var(--cb-ember); }
+
+/* --- the header chip --- */
+.st-cart-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--cb-line); border-radius: 999px;
+  background: var(--cb-paper-2); padding: 5px 11px 5px 9px;
+  font-size: 14px; text-decoration: none; color: var(--cb-ink);
+}
+.st-cart-link:hover { border-color: var(--cb-forest); }
+.st-cart-count {
+  font-family: var(--cb-font-mono); font-size: 11px; font-weight: 600;
+  background: var(--cb-forest); color: #f4f1ea;
+  min-width: 18px; height: 18px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* --- the sticky total bar --- */
+.cn-cartbar {
+  position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60;
+  max-width: 720px; margin: 0 auto;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 18px; border-radius: 14px;
+  background: var(--cb-forest); color: #f4f1ea; text-decoration: none;
+  box-shadow: 0 10px 30px rgba(20, 20, 15, 0.28);
+  animation: cn-cartbar-in .22s ease;
+}
+@keyframes cn-cartbar-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.cn-cartbar-l { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cn-cartbar-count {
+  font-family: var(--cb-font-mono); font-size: 13px; font-weight: 600;
+  background: rgba(255, 255, 255, 0.16);
+  min-width: 26px; height: 26px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.cn-cartbar-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.cn-cartbar-items { font-size: 11.5px; opacity: 0.75; }
+.cn-cartbar-total { font-size: 15px; font-weight: 600; }
+.cn-cartbar-cta { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
+/* Keeps the last thing on the page reachable above the fixed bar. */
+.cn-cartbar-spacer { height: 88px; }
+
+@media (max-width: 640px) {
+  .cn-cart-row { padding: 14px; gap: 12px; }
+  .cn-cart-img { width: 54px; height: 54px; }
+  .cn-cartbar { left: 10px; right: 10px; bottom: 10px; padding: 11px 14px; }
+  .cn-step-val { min-width: 46px; }
 }
