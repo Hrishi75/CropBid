@@ -108,22 +108,13 @@ describe('sendPhoneOtp — Fast2SMS', () => {
 });
 
 describe('sendPhoneOtp — no provider configured', () => {
-  it('prints the code in development so local sign-in still works', async () => {
+  it('throws rather than pretending the code was sent', async () => {
     config.sms.provider = '';
-    (config as any).nodeEnv = 'development';
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    await sendPhoneOtp('+919876543210', '424242', 5);
-
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('424242'));
-  });
-
-  it('throws in production rather than pretending the code was sent', async () => {
-    config.sms.provider = '';
-    (config as any).nodeEnv = 'production';
-
-    // Silently "succeeding" would leave someone waiting for an SMS that was
-    // never sent, with nothing in the UI to act on.
+    // deliverOtp() checks isSmsConfigured() before calling in, and owns the
+    // console fallback for local development. Reaching here unconfigured is a
+    // wiring mistake, and silently "succeeding" would leave someone waiting
+    // for an SMS that was never sent.
     await expect(sendPhoneOtp('+919876543210', '123456', 5)).rejects.toThrow(/SMS_PROVIDER/);
   });
 });

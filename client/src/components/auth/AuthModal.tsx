@@ -8,10 +8,17 @@
 // sign in often does not come back.
 //
 // TWO STEPS, NO PASSWORD:
-//   1. Phone number  → a 6-digit code goes out by SMS
+//   1. Phone number  → a 6-digit code goes out, over WhatsApp where possible
 //   2. Code (+ name, for a number we have never seen) → signed in
 // There is no signup/sign-in distinction because to the person typing there
 // isn't one: the code proves the number and the account is found or created.
+//
+// THE EMAIL RESCUE. WhatsApp does not reach everyone — no WhatsApp on the
+// number, Meta's unverified 250/day cap, an outage. When the server exhausts
+// its channels and has no address on file it answers NEEDS_EMAIL, and this
+// dialog grows an email field instead of dead-ending. Which channel actually
+// carried the code comes back with the challenge, so step 2 names the right
+// place to look rather than guessing.
 //
 // THE SIDE PANEL is not decoration. Most people opening this are shoppers, so
 // the phone box owns the main column. The two other audiences — people who
@@ -25,7 +32,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import type { PhoneChallenge, PhoneSignInRole } from '../../context/AuthContext';
+import type { OtpChannel, PhoneChallenge, PhoneSignInRole } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ArcMark, ArrowIcon } from '../ui/Brand';
@@ -49,6 +56,17 @@ interface AuthModalProps extends AuthModalOptions {
   open: boolean;
   onClose: () => void;
 }
+
+// Step 2 copy, per channel. "Check your phone" is wrong — and quietly
+// infuriating — when the code went to an inbox because WhatsApp failed.
+const CHANNEL_COPY: Record<OtpChannel, { heading: ReactNode; where: string }> = {
+  whatsapp: { heading: <>Check WhatsApp<br /><span className="cb-italic">for a 6-digit code.</span></>, where: 'WhatsApp' },
+  sms:      { heading: <>Check your phone<br /><span className="cb-italic">for a 6-digit code.</span></>, where: 'SMS' },
+  email:    { heading: <>Check your email<br /><span className="cb-italic">for a 6-digit code.</span></>, where: 'email' },
+  // Local development with no channel configured — the code is in the server
+  // log. Saying so beats sending someone to look at a phone that never buzzed.
+  console:  { heading: <>Check the server log<br /><span className="cb-italic">for a 6-digit code.</span></>, where: 'the server log' },
+};
 
 // The two standing invitations in the side panel.
 const SIDE_DOORS = [
@@ -74,6 +92,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
+  // Only shown after the server says it couldn't reach the number.
+  const [email, setEmail] = useState('');
+  const [needsEmail, setNeedsEmail] = useState(false);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -86,6 +107,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   useEffect(() => {
     if (open) {
       setChallenge(null); setPhone(''); setCode(''); setName('');
+      setEmail(''); setNeedsEmail(false);
       setError(undefined); setCooldown(0);
     }
   }, [open]);
@@ -115,22 +137,31 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   const phoneDigits = phone.replace(/[^0-9]/g, '');
   const phoneValid = /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) && phoneDigits.length >= 7 && phone.trim().length <= 20;
   const codeValid = /^[0-9]{6}$/.test(code);
+  const emailValid = !needsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const needsName = Boolean(challenge?.isNewAccount);
   const nameValid = !needsName || name.trim().length >= 2;
 
   async function handleSendCode(e?: React.FormEvent) {
     e?.preventDefault();
     if (!phoneValid) { setError('Enter a valid phone number'); return; }
+    if (!emailValid) { setError('Enter a valid email address'); return; }
     setSending(true); setError(undefined);
     try {
-      const ch = await startPhoneSignIn(phone.trim(), intendedRole);
+      const ch = await startPhoneSignIn(
+        phone.trim(), intendedRole, needsEmail ? email.trim() : undefined,
+      );
       setChallenge(ch);
+      setNeedsEmail(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      toast.success(`Code sent to ${ch.phone}`);
+      toast.success(`Code sent to ${ch.sentTo}`);
     } catch (err: any) {
       const message = err.response?.data?.message || 'Could not send a code just now';
       setError(message);
-      toast.error(message);
+      // The one failure the person can fix themselves: we couldn't reach their
+      // WhatsApp and hold no address for them. Grow an email field rather than
+      // leaving them at a dead end.
+      if (err.response?.data?.code === 'NEEDS_EMAIL') setNeedsEmail(true);
+      else toast.error(message);
     } finally {
       setSending(false);
     }
@@ -204,7 +235,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
                 {title || <>Enter your number<br /><span className="cb-italic">to continue.</span></>}
               </h2>
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
-                We'll text you a 6-digit code. No password to remember.
+                {needsEmail
+                  ? "We couldn't reach that number on WhatsApp. Add an email and we'll send the code there."
+                  : "We'll send a 6-digit code to your WhatsApp. No password to remember."}
               </p>
 
               <form onSubmit={handleSendCode} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -220,8 +253,28 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
                   autoFocus
                   required
                 />
-                <Button type="submit" size="lg" loading={sending} disabled={!phoneValid} style={{ width: '100%' }}>
-                  Send code
+                {/* Appears only when WhatsApp couldn't reach the number. */}
+                {needsEmail && (
+                  <Input
+                    label="Email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); setError(undefined); }}
+                    required
+                    autoFocus
+                  />
+                )}
+                <Button
+                  type="submit"
+                  size="lg"
+                  loading={sending}
+                  disabled={!phoneValid || !emailValid}
+                  style={{ width: '100%' }}
+                >
+                  {needsEmail ? 'Email me the code' : 'Send code'}
                   <ArrowIcon />
                 </Button>
               </form>
@@ -229,10 +282,11 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
           ) : (
             <>
               <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
-                Check your phone<br /><span className="cb-italic">for a 6-digit code.</span>
+                {(CHANNEL_COPY[challenge.channel] ?? CHANNEL_COPY.whatsapp).heading}
               </h2>
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
-                Sent to <strong>{challenge.phone}</strong>.{' '}
+                Sent on {(CHANNEL_COPY[challenge.channel] ?? CHANNEL_COPY.whatsapp).where}{' '}
+                to <strong>{challenge.sentTo}</strong>.{' '}
                 <button
                   type="button"
                   onClick={() => { setChallenge(null); setCode(''); setError(undefined); }}

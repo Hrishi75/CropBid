@@ -300,6 +300,15 @@ model PhoneChallenge {
   // ADMIN is never accepted here.
   intendedRole Role   @default(CONSUMER)
 
+  // Which channel actually carried the code, and where it went. Stored so the
+  // code-entry screen can say "check WhatsApp" or "check your email"
+  // truthfully — telling someone to watch WhatsApp for a code that landed in
+  // their inbox is its own kind of lockout.
+  channel    String   @default("whatsapp") // whatsapp | sms | email | console
+  // The address the email fallback used. Either the account's, or one the
+  // person typed when WhatsApp could not reach them.
+  email      String?
+
   attempts   Int      @default(0)
   expiresAt  DateTime
   lastSentAt DateTime @default(now()) // drives the resend cooldown

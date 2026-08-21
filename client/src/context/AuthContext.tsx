@@ -35,8 +35,14 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<User>;
-  /** Passwordless step 1 — send a 6-digit code to a handset. */
-  startPhoneSignIn: (phone: string, intendedRole?: PhoneSignInRole) => Promise<PhoneChallenge>;
+  /**
+   * Passwordless step 1 — send a 6-digit code, over WhatsApp where possible.
+   * `email` is only read when WhatsApp couldn't reach the number: the first
+   * attempt fails with NEEDS_EMAIL, and the retry carries an address.
+   */
+  startPhoneSignIn: (
+    phone: string, intendedRole?: PhoneSignInRole, email?: string,
+  ) => Promise<PhoneChallenge>;
   /** Passwordless step 2 — check the code; `name` is only read for a new account. */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
@@ -61,6 +67,9 @@ interface SignupData {
 // deliberately absent — the server refuses it too.
 export type PhoneSignInRole = 'CONSUMER' | 'FARMER' | 'BUYER';
 
+/** Which channel actually carried the code. */
+export type OtpChannel = 'whatsapp' | 'sms' | 'email' | 'console';
+
 // A live phone challenge: a code is in flight to this number.
 export interface PhoneChallenge {
   challengeId: string;
@@ -68,6 +77,10 @@ export interface PhoneChallenge {
   expiresAt: string;
   /** Whether verifying will CREATE an account — the UI asks for a name if so. */
   isNewAccount: boolean;
+  /** Where the code actually went, so the screen names the right place. */
+  channel: OtpChannel;
+  /** Masked destination, safe to display: "•••••43210" or "a•••@farm.in". */
+  sentTo: string;
 }
 
 export interface PhoneSignInResult {
@@ -200,8 +213,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // One flow for signing up and signing in: the code proves the number, and
   // the account is either found or created. This is the only auth path the
   // consumer UI offers — see components/auth/AuthModal.tsx.
-  async function startPhoneSignIn(phone: string, intendedRole?: PhoneSignInRole): Promise<PhoneChallenge> {
-    const { data } = await api.post('/auth/phone/start', { phone, intendedRole });
+  async function startPhoneSignIn(
+    phone: string, intendedRole?: PhoneSignInRole, email?: string,
+  ): Promise<PhoneChallenge> {
+    const { data } = await api.post('/auth/phone/start', { phone, intendedRole, email });
     return data.challenge as PhoneChallenge;
   }
 

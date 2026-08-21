@@ -163,6 +163,56 @@ export async function sendSignupOtpEmail(
 }
 
 // ---------------------------------------------------------------------------
+// Sign-in code (fallback channel)
+// ---------------------------------------------------------------------------
+// Sign-in normally happens over WhatsApp. This is what goes out when that
+// fails — no WhatsApp on the number, Meta's unverified 250/day cap reached, an
+// outage. Deliberately worded for signing IN as well as signing up, because
+// unlike sendSignupOtpEmail this code does both.
+
+export async function sendSignInOtpEmail(
+  to: string,
+  name: string | null,
+  code: string,
+  ttlMinutes: number,
+): Promise<void> {
+  const greeting = name ? `Hi ${name},` : 'Hi,';
+  const subject = `${code} is your CropBid sign-in code`;
+  const text = [
+    greeting,
+    '',
+    "We couldn't reach your WhatsApp, so here is your CropBid sign-in code:",
+    '',
+    code,
+    '',
+    `It expires in ${ttlMinutes} minutes and works once.`,
+    '',
+    "If you didn't try to sign in, ignore this email. Nobody can get into your",
+    'account without this code.',
+    '',
+    '— CropBid',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; color: #1e2a1e;">
+      <h2 style="color: #2f6b3a;">Your sign-in code</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>We couldn't reach your WhatsApp, so here is your CropBid sign-in code:</p>
+      <p style="margin: 28px 0;">
+        <span style="display: inline-block; background: #f2f7f2; border: 1px solid #cfe0cf; color: #2f6b3a;
+                     font-size: 30px; font-weight: 700; letter-spacing: 8px; padding: 14px 26px; border-radius: 8px;">
+          ${escapeHtml(code)}
+        </span>
+      </p>
+      <p style="font-size: 13px; color: #5a6b5a;">It expires in <strong>${ttlMinutes} minutes</strong> and works once.</p>
+      <p style="font-size: 13px; color: #5a6b5a;">If you didn't try to sign in, ignore this email — nobody can get into your account without this code.</p>
+      <p>— CropBid</p>
+    </div>`;
+
+  await sendEmail({ to, subject, text, html });
+}
+
+// ---------------------------------------------------------------------------
 // New order alert (ops inbox)
 // ---------------------------------------------------------------------------
 // Sent to the platform, NOT to either party — it's the "an order just came in"

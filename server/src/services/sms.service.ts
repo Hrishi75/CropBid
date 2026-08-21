@@ -26,17 +26,15 @@
 // and your own message text. Start unbranded on fast2sms, register DLT when
 // the branding is worth the paperwork, then set the template id below.
 //
-// WHY THE DEV FALLBACK PRINTS THE CODE: phone sign-in is the ONLY way into a
-// consumer account. Without this, nobody could log into a local or preview
-// environment at all. It is gated on the provider being unconfigured, and in
-// production an unconfigured provider throws instead of printing (see below) —
-// silently "succeeding" would let people request codes that never arrive and
-// leave them locked out with no error to act on.
+// SMS IS NOT THE PRIMARY CHANNEL. Sign-in codes go over WhatsApp first (no
+// DLT registration, cheaper per message) and fall back to email. This module
+// is only reached when SMS_PROVIDER is set — see otpDelivery.service.ts for
+// the chain and for the console fallback that keeps local sign-in working.
 // =============================================================================
 
 import { config } from '../config';
 
-function isConfigured(): boolean {
+export function isSmsConfigured(): boolean {
   if (config.sms.provider === 'fast2sms') {
     return Boolean(config.sms.fast2smsApiKey);
   }
@@ -151,17 +149,15 @@ async function sendViaTwilio(phone: string, code: string): Promise<void> {
  * drops the challenge row so the person can retry cleanly rather than staring
  * at a code box with nothing to type.
  */
-export async function sendPhoneOtp(phone: string, code: string, ttlMinutes: number): Promise<void> {
-  if (!isConfigured()) {
-    if (config.nodeEnv === 'production') {
-      throw new Error(
-        'No SMS provider configured — set SMS_PROVIDER (fast2sms|msg91|twilio) and its keys',
-      );
-    }
-    console.log(
-      `\n📱 [sms:dev] Sign-in code for ${phone}: ${code}  (expires in ${ttlMinutes} min)\n`,
+export async function sendPhoneOtp(phone: string, code: string, _ttlMinutes: number): Promise<void> {
+  // Callers go through deliverOtp(), which checks isSmsConfigured() first and
+  // owns both the console fallback for local development and the decision to
+  // move on to the next channel. Reaching here unconfigured is a programming
+  // error, not a runtime condition.
+  if (!isSmsConfigured()) {
+    throw new Error(
+      'No SMS provider configured — set SMS_PROVIDER (fast2sms|msg91|twilio) and its keys',
     );
-    return;
   }
 
   if (config.sms.provider === 'fast2sms') return sendViaFast2Sms(phone, code);

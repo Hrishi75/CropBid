@@ -35,7 +35,7 @@ import {
   phoneOtpExpiry,
   phoneOtpMatches,
 } from '../utils/phoneOtp';
-import { sendPhoneOtp } from './sms.service';
+import { OtpDeliveryError, deliverOtp } from './otpDelivery.service';
 import { recordAudit } from './audit.service';
 import { removeImage } from './imageStorage';
 import { config } from '../config';
@@ -1335,7 +1335,12 @@ export async function pruneExpiredPhoneChallenges(): Promise<number> {
 // ---------------------------------------------------------------------------
 // Step 1 — send a code to the handset
 // ---------------------------------------------------------------------------
-export async function startPhoneSignIn(input: { phone: string; intendedRole?: SelfAssignableRole }) {
+export async function startPhoneSignIn(input: {
+  phone: string;
+  intendedRole?: SelfAssignableRole;
+  /** Where to send the code if WhatsApp cannot reach the number. */
+  email?: string;
+}) {
   const phone = normalizePhone(input.phone);
   if (phone.replace(/[^0-9]/g, '').length < 7) {
     throw new ApiError(400, 'Enter a valid phone number');
@@ -1347,10 +1352,18 @@ export async function startPhoneSignIn(input: { phone: string; intendedRole?: Se
 
   // A suspended account must not be able to pull a fresh code — the number is
   // checked here rather than at verification so the block is immediate.
-  const existing = await prisma.user.findUnique({ where: { phone }, select: { suspended: true } });
+  const existing = await prisma.user.findUnique({
+    where: { phone },
+    select: { suspended: true, email: true, name: true },
+  });
   if (existing?.suspended) {
     throw new ApiError(403, 'This account has been suspended. Please contact support.');
   }
+
+  // The email fallback prefers an address the person just typed, and otherwise
+  // uses the one already on the account. A returning shopper therefore never
+  // has to retype it, and a new number can still rescue itself by supplying one.
+  const fallbackEmail = input.email ? normalizeEmail(input.email) || null : existing?.email ?? null;
 
   // Opportunistic sweep, same reasoning as pruneExpiredPendingSignups: cheap
   // indexed range delete, no scheduler in this codebase to run it otherwise.
@@ -1374,24 +1387,47 @@ export async function startPhoneSignIn(input: { phone: string; intendedRole?: Se
   // two valid codes at once.
   const challenge = await prisma.phoneChallenge.upsert({
     where: { phone },
-    create: { phone, codeHash, intendedRole, expiresAt },
-    update: { codeHash, intendedRole, expiresAt, attempts: 0, lastSentAt: new Date() },
+    create: { phone, codeHash, intendedRole, expiresAt, email: fallbackEmail },
+    update: {
+      codeHash, intendedRole, expiresAt, email: fallbackEmail,
+      attempts: 0, lastSentAt: new Date(),
+    },
   });
 
   // A failed send is not swallowed — the person would be staring at a code box
   // with nothing to type. Scoped to OUR codeHash so a failure here can never
   // delete a row that holds a code someone else's request already delivered.
+  let delivery;
   try {
-    await sendPhoneOtp(phone, code, PHONE_OTP_TTL_MS / 60_000);
+    delivery = await deliverOtp({
+      phone,
+      code,
+      ttlMinutes: PHONE_OTP_TTL_MS / 60_000,
+      email: fallbackEmail,
+      name: existing?.name ?? null,
+    });
   } catch (err) {
     await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id, codeHash } }).catch(() => {});
+    // 422 rather than 500: "we could not reach that number, give us an email"
+    // is something the person can act on, not a server fault.
+    if (err instanceof OtpDeliveryError) {
+      throw new ApiError(422, err.message, err.needsEmail ? 'NEEDS_EMAIL' : undefined);
+    }
     throw err;
   }
+
+  // Record which channel won, so a resend and the code screen agree with each
+  // other about where the person should be looking.
+  await prisma.phoneChallenge
+    .update({ where: { id: challenge.id }, data: { channel: delivery.channel } })
+    .catch(() => {});
 
   return {
     challengeId: challenge.id,
     phone,
     expiresAt,
+    channel: delivery.channel,
+    sentTo: delivery.sentTo,
     // Tells the client whether to ask for a name after the code — a returning
     // shopper should never be asked again. Not sensitive: anyone can discover
     // the same thing by attempting a signup with the number.

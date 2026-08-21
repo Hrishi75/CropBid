@@ -46,29 +46,41 @@ Production demo stack — all free tier:
    | `SMTP_PORT` | usually `587` (or `465` for implicit TLS) |
    | `SMTP_USER` / `SMTP_PASS` | SMTP credentials from your email provider |
    | `EMAIL_FROM` | e.g. `CropBid <no-reply@cropbid.in>` |
-   | `SMS_PROVIDER` | `fast2sms` (see the SMS note below) |
-   | `FAST2SMS_API_KEY` | API key from the [Fast2SMS dashboard](https://www.fast2sms.com) |
+   | `WHATSAPP_PHONE_NUMBER_ID` | From your WhatsApp Business number in Meta Business Manager |
+   | `WHATSAPP_ACCESS_TOKEN` | A permanent system-user token with `whatsapp_business_messaging` |
+   | `WHATSAPP_OTP_TEMPLATE` | Name of your APPROVED authentication template (default `cropbid_otp`) |
 
-   > **SMS — required, or nobody can sign in.** Signing in is a phone number and
-   > a 6-digit code; there is no password. With `SMS_PROVIDER` unset the server
-   > **refuses to mint a code in production**, which locks every account out
-   > (dev prints the code to the logs instead, so local work is unaffected).
+   > **Sign-in codes — required, or nobody can sign in.** Signing in is a phone
+   > number and a 6-digit code; there is no password. Delivery is tried in
+   > order: **WhatsApp → SMS (if configured) → email**. With none of them
+   > available the server **refuses to mint a code in production** rather than
+   > pretending it sent one (dev prints the code to the logs, so local work is
+   > unaffected).
    >
-   > Start on **Fast2SMS**: ₹100 minimum top-up, ₹0.25/SMS falling to ₹0.11 at
-   > volume, and its `otp` route uses a pre-approved generic template so it
-   > works with **no DLT registration of your own on day one**. The trade-off is
-   > that the message arrives unbranded — "Your OTP: 123456" from a shared
-   > header, not from CROPBD.
+   > **WhatsApp is the primary channel** because it needs no TRAI DLT
+   > registration — Meta is the sender — and runs ~₹0.115 a message against
+   > ₹0.25+ for DLT SMS. You need a Meta Business account, a WhatsApp Business
+   > number, and an approved **authentication template** (Meta writes the copy;
+   > you pick the button and expiry).
    >
-   > To brand it you need a TRAI **DLT registration** (~₹5,900 one-time, done
-   > once and honoured by Jio/Airtel/Vi/BSNL alike), then a registered header
-   > and template. Set `FAST2SMS_DLT_TEMPLATE_ID` and `SMS_SENDER_ID` and the
-   > adapter switches routes on its own — no code change.
+   > ⚠️ **The 250/day cap.** Until Meta Business Verification is complete, an
+   > account can only open conversations with **250 unique people per rolling
+   > 24 hours**. Fine for a pilot, not for a consumer launch. Verification
+   > needs a business document — a free **Udyam (MSME) certificate** (Aadhaar +
+   > PAN, ~10 minutes online) satisfies it, and also unlocks DLT if you later
+   > want branded SMS.
    >
-   > `msg91` (~₹0.15–0.25) and `twilio` (~₹0.45 to India, ~3× the local
-   > providers — use it only for non-Indian numbers) are also supported; see
-   > `server/src/services/sms.service.ts`. **Prices checked Aug 2026 — re-check
-   > before committing spend.**
+   > **Email is the fallback**, over the same SMTP transport as everything else.
+   > If WhatsApp can't reach a number the code goes to the address on the
+   > account; if there is none, the API answers `NEEDS_EMAIL` and the sign-in
+   > window asks for one. So `SMTP_HOST` is not optional in practice — without
+   > it, anyone WhatsApp can't reach is locked out.
+   >
+   > **SMS is optional** and off unless `SMS_PROVIDER` is set: `fast2sms`
+   > (₹0.25/SMS, but the cheap tiers need DLT), `msg91`, or `twilio` (~₹0.45 to
+   > India, ~3× the local providers — for non-Indian numbers). See
+   > `server/src/services/otpDelivery.service.ts` for the chain.
+   > **Prices checked Aug 2026 — re-check before committing spend.**
 
    > **Email:** password-reset links, buyer signup codes and the new-order ops
    > alert are emailed via SMTP. Any provider works (Resend, Brevo, SES, Gmail
@@ -82,6 +94,11 @@ Production demo stack — all free tier:
    |-----|---------|-------|
    | `DATA_GOV_API_KEY` | *(shared demo key)* | Your own [data.gov.in](https://data.gov.in/user/register) key for the daily Agmarknet mandi feed. **Set this.** The built-in default is data.gov.in's public demo key, shared by every project that never registered one — it spends most of the day returning `429 Rate limit exceeded`, and the storefront then falls back to static reference prices, so the hero chips and the ticker show `ref` instead of today's real move. A registered key is free and instant. |
    | `ORDER_ALERT_EMAIL` | `info@cropbid.in` | Inbox that gets one email per order placed — consumer buy, accepted bid, agent deal, auction win or requirement fill. Needs `SMTP_HOST` set, or the alert only reaches the server logs. |
+   | `SMS_PROVIDER` | *(none)* | `fast2sms` \| `msg91` \| `twilio`. Leave unset to run WhatsApp + email only. SMS is worth adding once you have DLT, since it reaches people with no WhatsApp. |
+   | `WHATSAPP_OTP_TEMPLATE_LANG` | `en` | Language your authentication template was approved in. A mismatch is rejected by Meta as "template not found". |
+   | `WHATSAPP_OTP_TEMPLATE_BUTTON` | `true` | Whether the template carries a copy-code/autofill button. Set `false` if yours has none, or Meta rejects the send. |
+   | `WHATSAPP_GRAPH_VERSION` | `v21.0` | Graph API version. |
+   | `FAST2SMS_API_KEY` | *(none)* | Only needed when `SMS_PROVIDER=fast2sms`. |
    | `FAST2SMS_DLT_TEMPLATE_ID` | *(none)* | Your approved DLT template id. Leave blank to send on Fast2SMS's shared, unbranded OTP route; set it (with `SMS_SENDER_ID`) once TRAI DLT registration is done and codes arrive branded. |
    | `SMS_SENDER_ID` | `CROPBD` | The 6-character DLT header codes are sent from. Only used once `FAST2SMS_DLT_TEMPLATE_ID` (or MSG91) is configured — the no-DLT route ignores it. |
    | `SESSION_IDLE_MINUTES` | `15` | How long a session survives with no activity. The refresh token is rotated on every request, so this is a *sliding* window — active users are never interrupted. Changing it here also changes the copy on the sign-in screen (the client reads its own copy of the number from `client/src/lib/idle.ts` — keep the two in sync). |

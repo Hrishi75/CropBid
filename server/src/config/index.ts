@@ -104,6 +104,28 @@ export const config = {
   // "msg91" or "twilio" and fill that provider's keys. Leave it unset in
   // development — codes are printed to the server console instead of sent, so
   // the whole sign-in flow is testable without a provider or a real handset.
+  // WhatsApp Cloud API — the primary channel for sign-in codes.
+  // Cheaper per message than SMS and needs no TRAI DLT registration, since
+  // Meta is the sender. Requires a Meta Business account with a WhatsApp
+  // Business number and an APPROVED authentication template.
+  //
+  // NOTE ON LIMITS: an unverified Meta business can only open conversations
+  // with 250 unique people per rolling 24h. That is fine for a pilot and not
+  // for a consumer launch — Meta Business Verification lifts it.
+  whatsapp: {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+    // The approved authentication template, and the language it was approved
+    // in. A mismatch here is rejected by Meta with a template-not-found error.
+    otpTemplate: process.env.WHATSAPP_OTP_TEMPLATE || 'cropbid_otp',
+    otpTemplateLang: process.env.WHATSAPP_OTP_TEMPLATE_LANG || 'en',
+    // Authentication templates normally carry a copy-code / autofill button,
+    // which has to be echoed in the send call. Set to 'false' if the approved
+    // template has no button, or Meta rejects the message.
+    otpTemplateHasButton: (process.env.WHATSAPP_OTP_TEMPLATE_BUTTON || 'true') !== 'false',
+    graphVersion: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
+  },
+
   sms: {
     // '' | 'fast2sms' | 'msg91' | 'twilio'. See services/sms.service.ts for
     // what each one costs and which to pick.

@@ -526,6 +526,12 @@ const startPhoneSignInSchema = z.object({
   // Set by the partner flow so the account it creates is a seller/buyer rather
   // than a shopper. The service whitelists this — ADMIN is never accepted.
   intendedRole: z.enum(['CONSUMER', 'FARMER', 'BUYER']).optional(),
+  // Where to send the code if WhatsApp can't reach the number. Supplied on a
+  // second attempt, after the first came back NEEDS_EMAIL. Blank is "absent".
+  email: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().email('Enter a valid email address').optional(),
+  ),
 });
 
 // POST /api/auth/phone/start — send a code
@@ -542,6 +548,10 @@ export async function startPhoneSignInHandler(req: Request, res: Response) {
       phone: result.phone,
       expiresAt: result.expiresAt.toISOString(),
       isNewAccount: result.isNewAccount,
+      // Which channel carried it, and a masked destination — so the next
+      // screen can name the right place to look.
+      channel: result.channel,
+      sentTo: result.sentTo,
     },
   });
 }
