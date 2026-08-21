@@ -105,12 +105,25 @@ export const config = {
   // development — codes are printed to the server console instead of sent, so
   // the whole sign-in flow is testable without a provider or a real handset.
   sms: {
-    provider: (process.env.SMS_PROVIDER || '').toLowerCase(), // '' | 'msg91' | 'twilio'
+    // '' | 'fast2sms' | 'msg91' | 'twilio'. See services/sms.service.ts for
+    // what each one costs and which to pick.
+    provider: (process.env.SMS_PROVIDER || '').toLowerCase(),
     senderId: process.env.SMS_SENDER_ID || 'CROPBD',
+
+    // Fast2SMS (India) — the cheapest way to start, and the only one that
+    // needs no DLT paperwork on day one. Just an API key.
+    // FAST2SMS_DLT_TEMPLATE_ID + SMS_SENDER_ID are optional: set them once you
+    // have your own DLT header approved and the sends switch to branded.
+    fast2smsApiKey: process.env.FAST2SMS_API_KEY || '',
+    fast2smsDltTemplateId: process.env.FAST2SMS_DLT_TEMPLATE_ID || '',
+
     // MSG91 (India): an auth key and an approved DLT template id.
     msg91AuthKey: process.env.MSG91_AUTH_KEY || '',
     msg91TemplateId: process.env.MSG91_TEMPLATE_ID || '',
+
     // Twilio: account SID, auth token, and the sending number in E.164.
+    // Roughly 3x the Indian providers per message — worth it only for
+    // non-Indian numbers.
     twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
     twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
     twilioFrom: process.env.TWILIO_FROM || '',

@@ -3,8 +3,28 @@
 // =============================================================================
 // Mirrors email.service.ts: provider-agnostic, and a no-op-with-console-output
 // in development so the sign-in flow is fully testable without a provider or a
-// real phone. Set SMS_PROVIDER=msg91|twilio plus that provider's keys to send
-// for real.
+// real phone. Set SMS_PROVIDER plus that provider's keys to send for real.
+//
+// WHICH PROVIDER (India, checked Aug 2026 — re-check before committing spend):
+//
+//   fast2sms  ₹0.25/SMS at a ₹100 top-up, falling to ₹0.11 at very high
+//             volume. Its `otp` route sends through a PRE-APPROVED generic
+//             template, so it works with NO DLT registration of your own —
+//             which is the only reason it is the default. Trade-off: the
+//             message reads "Your OTP: 123456" from a shared header, with no
+//             CropBid branding.
+//   msg91     ~₹0.15-0.25 depending on volume. Better dashboard and delivery
+//             reporting; its own default template also skips DLT, but the
+//             branded path wants a registered template.
+//   twilio    ~₹0.45/SMS to India, roughly 3x the local providers. Keep it
+//             for non-Indian numbers, not as the Indian default.
+//
+// THE REAL COST IS NOT PER-MESSAGE. At a few thousand codes a month the
+// difference between the cheapest and dearest Indian provider is tens of
+// rupees. What actually costs is DLT registration (~₹5,900 one-time with
+// TRAI, via any provider's portal), which you need for a branded sender ID
+// and your own message text. Start unbranded on fast2sms, register DLT when
+// the branding is worth the paperwork, then set the template id below.
 //
 // WHY THE DEV FALLBACK PRINTS THE CODE: phone sign-in is the ONLY way into a
 // consumer account. Without this, nobody could log into a local or preview
@@ -17,6 +37,9 @@
 import { config } from '../config';
 
 function isConfigured(): boolean {
+  if (config.sms.provider === 'fast2sms') {
+    return Boolean(config.sms.fast2smsApiKey);
+  }
   if (config.sms.provider === 'msg91') {
     return Boolean(config.sms.msg91AuthKey && config.sms.msg91TemplateId);
   }
@@ -24,6 +47,58 @@ function isConfigured(): boolean {
     return Boolean(config.sms.twilioAccountSid && config.sms.twilioAuthToken && config.sms.twilioFrom);
   }
   return false;
+}
+
+async function sendViaFast2Sms(phone: string, code: string): Promise<void> {
+  // Fast2SMS addresses Indian numbers as bare 10 digits — a leading +91 (or a
+  // 0) is rejected rather than normalised, so strip the country code here.
+  // Our stored form is E.164-ish ("+919876543210"), hence the last-10 slice.
+  const digits = phone.replace(/[^0-9]/g, '');
+  const local = digits.slice(-10);
+  if (local.length !== 10) {
+    throw new Error(`Fast2SMS only sends to Indian numbers; got "${phone}"`);
+  }
+
+  // Two routes, picked by whether a DLT template has been registered yet:
+  //   otp — generic pre-approved template, no DLT needed, unbranded
+  //   dlt — your own template + header, needs TRAI registration
+  const useDlt = Boolean(config.sms.fast2smsDltTemplateId);
+  const body = useDlt
+    ? new URLSearchParams({
+        route: 'dlt',
+        sender_id: config.sms.senderId,
+        message: config.sms.fast2smsDltTemplateId,
+        variables_values: code,
+        numbers: local,
+      })
+    : new URLSearchParams({
+        route: 'otp',
+        variables_values: code, // renders as "Your OTP: <code>"
+        numbers: local,
+      });
+
+  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+    method: 'POST',
+    headers: {
+      authorization: config.sms.fast2smsApiKey,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Fast2SMS responded ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+  // Like MSG91, Fast2SMS answers 200 with {"return":false} for a rejected
+  // send (bad key, empty wallet, unapproved template), so the status code
+  // alone is not proof of delivery.
+  const payload = (await res.json().catch(() => ({}))) as {
+    return?: boolean; message?: string | string[];
+  };
+  if (payload.return === false) {
+    const detail = Array.isArray(payload.message) ? payload.message.join('; ') : payload.message;
+    throw new Error(`Fast2SMS rejected the send: ${detail || 'unknown error'}`);
+  }
 }
 
 async function sendViaMsg91(phone: string, code: string): Promise<void> {
@@ -79,7 +154,9 @@ async function sendViaTwilio(phone: string, code: string): Promise<void> {
 export async function sendPhoneOtp(phone: string, code: string, ttlMinutes: number): Promise<void> {
   if (!isConfigured()) {
     if (config.nodeEnv === 'production') {
-      throw new Error('No SMS provider configured — set SMS_PROVIDER and its keys');
+      throw new Error(
+        'No SMS provider configured — set SMS_PROVIDER (fast2sms|msg91|twilio) and its keys',
+      );
     }
     console.log(
       `\n📱 [sms:dev] Sign-in code for ${phone}: ${code}  (expires in ${ttlMinutes} min)\n`,
@@ -87,6 +164,7 @@ export async function sendPhoneOtp(phone: string, code: string, ttlMinutes: numb
     return;
   }
 
+  if (config.sms.provider === 'fast2sms') return sendViaFast2Sms(phone, code);
   if (config.sms.provider === 'msg91') return sendViaMsg91(phone, code);
   if (config.sms.provider === 'twilio') return sendViaTwilio(phone, code);
   throw new Error(`Unknown SMS_PROVIDER "${config.sms.provider}"`);

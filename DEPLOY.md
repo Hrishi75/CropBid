@@ -46,6 +46,29 @@ Production demo stack — all free tier:
    | `SMTP_PORT` | usually `587` (or `465` for implicit TLS) |
    | `SMTP_USER` / `SMTP_PASS` | SMTP credentials from your email provider |
    | `EMAIL_FROM` | e.g. `CropBid <no-reply@cropbid.in>` |
+   | `SMS_PROVIDER` | `fast2sms` (see the SMS note below) |
+   | `FAST2SMS_API_KEY` | API key from the [Fast2SMS dashboard](https://www.fast2sms.com) |
+
+   > **SMS — required, or nobody can sign in.** Signing in is a phone number and
+   > a 6-digit code; there is no password. With `SMS_PROVIDER` unset the server
+   > **refuses to mint a code in production**, which locks every account out
+   > (dev prints the code to the logs instead, so local work is unaffected).
+   >
+   > Start on **Fast2SMS**: ₹100 minimum top-up, ₹0.25/SMS falling to ₹0.11 at
+   > volume, and its `otp` route uses a pre-approved generic template so it
+   > works with **no DLT registration of your own on day one**. The trade-off is
+   > that the message arrives unbranded — "Your OTP: 123456" from a shared
+   > header, not from CROPBD.
+   >
+   > To brand it you need a TRAI **DLT registration** (~₹5,900 one-time, done
+   > once and honoured by Jio/Airtel/Vi/BSNL alike), then a registered header
+   > and template. Set `FAST2SMS_DLT_TEMPLATE_ID` and `SMS_SENDER_ID` and the
+   > adapter switches routes on its own — no code change.
+   >
+   > `msg91` (~₹0.15–0.25) and `twilio` (~₹0.45 to India, ~3× the local
+   > providers — use it only for non-Indian numbers) are also supported; see
+   > `server/src/services/sms.service.ts`. **Prices checked Aug 2026 — re-check
+   > before committing spend.**
 
    > **Email:** password-reset links, buyer signup codes and the new-order ops
    > alert are emailed via SMTP. Any provider works (Resend, Brevo, SES, Gmail
@@ -59,6 +82,8 @@ Production demo stack — all free tier:
    |-----|---------|-------|
    | `DATA_GOV_API_KEY` | *(shared demo key)* | Your own [data.gov.in](https://data.gov.in/user/register) key for the daily Agmarknet mandi feed. **Set this.** The built-in default is data.gov.in's public demo key, shared by every project that never registered one — it spends most of the day returning `429 Rate limit exceeded`, and the storefront then falls back to static reference prices, so the hero chips and the ticker show `ref` instead of today's real move. A registered key is free and instant. |
    | `ORDER_ALERT_EMAIL` | `info@cropbid.in` | Inbox that gets one email per order placed — consumer buy, accepted bid, agent deal, auction win or requirement fill. Needs `SMTP_HOST` set, or the alert only reaches the server logs. |
+   | `FAST2SMS_DLT_TEMPLATE_ID` | *(none)* | Your approved DLT template id. Leave blank to send on Fast2SMS's shared, unbranded OTP route; set it (with `SMS_SENDER_ID`) once TRAI DLT registration is done and codes arrive branded. |
+   | `SMS_SENDER_ID` | `CROPBD` | The 6-character DLT header codes are sent from. Only used once `FAST2SMS_DLT_TEMPLATE_ID` (or MSG91) is configured — the no-DLT route ignores it. |
    | `SESSION_IDLE_MINUTES` | `15` | How long a session survives with no activity. The refresh token is rotated on every request, so this is a *sliding* window — active users are never interrupted. Changing it here also changes the copy on the sign-in screen (the client reads its own copy of the number from `client/src/lib/idle.ts` — keep the two in sync). |
    | `ACCESS_TOKEN_MINUTES` | `5` | Access-token lifetime. Must stay comfortably **below** `SESSION_IDLE_MINUTES`, or an active user's two tokens expire together and the session ends at the idle timeout no matter what they're doing. |
 
