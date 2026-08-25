@@ -13,6 +13,14 @@
 // There is no signup/sign-in distinction because to the person typing there
 // isn't one: the code proves the number and the account is found or created.
 //
+// THE PASSWORD LANE. Not every account is passwordless. Admins made by
+// prisma/createAdmin.ts have a password and no other way in, and so does
+// anyone who signed up before the code flow existed. That door used to be
+// /login?password=1, unlinked on purpose — which in practice meant it did not
+// exist, because the header button opens this dialog and this dialog only
+// asked for a number. It is a toggle here now: same window, same scroll
+// position, and it does not depend on an SMS provider being reachable.
+//
 // THE EMAIL RESCUE. WhatsApp does not reach everyone — no WhatsApp on the
 // number, Meta's unverified 250/day cap, an outage. When the server exhausts
 // its channels and has no address on file it answers NEEDS_EMAIL, and this
@@ -33,6 +41,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import type { OtpChannel, PhoneChallenge, PhoneSignInRole } from '../../context/AuthContext';
+import type { User } from '../../types';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ArcMark, ArrowIcon } from '../ui/Brand';
@@ -85,11 +94,19 @@ const SIDE_DOORS = [
 ];
 
 export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: AuthModalProps) {
-  const { startPhoneSignIn, verifyPhoneSignIn } = useAuth();
+  const { login, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
   const navigate = useNavigate();
+
+  // 'code' is the default for everyone; 'password' is the lane for accounts
+  // that have one. Kept as a mode rather than a second dialog so switching
+  // costs nothing and neither path loses the page behind it.
+  const [mode, setMode] = useState<'code' | 'password'>('code');
 
   const [challenge, setChallenge] = useState<PhoneChallenge | null>(null);
   const [phone, setPhone] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [signingIn, setSigningIn] = useState(false);
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   // Only shown after the server says it couldn't reach the number.
@@ -102,12 +119,29 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Which "attempt" is currently on screen. A sign-in request outlives the
+  // click that started it, and closing, reopening or switching lanes in that
+  // window leaves a continuation holding a dialog that no longer exists. It
+  // bumps on every one of those, and both submit handlers check it before they
+  // touch the UI — otherwise an abandoned password attempt closes the dialog
+  // somebody has since reopened, or navigates on a sign-in they walked away
+  // from. The session itself still lands; it is only the UI that is stale.
+  const attemptRef = useRef(0);
+
   // Every open starts clean. Leaving a half-typed number and a dead challenge
   // behind would show the next person a code box for an SMS they never got.
   useEffect(() => {
+    // Bumped on BOTH transitions, not just opening. Closing mid-request is the
+    // commonest way to abandon one, and leaving the counter untouched there let
+    // the continuation sail through its guard and navigate someone who had
+    // already walked away.
+    attemptRef.current += 1;
     if (open) {
+      setSending(false); setSigningIn(false); setVerifying(false);
+      setMode('code');
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
+      setIdentifier(''); setPassword('');
       setError(undefined); setCooldown(0);
     }
   }, [open]);
@@ -140,6 +174,63 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   const emailValid = !needsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const needsName = Boolean(challenge?.isNewAccount);
   const nameValid = !needsName || name.trim().length >= 2;
+  const passwordFormValid = identifier.trim().length > 0 && password.length > 0;
+
+  // Where a freshly signed-in account lands, decided once for both lanes. A
+  // brand-new partner has an application to fill in; a partner mid-review has
+  // a status page. Everyone else stays exactly where they were, which is the
+  // whole reason this is a modal and not a page.
+  function routeAfterAuth(user: User) {
+    if (isPendingPartner(user)) navigate('/partner/status');
+    else if ((user.role === 'FARMER' || user.role === 'BUYER') && !user.farmerProfile && !user.buyerProfile) navigate('/onboarding');
+    else if (redirectTo) navigate(redirectTo);
+  }
+
+  async function handlePasswordSignIn(e: React.FormEvent) {
+    e.preventDefault();
+    if (!passwordFormValid) { setError('Enter your phone or email and your password'); return; }
+    const attempt = attemptRef.current;
+    setSigningIn(true); setError(undefined);
+    try {
+      const user = await login(identifier.trim(), password);
+      if (attemptRef.current !== attempt) return; // dialog moved on without us
+      toast.success('Welcome back');
+      onClose();
+      routeAfterAuth(user);
+    } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
+      // Stays in the dialog: a wrong password is a retype, not a dead end.
+      setError(err.response?.data?.message || 'Those details did not match an account');
+    } finally {
+      // Guarded like the rest: the flag belongs to whichever attempt is
+      // current, so a superseded one must not clear it and re-enable a button
+      // whose request is still in flight.
+      if (attemptRef.current === attempt) setSigningIn(false);
+    }
+  }
+
+  // Switching lanes empties the one being left, so nothing half-typed is
+  // sitting there submittable when someone comes back to it, and no stale
+  // "Enter a valid phone number" greets them on the password form.
+  //
+  // The identity itself travels, though. The password lane takes a phone as
+  // its identifier, so a number typed on the code step should not have to be
+  // typed again — and back the other way only when what they entered really is
+  // a number, since the code step has nowhere to send an email address.
+  function switchTo(next: 'code' | 'password') {
+    setError(undefined);
+    attemptRef.current += 1;
+    if (next === 'password') {
+      setIdentifier(phone.trim());
+      setChallenge(null); setCode(''); setPhone('');
+    } else {
+      const typed = identifier.trim();
+      const digits = typed.replace(/[^0-9]/g, '');
+      setPhone(!typed.includes('@') && digits.length >= 7 ? typed : '');
+      setIdentifier(''); setPassword('');
+    }
+    setMode(next);
+  }
 
   async function handleSendCode(e?: React.FormEvent) {
     e?.preventDefault();
@@ -173,21 +264,18 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
     if (!codeValid) { setError('Enter the 6-digit code we sent you'); return; }
     if (!nameValid) { setError('Tell us your name to finish'); return; }
 
+    const attempt = attemptRef.current;
     setVerifying(true); setError(undefined);
     try {
       const { user, created } = await verifyPhoneSignIn(
         challenge.challengeId, code, needsName ? name.trim() : undefined,
       );
+      if (attemptRef.current !== attempt) return;
       toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
       onClose();
-
-      // A brand-new partner has an application to fill in; a partner mid-review
-      // has a status page. Everyone else stays exactly where they were, which
-      // is the whole reason this is a modal and not a page.
-      if (isPendingPartner(user)) navigate('/partner/status');
-      else if ((user.role === 'FARMER' || user.role === 'BUYER') && !user.farmerProfile && !user.buyerProfile) navigate('/onboarding');
-      else if (redirectTo) navigate(redirectTo);
+      routeAfterAuth(user);
     } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
       const message = err.response?.data?.message || 'Could not verify that code';
       setError(message);
       // The server ends the challenge after three wrong codes or on expiry.
@@ -198,7 +286,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
         setChallenge(null); setCode('');
       }
     } finally {
-      setVerifying(false);
+      if (attemptRef.current === attempt) setVerifying(false);
     }
   }
 
@@ -229,7 +317,68 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
             <span style={{ fontWeight: 500, letterSpacing: '-0.01em' }}>CropBid</span>
           </div>
 
-          {!challenge ? (
+          {mode === 'password' ? (
+            <>
+              <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
+                Sign in with<br /><span className="cb-italic">your password.</span>
+              </h2>
+              <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
+                For accounts that were set up with one. Everyone else signs in
+                with a code sent to their phone.
+              </p>
+
+              <form onSubmit={handlePasswordSignIn} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <Input
+                  label="Phone or email"
+                  placeholder="+91-9876543210"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(e) => { setIdentifier(e.target.value); setError(undefined); }}
+                  autoFocus
+                  required
+                />
+                <div>
+                  <Input
+                    label="Password"
+                    type="password"
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); setError(undefined); }}
+                    error={error}
+                    required
+                  />
+                  <div style={{ marginTop: 8, textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      className="cb-small"
+                      onClick={() => { onClose(); navigate('/forgot-password'); }}
+                      style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cb-ink-3)', cursor: 'pointer', font: 'inherit' }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  loading={signingIn}
+                  disabled={!passwordFormValid}
+                  style={{ width: '100%' }}
+                >
+                  Sign in
+                  <ArrowIcon />
+                </Button>
+              </form>
+
+              <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
+                <button type="button" onClick={() => switchTo('code')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cb-ember)', fontWeight: 500, cursor: 'pointer', font: 'inherit' }}>
+                  ← Get a code instead
+                </button>
+              </p>
+            </>
+          ) : !challenge ? (
             <>
               <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
                 {title || <>Enter your number<br /><span className="cb-italic">to continue.</span></>}
@@ -278,6 +427,14 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
                   <ArrowIcon />
                 </Button>
               </form>
+
+              {/* The door for accounts that predate the code flow, and for
+                  admins, who have a password and nothing else. */}
+              <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
+                <button type="button" onClick={() => switchTo('password')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cb-ember)', fontWeight: 500, cursor: 'pointer', font: 'inherit' }}>
+                  Use a password instead →
+                </button>
+              </p>
             </>
           ) : (
             <>

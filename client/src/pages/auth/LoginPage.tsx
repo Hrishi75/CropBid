@@ -11,7 +11,13 @@
 // phone-or-email + password form. New accounts never get a password, but
 // accounts that already have one do — admins created by prisma/createAdmin.ts
 // most of all — and they need a door that does not depend on an SMS provider
-// being configured and reachable. It is deliberately unlinked from the UI.
+// being configured and reachable.
+//
+// This URL is no longer the only way to that door. The same form is a toggle
+// inside AuthModal now ("Use a password instead"), which is where people will
+// actually find it; the header button opens the dialog, not this route. Keep
+// this page anyway: it is the one password form that still works when the
+// modal cannot mount, and an old bookmark should not break.
 // =============================================================================
 
 import { useEffect, useState } from 'react';
