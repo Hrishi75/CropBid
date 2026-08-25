@@ -22,6 +22,7 @@ import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
+import { PUBLIC_BUYER_USER_SELECT, redactBidContacts } from './contactVisibility';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -283,12 +284,14 @@ export async function getBidsForListing(listingId: string, farmerId: string) {
     where: { listingId },
     orderBy: { createdAt: 'desc' },
     include: {
-      // phone/location so the seller can reach the buyer and plan delivery
-      buyer: { select: { id: true, name: true, trustScore: true, avatar: true, phone: true, location: true } },
+      // Identity only. The buyer's phone and the snapshotted order contact are
+      // withheld until the deal is paid — see contactVisibility.ts.
+      buyer: { select: PUBLIC_BUYER_USER_SELECT },
+      transaction: { select: { paymentStatus: true } },
     },
   });
 
-  return bids;
+  return redactBidContacts(bids);
 }
 
 // =============================================================================
@@ -333,12 +336,13 @@ export async function getIncomingBids(farmerId: string, status?: string) {
     orderBy: { createdAt: 'desc' },
     include: {
       listing: true,
-      // phone/location so the seller can reach the buyer and plan delivery
-      buyer: { select: { id: true, name: true, trustScore: true, avatar: true, phone: true, location: true } },
+      // Identity only — same gate as getBidsForListing above.
+      buyer: { select: PUBLIC_BUYER_USER_SELECT },
+      transaction: { select: { paymentStatus: true } },
     },
   });
 
-  return bids;
+  return redactBidContacts(bids);
 }
 
 // =============================================================================
