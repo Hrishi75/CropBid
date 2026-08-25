@@ -1493,8 +1493,16 @@ body * {
   display: flex; flex-direction: column; align-items: center; gap: 12px;
   text-align: center;
 }
+.st-incub-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 26px; flex-wrap: wrap;
+}
+.st-incub-sep { width: 1px; align-self: stretch; min-height: 34px; background: var(--cb-line); }
 .st-incub-brand { display: flex; align-items: center; gap: 14px; color: var(--cb-ink); }
 .st-incub-brand img { width: 46px; height: 46px; object-fit: contain; }
+/* Founder Startup House is a wide lockup, not a square mark, so size it by
+   height to keep its cap-height level with the India 2047 wordmark beside it. */
+.st-incub-wordmark { height: 42px; width: auto; max-width: 100%; object-fit: contain; }
 .st-incub-name {
   font-size: 21px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
 }
@@ -1663,6 +1671,12 @@ body * {
   .fc-tally-item .n { font-size: 24px; }
   .cb-landing .feat-grid { grid-template-columns: 1fr; }
   .st-incub-name { font-size: 17px; }
+  .st-incub-wordmark { height: 34px; }
+}
+
+@media (max-width: 520px) {
+  .st-incub-row { flex-direction: column; gap: 18px; }
+  .st-incub-sep { width: 44px; height: 1px; min-height: 0; align-self: center; }
 }
 
 /* =============================================================================
