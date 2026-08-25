@@ -504,8 +504,14 @@ export async function reviewPartnerApplication(input: ReviewInput) {
     throw new ApiError(409, `Cannot ${input.action.toLowerCase().replace('_', ' ')} an application in status ${profile.status}`);
   }
 
-  const updated = await (table as typeof prisma.farmerProfile).update({
-    where: { id: input.profileId },
+  // Apply the decision with the allowed statuses carried in the WHERE, not
+  // just checked above it. The read-then-write version made the 409 promised
+  // by ACTION_RULES decorative: two admins clicking at once, or an applicant
+  // resubmitting mid-review, both validate the same old status and then write
+  // by profile id, so the last write silently buries the first one. Conditioned
+  // on `status`, the loser updates nothing and gets the conflict it is owed.
+  const claimed = await (table as typeof prisma.farmerProfile).updateMany({
+    where: { id: input.profileId, status: { in: rule.from } },
     data: {
       status: rule.to,
       statusNote: rule.needsNote ? input.note!.trim() : null,
@@ -514,6 +520,18 @@ export async function reviewPartnerApplication(input: ReviewInput) {
       // Approval doubles as the legacy verified badge.
       ...(rule.to === 'APPROVED' ? { verified: true } : {}),
     },
+  });
+  if (claimed.count === 0) {
+    // Somebody moved the row between the read above and this write. Re-read so
+    // the message names the status it actually lost to, not the stale one.
+    const now = await (table as typeof prisma.farmerProfile).findUnique({
+      where: { id: input.profileId },
+      select: { status: true },
+    });
+    throw new ApiError(409, `Cannot ${input.action.toLowerCase().replace('_', ' ')} an application in status ${now?.status ?? 'UNKNOWN'}`);
+  }
+  const updated = await (table as typeof prisma.farmerProfile).findUnique({
+    where: { id: input.profileId },
   });
 
   await recordAudit({
@@ -527,13 +545,18 @@ export async function reviewPartnerApplication(input: ReviewInput) {
 
   const copy = DECISION_COPY[rule.to];
   if (copy.title) {
+    // Best-effort, like the email below it. The decision is already committed
+    // by this point, so throwing here would hand the admin an error for a
+    // review that did in fact go through — and their retry would now hit the
+    // 409 above, leaving the row correct but the screen insisting otherwise.
+    // A logged failure plus the email is the better half of that trade.
     await createNotification({
       userId: profile.user.id,
       type: 'PARTNER_APPLICATION',
       title: copy.title,
       message: copy.message(input.note?.trim()),
       data: { status: rule.to },
-    });
+    }).catch((err) => console.error('[partner] decision notification failed:', err?.message || err));
     if (profile.user.email) {
       // Fire-and-forget: a mail outage must never block the review action.
       sendPartnerStatusEmail(profile.user.email, {

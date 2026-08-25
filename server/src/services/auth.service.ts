@@ -1448,22 +1448,46 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
     throw new ApiError(400, 'That code has expired — start again to get a new one');
   }
 
-  if (challenge.attempts >= PHONE_OTP_MAX_ATTEMPTS) {
+  // Claim an attempt BEFORE checking the code, in one statement that carries
+  // the ceiling in its own WHERE. Reading `attempts` and then incrementing it
+  // is not the same thing: a burst of parallel guesses all read the same zero,
+  // all pass the check, and three tries at a six-digit code quietly becomes as
+  // many as the attacker can open sockets for. The rate limiter does not cover
+  // this either — its account key has no `challengeId` in it, so guesses from
+  // different IPs never share a bucket.
+  //
+  // As an UPDATE with the condition inline, Postgres re-evaluates `attempts <
+  // MAX` after taking the row lock, so the loser of a race sees the winner's
+  // committed value and matches zero rows.
+  const claimed = await prisma.phoneChallenge.updateMany({
+    where: { id: challenge.id, attempts: { lt: PHONE_OTP_MAX_ATTEMPTS } },
+    data: { attempts: { increment: 1 } },
+  });
+  if (claimed.count === 0) {
     await prisma.phoneChallenge.delete({ where: { id: challenge.id } }).catch(() => {});
     throw new ApiError(429, 'Too many wrong codes — start again to get a new one');
   }
 
   if (!phoneOtpMatches(input.code, challenge.codeHash)) {
-    const { attempts } = await prisma.phoneChallenge.update({
+    const after = await prisma.phoneChallenge.findUnique({
       where: { id: challenge.id },
-      data: { attempts: { increment: 1 } },
+      select: { attempts: true },
     });
-    const left = PHONE_OTP_MAX_ATTEMPTS - attempts;
+    const left = PHONE_OTP_MAX_ATTEMPTS - (after?.attempts ?? PHONE_OTP_MAX_ATTEMPTS);
     throw new ApiError(
       400,
       left > 0 ? `That code is not right — ${left} ${left === 1 ? 'try' : 'tries'} left` : 'Too many wrong codes — start again to get a new one',
     );
   }
+
+  // The code was right, so hand the claimed attempt back: `attempts` counts
+  // wrong guesses, and the claim above exists only to make the ceiling atomic.
+  // This matters for the name check below, which deliberately leaves the
+  // challenge alive — three correct-but-nameless submissions must not burn a
+  // code that is still perfectly valid.
+  await prisma.phoneChallenge
+    .update({ where: { id: challenge.id }, data: { attempts: { decrement: 1 } } })
+    .catch(() => {});
 
   const existing = await prisma.user.findUnique({
     where: { phone: challenge.phone },
