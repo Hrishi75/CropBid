@@ -88,15 +88,17 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
         <div className="cb-small" style={{ marginTop: 4 }}>
           {t('Grade')} {listing.qualityGrade}{listing.organic && ` · ${t('Organic')}`} · {listing.location}, {listing.state}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 16, alignItems: 'center', marginTop: 10 }}>
+        <div className="cb-row-foot" style={{ marginTop: 10 }}>
           <div className="cb-mono" style={{ fontSize: 14 }}>
             {formatCurrency(priceMid, listing.currency)}<span className="cb-tiny" style={{ marginLeft: 4 }}>/{listing.unit.toLowerCase()}</span>
           </div>
           <div className="cb-tiny">
             {listing.quantity} {listing.unit.toLowerCase()} · {listing._count?.bids || 0} {t('bids')}
           </div>
-          <MiniChart data={spark} color="#6b8e4e" width={100} height={24} />
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div className="cb-row-foot-chart">
+            <MiniChart data={spark} color="#6b8e4e" width={100} height={24} />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             <Link to={`/listings/${listing.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('View →')}</Link>
             {showActions && onEdit && (
               <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('Edit')}</button>
@@ -146,12 +148,12 @@ export function ListingCard({ listing, showActions, onEdit, onDelete, variant = 
           <span className="cb-tiny" style={{ marginLeft: 4, fontFamily: 'var(--cb-font-sans)' }}>/{listing.unit.toLowerCase()}</span>
         </div>
         <MiniChart data={spark} color="#6b8e4e" width={160} height={28} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
           <span className="cb-tiny">{listing.quantity} {listing.unit.toLowerCase()}</span>
           <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● {listing._count?.bids || 0} {t('bids')}</span>
         </div>
         {showActions && (
-          <div style={{ display: 'flex', gap: 10, paddingTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, paddingTop: 8 }}>
             {onEdit && <button type="button" onClick={() => onEdit(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13 }}>{t('Edit')}</button>}
             {onDelete && <button type="button" onClick={() => onDelete(listing.id)} className="cb-btn cb-btn-link" style={{ fontSize: 13, color: 'var(--cb-ember)' }}>{t('Delete')}</button>}
           </div>

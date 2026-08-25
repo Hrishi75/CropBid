@@ -1,83 +1,21 @@
-// Storefront catalog — the same static demo lots, rails, tiles, and price
-// ticker the WEB homepage renders (client/src/pages/LandingPage.tsx), so the
-// mobile home always shows a full market with prices even before any farmer
-// has listed. Live API listings are merged in on top of these; a demo lot is
-// hidden as soon as a real lot for the same crop exists.
+// Storefront catalog — the retail tier for REAL listings.
 //
-// Prices are ₹ mandi bands at or above the 2025-26 government MSP where
-// applicable — keep in sync with the web PRODUCTS list when either changes.
+// This file used to also carry DEMO_PRODUCTS: ~40 invented lots with villages,
+// grades, quantities and prices, which the storefront home merged underneath
+// the live API listings so the market "always rendered full". It rendered full
+// of things nobody had listed, in cards indistinguishable from real ones, and
+// shoppers read every one of them as a farmer's lot. They are gone. The
+// storefront now shows live listings only, and says so plainly when there are
+// none.
+//
+// What remains is the pack maths — how a household-sized pack is cut and
+// priced out of a real farmer's lot — plus the rails, tiles, chips and ticker
+// the home screen lays out. Prices here are ₹ margins and pack sizes, never
+// stock. Keep the pack table in sync with the web (client/src/pages/).
 
 import { CROP_CATEGORIES } from './crops';
 
 export type RailId = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
-
-export interface DemoProduct {
-  slug: string;
-  name: string;
-  variety: string;
-  emoji: string;
-  cat: RailId;
-  unit: 'KG' | 'QUINTAL' | 'LITRE';
-  price: number;   // ₹ per unit — farmer's floor (what you pay today)
-  anchor: number;  // ₹ per unit — wholesale ceiling (struck-through anchor)
-  qty: number;     // available, in `unit`
-  location: string;
-  state: string;
-  grade: 'A' | 'B';
-  organic?: boolean;
-}
-
-export const DEMO_PRODUCTS: DemoProduct[] = [
-  // Fresh vegetables — ₹/kg
-  { slug: 'tomato',       name: 'Tomato',        variety: 'Hybrid',            emoji: '🍅', cat: 'veg', unit: 'KG', price: 26,  anchor: 34,  qty: 1200, location: 'Nashik',    state: 'Maharashtra',      grade: 'A' },
-  { slug: 'onion',        name: 'Onion',         variety: 'Nashik Red',        emoji: '🧅', cat: 'veg', unit: 'KG', price: 18,  anchor: 24,  qty: 2500, location: 'Lasalgaon', state: 'Maharashtra',      grade: 'A' },
-  { slug: 'potato',       name: 'Potato',        variety: 'Kufri Jyoti',       emoji: '🥔', cat: 'veg', unit: 'KG', price: 14,  anchor: 19,  qty: 3000, location: 'Agra',      state: 'Uttar Pradesh',    grade: 'B' },
-  { slug: 'okra',         name: 'Okra (Bhindi)', variety: 'Arka Anamika',      emoji: '🌿', cat: 'veg', unit: 'KG', price: 28,  anchor: 38,  qty: 450,  location: 'Vadodara',  state: 'Gujarat',          grade: 'A' },
-  { slug: 'cauliflower',  name: 'Cauliflower',   variety: 'Snowball',          emoji: '🥦', cat: 'veg', unit: 'KG', price: 22,  anchor: 30,  qty: 800,  location: 'Pune',      state: 'Maharashtra',      grade: 'A' },
-  { slug: 'brinjal',      name: 'Brinjal',       variety: 'Bharta',            emoji: '🍆', cat: 'veg', unit: 'KG', price: 18,  anchor: 26,  qty: 600,  location: 'Kolar',     state: 'Karnataka',        grade: 'B' },
-  { slug: 'green-chilli', name: 'Green Chilli',  variety: 'G4',                emoji: '🌶️', cat: 'veg', unit: 'KG', price: 45,  anchor: 60,  qty: 350,  location: 'Guntur',    state: 'Andhra Pradesh',   grade: 'A' },
-  { slug: 'spinach',      name: 'Spinach',       variety: 'All Green',         emoji: '🥬', cat: 'veg', unit: 'KG', price: 15,  anchor: 22,  qty: 300,  location: 'Indore',    state: 'Madhya Pradesh',   grade: 'A', organic: true },
-
-  // Milk & dairy — ₹/kg (≈ per litre for liquid milk). Floors track Amul's
-  // Jun-2026 procurement rates (cow 4% fat ≈ ₹55/L, buffalo 6–7% ≈ ₹69/L);
-  // anchors track DoCA retail levels (Delhi, Jul 2026: milk ₹60, curd ₹61,
-  // paneer ₹348–400, ghee ₹524–572).
-  { slug: 'cow-milk',     name: 'Cow Milk',      variety: '4% Fat',            emoji: '🥛', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 58,  qty: 600, location: 'Anand',     state: 'Gujarat',     grade: 'A' },
-  { slug: 'buffalo-milk', name: 'Buffalo Milk',  variety: 'Murrah',            emoji: '🐃', cat: 'dairy', unit: 'LITRE', price: 69,  anchor: 72,  qty: 450, location: 'Karnal',    state: 'Haryana',     grade: 'A' },
-  { slug: 'curd',         name: 'Curd (Dahi)',   variety: 'Farm-set',          emoji: '🥣', cat: 'dairy', unit: 'LITRE', price: 55,  anchor: 75,  qty: 200, location: 'Kolhapur',  state: 'Maharashtra', grade: 'A' },
-  { slug: 'paneer',       name: 'Paneer',        variety: 'Malai',             emoji: '🧀', cat: 'dairy', unit: 'KG', price: 340, anchor: 400, qty: 80,  location: 'Pune',      state: 'Maharashtra', grade: 'A' },
-  { slug: 'ghee',         name: 'Ghee',          variety: 'Desi Cow',          emoji: '🧈', cat: 'dairy', unit: 'KG', price: 540, anchor: 650, qty: 60,  location: 'Jaipur',    state: 'Rajasthan',   grade: 'A', organic: true },
-
-  // Seasonal fruits — ₹/kg
-  { slug: 'mango',        name: 'Mango',         variety: 'Kesar',             emoji: '🥭', cat: 'fruits', unit: 'KG', price: 90,  anchor: 140, qty: 900,  location: 'Junagadh',   state: 'Gujarat',          grade: 'A' },
-  { slug: 'banana',       name: 'Banana',        variety: 'G9 Cavendish',      emoji: '🍌', cat: 'fruits', unit: 'KG', price: 28,  anchor: 38,  qty: 2000, location: 'Jalgaon',    state: 'Maharashtra',      grade: 'A' },
-  { slug: 'pomegranate',  name: 'Pomegranate',   variety: 'Bhagwa',            emoji: '🍒', cat: 'fruits', unit: 'KG', price: 110, anchor: 160, qty: 700,  location: 'Solapur',    state: 'Maharashtra',      grade: 'A' },
-  { slug: 'grapes',       name: 'Grapes',        variety: 'Thompson Seedless', emoji: '🍇', cat: 'fruits', unit: 'KG', price: 70,  anchor: 95,  qty: 1100, location: 'Nashik',     state: 'Maharashtra',      grade: 'A' },
-  { slug: 'guava',        name: 'Guava',         variety: 'Allahabad Safeda',  emoji: '🍐', cat: 'fruits', unit: 'KG', price: 40,  anchor: 60,  qty: 500,  location: 'Prayagraj',  state: 'Uttar Pradesh',    grade: 'A' },
-  { slug: 'papaya',       name: 'Papaya',        variety: 'Red Lady',          emoji: '🍈', cat: 'fruits', unit: 'KG', price: 25,  anchor: 35,  qty: 850,  location: 'Coimbatore', state: 'Tamil Nadu',       grade: 'B' },
-  { slug: 'apple',        name: 'Apple',         variety: 'Royal Delicious',   emoji: '🍎', cat: 'fruits', unit: 'KG', price: 120, anchor: 170, qty: 1500, location: 'Shimla',     state: 'Himachal Pradesh', grade: 'A' },
-  { slug: 'watermelon',   name: 'Watermelon',    variety: 'Sugar Baby',        emoji: '🍉', cat: 'fruits', unit: 'KG', price: 12,  anchor: 18,  qty: 4000, location: 'Kurnool',    state: 'Andhra Pradesh',   grade: 'B' },
-
-  // Grains & pulses — ₹/quintal
-  { slug: 'wheat',        name: 'Wheat',         variety: 'Sharbati',          emoji: '🌾', cat: 'grains', unit: 'QUINTAL', price: 2480, anchor: 2760, qty: 320, location: 'Sehore',     state: 'Madhya Pradesh', grade: 'A' },
-  { slug: 'basmati-rice', name: 'Basmati Paddy', variety: 'Pusa 1509',         emoji: '🍚', cat: 'grains', unit: 'QUINTAL', price: 3600, anchor: 4200, qty: 210, location: 'Karnal',     state: 'Haryana',        grade: 'A' },
-  { slug: 'maize',        name: 'Maize',         variety: 'Yellow Dent',       emoji: '🌽', cat: 'grains', unit: 'QUINTAL', price: 2100, anchor: 2350, qty: 400, location: 'Davangere',  state: 'Karnataka',      grade: 'B' },
-  { slug: 'bajra',        name: 'Bajra',         variety: 'HHB-67',            emoji: '🌾', cat: 'grains', unit: 'QUINTAL', price: 2350, anchor: 2600, qty: 180, location: 'Jodhpur',    state: 'Rajasthan',      grade: 'A' },
-  { slug: 'chana',        name: 'Chana',         variety: 'Desi Gram',         emoji: '🫘', cat: 'grains', unit: 'QUINTAL', price: 5720, anchor: 6180, qty: 180, location: 'Kota',       state: 'Rajasthan',      grade: 'A', organic: true },
-  { slug: 'tur-dal',      name: 'Tur (Arhar)',   variety: 'Maruti',            emoji: '🫘', cat: 'grains', unit: 'QUINTAL', price: 7400, anchor: 7900, qty: 150, location: 'Kalaburagi', state: 'Karnataka',      grade: 'A' },
-  { slug: 'moong',        name: 'Moong',         variety: 'SML-668',           emoji: '🫘', cat: 'grains', unit: 'QUINTAL', price: 8200, anchor: 8700, qty: 120, location: 'Merta',      state: 'Rajasthan',      grade: 'A' },
-  { slug: 'masoor',       name: 'Masoor',        variety: 'KLS-218',           emoji: '🫘', cat: 'grains', unit: 'QUINTAL', price: 6400, anchor: 6800, qty: 140, location: 'Sagar',      state: 'Madhya Pradesh', grade: 'B' },
-
-  // Spices & oilseeds — ₹/quintal
-  { slug: 'turmeric',       name: 'Turmeric',       variety: 'Salem',      emoji: '🫚', cat: 'spices', unit: 'QUINTAL', price: 13800, anchor: 15200, qty: 90,  location: 'Erode',     state: 'Tamil Nadu',     grade: 'A' },
-  { slug: 'red-chilli',     name: 'Red Chilli',     variety: 'Teja S17',   emoji: '🌶️', cat: 'spices', unit: 'QUINTAL', price: 15500, anchor: 17800, qty: 110, location: 'Guntur',    state: 'Andhra Pradesh', grade: 'A' },
-  { slug: 'cumin',          name: 'Cumin (Jeera)',  variety: 'GC-4',       emoji: '🌱', cat: 'spices', unit: 'QUINTAL', price: 24500, anchor: 27000, qty: 60,  location: 'Unjha',     state: 'Gujarat',        grade: 'A' },
-  { slug: 'coriander-seed', name: 'Coriander Seed', variety: 'Eagle',      emoji: '🌿', cat: 'spices', unit: 'QUINTAL', price: 6800,  anchor: 7600,  qty: 130, location: 'Kota',      state: 'Rajasthan',      grade: 'A' },
-  { slug: 'soybean',        name: 'Soybean',        variety: 'JS-335',     emoji: '🫘', cat: 'spices', unit: 'QUINTAL', price: 5420,  anchor: 5880,  qty: 260, location: 'Latur',     state: 'Maharashtra',    grade: 'A' },
-  { slug: 'mustard',        name: 'Mustard',        variety: 'Pusa Bold',  emoji: '🌼', cat: 'spices', unit: 'QUINTAL', price: 5650,  anchor: 6050,  qty: 220, location: 'Bharatpur', state: 'Rajasthan',      grade: 'A' },
-  { slug: 'groundnut',      name: 'Groundnut',      variety: 'Bold 40/50', emoji: '🥜', cat: 'spices', unit: 'QUINTAL', price: 6400,  anchor: 6900,  qty: 190, location: 'Rajkot',    state: 'Gujarat',        grade: 'A' },
-  { slug: 'cotton',         name: 'Cotton',         variety: 'Shankar-6',  emoji: '☁️', cat: 'spices', unit: 'QUINTAL', price: 7800,  anchor: 8350,  qty: 140, location: 'Rajkot',    state: 'Gujarat',        grade: 'A' },
-];
 
 // =============================================================================
 // Consumer packs — the retail tier
@@ -107,54 +45,58 @@ export interface Pack {
   label: string;   // what the shopper puts in the basket
   kg: number;      // pack size in kg — litres for liquids
   margin?: number; // overrides the category margin
+  crop: string;    // the crop NAME a live listing arrives with, for NAME_TO_PACK
 }
 
-// Keyed by catalogue slug. Live listings are matched by crop name via NAME_TO_PACK.
+// Keyed by catalogue slug. Live listings arrive as a crop NAME ("Cow Milk"),
+// not a slug, so each entry carries its name and NAME_TO_PACK indexes on it.
+// The name used to come from the demo lot with the same slug; holding it here
+// keeps one table instead of two that had to agree.
 const PACKS: Record<string, Pack> = {
   // Vegetables
-  tomato: { label: '1 kg', kg: 1 },
-  onion: { label: '1 kg', kg: 1 },
-  potato: { label: '1 kg', kg: 1 },
-  okra: { label: '500 g', kg: 0.5 },
-  cauliflower: { label: '1 kg', kg: 1 },
-  brinjal: { label: '500 g', kg: 0.5 },
-  'green-chilli': { label: '250 g', kg: 0.25 },
-  spinach: { label: '250 g', kg: 0.25 },
+  tomato: { crop: 'Tomato', label: '1 kg', kg: 1 },
+  onion: { crop: 'Onion', label: '1 kg', kg: 1 },
+  potato: { crop: 'Potato', label: '1 kg', kg: 1 },
+  okra: { crop: 'Okra (Bhindi)', label: '500 g', kg: 0.5 },
+  cauliflower: { crop: 'Cauliflower', label: '1 kg', kg: 1 },
+  brinjal: { crop: 'Brinjal', label: '500 g', kg: 0.5 },
+  'green-chilli': { crop: 'Green Chilli', label: '250 g', kg: 0.25 },
+  spinach: { crop: 'Spinach', label: '250 g', kg: 0.25 },
 
   // Dairy
-  'cow-milk': { label: '1 L', kg: 1 },
-  'buffalo-milk': { label: '1 L', kg: 1 },
-  curd: { label: '500 g', kg: 0.5 },
-  paneer: { label: '200 g', kg: 0.2 },
-  ghee: { label: '500 g', kg: 0.5 },
+  'cow-milk': { crop: 'Cow Milk', label: '1 L', kg: 1 },
+  'buffalo-milk': { crop: 'Buffalo Milk', label: '1 L', kg: 1 },
+  curd: { crop: 'Curd (Dahi)', label: '500 g', kg: 0.5 },
+  paneer: { crop: 'Paneer', label: '200 g', kg: 0.2 },
+  ghee: { crop: 'Ghee', label: '500 g', kg: 0.5 },
 
   // Fruits
-  mango: { label: '1 kg', kg: 1 },
-  banana: { label: '1 kg', kg: 1 },
-  pomegranate: { label: '1 kg', kg: 1 },
-  grapes: { label: '500 g', kg: 0.5 },
-  guava: { label: '500 g', kg: 0.5 },
-  papaya: { label: '1 kg', kg: 1 },
-  apple: { label: '1 kg', kg: 1 },
-  watermelon: { label: '2 kg', kg: 2 },
+  mango: { crop: 'Mango', label: '1 kg', kg: 1 },
+  banana: { crop: 'Banana', label: '1 kg', kg: 1 },
+  pomegranate: { crop: 'Pomegranate', label: '1 kg', kg: 1 },
+  grapes: { crop: 'Grapes', label: '500 g', kg: 0.5 },
+  guava: { crop: 'Guava', label: '500 g', kg: 0.5 },
+  papaya: { crop: 'Papaya', label: '1 kg', kg: 1 },
+  apple: { crop: 'Apple', label: '1 kg', kg: 1 },
+  watermelon: { crop: 'Watermelon', label: '2 kg', kg: 2 },
 
   // Grains & pulses. Paddy is not rice — the shopper pack is milled and
   // polished, so it carries a processing uplift instead of the shelf margin.
-  wheat: { label: '5 kg', kg: 5 },
-  'basmati-rice': { label: '5 kg', kg: 5, margin: 0.85 },
-  bajra: { label: '2 kg', kg: 2 },
-  chana: { label: '1 kg', kg: 1 },
-  'tur-dal': { label: '1 kg', kg: 1 },
-  moong: { label: '1 kg', kg: 1 },
-  masoor: { label: '1 kg', kg: 1 },
+  wheat: { crop: 'Wheat', label: '5 kg', kg: 5 },
+  'basmati-rice': { crop: 'Basmati Paddy', label: '5 kg', kg: 5, margin: 0.85 },
+  bajra: { crop: 'Bajra', label: '2 kg', kg: 2 },
+  chana: { crop: 'Chana', label: '1 kg', kg: 1 },
+  'tur-dal': { crop: 'Tur (Arhar)', label: '1 kg', kg: 1 },
+  moong: { crop: 'Moong', label: '1 kg', kg: 1 },
+  masoor: { crop: 'Masoor', label: '1 kg', kg: 1 },
 
   // Spices & oilseeds
-  turmeric: { label: '200 g', kg: 0.2 },
-  'red-chilli': { label: '200 g', kg: 0.2 },
-  cumin: { label: '100 g', kg: 0.1 },
-  'coriander-seed': { label: '200 g', kg: 0.2 },
-  mustard: { label: '500 g', kg: 0.5 },
-  groundnut: { label: '1 kg', kg: 1 },
+  turmeric: { crop: 'Turmeric', label: '200 g', kg: 0.2 },
+  'red-chilli': { crop: 'Red Chilli', label: '200 g', kg: 0.2 },
+  cumin: { crop: 'Cumin (Jeera)', label: '100 g', kg: 0.1 },
+  'coriander-seed': { crop: 'Coriander Seed', label: '200 g', kg: 0.2 },
+  mustard: { crop: 'Mustard', label: '500 g', kg: 0.5 },
+  groundnut: { crop: 'Groundnut', label: '1 kg', kg: 1 },
 };
 
 // Fibre, feed and crush crops — bought by the quintal or not at all. A farmer
@@ -180,17 +122,16 @@ const plainName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').tri
 // A live listing arrives as a crop NAME ("Cow Milk"), not a slug, so index the
 // catalogue by name too; anything off-catalogue falls back to a rail default.
 const NAME_TO_PACK = new Map<string, Pack>();
-for (const d of DEMO_PRODUCTS) {
-  const pack = PACKS[d.slug];
-  if (pack) NAME_TO_PACK.set(d.name.trim().toLowerCase(), pack);
+for (const pack of Object.values(PACKS)) {
+  NAME_TO_PACK.set(pack.crop.trim().toLowerCase(), pack);
 }
 
 const DEFAULT_PACK: Record<RailId, Pack> = {
-  veg: { label: '1 kg', kg: 1 },
-  dairy: { label: '1 L', kg: 1 },
-  fruits: { label: '1 kg', kg: 1 },
-  grains: { label: '1 kg', kg: 1 },
-  spices: { label: '200 g', kg: 0.2 },
+  veg: { crop: 'vegetable', label: '1 kg', kg: 1 },
+  dairy: { crop: 'dairy', label: '1 L', kg: 1 },
+  fruits: { crop: 'fruit', label: '1 kg', kg: 1 },
+  grains: { crop: 'grain', label: '1 kg', kg: 1 },
+  spices: { crop: 'spice', label: '200 g', kg: 0.2 },
 };
 
 export interface ShopPack {

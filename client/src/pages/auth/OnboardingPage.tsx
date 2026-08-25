@@ -662,7 +662,7 @@ export function OnboardingPage() {
             </>
           )}
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 }}>
             <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 'auto' }}>
               Reviewed by hand · 24–48h
             </span>

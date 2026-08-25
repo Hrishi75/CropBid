@@ -106,10 +106,16 @@ export type SignupResult =
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Non-secret UX hint: "this browser had a session". Lets the root route show the
-// static landing immediately for anonymous visitors instead of blocking on the
-// /auth/refresh call (which is slow when the API is cold-starting). The actual
-// token still lives in memory only — this is just a boolean flag.
+// Non-secret UX hint: "this browser had a session". Recorded on every auth
+// transition so a surface can tell a returning visitor from a first-time one
+// without waiting on /auth/refresh. The actual token still lives in memory
+// only — this is just a boolean flag.
+//
+// NOTE: nothing reads it at the moment. The root route used to, to decide
+// whether to block the homepage on the session check; it no longer blocks
+// anyone (see RootRedirect), which is what removed the worst of the reload
+// flicker. Kept because it is the cheap answer to "should this slot wait for
+// auth rather than guess?" if a surface needs one again.
 export const SESSION_HINT_KEY = 'cb_has_session';
 function setSessionHint(on: boolean) {
   try {

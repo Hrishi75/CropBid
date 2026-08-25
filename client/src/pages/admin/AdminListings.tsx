@@ -130,7 +130,7 @@ export function AdminListings() {
                 <div className="cb-small" style={{ marginBottom: 6 }}>
                   Grade {l.qualityGrade ?? '—'} · {l.location}, {l.state} · {new Date(l.createdAt).toLocaleDateString()} · {l._count.bids} bids
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, alignItems: 'center' }}>
+                <div className="cb-cols-3" style={{ gap: 16, alignItems: 'center' }}>
                   <div className="cb-mono" style={{ fontSize: 14 }}>
                     {formatCurrency(priceMid, l.currency)}
                     <span className="cb-tiny" style={{ marginLeft: 4 }}>/{l.unit.toLowerCase()}</span>
@@ -138,7 +138,7 @@ export function AdminListings() {
                   <div className="cb-mono cb-tiny">{l.quantity} {l.unit.toLowerCase()}</div>
                   <div className="cb-tiny">{l.farmer.user.name} · trust {Math.round(l.farmer.user.trustScore || 0)}</div>
                 </div>
-                <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <Link to={`/listings/${l.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
                   <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-wheat)' }}>⚠ Flag</button>
                   <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>✕ Take down</button>
@@ -150,7 +150,7 @@ export function AdminListings() {
       )}
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
           <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
           <span>page {page + 1} of {totalPages}</span>
           <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>

@@ -3,6 +3,8 @@ import { Toaster } from 'react-hot-toast';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
 import { AuthModalProvider } from './context/AuthModalContext';
+import { CartProvider } from './context/CartContext';
+import { CartBar } from './components/consumer/CartBar';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -16,6 +18,10 @@ import { useSeo } from './lib/useSeo';
  *           └─ AuthModalProvider — holds the one sign-in dialog, which any
  *                         page can raise; it needs auth, and its modal needs
  *                         router context to redirect after signing in
+ *               └─ CartProvider — the shopper's basket. Inside auth because the
+ *                                 basket is stored per account, and outside the
+ *                                 routes because it must survive navigation
+ *                                 between the shelf, a product and the checkout.
  *               └─ AppRoutes — actual page rendering
  *
  * Toaster sits outside the tree — it's a portal that renders toast
@@ -40,7 +46,12 @@ export function AppContent() {
   return (
     <AuthProvider>
       <AuthModalProvider>
-        <AppRoutes />
+        <CartProvider>
+          <AppRoutes />
+          {/* Sits outside the routes so it survives every consumer page, and
+              renders nothing at all for anyone who isn't shopping. */}
+          <CartBar />
+        </CartProvider>
       </AuthModalProvider>
     </AuthProvider>
   );

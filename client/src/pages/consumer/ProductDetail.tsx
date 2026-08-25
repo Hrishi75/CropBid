@@ -14,6 +14,14 @@
 // Only listings with directSaleEnabled and a retailPricePerUnit can be bought
 // here; anything else is bulk-only and says so rather than 404ing, since a
 // stale link from the storefront should explain itself.
+//
+// THE BUTTON ADDS TO THE CART, IT DOES NOT BUY
+// Households shop in baskets — tomatoes AND onions AND a kilo of rice — and a
+// straight-to-checkout button made each of those a separate address form. So
+// the page's action puts the lot in the basket at the chosen quantity, and the
+// bill lives one screen along. Once a lot is in the basket the picker keeps
+// writing straight through to it, so the number here and the number in the cart
+// are the same number.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -24,6 +32,7 @@ import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { localizedDescription } from '../../utils/localized';
@@ -36,12 +45,17 @@ import type { Listing } from '../../types';
 export function ProductDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { quantityOf, add } = useCart();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [qty, setQty] = useState(1);
+
+  // A lot already in the basket opens at the quantity it is in the basket AT,
+  // not at a fresh 1 — the page has to agree with the cart it is editing.
+  const inCart = quantityOf(id ?? '');
 
   useEffect(() => {
     api.get(`/listings/${id}`)
@@ -57,6 +71,17 @@ export function ProductDetail() {
       })
       .finally(() => setLoading(false));
   }, [id, navigate]);
+
+  // Runs once per lot, after the fetch has set its opening quantity, so the
+  // basket's number wins over the default without fighting the stepper on
+  // every later tap.
+  useEffect(() => {
+    if (inCart > 0) setQty(inCart);
+    // Deliberately keyed on the lot alone: re-running when `inCart` changes
+    // would make the page overwrite a quantity the shopper is mid-way through
+    // choosing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   if (loading) {
     return (
@@ -190,15 +215,27 @@ export function ProductDetail() {
                   )}
                 </div>
 
-                <div style={{ marginTop: 18 }}>
+                <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <Button
                     size="lg"
                     style={{ width: '100%' }}
-                    onClick={() => navigate(`/checkout/${listing.id}?qty=${qty}`)}
+                    onClick={() => {
+                      add(listing, qty);
+                      toast.success(inCart > 0 ? 'Cart updated' : 'Added to cart');
+                    }}
                   >
-                    Buy now
+                    {inCart > 0 ? 'Update cart' : 'Add to cart'}
                     <ArrowIcon />
                   </Button>
+                  {inCart > 0 && (
+                    <Link
+                      to="/cart"
+                      className="cb-btn cb-btn-ghost"
+                      style={{ width: '100%', justifyContent: 'center' }}
+                    >
+                      Go to cart
+                    </Link>
+                  )}
                 </div>
               </>
             ) : (

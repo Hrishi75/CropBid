@@ -14,7 +14,7 @@ export type AuthStackParamList = {
 // they try to act (buy, bid, sell, open the profile).
 export type GuestStackParamList = {
   GuestHome: undefined;
-  CropSellers: { crop: string; preview?: Listing[] };
+  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -47,7 +47,7 @@ export type BuyerTabParamList = {
 export type RootStackParamList = {
   Tabs: undefined;
   Auction: { listingId?: string } | undefined;
-  CropSellers: { crop: string; preview?: Listing[] };
+  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -72,7 +72,7 @@ export type FarmerStackParamList = {
   EditProfile: undefined;
   Contracts: undefined;
   Helper: undefined;
-  CropSellers: { crop: string; preview?: Listing[] };
+  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -89,7 +89,7 @@ export type ConsumerTabParamList = {
 
 export type ConsumerStackParamList = {
   ConsumerTabs: undefined;
-  CropSellers: { crop: string; preview?: Listing[] };
+  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;

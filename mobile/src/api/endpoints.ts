@@ -106,6 +106,13 @@ export interface UpdateFarmerProfileInput {
   state?: string;
 }
 
+// A shopper's delivery city. Same endpoint as the profile update, but this is
+// the one field a CONSUMER account has to set, so it gets its own call.
+export async function updateLocation(location: string): Promise<User> {
+  const { data } = await api.patch<{ user: User }>('/auth/me', { location });
+  return data.user;
+}
+
 export async function updateFarmerProfile(input: UpdateFarmerProfileInput): Promise<User> {
   const { data } = await api.patch<{ user: User }>('/auth/me', input);
   return data.user;
@@ -165,9 +172,18 @@ export async function browse(params?: {
   crop?: string; // exact crop-name match (case-insensitive), unlike fuzzy `search`
   page?: number;
   directSale?: boolean;
+  // City, matched exactly. Retail orders are small enough that a farm outside
+  // the shopper's own city can never deliver them — see browse.service.
+  location?: string;
 }): Promise<Paginated<Listing>> {
   const { data } = await api.get<Paginated<Listing>>('/browse', { params });
   return data;
+}
+
+// Cities that have at least one lot open for direct retail sale. Public.
+export async function retailCities(): Promise<Array<{ city: string; state: string }>> {
+  const { data } = await api.get<Array<{ city: string; state: string }>>('/browse/cities');
+  return data ?? [];
 }
 
 export async function fetchListing(id: string): Promise<Listing> {

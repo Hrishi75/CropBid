@@ -96,12 +96,12 @@ export function BrowseListings() {
         </Link>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 24, alignItems: 'start' }}>
+      <div className="cb-split-filters" style={{ gap: 24, alignItems: 'start' }}>
         <ListingFilters filters={filters} onChange={setFilters} />
 
         <div>
           {loading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: view === 'grid' ? 'repeat(auto-fill, minmax(240px, 1fr))' : '1fr', gap: 16 }}>
+            <div className={view === 'grid' ? 'cb-cards-sm' : ''} style={{ display: 'grid', gap: 16 }}>
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={view === 'grid' ? 320 : 80} />)}
             </div>
           ) : listings.length === 0 ? (
@@ -110,7 +110,7 @@ export function BrowseListings() {
               description="Loosen filters or brief your agent to auto-bid as new lots land."
             />
           ) : view === 'grid' ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+            <div className="cb-cards-sm" style={{ gap: 16 }}>
               {listings.map((l) => <ListingCard key={l.id} listing={l} variant="grid" />)}
             </div>
           ) : (
@@ -120,7 +120,7 @@ export function BrowseListings() {
           )}
 
           {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
               <button
                 type="button"
                 disabled={page <= 1}

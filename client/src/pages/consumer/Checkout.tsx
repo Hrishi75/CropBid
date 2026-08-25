@@ -1,20 +1,28 @@
 // =============================================================================
-// Checkout — turn a chosen quantity into a real order
+// Checkout — turn the basket into real orders
 // =============================================================================
-// One listing, one order. POST /bids/direct-purchase claims the stock, mints a
-// pre-ACCEPTED bid and opens a Transaction in the same DB transaction, so by
-// the time this page returns the order genuinely exists and is awaiting payment.
+// ONE BASKET, SEVERAL ORDERS — AND WHY THAT IS NOT A BUG
+// POST /bids/direct-purchase claims one lot's stock, mints a pre-ACCEPTED bid
+// and opens a Transaction in the same DB transaction. That pairing is the whole
+// escrow model: one lot, one grower, one settlement the shopper releases when
+// that grower's produce arrives. Four lots genuinely are four settlements, so
+// this page places four purchases and says so before the shopper commits,
+// rather than inventing a basket-level order the rest of the system has no
+// concept of.
+//
+// PARTIAL SUCCESS IS A REAL OUTCOME, SO IT IS HANDLED
+// The calls go one at a time. If the third fails — someone else took the last
+// two kilos in the seconds since the cart was priced — the first two orders
+// already exist and cannot be unwound by a client. So the successful lots are
+// removed from the cart, the failed ones are LEFT in it with the reason, and
+// the shopper is told exactly which is which. Clearing the whole basket there
+// would hide an order they still want; retrying the whole basket would
+// double-order the two that worked.
 //
 // WHY THE ADDRESS AND PHONE ARE COLLECTED HERE
 // The API treats both as optional and falls back to the buyer's profile, but
-// bid.service then REFUSES a retail order that ends up with neither — a
-// shopper whose profile has no address would get a 400 after clicking Buy.
-// Asking here, prefilled from the profile, means that error never fires.
-//
-// The quantity arrives as a query param from the product page. It is re-read
-// against the listing rather than trusted: a stale tab could carry a quantity
-// that has since been sold to someone else, and the friendly place to catch
-// that is before the request, not in the 409 handler.
+// bid.service then REFUSES a retail order that ends up with neither. Asking
+// here, prefilled from the profile, means that error never fires.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -25,36 +33,33 @@ import { Input } from '../../components/ui/Input';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
+import { BillDetails } from './BillDetails';
+import { useCartLines } from './cartLines';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing, Transaction } from '../../types';
 
 export function Checkout() {
-  const { listingId } = useParams();
-  const [params] = useSearchParams();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { items, removeMany } = useCart();
+  const city = user?.location?.trim() || '';
+  const bill = useCartLines(items, city);
 
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [address, setAddress] = useState(user?.location || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [touched, setTouched] = useState(false);
 
-  const qty = Number(params.get('qty')) || 0;
-
+  // An empty basket has nothing to check out, and the cart page is where the
+  // shopper can see that and act on it. Guarded in an effect so the redirect
+  // also fires when the last row is removed from another tab mid-checkout.
   useEffect(() => {
-    api.get(`/listings/${listingId}`)
-      .then(({ data }) => setListing(data))
-      .catch(() => {
-        toast.error('Product not found');
-        navigate('/');
-      })
-      .finally(() => setLoading(false));
-  }, [listingId, navigate]);
+    if (items.length === 0 && !placing) navigate('/cart', { replace: true });
+  }, [items.length, placing, navigate]);
 
   const addressValid = address.trim().length >= 6;
   // Same shape the signup form enforces, for the same reason: a delivery phone
@@ -66,88 +71,86 @@ export function Checkout() {
 
   async function handlePlaceOrder() {
     setTouched(true);
-    if (!listing || !addressValid || !phoneValid) return;
+    if (!addressValid || !phoneValid || bill.orderable.length === 0) return;
 
     setPlacing(true);
-    try {
-      const { data: bid } = await api.post('/bids/direct-purchase', {
-        listingId: listing.id,
-        quantity: qty,
-        deliveryAddress: address.trim(),
-        contactPhone: phone.trim(),
-      });
 
-      toast.success('Order placed');
+    const placed: string[] = [];
+    const failures: { name: string; message: string }[] = [];
+    let lastBidId: string | null = null;
 
-      // The endpoint returns the Bid, not the Transaction that was created
-      // alongside it, so find the order by its bid to land the shopper on a
-      // page where they can pay straight away. If that lookup fails for any
-      // reason the order still exists — send them to the list rather than
-      // implying something went wrong.
+    // Sequential, not Promise.all: each call decrements stock, and a farmer
+    // watching their listings should see orders arrive as orders, not as a
+    // burst of parallel writes racing each other's stock claims.
+    for (const line of bill.orderable) {
+      try {
+        const { data: bid } = await api.post('/bids/direct-purchase', {
+          listingId: line.item.listingId,
+          quantity: line.quantity,
+          deliveryAddress: address.trim(),
+          contactPhone: phone.trim(),
+        });
+        placed.push(line.item.listingId);
+        lastBidId = bid.id;
+      } catch (err: any) {
+        failures.push({
+          name: line.item.cropName,
+          message: err.response?.data?.message || 'Could not be ordered',
+        });
+      }
+    }
+
+    // Only what actually became an order leaves the basket.
+    if (placed.length > 0) removeMany(placed);
+
+    if (placed.length === 0) {
+      toast.error(failures[0]?.message || 'Could not place your order');
+      setPlacing(false);
+      return;
+    }
+
+    if (failures.length > 0) {
+      toast.error(
+        `${placed.length} of ${placed.length + failures.length} ordered. ` +
+        `${failures.map((f) => `${f.name}: ${f.message}`).join(' ')} ` +
+        'The rest is still in your cart.',
+        { duration: 8000 },
+      );
+    } else {
+      toast.success(placed.length === 1 ? 'Order placed' : `${placed.length} orders placed`);
+    }
+
+    // A single order can be opened straight away, which is where the shopper
+    // pays. The endpoint returns the Bid rather than the Transaction created
+    // alongside it, so the order is found by its bid. Any failure in that
+    // lookup is cosmetic — the order exists either way — so it falls back to
+    // the list rather than implying something went wrong.
+    if (placed.length === 1 && lastBidId) {
       try {
         const { data: orders } = await api.get('/transactions');
-        const match = (orders as Transaction[]).find((o) => o.bidId === bid.id);
+        const match = (orders as Transaction[]).find((o) => o.bidId === lastBidId);
         navigate(match ? `/orders/${match.id}` : '/orders');
+        return;
       } catch {
-        navigate('/orders');
+        // falls through to the list
       }
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Could not place the order');
-      setPlacing(false);
     }
+    navigate('/orders');
   }
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <Skeleton height={32} width={240} />
-        <div style={{ marginTop: 16 }}><Skeleton height={320} /></div>
-      </DashboardLayout>
-    );
-  }
+  if (items.length === 0) return null;
 
-  if (!listing) return null;
-
-  const unit = listing.unit.toLowerCase();
-  const retail = listing.retailPricePerUnit;
-
-  // Everything that makes this order impossible, answered in one place so the
-  // page can explain itself instead of failing at the button.
-  // Re-checked here as well as on the product page: this page can be reached
-  // by a pasted URL, and it is the last gate before an order exists.
-  const city = user?.location?.trim() || '';
-  const outOfRange = city !== '' && listing.location.toLowerCase() !== city.toLowerCase();
-
-  const blocker =
-    !listing.directSaleEnabled || retail == null
-      ? 'This lot is sold in bulk only.'
-      : listing.status !== 'ACTIVE'
-        ? 'This lot is no longer for sale.'
-        : outOfRange
-          ? `This farm is in ${listing.location} and you're in ${city} — too far for a fresh delivery.`
-          : qty <= 0
-            ? 'Pick a quantity first.'
-            : qty > listing.remainingQuantity
-              ? `Only ${listing.remainingQuantity} ${unit} left — go back and lower the quantity.`
-              : null;
-
-  const total = retail != null ? retail * qty : 0;
-  const image = listing.images[0] || cropImageFor(listing.cropName);
+  const blocked = bill.lines.length - bill.orderable.length;
 
   return (
     <DashboardLayout>
       <div className="cb-page-eyebrow">
-        <Link to={`/shop/${listing.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>← Back</Link>
+        <Link to="/cart" style={{ color: 'inherit', textDecoration: 'none' }}>← Cart</Link>
         {' · '}Checkout
       </div>
 
-      {blocker ? (
-        <div className="cb-card" style={{ marginTop: 16, textAlign: 'center', padding: 32 }}>
-          <p className="cb-body">{blocker}</p>
-          <Link to="/" className="cb-btn cb-btn-primary" style={{ marginTop: 16 }}>Back to shop</Link>
-        </div>
-      ) : (
-        <div className="cn-split" style={{ marginTop: 16 }}>
+      <div className="cn-split" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="cb-card">
             <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Where should it go?</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -166,64 +169,130 @@ export function Checkout() {
                 onChange={(e) => setPhone(e.target.value)}
                 onBlur={() => setTouched(true)}
                 error={touched && !phoneValid ? 'Enter a valid phone number' : undefined}
-                hint="The grower uses this to arrange delivery."
+                hint="Every grower in this order uses this to arrange delivery."
               />
             </div>
-
-            <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 18 }}>
-              You pay after the order is placed. Money is held by CropBid and released
-              to the grower only once you confirm the delivery arrived.
-            </p>
           </div>
 
-          <aside className="cn-aside">
-            <div className="cb-card">
-              <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Your order</div>
-
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 56, height: 56, borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)', flexShrink: 0 }}>
-                  {image
-                    ? <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 24 }}>🌾</div>}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{listing.cropName}</div>
-                  <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-                    {qty} {unit} · Grade {listing.qualityGrade}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '4px 0' }}>
-                  <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-                    {formatCurrency(retail!, listing.currency)} × {qty} {unit}
-                  </span>
-                  <span className="cb-mono">{formatCurrency(total, listing.currency)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--cb-line)' }}>
-                  <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>TOTAL</span>
-                  <span className="cb-mono" style={{ fontSize: 20, fontWeight: 600 }}>
-                    {formatCurrency(total, listing.currency)}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 18 }}>
-                <Button
-                  size="lg"
-                  style={{ width: '100%' }}
-                  loading={placing}
-                  onClick={handlePlaceOrder}
-                >
-                  Place order
-                  <ArrowIcon />
-                </Button>
-              </div>
+          <div className="cb-card">
+            <div className="cb-eyebrow" style={{ marginBottom: 14 }}>
+              Your order{bill.orderCount > 1 ? `s · ${bill.orderCount}` : ''}
             </div>
-          </aside>
+
+            {bill.loading ? (
+              <Skeleton height={64} />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {bill.lines.map((line) => {
+                  const unit = line.item.unit.toLowerCase();
+                  const image = line.item.image || cropImageFor(line.item.cropName);
+                  return (
+                    <div
+                      key={line.item.listingId}
+                      style={{
+                        display: 'flex', gap: 12, alignItems: 'center',
+                        opacity: line.problem ? 0.55 : 1,
+                      }}
+                    >
+                      <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)', flexShrink: 0 }}>
+                        {image
+                          ? <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 20 }}>🌾</div>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 500, fontSize: 14 }}>{line.item.cropName}</div>
+                        <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
+                          {line.quantity} {unit} · {formatCurrency(line.price, line.item.currency)}/{unit}
+                        </div>
+                        {line.problem && (
+                          <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 2 }}>
+                            {line.problem} <Link to="/cart" style={{ color: 'inherit' }}>Fix in cart</Link>
+                          </div>
+                        )}
+                      </div>
+                      <div className="cb-mono" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+                        {line.problem ? '—' : formatCurrency(line.lineTotal, line.item.currency)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      )}
+
+        <aside className="cn-aside" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {bill.loading ? (
+            <Skeleton height={230} />
+          ) : (
+            <BillDetails
+              itemCount={bill.orderable.length}
+              itemsTotal={bill.itemsTotal}
+              deliveryFee={bill.deliveryFee}
+              toPay={bill.toPay}
+              currency={bill.currency}
+              excludedCount={blocked}
+              orderCount={bill.orderCount}
+            />
+          )}
+
+          <Button
+            size="lg"
+            style={{ width: '100%' }}
+            loading={placing}
+            disabled={bill.loading || bill.orderable.length === 0}
+            onClick={handlePlaceOrder}
+          >
+            {bill.orderable.length > 1 ? `Place ${bill.orderable.length} orders` : 'Place order'}
+            <ArrowIcon />
+          </Button>
+        </aside>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+// =============================================================================
+// BuyNowRedirect — keeps /checkout/:listingId?qty= working
+// =============================================================================
+// The shop used to send a shopper straight from a product to a one-lot
+// checkout at this URL, and those links are bookmarked, pasted and sitting in
+// old order emails. Rather than 404 them, the lot is put in the basket at the
+// quantity the link carried and the shopper lands on the real checkout — the
+// same order, now with anything else they had already picked.
+// =============================================================================
+export function BuyNowRedirect() {
+  const { listingId } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { add } = useCart();
+  const qty = Number(params.get('qty')) || 0;
+
+  useEffect(() => {
+    let on = true;
+    api.get(`/listings/${listingId}`)
+      .then(({ data }: { data: Listing }) => {
+        if (!on) return;
+        // A quintal-denominated lot with no qty in the link would otherwise be
+        // added as 0 and dropped; fall back to the same opening quantity the
+        // product page uses.
+        add(data, qty > 0 ? qty : data.unit === 'KG' ? 1 : 0.5);
+        navigate('/checkout', { replace: true });
+      })
+      .catch(() => {
+        if (!on) return;
+        toast.error('Product not found');
+        navigate('/', { replace: true });
+      });
+    return () => { on = false; };
+    // add/navigate are stable; re-running on them would re-add the lot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingId, qty]);
+
+  return (
+    <DashboardLayout>
+      <Skeleton height={32} width={240} />
+      <div style={{ marginTop: 16 }}><Skeleton height={320} /></div>
     </DashboardLayout>
   );
 }

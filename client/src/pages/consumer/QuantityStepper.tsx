@@ -23,6 +23,21 @@ interface QuantityStepperProps {
   onChange: (next: number) => void;
   unit: Unit;
   max: number;
+  /**
+   * 'md' is the product page's full-width picker. 'sm' is the pill that sits in
+   * a cart row and on a shelf card, where the control has to fit next to a
+   * price rather than own a line of its own.
+   */
+  size?: 'sm' | 'md';
+  /** Lets the smallest step remove the row instead of clamping at one step. */
+  onEmpty?: () => void;
+  /**
+   * Whether the pill spells out the unit next to the number. A cart row has
+   * space for "1.5 kg"; a 150px-wide shelf card does not, and there the price
+   * sitting beside it already reads "₹28/kg", so the unit is only repeated.
+   * Only meaningful at size 'sm'.
+   */
+  showUnit?: boolean;
 }
 
 // 2dp is enough for every step size above and kills the float dust.
@@ -30,7 +45,7 @@ function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-export function QuantityStepper({ value, onChange, unit, max }: QuantityStepperProps) {
+export function QuantityStepper({ value, onChange, unit, max, size = 'md', onEmpty, showUnit = true }: QuantityStepperProps) {
   const step = STEP[unit];
   const label = unit.toLowerCase();
 
@@ -38,8 +53,34 @@ export function QuantityStepper({ value, onChange, unit, max }: QuantityStepperP
   // the ceiling is whatever stock is actually left.
   const clamp = (n: number) => round(Math.min(max, Math.max(step, n)));
 
+  // At one step, − either removes the row (cart, shelf card) or does nothing
+  // (product page, where there is no row to remove).
   const atMin = value <= step;
   const atMax = value >= max;
+  const decrement = () => {
+    if (atMin) { onEmpty?.(); return; }
+    onChange(clamp(value - step));
+  };
+
+  if (size === 'sm') {
+    return (
+      <div className={`cn-step${showUnit ? '' : ' tight'}`}>
+        <button type="button" aria-label={atMin && onEmpty ? `Remove ${label}` : `Less ${label}`}
+          disabled={atMin && !onEmpty} onClick={decrement}>
+          {atMin && onEmpty ? '🗑' : '−'}
+        </button>
+        {/* The unit stays in the accessible name even when it is not drawn —
+            "1.5" alone tells a screen reader nothing about what was added. */}
+        <span className="cn-step-val cb-mono" aria-label={`${value} ${label}`}>
+          {value}{showUnit && <span className="cn-step-unit"> {label}</span>}
+        </span>
+        <button type="button" aria-label={`More ${label}`} disabled={atMax}
+          onClick={() => onChange(clamp(value + step))}>
+          +
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -47,8 +88,8 @@ export function QuantityStepper({ value, onChange, unit, max }: QuantityStepperP
         type="button"
         className="cb-btn cb-btn-ghost"
         aria-label={`Less ${label}`}
-        disabled={atMin}
-        onClick={() => onChange(clamp(value - step))}
+        disabled={atMin && !onEmpty}
+        onClick={decrement}
         style={{ minWidth: 44, justifyContent: 'center', fontSize: 18, lineHeight: 1 }}
       >
         −
