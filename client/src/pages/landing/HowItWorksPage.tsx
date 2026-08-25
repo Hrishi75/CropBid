@@ -23,6 +23,7 @@ import {
   loadCountry, saveCountry, CountrySelector,
   ArcMark, ArrowIcon, CBFooter,
 } from './shared';
+import { SignInLink } from '../../components/auth/SignInLink';
 
 // =============================================================================
 // Copy — short sentences, everyday words
@@ -30,6 +31,7 @@ import {
 
 const NAV_LINKS = [
   ['How it works', '#how'],
+  ['Partners',     '#partner'],
   ['Quality',      '#quality'],
   ['Live rates',   '#rates'],
   ['Forecast',     '#forecast'],
@@ -37,12 +39,14 @@ const NAV_LINKS = [
   ['Pricing',      '#pricing'],
 ] as const;
 
-// The whole product in four steps.
+// The whole product in four steps. Step one is the approval gate — it comes
+// first because it is what makes the rest of it trustworthy, and because it is
+// genuinely the first thing that happens to anyone selling here.
 const STEPS: Array<[emoji: string, title: string, desc: string]> = [
-  ['🌾', 'Farmer lists the crop', 'Crop, quantity, quality and asking price — from a phone, without travelling to the mandi.'],
-  ['🔨', 'Buyers bid — or just buy', 'Traders bid in open rounds where every offer is visible. Households simply buy at the listed price.'],
-  ['🛡️', 'Money goes into escrow', 'The buyer pays first. The money is held safely on the platform — both sides can see it there.'],
-  ['🚚', 'Deliver, confirm, get paid', 'Transport is booked in-app and tracked. When delivery is confirmed, the money is released to the farmer.'],
+  ['✅', 'Sellers apply, we review', 'Farmers, local shops and wholesalers apply with their licences. Our team checks every application before they can sell to anyone.'],
+  ['🌾', 'Approved sellers list stock', 'Crop, quantity, quality and their own asking price — from a phone, without travelling to the mandi.'],
+  ['🧺', 'Buyers bid — or just buy', 'Businesses bid in open rounds where every offer is visible. Households simply buy at the listed price.'],
+  ['🛡️', 'Escrow pays out on delivery', 'The buyer pays first and the money is held on the platform. Transport is booked in-app; when delivery is confirmed the seller is paid.'],
 ];
 
 // Everything else that ships in the app today. Rates and forecast have their
@@ -54,6 +58,8 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🧺', 'Buy any quantity', 'One sack or a truckload — anyone can buy straight from a farmer, no bidding needed.'],
   ['🚚', 'Delivery & tracking', 'Book a transport partner in-app and follow every deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
+  ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place and, where the law needs it, a licence on file.'],
+  ['📱', 'No passwords, ever', 'Sign in with your phone number and a 6-digit code. Nothing to remember, nothing to reset.'],
 ];
 
 // =============================================================================
@@ -195,6 +201,14 @@ const QUALITY_STANDARDS: QStandard[] = [
   },
 ];
 
+// Mirrors the three steps on /partner — same words, so somebody who reads it
+// here and applies there doesn't get told a different story.
+const PARTNER_STEPS: Array<[n: string, title: string, desc: string]> = [
+  ['01', 'Apply', 'Tell us who you are, what you sell or buy, and your licence numbers. Ten minutes, from a phone.'],
+  ['02', 'We review', 'A real person checks it, usually within 24–48 hours. If something is missing we ask for it — you don\'t start over.'],
+  ['03', 'Go live', 'Approved partners get the full dashboard: listings, orders, bids, deliveries, analytics. You can trade the same day.'],
+];
+
 const PRICING: Array<[big: string, label: string, desc: string]> = [
   ['Free', 'to list and browse', 'Listing a crop, browsing the market, rates and the forecast cost nothing.'],
   ['2%', 'only when a deal settles', 'One flat fee on completed deals. No subscriptions, no hidden charges.'],
@@ -220,12 +234,12 @@ function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: 
       </nav>
       <div className="nav-actions">
         <CountrySelector country={country} onChange={onChangeCountry} />
-        <Link to="/login" className="nav-signin">Sign in</Link>
-        <Link to="/signup" className="cb-btn cb-btn-primary">
-          <span className="cb-btn-label">Start trading free</span>
-          <span className="cb-btn-label-short">Trade</span>
+        <Link to="/partner" className="nav-signin">Become a partner</Link>
+        <SignInLink className="cb-btn cb-btn-primary" label="">
+          <span className="cb-btn-label">Sign in</span>
+          <span className="cb-btn-label-short">Sign in</span>
           <ArrowIcon />
-        </Link>
+        </SignInLink>
       </div>
     </header>
   );
@@ -254,17 +268,18 @@ function Hero() {
         An online mandi — live today
       </span>
       <h1 className="cb-h0 hiw-hero-title">
-        Farmers sell. Buyers bid.<br />
-        <span className="italic">Everyone sees the real price.</span>
+        Checked sellers. Open prices.<br />
+        <span className="italic">Nothing hidden in between.</span>
       </h1>
       <p className="cb-body hiw-hero-lede">
-        CropBid is a marketplace for crops. A farmer lists their harvest from the farm.
-        Buyers bid for it — or buy it at the listed price. The money waits in escrow until
-        the crop is delivered. That's the whole idea.
+        CropBid is a marketplace for food. Farmers, local shops and wholesalers apply
+        to sell here and are reviewed before they can trade. They list at their own
+        price. Businesses bid or order in bulk, households buy by the kilo, and the
+        money waits in escrow until it's delivered. That's the whole idea.
       </p>
       <div className="hiw-hero-actions">
-        <Link to="/signup" className="cb-btn cb-btn-primary">
-          Start trading free
+        <Link to="/partner" className="cb-btn cb-btn-primary">
+          Become a partner
           <ArrowIcon />
         </Link>
         <Link to="/" className="cb-btn cb-btn-ghost">Browse the market</Link>
@@ -504,13 +519,45 @@ function BuyDirect() {
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Not a trader?"
-          title={<>Buy for your kitchen,<br /><span className="italic">straight from the farm.</span></>}
-          sub="Anyone can buy from the farmers on CropBid — one sack or a season's supply, at the farmer's listed price. No bidding, no minimums, no middlemen."
+          title={<>Buy for your kitchen,<br /><span className="italic">straight from the source.</span></>}
+          sub="Anyone can buy here — one sack or a week's vegetables, at the seller's own listed price. No bidding, no minimums, no middlemen. Your phone number and a 6-digit code is the whole sign-up; you only need it when you check out."
         />
         <div className="hiw-cta-row">
           <Link to="/" className="cb-btn cb-btn-primary">
             Start buying direct
             <ArrowIcon />
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Partner() {
+  return (
+    <section id="partner" className="hiw-sec alt">
+      <div className="hiw-inner">
+        <SectionHead
+          eyebrow="Selling on CropBid"
+          title={<>Not a marketplace <span className="italic">anyone can walk into.</span></>}
+          sub="Farmers, local shops and wholesalers sell here — but only after we've checked them. That gate is the product: it is why a buyer can trust a name they have never bought from before."
+        />
+        <div className="hiw-grid three">
+          {PARTNER_STEPS.map(([n, title, desc]) => (
+            <div key={n} className="hiw-card">
+              <span className="cb-mono hiw-step-n">STEP {n}</span>
+              <h3 style={{ marginTop: 8 }}>{title}</h3>
+              <p>{desc}</p>
+            </div>
+          ))}
+        </div>
+        <div className="hiw-cta-row">
+          <Link to="/partner" className="cb-btn cb-btn-primary">
+            Become a partner
+            <ArrowIcon />
+          </Link>
+          <Link to="/partner#buy" className="cb-btn cb-btn-ghost">
+            Buying for a business?
           </Link>
         </div>
       </div>
@@ -580,7 +627,7 @@ function CTA() {
             </p>
           </div>
           <div className="cta-actions">
-            <Link to="/signup" className="cb-btn cta-primary">
+            <Link to="/partner" className="cb-btn cta-primary">
               Start trading free
               <ArrowIcon />
             </Link>
@@ -611,6 +658,7 @@ export function HowItWorksPage() {
       <Nav country={country} onChangeCountry={handleChangeCountry} />
       <Hero />
       <Steps />
+      <Partner />
       <Quality />
       <LiveRates />
       <Forecast />

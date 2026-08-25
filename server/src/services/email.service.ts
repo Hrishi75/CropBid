@@ -163,6 +163,56 @@ export async function sendSignupOtpEmail(
 }
 
 // ---------------------------------------------------------------------------
+// Sign-in code (fallback channel)
+// ---------------------------------------------------------------------------
+// Sign-in normally happens over WhatsApp. This is what goes out when that
+// fails — no WhatsApp on the number, Meta's unverified 250/day cap reached, an
+// outage. Deliberately worded for signing IN as well as signing up, because
+// unlike sendSignupOtpEmail this code does both.
+
+export async function sendSignInOtpEmail(
+  to: string,
+  name: string | null,
+  code: string,
+  ttlMinutes: number,
+): Promise<void> {
+  const greeting = name ? `Hi ${name},` : 'Hi,';
+  const subject = `${code} is your CropBid sign-in code`;
+  const text = [
+    greeting,
+    '',
+    "We couldn't reach your WhatsApp, so here is your CropBid sign-in code:",
+    '',
+    code,
+    '',
+    `It expires in ${ttlMinutes} minutes and works once.`,
+    '',
+    "If you didn't try to sign in, ignore this email. Nobody can get into your",
+    'account without this code.',
+    '',
+    '— CropBid',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; color: #1e2a1e;">
+      <h2 style="color: #2f6b3a;">Your sign-in code</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>We couldn't reach your WhatsApp, so here is your CropBid sign-in code:</p>
+      <p style="margin: 28px 0;">
+        <span style="display: inline-block; background: #f2f7f2; border: 1px solid #cfe0cf; color: #2f6b3a;
+                     font-size: 30px; font-weight: 700; letter-spacing: 8px; padding: 14px 26px; border-radius: 8px;">
+          ${escapeHtml(code)}
+        </span>
+      </p>
+      <p style="font-size: 13px; color: #5a6b5a;">It expires in <strong>${ttlMinutes} minutes</strong> and works once.</p>
+      <p style="font-size: 13px; color: #5a6b5a;">If you didn't try to sign in, ignore this email — nobody can get into your account without this code.</p>
+      <p>— CropBid</p>
+    </div>`;
+
+  await sendEmail({ to, subject, text, html });
+}
+
+// ---------------------------------------------------------------------------
 // New order alert (ops inbox)
 // ---------------------------------------------------------------------------
 // Sent to the platform, NOT to either party — it's the "an order just came in"
@@ -279,4 +329,73 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ---------------------------------------------------------------------------
+// Partner application decision
+// ---------------------------------------------------------------------------
+// Sent when an admin moves an application to a state the applicant must act
+// on or know about (approved / needs info / rejected / suspended). Deliberate
+// fire-and-forget at the call site: the review action must never fail because
+// SMTP is down — the in-app notification is the reliable channel.
+export interface PartnerStatusEmail {
+  name: string;
+  status: 'APPROVED' | 'NEEDS_INFO' | 'REJECTED' | 'SUSPENDED';
+  note?: string;
+}
+
+const PARTNER_EMAIL_COPY: Record<PartnerStatusEmail['status'], { subject: string; lead: string; cta: string }> = {
+  APPROVED: {
+    subject: 'You are live on CropBid 🎉',
+    lead: 'Your partner application has been approved. Your dashboard is unlocked — you can start right away.',
+    cta: 'Open your dashboard',
+  },
+  NEEDS_INFO: {
+    subject: 'Your CropBid application needs one more thing',
+    lead: 'A reviewer looked at your application and needs a little more from you before it can be approved.',
+    cta: 'Update your application',
+  },
+  REJECTED: {
+    subject: 'About your CropBid application',
+    lead: 'After review, we were not able to approve your application this time. You can edit and resubmit it.',
+    cta: 'Review your application',
+  },
+  SUSPENDED: {
+    subject: 'Your CropBid partner account is suspended',
+    lead: 'An administrator has suspended your partner account. Reply to this email if you believe this is a mistake.',
+    cta: 'See details',
+  },
+};
+
+export async function sendPartnerStatusEmail(to: string, input: PartnerStatusEmail): Promise<void> {
+  const copy = PARTNER_EMAIL_COPY[input.status];
+  const statusUrl = `${config.clientUrl}/partner/status`;
+
+  const text = [
+    `Hi ${input.name},`,
+    '',
+    copy.lead,
+    ...(input.note ? ['', `Reviewer's note: ${input.note}`] : []),
+    '',
+    statusUrl,
+    '',
+    '— CropBid',
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 520px; margin: 0 auto; color: #1e2a1e;">
+      <h2 style="color: #2f6b3a;">${escapeHtml(copy.subject)}</h2>
+      <p>Hi ${escapeHtml(input.name)},</p>
+      <p>${escapeHtml(copy.lead)}</p>
+      ${input.note ? `<p style="border-left: 3px solid #2f6b3a; padding: 8px 14px; background: #f2f6f0; color: #3d4b3d;">${escapeHtml(input.note)}</p>` : ''}
+      <p style="margin: 28px 0;">
+        <a href="${escapeHtml(statusUrl)}"
+           style="background: #2f6b3a; color: #fff; padding: 12px 22px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+          ${escapeHtml(copy.cta)}
+        </a>
+      </p>
+      <p>— CropBid</p>
+    </div>`;
+
+  await sendEmail({ to, subject: copy.subject, text, html });
 }

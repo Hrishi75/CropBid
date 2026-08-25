@@ -13,6 +13,7 @@
 
 import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
+import { SignInLink } from '../components/auth/SignInLink';
 
 const UPDATED = '20 July 2026';
 const CONTACT = 'info@cropbid.in';
@@ -39,12 +40,10 @@ export function PrivacyPolicyPage() {
         <nav className="rp-nav-links" aria-label="Primary">
           <Link to="/">Marketplace</Link>
           <Link to="/rates">Live rates</Link>
-          <Link to="/how-it-works">How it works</Link>
-          <Link to="/login" className="nav-signin">Sign in</Link>
-          <Link to="/signup" className="cb-btn cb-btn-primary">
-            Start trading
+          <Link to="/partner" className="nav-signin">Become a partner</Link>
+          <SignInLink className="cb-btn cb-btn-primary">
             <ArrowIcon />
-          </Link>
+          </SignInLink>
         </nav>
       </header>
 

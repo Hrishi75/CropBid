@@ -76,11 +76,36 @@ enum ListingStatus {
 }
 
 enum CompanyType {
-  PROCESSOR  // Food processing companies
-  FMCG       // Fast-moving consumer goods
-  RESTAURANT // Restaurant chains
-  EXPORTER   // Export companies
-  RETAILER   // Retail chains
+  PROCESSOR      // Food processing companies
+  FMCG           // Fast-moving consumer goods
+  RESTAURANT     // Restaurant chains, cafés, cloud kitchens
+  EXPORTER       // Export companies
+  RETAILER       // Retail chains
+  WHOLESALER     // Bulk traders buying lots to redistribute
+  SMALL_BUSINESS // Sweet shops, tiffin services, caterers — small recurring volumes
+}
+
+// Which kind of seller a partner is. Drives the fulfilment tier (a local shop
+// quotes same-day and higher, a farmer second-day and cheaper, a wholesaler
+// bulk with minimums) and which compliance fields the application must carry
+// (a shop selling food needs an FSSAI licence; a farmer selling raw produce
+// does not).
+enum SellerType {
+  FARMER     // Grows what they sell
+  LOCAL_SHOP // Neighbourhood shop holding same-day stock
+  WHOLESALER // Bulk stock, lowest unit price, minimum order applies
+}
+
+// Lifecycle of a partner (seller or buyer) application. Nothing a partner does
+// reaches the marketplace until an admin moves them to APPROVED — dashboards
+// and mutating routes are gated on this, client- and server-side.
+enum PartnerStatus {
+  SUBMITTED    // Application in, waiting for first review
+  UNDER_REVIEW // An admin has picked it up
+  NEEDS_INFO   // Sent back to the applicant — statusNote says what's missing
+  APPROVED     // Live: dashboard and marketplace unlocked
+  REJECTED     // Turned down — statusNote says why
+  SUSPENDED    // Was live, pulled by an admin
 }
 
 enum AgentType {
@@ -163,7 +188,10 @@ model User {
   // Phone is the primary contact/login identifier (required at signup);
   // email is optional. Both stay nullable at the DB level for legacy rows.
   email       String?  @unique
-  password    String   // Hashed with bcrypt — NEVER store plain text
+  // Nullable since phone+OTP signup landed: a shopper who has only ever signed
+  // in with a code has NO password, and login must refuse the password path
+  // for those accounts rather than comparing against an empty hash.
+  password    String?  // Hashed with bcrypt — NEVER store plain text
   role        Role
   phone       String?  @unique
   location    String?
@@ -246,21 +274,92 @@ model PendingSignup {
 }
 
 // =============================================================================
-// Model 2: FarmerProfile — Farm-specific details
+// Model 1c: PhoneChallenge — a live phone+OTP sign-in attempt
+// =============================================================================
+// The passwordless front door. Someone types a phone number, a 6-digit code
+// goes out by SMS, and the code coming back both proves the number and signs
+// them in — creating the account on first use.
+//
+// WHY NOT REUSE PendingSignup? That row parks a full set of signup details
+// behind an EMAIL code and always creates a User. This one carries no details
+// at all (the number IS the identity) and usually logs into an account that
+// already exists. Different lifecycle, different table.
+//
+// Only the SHA-256 hash of the code is stored — see utils/phoneOtp.ts for why
+// a hash rather than bcrypt is the right call for a short-lived 6-digit code.
+// Rows are deleted on success and swept on expiry.
+model PhoneChallenge {
+  id         String   @id @default(uuid())
+  // Unique: asking for another code REPLACES the live one, so a number never
+  // has two valid codes at once.
+  phone      String   @unique
+  codeHash   String
+
+  // Role to give the account if this code creates one. Consumers self-serve;
+  // FARMER/BUYER come from the partner flow and still face the approval gate.
+  // ADMIN is never accepted here.
+  intendedRole Role   @default(CONSUMER)
+
+  // Which channel actually carried the code, and where it went. Stored so the
+  // code-entry screen can say "check WhatsApp" or "check your email"
+  // truthfully — telling someone to watch WhatsApp for a code that landed in
+  // their inbox is its own kind of lockout.
+  channel    String   @default("whatsapp") // whatsapp | sms | email | console
+  // The address the email fallback used. Either the account's, or one the
+  // person typed when WhatsApp could not reach them.
+  email      String?
+
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  lastSentAt DateTime @default(now()) // drives the resend cooldown
+
+  createdAt  DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// =============================================================================
+// Model 2: FarmerProfile — the SELLER profile (farmer, local shop, wholesaler)
 // =============================================================================
 // WHY SEPARATE FROM USER?
-// Farmers have farm-specific fields (size, crops, organic cert, APMC license).
+// Sellers have trade-specific fields (farm size, licences, categories).
 // Buyers have company-specific fields (company name, GST, volume).
 // Putting both in User would create a table full of nullable columns.
-// Separate tables enforce that a FARMER always has farm data.
+//
+// NAMING DEBT: the model keeps its original FarmerProfile name (and the
+// Role value stays FARMER) because renaming would touch every relation,
+// include and requireRole in the codebase for zero behaviour change. Read
+// "FarmerProfile" as "SellerProfile" — `sellerType` says which kind this row
+// is, and the farm-only columns are nullable because a shop has no acreage.
 
 model FarmerProfile {
-  id             String   @id @default(uuid())
-  userId         String   @unique // One user = one profile
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String     @id @default(uuid())
+  userId         String     @unique // One user = one profile
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  farmSizeAcres  Float    // Farm size in acres
-  cropsGrown     String[] // PostgreSQL native array: ["rice", "wheat", "cotton"]
+  sellerType     SellerType @default(FARMER)
+
+  // --- Application lifecycle (see PartnerStatus) ---
+  // Existing rows were backfilled APPROVED in the migration: they were live
+  // before the approval gate existed, and locking them out would be a regression.
+  status       PartnerStatus @default(SUBMITTED)
+  statusNote   String?       // Reviewer's note — what's missing (NEEDS_INFO) or why (REJECTED)
+  submittedAt  DateTime      @default(now()) // Last (re)submission — drives queue ordering + SLA
+  reviewedAt   DateTime?
+  reviewedById String?       // Admin userId — who made the call (see also AuditLog)
+
+  // --- Farm fields (FARMER only; a shop or wholesaler has neither) ---
+  farmSizeAcres  Float?   // Farm size in acres
+  cropsGrown     String[] // Doubles as "categories stocked" for shops/wholesalers
+
+  // --- Shop / wholesale fields (LOCAL_SHOP and WHOLESALER) ---
+  businessName  String? // Shop or firm name — the consumer-facing identity
+  shopType      String? // kirana / vegetable / dairy / bakery / general / other
+  address       String? // Street address; city lives on User.location
+  fssaiLicense  String? // Food licence — required before a shop's stock can go live
+  gstin         String? // Optional for shops (most are under threshold), expected for wholesalers
+  minOrderValue Float?  // WHOLESALER: minimum order value in account currency
+  leadTimeDays  Int?    // WHOLESALER: days from order to dispatch
 
   // Location
   country        String   @default("India")
@@ -275,13 +374,16 @@ model FarmerProfile {
   certificationBody String? // "NPOP" (India), "USDA Organic" (US), "EU Organic" (Europe)
 
   bankDetails    Json?    // Flexible JSON for bank info (varies by country)
-  verified       Boolean  @default(false) // Admin-verified
+  verified       Boolean  @default(false) // Admin-verified (legacy badge; the gate is `status`)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // A farmer can have many listings
   listings Listing[]
+
+  // The admin review queue scans by status, oldest submission first.
+  @@index([status, submittedAt])
 }
 
 // =============================================================================
@@ -297,15 +399,26 @@ model BuyerProfile {
   companyType              CompanyType
   country                  String      @default("India")
 
+  // --- Application lifecycle — same machine as FarmerProfile.status ---
+  // Existing rows backfilled APPROVED in the migration.
+  status       PartnerStatus @default(SUBMITTED)
+  statusNote   String?
+  submittedAt  DateTime      @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+
   // Tax ID label changes by country:
   //   India = GST Number, US = EIN, EU = VAT Number
   taxId                    String?
 
   annualProcurementVolume  String?     // e.g., "500-1000 tonnes"
-  verified                 Boolean     @default(false)
+  outletCount              Int?        // RESTAURANT chains: how many kitchens take delivery
+  verified                 Boolean     @default(false) // Legacy badge; the gate is `status`
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([status, submittedAt])
 }
 
 // =============================================================================

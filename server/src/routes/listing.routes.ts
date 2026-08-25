@@ -18,7 +18,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { requireRole } from '../middleware/roleGuard';
+import { requireRole, requireApprovedPartner } from '../middleware/roleGuard';
 import { upload, processImages } from '../middleware/upload';
 import * as listingController from '../controllers/listing.controller';
 
@@ -30,7 +30,7 @@ const router = Router();
 router.post(
   '/',
   authenticate,
-  requireRole('FARMER'),
+  requireRole('FARMER'), requireApprovedPartner,
   upload.array('images', 5),
   processImages,
   listingController.createListing
@@ -40,7 +40,7 @@ router.post(
 router.get(
   '/my',
   authenticate,
-  requireRole('FARMER'),
+  requireRole('FARMER'), requireApprovedPartner,
   listingController.getMyListings
 );
 
@@ -55,7 +55,7 @@ router.get('/:id', listingController.getListingById);
 router.put(
   '/:id',
   authenticate,
-  requireRole('FARMER'),
+  requireRole('FARMER'), requireApprovedPartner,
   listingController.updateListing
 );
 
@@ -63,7 +63,7 @@ router.put(
 router.delete(
   '/:id',
   authenticate,
-  requireRole('FARMER'),
+  requireRole('FARMER'), requireApprovedPartner,
   listingController.deleteListing
 );
 
@@ -71,7 +71,7 @@ router.delete(
 router.post(
   '/:id/images',
   authenticate,
-  requireRole('FARMER'),
+  requireRole('FARMER'), requireApprovedPartner,
   upload.array('images', 5),
   processImages,
   listingController.uploadImages

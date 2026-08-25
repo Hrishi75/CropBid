@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
+import { SignInLink } from '../components/auth/SignInLink';
 
 // -----------------------------------------------------------------------------
 // Data shapes (mirror server/src/services/rates.service.ts)
@@ -201,12 +202,10 @@ export function RatesPage() {
         <nav className="rp-nav-links" aria-label="Primary">
           <Link to="/">Marketplace</Link>
           <Link to="/forecast">Forecast</Link>
-          <Link to="/how-it-works">How it works</Link>
-          <Link to="/login" className="nav-signin">Sign in</Link>
-          <Link to="/signup" className="cb-btn cb-btn-primary">
-            Start trading
+          <Link to="/partner" className="nav-signin">Become a partner</Link>
+          <SignInLink className="cb-btn cb-btn-primary">
             <ArrowIcon />
-          </Link>
+          </SignInLink>
         </nav>
       </header>
 

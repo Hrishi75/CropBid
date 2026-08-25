@@ -7,6 +7,9 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { createNotification } from './notification.service';
+import { sendPartnerStatusEmail } from './email.service';
+import { recordAudit } from './audit.service';
 
 // =============================================================================
 // PLATFORM STATS — Top-level numbers for the dashboard
@@ -371,4 +374,205 @@ export async function purgeDemoData(actingAdminId: string, extraEmails: string[]
       users: users.count,
     },
   };
+}
+
+// =============================================================================
+// PARTNER APPLICATIONS — the approval queue
+// =============================================================================
+// Sellers (FarmerProfile) and buyers (BuyerProfile) apply through onboarding
+// and wait in PartnerStatus.SUBMITTED. Admins work the queue here: list it,
+// then approve / send back / reject. Every decision is audited and the
+// applicant is notified in-app and (when they have an email) by mail.
+//
+// The two profile tables stay separate — merging them into one "applications"
+// table would be a real migration for zero behaviour — so the queue is built
+// by querying both and merging in memory. Fine at admin-queue scale: the hot
+// filter (SUBMITTED/NEEDS_INFO) is served by the (status, submittedAt) index
+// and the merged set is capped.
+
+const PARTNER_STATUSES = ['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED', 'SUSPENDED'] as const;
+type PartnerStatusValue = (typeof PARTNER_STATUSES)[number];
+
+const APPLICANT_FIELDS = {
+  select: { id: true, name: true, phone: true, email: true, location: true, country: true, createdAt: true, trustScore: true },
+} as const;
+
+export async function listPartnerApplications(status?: string, kind?: string, limit = 20, offset = 0) {
+  const statusFilter = status && PARTNER_STATUSES.includes(status as PartnerStatusValue)
+    ? { status: status as PartnerStatusValue }
+    : {};
+
+  // Cap what we pull from each table before merging. 500 per side is far past
+  // any queue an admin will actually work through in one sitting.
+  const CAP = 500;
+
+  const [sellers, buyers] = await Promise.all([
+    kind === 'BUYER' ? [] : prisma.farmerProfile.findMany({
+      where: statusFilter,
+      include: { user: APPLICANT_FIELDS },
+      orderBy: { submittedAt: 'asc' },
+      take: CAP,
+    }),
+    kind === 'SELLER' ? [] : prisma.buyerProfile.findMany({
+      where: statusFilter,
+      include: { user: APPLICANT_FIELDS },
+      orderBy: { submittedAt: 'asc' },
+      take: CAP,
+    }),
+  ]);
+
+  const rows = [
+    ...sellers.map((p) => ({ kind: 'SELLER' as const, ...p })),
+    ...buyers.map((p) => ({ kind: 'BUYER' as const, ...p })),
+  ].sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
+
+  return {
+    applications: rows.slice(offset, offset + limit),
+    total: rows.length,
+  };
+}
+
+// Tab badges for the queue page: how many applications sit in each status,
+// across both tables.
+export async function getPartnerCounts() {
+  const [sellerGroups, buyerGroups] = await Promise.all([
+    prisma.farmerProfile.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.buyerProfile.groupBy({ by: ['status'], _count: { _all: true } }),
+  ]);
+  const counts: Record<string, number> = {};
+  for (const s of PARTNER_STATUSES) counts[s] = 0;
+  for (const g of [...sellerGroups, ...buyerGroups]) {
+    counts[g.status] = (counts[g.status] || 0) + g._count._all;
+  }
+  return counts;
+}
+
+interface ReviewInput {
+  kind: 'SELLER' | 'BUYER';
+  profileId: string;
+  action: 'APPROVE' | 'REQUEST_INFO' | 'REJECT' | 'SUSPEND' | 'REINSTATE';
+  note?: string;
+  adminId: string;
+}
+
+// Which statuses each action may act on. Guards against double-clicks and two
+// admins working the same row: the second decision hits a 409, not a silent
+// overwrite of the first.
+const ACTION_RULES: Record<ReviewInput['action'], { from: PartnerStatusValue[]; to: PartnerStatusValue; needsNote: boolean }> = {
+  APPROVE:      { from: ['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO'], to: 'APPROVED',   needsNote: false },
+  REQUEST_INFO: { from: ['SUBMITTED', 'UNDER_REVIEW'],               to: 'NEEDS_INFO', needsNote: true },
+  REJECT:       { from: ['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO'], to: 'REJECTED',   needsNote: true },
+  SUSPEND:      { from: ['APPROVED'],                                to: 'SUSPENDED',  needsNote: true },
+  REINSTATE:    { from: ['SUSPENDED'],                               to: 'APPROVED',   needsNote: false },
+};
+
+const DECISION_COPY: Record<PartnerStatusValue, { title: string; message: (note?: string) => string }> = {
+  APPROVED: {
+    title: 'Application approved — you are live',
+    message: () => 'Welcome to CropBid. Your partner dashboard is now unlocked.',
+  },
+  NEEDS_INFO: {
+    title: 'Your application needs one more thing',
+    message: (note) => note || 'A reviewer needs more information. Open your application to see what is missing.',
+  },
+  REJECTED: {
+    title: 'Application declined',
+    message: (note) => note || 'Your application was declined. You can edit and resubmit it.',
+  },
+  SUSPENDED: {
+    title: 'Your partner account is suspended',
+    message: (note) => note || 'An admin has suspended your partner account. Contact support.',
+  },
+  SUBMITTED: { title: '', message: () => '' },     // never sent
+  UNDER_REVIEW: { title: '', message: () => '' },  // never sent
+};
+
+export async function reviewPartnerApplication(input: ReviewInput) {
+  const rule = ACTION_RULES[input.action];
+  if (!rule) throw new ApiError(400, 'Unknown review action');
+  if (rule.needsNote && !input.note?.trim()) {
+    throw new ApiError(400, 'A note to the applicant is required for this action');
+  }
+
+  const table = input.kind === 'SELLER' ? prisma.farmerProfile : prisma.buyerProfile;
+  const profile = await (table as typeof prisma.farmerProfile).findUnique({
+    where: { id: input.profileId },
+    include: { user: { select: { id: true, name: true, email: true } } },
+  });
+  if (!profile) throw new ApiError(404, 'Application not found');
+  if (!rule.from.includes(profile.status as PartnerStatusValue)) {
+    throw new ApiError(409, `Cannot ${input.action.toLowerCase().replace('_', ' ')} an application in status ${profile.status}`);
+  }
+
+  // Apply the decision against the EXACT status that was just read and
+  // reviewed, not merely against the set this action allows. The read-then-write version made the 409 promised
+  // by ACTION_RULES decorative: two admins clicking at once, or an applicant
+  // resubmitting mid-review, both validate the same old status and then write
+  // by profile id, so the last write silently buries the first one.
+  //
+  // `rule.from` is too loose to be the guard: REQUEST_INFO's destination sits
+  // inside APPROVE's allowed set, so two overlapping decisions would both pass
+  // it and the later one would still bury the earlier. Pinning the exact
+  // observed value also catches an applicant resubmitting mid-review — the row
+  // moves to SUBMITTED, which rule.from would have waved through, approving
+  // fields nobody looked at.
+  const claimed = await (table as typeof prisma.farmerProfile).updateMany({
+    where: { id: input.profileId, status: profile.status },
+    data: {
+      status: rule.to,
+      statusNote: rule.needsNote ? input.note!.trim() : null,
+      reviewedAt: new Date(),
+      reviewedById: input.adminId,
+      // Approval doubles as the legacy verified badge.
+      ...(rule.to === 'APPROVED' ? { verified: true } : {}),
+    },
+  });
+  if (claimed.count === 0) {
+    // Somebody moved the row between the read above and this write. Re-read so
+    // the message names the status it actually lost to, not the stale one.
+    const now = await (table as typeof prisma.farmerProfile).findUnique({
+      where: { id: input.profileId },
+      select: { status: true },
+    });
+    throw new ApiError(409, `Cannot ${input.action.toLowerCase().replace('_', ' ')} an application in status ${now?.status ?? 'UNKNOWN'}`);
+  }
+  const updated = await (table as typeof prisma.farmerProfile).findUnique({
+    where: { id: input.profileId },
+  });
+
+  await recordAudit({
+    actorId: input.adminId,
+    actorRole: 'ADMIN',
+    action: `partner.application.${input.action.toLowerCase()}`,
+    entityType: input.kind === 'SELLER' ? 'FarmerProfile' : 'BuyerProfile',
+    entityId: input.profileId,
+    metadata: { from: profile.status, to: rule.to, note: input.note?.trim() || null },
+  });
+
+  const copy = DECISION_COPY[rule.to];
+  if (copy.title) {
+    // Best-effort, like the email below it. The decision is already committed
+    // by this point, so throwing here would hand the admin an error for a
+    // review that did in fact go through — and their retry would now hit the
+    // 409 above, leaving the row correct but the screen insisting otherwise.
+    // A logged failure plus the email is the better half of that trade.
+    await createNotification({
+      userId: profile.user.id,
+      type: 'PARTNER_APPLICATION',
+      title: copy.title,
+      message: copy.message(input.note?.trim()),
+      data: { status: rule.to },
+    }).catch((err) => console.error('[partner] decision notification failed:', err?.message || err));
+    if (profile.user.email) {
+      // Fire-and-forget: a mail outage must never block the review action.
+      sendPartnerStatusEmail(profile.user.email, {
+        name: profile.user.name,
+        // Safe: copy.title is only non-empty for the four actionable states.
+        status: rule.to as 'APPROVED' | 'NEEDS_INFO' | 'REJECTED' | 'SUSPENDED',
+        note: input.note?.trim(),
+      }).catch((err) => console.error('[partner] status email failed:', err?.message || err));
+    }
+  }
+
+  return updated;
 }

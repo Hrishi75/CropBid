@@ -7,6 +7,7 @@
 
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { isPendingPartner } from '../utils/partner';
 import type { Role } from '../types';
 
 interface ProtectedRouteProps {
@@ -50,6 +51,13 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   // since that page only knows how to build the other two.
   if (user.role !== 'ADMIN' && user.role !== 'CONSUMER' && !user.farmerProfile && !user.buyerProfile) {
     return <Navigate to="/onboarding" replace />;
+  }
+
+  // Profile exists but the application isn't approved → the status page is
+  // the only "dashboard" this account gets. The server enforces the same rule
+  // (requireApprovedPartner), so this is navigation, not security.
+  if (isPendingPartner(user)) {
+    return <Navigate to="/partner/status" replace />;
   }
 
   // Role check — if route specifies allowed roles and user doesn't match

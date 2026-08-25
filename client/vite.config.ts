@@ -2,6 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+// The API target is overridable so a second checkout (e.g. a git worktree)
+// can run its own server on another port without fighting this one for 5001:
+//   VITE_API_PROXY=http://localhost:5002 npm run dev
+const apiTarget = process.env.VITE_API_PROXY || 'http://localhost:5001';
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -23,15 +28,15 @@ export default defineConfig({
     // In production, both would be served from the same origin, so no proxy needed.
     proxy: {
       '/api': {
-        target: 'http://localhost:5001',
+        target: apiTarget,
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:5001',
+        target: apiTarget,
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5001',
+        target: apiTarget,
         ws: true, // WebSocket support for Socket.io
         changeOrigin: true,
       },

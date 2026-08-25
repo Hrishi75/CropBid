@@ -334,7 +334,12 @@ body * {
 .cb-landing .nav-links { display: flex; gap: 28px; font-size: 14.5px; opacity: 0.9; }
 .cb-landing .nav-links a { color: inherit; text-decoration: none; }
 .cb-landing .nav-actions { display: flex; align-items: center; gap: 12px; }
-.cb-landing .nav-signin { color: var(--cb-ink); opacity: 0.8; font-size: 14.5px; text-decoration: none; }
+/* Also a <button> now that sign-in opens a modal instead of navigating —
+   reset the UA button chrome so the two render identically. */
+.cb-landing .nav-signin {
+  color: var(--cb-ink); opacity: 0.8; font-size: 14.5px; text-decoration: none;
+  background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
+}
 
 .cb-landing .hero { padding: 88px 56px 96px; position: relative; overflow: hidden; }
 .cb-landing .hero-inner {
@@ -642,8 +647,11 @@ body * {
 .cb-landing .cb-footer { margin-top: auto; background: var(--cb-forest); color: #cfd9c4; padding: 52px 56px 28px; }
 .cb-landing .cb-footer-inner { max-width: 1240px; margin: 0 auto; }
 .cb-landing .cb-footer-cols {
-  display: grid; grid-template-columns: 1.6fr repeat(3, 1fr);
-  gap: 48px; margin-bottom: 44px;
+  /* Brand column + four link columns (Product / Learn / Partner with us /
+     Company). The gap tightened from 48px when the fourth column landed —
+     five tracks at the old spacing pushed the last one off the grid. */
+  display: grid; grid-template-columns: 1.5fr repeat(4, 1fr);
+  gap: 36px; margin-bottom: 44px;
 }
 /* 300px wide so the blurb sets in ~3 lines; at the old 260px it ran to 5 and
    dragged the whole brand column down with it. */
@@ -960,6 +968,12 @@ body * {
   background: transparent;
 }
 .cb-app .cb-btn-sm { padding: 7px 12px; font-size: 12.5px; }
+/* The compact button is sized for a cursor. On a phone it is still the control
+   people tap most — approve/reject in the partner queue, row actions in every
+   table — so give it a thumb-sized box without changing the desktop look. */
+@media (max-width: 640px) {
+  .cb-app .cb-btn-sm { min-height: 40px; padding: 9px 14px; font-size: 13px; }
+}
 .cb-app .cb-btn-lg { padding: 13px 20px; font-size: 15px; }
 .cb-app .cb-btn-primary { background: var(--cb-forest); color: #f4f1ea; border-color: var(--cb-forest); }
 .cb-app .cb-btn-primary:hover { background: var(--cb-ink); border-color: var(--cb-ink); }
@@ -1023,6 +1037,15 @@ body * {
   font: inherit; font-size: 14.5px;
   transition: border-color .15s ease, background .15s ease;
   outline: none;
+}
+/* iOS Safari ZOOMS the whole page when a focused field is under 16px, and
+   never zooms back out. On the sign-in modal that means tapping the phone box
+   throws the layout sideways, so every field goes to 16px on phones. Desktop
+   keeps the tighter 14.5px. */
+@media (max-width: 720px) {
+  .cb-app .cb-input,
+  .cb-app select.cb-input,
+  .cb-app textarea.cb-input { font-size: 16px; }
 }
 .cb-app .cb-input:focus { border-color: var(--cb-forest); background: #fff; }
 .cb-app .cb-input.error { border-color: var(--cb-ember); }
@@ -1160,6 +1183,16 @@ body * {
   background: transparent; color: var(--cb-ink-2); cursor: pointer;
   font: inherit; font-size: 13px; font-weight: 500;
   transition: all .15s ease;
+}
+/* Comfortable for a mouse at 34px, fiddly for a thumb — pills are how the
+   application form asks what kind of seller you are, so they have to be easy
+   to hit on the phone most applicants will use. */
+@media (max-width: 640px) {
+  .cb-app .cb-pill {
+    min-height: 40px; padding: 8px 14px; font-size: 14px;
+    display: inline-flex; align-items: center;
+  }
+  .cb-app .cb-pill-group { gap: 8px; }
 }
 .cb-app .cb-pill:hover { background: rgba(20,20,15,0.03); }
 .cb-app .cb-pill.active { background: var(--cb-forest); color: #f4f1ea; border-color: var(--cb-forest); }
@@ -1364,14 +1397,16 @@ body * {
 .st-chip.active { background: var(--cb-forest); border-color: var(--cb-forest); color: #f4f1ea; }
 
 /* --- page scaffold + reveal-on-scroll --- */
-/* width:100% is load-bearing, not decoration. .st-main is a flex item of the
-   .cb-landing column, and `margin: 0 auto` disables the default stretch — so
-   without an explicit width the browser falls back to fit-content sizing and
-   picks up the min-content of the product rails (a column-flow grid ~1290px
-   wide). That made every phone render the whole storefront at 1280px with a
-   horizontal scrollbar. A definite width keeps max-width/margin doing their
-   centring job on desktop and pins the page to the viewport on mobile. */
-.st-main { width: 100%; max-width: 1280px; margin: 0 auto; padding: 18px 24px 72px; }
+/* width:100% and min-width:0 are load-bearing, not tidying. .cb-landing is a
+   flex column, and a flex item with an `auto` cross-axis margin stops
+   stretching and sizes to its CONTENT instead — so `margin: 0 auto` alone made
+   this element 1280px wide on a 375px phone, taking the entire storefront with
+   it. min-width:0 then lets the inner overflow-x rails actually shrink rather
+   than propping the column open. .rp-main already carries the same pair. */
+.st-main {
+  width: 100%; min-width: 0;
+  max-width: 1280px; margin: 0 auto; padding: 18px 24px 72px;
+}
 /* Reveal-on-scroll is OPT-OUT, not opt-in: a section is visible unless JS has
    hidden it. useReveal only hides sections that mount below the fold, so the
    prerendered HTML paints complete and a reload never flashes the page from
@@ -1698,7 +1733,23 @@ body * {
 .cb-landing .hiw-head h2 { margin-top: 14px; }
 .cb-landing .hiw-sub { margin-top: 18px; color: var(--cb-ink-2); }
 .cb-landing .hiw-panel { max-width: 780px; margin: 0 auto; }
-.cb-landing .hiw-cta-row { display: flex; justify-content: center; margin-top: 24px; }
+/* gap + wrap because this row can hold two buttons now (the partner section
+   offers a sell door and a buy door), and side by side they are wider than a
+   phone. Left as a centred single row wherever they fit. */
+.cb-landing .hiw-cta-row {
+  display: flex; justify-content: center; margin-top: 24px;
+  gap: 10px; flex-wrap: wrap;
+}
+@media (max-width: 520px) {
+  /* Full-width stacked buttons: two half-width pills at this size leave the
+     labels cramped, and a thumb wants the whole row. max-width caps the ones
+     whose label is longer than the phone is wide ("The full forecast — every
+     crop"), which would otherwise push past the row on its own padding. */
+  .cb-landing .hiw-cta-row { flex-direction: column; align-items: stretch; }
+  .cb-landing .hiw-cta-row .cb-btn {
+    justify-content: center; max-width: 100%; text-align: center;
+  }
+}
 
 /* hero — centered, no side panel */
 .cb-landing .hiw-hero {
@@ -2213,6 +2264,15 @@ body * {
   padding: 18px 32px; display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--cb-line);
 }
+.cb-auth-nav-links { display: flex; gap: 22px; align-items: center; }
+/* The sign-in affordance is a <button> (it opens a modal, it doesn't navigate),
+   so it has to be styled alongside the anchors or it renders with the UA's
+   grey button chrome in the middle of a row of text links. */
+.cb-auth-nav-links a,
+.cb-auth-nav-links button.nav-signin {
+  color: var(--cb-ink-2); text-decoration: none; font-size: 14px;
+  background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
+}
 .cb-auth-nav-links { display: flex; align-items: center; gap: 22px; }
 .cb-auth-nav-links a { color: var(--cb-ink-2); text-decoration: none; font-size: 14px; }
 @media (max-width: 640px) {
@@ -2236,10 +2296,19 @@ body * {
   .cb-auth-body { grid-template-columns: 1fr; }
   .cb-auth-rail { display: none; }
   .cb-auth-form-wrap { padding: 32px 20px; }
+  /* !important because every caller sets its column count as an INLINE style
+     (repeat(3,1fr), repeat(6,1fr) …) and inline wins over a plain media rule —
+     which left six-across KPI strips squeezed into 375px on every dashboard.
+     The inline value is the desktop intent; these two rules are the phone
+     override, and only !important can reach past it. */
+  .cb-kpi-strip { grid-template-columns: repeat(2, 1fr) !important; }
+  .cb-kpi-cell { border-right: none; border-bottom: 1px solid var(--cb-line); }
+  .cb-kpi-cell:nth-child(2n) { border-right: none; }
 }
 @media (max-width: 640px) {
   .cb-page-title { font-size: 26px; }
   .cb-page { padding: 16px 12px 40px; }
+  .cb-kpi-strip { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)) !important; }
   .cb-app .cb-form-grid-2 { grid-template-columns: 1fr; }
   /* Cells get tighter rather than dropping to a single column — two short
      figures side by side beat one figure per screenful of scrolling. */
@@ -2362,6 +2431,152 @@ body * {
 }
 @media (max-width: 380px) {
   .cn-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* =============================================================================
+   Auth modal — the floating sign-in window
+   =============================================================================
+   Rendered at the app root over whatever page the person was on, so the
+   backdrop has to sit above every other layer this app stacks: the app navbar
+   (z-index 50), the mobile drawer (60) and the storefront's sticky headers.
+   Scoped to plain class names rather than .cb-app because the modal mounts
+   outside the dashboard shell as well as inside it. */
+/* Carries .cb-app too (see AuthModal.tsx) so the tokens and atom classes
+   resolve; this rule is later in the file, so its translucent background wins
+   over the opaque page background .cb-app would otherwise paint. */
+.cb-modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(20, 20, 15, 0.45);
+  backdrop-filter: blur(3px);
+  animation: cb-modal-fade 140ms ease-out;
+}
+@keyframes cb-modal-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cb-modal-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cb-modal {
+  position: relative;
+  background: var(--cb-paper);
+  border: 1px solid var(--cb-line);
+  border-radius: var(--cb-r-lg);
+  box-shadow: 0 24px 60px rgba(20, 20, 15, 0.22);
+  /* dvh, not vh: on mobile browsers 100vh includes the space under the
+     retracting URL bar, so a vh-sized dialog is taller than the screen and its
+     last row sits permanently out of reach. dvh tracks the visible area. The
+     vh line stays first as the fallback for browsers without dvh. */
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  animation: cb-modal-rise 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+/* Respect a reduced-motion preference — the modal still appears, just without
+   the rise. */
+@media (prefers-reduced-motion: reduce) {
+  .cb-modal, .cb-modal-backdrop { animation: none; }
+}
+
+.cb-modal-close {
+  position: absolute; top: 12px; right: 14px; z-index: 2;
+  width: 30px; height: 30px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent;
+  font-size: 20px; line-height: 1; color: var(--cb-ink-3);
+  cursor: pointer;
+}
+.cb-modal-close:hover { background: rgba(20,20,15,0.05); color: var(--cb-ink); }
+/* 30px is a comfortable mouse target and a poor thumb one — the usual advice
+   is ~44px, and on a phone this is the only way out of the dialog besides the
+   backdrop. */
+@media (max-width: 720px) {
+  .cb-modal-close { width: 44px; height: 44px; top: 6px; right: 6px; font-size: 24px; }
+}
+
+/* Two columns: the phone box owns the main one, the other two audiences get
+   the tinted rail. */
+.cb-auth-modal {
+  width: 100%; max-width: 780px;
+  display: grid; grid-template-columns: 1.15fr 1fr;
+}
+.cb-auth-modal-main { padding: 34px 34px 28px; }
+.cb-auth-modal-main .cb-h3 {
+  font-size: 25px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 500;
+}
+.cb-auth-modal-main .cb-italic {
+  font-family: var(--cb-font-serif); font-style: italic; font-weight: 400; color: var(--cb-forest);
+}
+.cb-auth-modal-main .cb-small { font-size: 13.5px; line-height: 1.5; color: var(--cb-ink-2); }
+.cb-auth-modal-main .cb-tiny { font-size: 11.5px; line-height: 1.4; }
+
+.cb-auth-modal-side {
+  padding: 34px 28px 28px;
+  background: var(--cb-forest);
+  color: #e9e6dc;
+  border-radius: 0 var(--cb-r-lg) var(--cb-r-lg) 0;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.cb-auth-modal-side-head {
+  font-family: var(--cb-font-mono); font-size: 10.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: rgba(233, 230, 220, 0.55);
+  margin-bottom: 2px;
+}
+.cb-auth-modal-door {
+  display: block; text-decoration: none; color: inherit;
+  padding: 14px 16px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.cb-auth-modal-door:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.cb-auth-modal-door .cb-eyebrow {
+  font-family: var(--cb-font-mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #e0cf9e;
+}
+.cb-auth-modal-door-title {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px; font-size: 15px; font-weight: 500; color: #f4f1ea;
+}
+.cb-auth-modal-door p {
+  margin: 6px 0 0; font-size: 12.5px; line-height: 1.45;
+  color: rgba(233, 230, 220, 0.72);
+}
+.cb-auth-modal-side-foot {
+  margin: auto 0 0; padding-top: 12px;
+  font-size: 11.5px; line-height: 1.45; color: rgba(233, 230, 220, 0.5);
+}
+
+/* Below the two-column breakpoint the rail moves under the phone box — never
+   above it. The overwhelming majority open this to shop, and they should not
+   have to scroll past two things they didn't ask for to reach the field. */
+@media (max-width: 720px) {
+  .cb-auth-modal { grid-template-columns: 1fr; max-width: 460px; }
+  .cb-auth-modal-main { padding: 30px 22px 22px; }
+  .cb-auth-modal-side {
+    border-radius: 0 0 var(--cb-r-lg) var(--cb-r-lg);
+    padding: 22px;
+  }
+  .cb-auth-modal-side-foot { margin-top: 4px; }
+}
+
+/* Small phones: the backdrop's 20px inset is wasted space, and the side doors
+   are the part to compress — the phone field has to stay above the fold, and
+   the doors read fine as a headline plus one line. */
+@media (max-width: 460px) {
+  .cb-modal-backdrop { padding: 10px; }
+  .cb-auth-modal-main { padding: 26px 18px 18px; }
+  .cb-auth-modal-main .cb-h3 { font-size: 22px; }
+  .cb-auth-modal-side { padding: 18px; gap: 10px; }
+  .cb-auth-modal-door { padding: 12px 14px; }
+  .cb-auth-modal-door p { display: none; }
+  .cb-auth-modal-door-title { margin-top: 4px; font-size: 14.5px; }
 }
 
 /* ---------------------------------------------------------------------------

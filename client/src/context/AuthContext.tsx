@@ -34,7 +34,17 @@ import type { User } from '../types';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  /**
+   * Passwordless step 1 — send a 6-digit code, over WhatsApp where possible.
+   * `email` is only read when WhatsApp couldn't reach the number: the first
+   * attempt fails with NEEDS_EMAIL, and the retry carries an address.
+   */
+  startPhoneSignIn: (
+    phone: string, intendedRole?: PhoneSignInRole, email?: string,
+  ) => Promise<PhoneChallenge>;
+  /** Passwordless step 2 — check the code; `name` is only read for a new account. */
+  verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
@@ -51,6 +61,32 @@ interface SignupData {
   country?: string;
   currency?: string;
   language?: string;
+}
+
+// The role a phone sign-in should create if the number is new. ADMIN is
+// deliberately absent — the server refuses it too.
+export type PhoneSignInRole = 'CONSUMER' | 'FARMER' | 'BUYER';
+
+/** Which channel actually carried the code. */
+export type OtpChannel = 'whatsapp' | 'sms' | 'email' | 'console';
+
+// A live phone challenge: a code is in flight to this number.
+export interface PhoneChallenge {
+  challengeId: string;
+  phone: string;
+  expiresAt: string;
+  /** Whether verifying will CREATE an account — the UI asks for a name if so. */
+  isNewAccount: boolean;
+  /** Where the code actually went, so the screen names the right place. */
+  channel: OtpChannel;
+  /** Masked destination, safe to display: "•••••43210" or "a•••@farm.in". */
+  sentTo: string;
+}
+
+export interface PhoneSignInResult {
+  user: User;
+  /** True when this sign-in created the account rather than resuming one. */
+  created: boolean;
 }
 
 // A buyer signup that has been parked pending email verification. No account
@@ -172,6 +208,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // otherwise trip the watchdog the instant it starts.
     markActivity(true);
     markSynced();
+    // Returned (not just set) so the login page can route on where this
+    // account stands — a pending partner goes to /partner/status, not "/".
+    return data.user as User;
+  }
+
+  // -------------------------------------------------------------------------
+  // Phone sign-in (passwordless)
+  // -------------------------------------------------------------------------
+  // One flow for signing up and signing in: the code proves the number, and
+  // the account is either found or created. This is the only auth path the
+  // consumer UI offers — see components/auth/AuthModal.tsx.
+  async function startPhoneSignIn(
+    phone: string, intendedRole?: PhoneSignInRole, email?: string,
+  ): Promise<PhoneChallenge> {
+    const { data } = await api.post('/auth/phone/start', { phone, intendedRole, email });
+    return data.challenge as PhoneChallenge;
+  }
+
+  async function verifyPhoneSignIn(
+    challengeId: string,
+    code: string,
+    name?: string,
+  ): Promise<PhoneSignInResult> {
+    const { data } = await api.post('/auth/phone/verify', { challengeId, code, name });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    setSessionHint(true);
+    // Same reasoning as login(): start the idle clock fresh so a stale stamp
+    // from an earlier session can't trip the watchdog immediately.
+    markActivity(true);
+    markSynced();
+    return { user: data.user as User, created: Boolean(data.created) };
   }
 
   // -------------------------------------------------------------------------
@@ -244,7 +312,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user, loading, login, signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
+        user, loading, login, startPhoneSignIn, verifyPhoneSignIn,
+        signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
       }}
     >
       {children}

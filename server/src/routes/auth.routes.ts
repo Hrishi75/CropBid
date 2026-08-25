@@ -22,6 +22,8 @@ import {
   verifySignupHandler,
   resendSignupOtpHandler,
   loginHandler,
+  startPhoneSignInHandler,
+  verifyPhoneSignInHandler,
   refreshHandler,
   logoutHandler,
   getMeHandler,
@@ -47,6 +49,12 @@ router.post('/signup', signupHandler);
 router.post('/signup/verify', verifySignupHandler);
 router.post('/signup/resend', resendSignupOtpHandler);
 router.post('/login', loginHandler);
+
+// --- Phone sign-in (passwordless): one flow for signing up and signing in ---
+// Covered by the strict authLimiter mounted on /api/auth in app.ts, which is
+// what keeps a 6-digit code from being brute-forced.
+router.post('/phone/start', startPhoneSignInHandler);
+router.post('/phone/verify', verifyPhoneSignInHandler);
 router.post('/refresh', refreshHandler);
 
 // Password recovery (public — the emailed token IS the credential).

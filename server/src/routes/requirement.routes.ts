@@ -28,7 +28,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { requireRole } from '../middleware/roleGuard';
+import { requireRole, requireApprovedPartner } from '../middleware/roleGuard';
 import * as requirementController from '../controllers/requirement.controller';
 
 const router = Router();
@@ -47,25 +47,25 @@ router.use(authenticate);
 // buyers read it to see what else is being asked for and at what price, which
 // is the only view of procurement rates the platform gives them. Read-only for
 // buyers is enforced further down, where the fill/counter actions stay FARMER.
-router.get('/feed', requireRole('FARMER', 'BUYER'), requirementController.getRequirementFeed);
-router.get('/filters', requireRole('FARMER', 'BUYER'), requirementController.getFeedFilters);
-router.get('/my', requireRole('BUYER'), requirementController.getMyRequirements);
-router.get('/offers/my', requireRole('FARMER'), requirementController.getMyOffers);
-router.put('/offers/:offerId/accept', requireRole('BUYER'), requirementController.acceptOffer);
-router.put('/offers/:offerId/reject', requireRole('BUYER'), requirementController.rejectOffer);
-router.delete('/offers/:offerId', requireRole('FARMER'), requirementController.withdrawOffer);
+router.get('/feed', requireRole('FARMER', 'BUYER'), requireApprovedPartner, requirementController.getRequirementFeed);
+router.get('/filters', requireRole('FARMER', 'BUYER'), requireApprovedPartner, requirementController.getFeedFilters);
+router.get('/my', requireRole('BUYER'), requireApprovedPartner, requirementController.getMyRequirements);
+router.get('/offers/my', requireRole('FARMER'), requireApprovedPartner, requirementController.getMyOffers);
+router.put('/offers/:offerId/accept', requireRole('BUYER'), requireApprovedPartner, requirementController.acceptOffer);
+router.put('/offers/:offerId/reject', requireRole('BUYER'), requireApprovedPartner, requirementController.rejectOffer);
+router.delete('/offers/:offerId', requireRole('FARMER'), requireApprovedPartner, requirementController.withdrawOffer);
 
 // --- Buyer CRUD ---
-router.post('/', requireRole('BUYER'), requirementController.createRequirement);
-router.put('/:id', requireRole('BUYER'), requirementController.updateRequirement);
-router.put('/:id/close', requireRole('BUYER'), requirementController.closeRequirement);
-router.get('/:id/offers', requireRole('BUYER'), requirementController.getOffersForRequirement);
+router.post('/', requireRole('BUYER'), requireApprovedPartner, requirementController.createRequirement);
+router.put('/:id', requireRole('BUYER'), requireApprovedPartner, requirementController.updateRequirement);
+router.put('/:id/close', requireRole('BUYER'), requireApprovedPartner, requirementController.closeRequirement);
+router.get('/:id/offers', requireRole('BUYER'), requireApprovedPartner, requirementController.getOffersForRequirement);
 
 // --- Farmer actions ---
-router.post('/:id/accept', requireRole('FARMER'), requirementController.acceptRequirementNow);
-router.post('/:id/offers', requireRole('FARMER'), requirementController.createOffer);
+router.post('/:id/accept', requireRole('FARMER'), requireApprovedPartner, requirementController.acceptRequirementNow);
+router.post('/:id/offers', requireRole('FARMER'), requireApprovedPartner, requirementController.createOffer);
 
 // --- Shared, last ---
-router.get('/:id', requireRole('BUYER', 'FARMER', 'ADMIN'), requirementController.getRequirementById);
+router.get('/:id', requireRole('BUYER', 'FARMER', 'ADMIN'), requireApprovedPartner, requirementController.getRequirementById);
 
 export default router;

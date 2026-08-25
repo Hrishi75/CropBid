@@ -513,24 +513,141 @@ export async function deleteAccountHandler(req: Request, res: Response) {
   res.json({ message: 'Your account has been deleted.' });
 }
 
+// ===========================================================================
+// PHONE SIGN-IN — passwordless, one flow for signing up and signing in
+// ===========================================================================
+
+const startPhoneSignInSchema = z.object({
+  phone: z
+    .string()
+    .max(20)
+    .regex(/^[+0-9][0-9\s\-()]*$/, 'Enter a valid phone number')
+    .refine((v) => v.replace(/[^0-9]/g, '').length >= 7, 'Enter a valid phone number'),
+  // Set by the partner flow so the account it creates is a seller/buyer rather
+  // than a shopper. The service whitelists this — ADMIN is never accepted.
+  intendedRole: z.enum(['CONSUMER', 'FARMER', 'BUYER']).optional(),
+  // Where to send the code if WhatsApp can't reach the number. Supplied on a
+  // second attempt, after the first came back NEEDS_EMAIL. Blank is "absent".
+  email: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().email('Enter a valid email address').optional(),
+  ),
+});
+
+// POST /api/auth/phone/start — send a code
+export async function startPhoneSignInHandler(req: Request, res: Response) {
+  const parsed = startPhoneSignInSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: true, message: parsed.error.issues[0]?.message || 'Invalid input' });
+    return;
+  }
+  const result = await authService.startPhoneSignIn(parsed.data);
+  res.status(202).json({
+    challenge: {
+      challengeId: result.challengeId,
+      phone: result.phone,
+      expiresAt: result.expiresAt.toISOString(),
+      isNewAccount: result.isNewAccount,
+      // Which channel carried it, and a masked destination — so the next
+      // screen can name the right place to look.
+      channel: result.channel,
+      sentTo: result.sentTo,
+    },
+  });
+}
+
+const verifyPhoneSignInSchema = z.object({
+  challengeId: z.string().min(1, 'Start again to get a new code'),
+  // Accept what people actually paste — surrounding space, or the "483 920"
+  // some SMS clients render — then insist on exactly six digits.
+  code: z.preprocess(
+    (v) => (typeof v === 'string' ? v.replace(/\s/g, '') : v),
+    z.string().regex(/^[0-9]{6}$/, 'Enter the 6-digit code we sent you'),
+  ),
+  // Only read when the code creates a new account.
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100).optional(),
+});
+
+// POST /api/auth/phone/verify — check the code, sign in or create the account
+export async function verifyPhoneSignInHandler(req: Request, res: Response) {
+  const parsed = verifyPhoneSignInSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: true, message: parsed.error.issues[0]?.message || 'Invalid input' });
+    return;
+  }
+  const result = await authService.verifyPhoneSignIn(parsed.data);
+
+  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  res.status(result.created ? 201 : 200).json({
+    user: result.user,
+    accessToken: result.accessToken,
+    created: result.created,
+    // Native clients have no cookie jar — same contract as signup/login. Safe
+    // here for the same reason: the caller just proved control of the number.
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+  });
+}
+
 // ---------------------------------------------------------------------------
-// POST /api/auth/onboarding/farmer
+// POST /api/auth/onboarding/farmer — submit (or resubmit) a SELLER application
 // ---------------------------------------------------------------------------
+// Field shapes are checked here; WHICH fields a given sellerType must provide
+// is a business rule and lives in auth.service.validateSellerApplication.
+const sellerApplicationSchema = z.object({
+  sellerType: z.enum(['FARMER', 'LOCAL_SHOP', 'WHOLESALER']).optional(),
+  farmSizeAcres: z.number().positive().max(1_000_000).optional(),
+  cropsGrown: z.array(z.string().min(1).max(80)).max(60).optional(),
+  state: z.string().min(1, 'State is required').max(80),
+  country: z.string().max(60).optional(),
+  fpoName: z.string().max(160).optional(),
+  apmcLicense: z.string().max(80).optional(),
+  organicCertified: z.boolean().optional(),
+  certificationBody: z.string().max(80).optional(),
+  businessName: z.string().max(120).optional(),
+  shopType: z.enum(['KIRANA', 'VEGETABLE', 'DAIRY', 'BAKERY', 'GENERAL', 'OTHER']).optional(),
+  address: z.string().max(240).optional(),
+  fssaiLicense: z.string().max(40).optional(),
+  gstin: z.string().max(20).optional(),
+  minOrderValue: z.number().positive().optional(),
+  leadTimeDays: z.number().int().min(0).max(60).optional(),
+});
+
 export async function farmerOnboardingHandler(req: Request, res: Response) {
+  const parsed = sellerApplicationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
   const profile = await authService.completeFarmerOnboarding(
     req.user!.userId,
-    req.body,
+    parsed.data,
   );
   res.status(201).json({ profile });
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/onboarding/buyer
+// POST /api/auth/onboarding/buyer — submit (or resubmit) a BUYER application
 // ---------------------------------------------------------------------------
+const buyerApplicationSchema = z.object({
+  companyName: z.string().min(2, 'Company name is required').max(160),
+  companyType: z.enum(['PROCESSOR', 'FMCG', 'RESTAURANT', 'EXPORTER', 'RETAILER', 'WHOLESALER', 'SMALL_BUSINESS']),
+  country: z.string().max(60).optional(),
+  taxId: z.string().max(40).optional(),
+  annualProcurementVolume: z.string().max(80).optional(),
+  outletCount: z.number().int().min(1).max(10_000).optional(),
+});
+
 export async function buyerOnboardingHandler(req: Request, res: Response) {
+  const parsed = buyerApplicationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    const firstError = parsed.error.issues[0]?.message || 'Invalid input';
+    res.status(400).json({ error: true, message: firstError });
+    return;
+  }
   const profile = await authService.completeBuyerOnboarding(
     req.user!.userId,
-    req.body,
+    parsed.data,
   );
   res.status(201).json({ profile });
 }

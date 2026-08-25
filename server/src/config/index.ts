@@ -100,6 +100,57 @@ export const config = {
   // Client URL (for CORS + links inside transactional emails)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
+  // SMS (phone sign-in codes). Provider-agnostic: set SMS_PROVIDER to
+  // "msg91" or "twilio" and fill that provider's keys. Leave it unset in
+  // development — codes are printed to the server console instead of sent, so
+  // the whole sign-in flow is testable without a provider or a real handset.
+  // WhatsApp Cloud API — the primary channel for sign-in codes.
+  // Cheaper per message than SMS and needs no TRAI DLT registration, since
+  // Meta is the sender. Requires a Meta Business account with a WhatsApp
+  // Business number and an APPROVED authentication template.
+  //
+  // NOTE ON LIMITS: an unverified Meta business can only open conversations
+  // with 250 unique people per rolling 24h. That is fine for a pilot and not
+  // for a consumer launch — Meta Business Verification lifts it.
+  whatsapp: {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN || '',
+    // The approved authentication template, and the language it was approved
+    // in. A mismatch here is rejected by Meta with a template-not-found error.
+    otpTemplate: process.env.WHATSAPP_OTP_TEMPLATE || 'cropbid_otp',
+    otpTemplateLang: process.env.WHATSAPP_OTP_TEMPLATE_LANG || 'en',
+    // Authentication templates normally carry a copy-code / autofill button,
+    // which has to be echoed in the send call. Set to 'false' if the approved
+    // template has no button, or Meta rejects the message.
+    otpTemplateHasButton: (process.env.WHATSAPP_OTP_TEMPLATE_BUTTON || 'true') !== 'false',
+    graphVersion: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
+  },
+
+  sms: {
+    // '' | 'fast2sms' | 'msg91' | 'twilio'. See services/sms.service.ts for
+    // what each one costs and which to pick.
+    provider: (process.env.SMS_PROVIDER || '').toLowerCase(),
+    senderId: process.env.SMS_SENDER_ID || 'CROPBD',
+
+    // Fast2SMS (India) — the cheapest way to start, and the only one that
+    // needs no DLT paperwork on day one. Just an API key.
+    // FAST2SMS_DLT_TEMPLATE_ID + SMS_SENDER_ID are optional: set them once you
+    // have your own DLT header approved and the sends switch to branded.
+    fast2smsApiKey: process.env.FAST2SMS_API_KEY || '',
+    fast2smsDltTemplateId: process.env.FAST2SMS_DLT_TEMPLATE_ID || '',
+
+    // MSG91 (India): an auth key and an approved DLT template id.
+    msg91AuthKey: process.env.MSG91_AUTH_KEY || '',
+    msg91TemplateId: process.env.MSG91_TEMPLATE_ID || '',
+
+    // Twilio: account SID, auth token, and the sending number in E.164.
+    // Roughly 3x the Indian providers per message — worth it only for
+    // non-Indian numbers.
+    twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+    twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+    twilioFrom: process.env.TWILIO_FROM || '',
+  },
+
   // SMTP (transactional email — password resets etc.).
   // Leave SMTP_HOST unset in development: emails are printed to the server
   // console instead of sent, so the flow is fully testable without a provider.

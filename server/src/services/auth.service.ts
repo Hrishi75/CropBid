@@ -14,6 +14,7 @@
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
+import type { PartnerStatus } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
@@ -27,6 +28,15 @@ import {
   signupOtpExpiry,
   signupOtpMatches,
 } from '../utils/signupOtp';
+import {
+  PHONE_OTP_MAX_ATTEMPTS,
+  PHONE_OTP_RESEND_COOLDOWN_MS,
+  PHONE_OTP_TTL_MS,
+  generatePhoneOtp,
+  phoneOtpExpiry,
+  phoneOtpMatches,
+} from '../utils/phoneOtp';
+import { OtpDeliveryError, deliverOtp } from './otpDelivery.service';
 import { recordAudit } from './audit.service';
 import { removeImage } from './imageStorage';
 import { config } from '../config';
@@ -477,7 +487,16 @@ export async function login(input: LoginInput) {
     throw new ApiError(401, 'Invalid phone/email or password');
   }
 
-  // 2. Compare provided password with stored hash
+  // 2. Compare provided password with stored hash.
+  //
+  // A null password means this account has only ever signed in with a phone
+  // code — there is nothing to compare against, and bcrypt.compare would throw
+  // on the null. Refuse the password path outright, with the same generic
+  // message so an attacker learns nothing about which accounts are passwordless.
+  if (!user.password) {
+    throw new ApiError(401, 'Invalid phone/email or password');
+  }
+
   const isPasswordValid = await bcrypt.compare(input.password, user.password);
 
   if (!isPasswordValid) {
@@ -698,9 +717,15 @@ export async function changePassword(userId: string, currentPassword: string, ne
     throw new ApiError(404, 'User not found');
   }
 
-  const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
-  if (!isPasswordValid) {
-    throw new ApiError(401, 'Current password is incorrect');
+  // A phone-only account has no password to prove — this call SETS the first
+  // one rather than rotating an existing one. The caller is already
+  // authenticated, and the real owner keeps their way in either way, since
+  // phone sign-in never stops working.
+  if (user.password) {
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
+      throw new ApiError(401, 'Current password is incorrect');
+    }
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 12);
@@ -768,6 +793,17 @@ export async function deleteAccount(userId: string, password: string) {
   // The platform must never orphan itself of its admins.
   if (user.role === 'ADMIN') {
     throw new ApiError(403, 'Admin accounts cannot be deleted from the app');
+  }
+
+  // Deleting an account is irreversible, so it needs proof beyond a live
+  // session. A phone-only account has no password to check, and accepting the
+  // access token alone would let a stolen one destroy the account — so ask
+  // them to set a password first (change-password does that in one step).
+  if (!user.password) {
+    throw new ApiError(
+      400,
+      'Set a password before deleting your account — it is how we confirm the request is really you.',
+    );
   }
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -937,56 +973,143 @@ export async function getCurrentUser(userId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Complete Onboarding — Create farmer or buyer profile
+// Complete Onboarding — submit a PARTNER APPLICATION (seller or buyer)
 // ---------------------------------------------------------------------------
+// Since the approval gate landed, "onboarding" no longer activates an account:
+// it files an application. The profile row is created with status SUBMITTED
+// and the user sees /partner/status — never a dashboard — until an admin
+// approves it (admin.service.ts reviewPartnerApplication).
+//
+// Resubmission uses the same call: when a reviewer sends an application back
+// (NEEDS_INFO) or rejects it, the applicant may edit and submit again. Any
+// other existing status still 409s, so an approved partner can't overwrite
+// their reviewed application through this endpoint.
 interface FarmerOnboardingInput {
-  farmSizeAcres: number;
-  cropsGrown: string[];
+  sellerType?: 'FARMER' | 'LOCAL_SHOP' | 'WHOLESALER';
+  farmSizeAcres?: number;
+  cropsGrown?: string[];
   state: string;
   country?: string;
   fpoName?: string;
   apmcLicense?: string;
   organicCertified?: boolean;
   certificationBody?: string;
+  businessName?: string;
+  shopType?: string;
+  address?: string;
+  fssaiLicense?: string;
+  gstin?: string;
+  minOrderValue?: number;
+  leadTimeDays?: number;
 }
 
 interface BuyerOnboardingInput {
   companyName: string;
-  companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
+  companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER' | 'WHOLESALER' | 'SMALL_BUSINESS';
   country?: string;
   taxId?: string;
   annualProcurementVolume?: string;
+  outletCount?: number;
+}
+
+// Statuses an applicant is allowed to overwrite with a fresh submission.
+// Typed as the enum rather than string[] so it can go straight into a Prisma
+// `status: { in: ... }` filter — which is where the check now lives.
+const RESUBMITTABLE: PartnerStatus[] = ['NEEDS_INFO', 'REJECTED'];
+
+// What each seller type must provide. Field-level shape is enforced by zod in
+// the controller; THIS is the cross-field business rule (which fields matter
+// for which type), so it lives with the rest of the domain logic.
+function validateSellerApplication(input: FarmerOnboardingInput): void {
+  const type = input.sellerType || 'FARMER';
+  if (type === 'FARMER') {
+    if (!input.farmSizeAcres || input.farmSizeAcres <= 0) {
+      throw new ApiError(400, 'Farm size is required for a farmer application');
+    }
+    if (!input.cropsGrown || input.cropsGrown.length === 0) {
+      throw new ApiError(400, 'Select at least one crop you grow');
+    }
+  } else {
+    if (!input.businessName?.trim()) {
+      throw new ApiError(400, type === 'LOCAL_SHOP' ? 'Shop name is required' : 'Firm name is required');
+    }
+    if (type === 'LOCAL_SHOP') {
+      if (!input.shopType?.trim()) throw new ApiError(400, 'Pick what kind of shop you run');
+      if (!input.address?.trim()) throw new ApiError(400, 'Shop address is required');
+      // Food on a consumer shelf needs a licence behind it — non-negotiable.
+      if (!input.fssaiLicense?.trim()) throw new ApiError(400, 'FSSAI licence number is required for a food shop');
+    }
+    if (type === 'WHOLESALER' && !input.gstin?.trim()) {
+      throw new ApiError(400, 'GSTIN is required for a wholesale application');
+    }
+  }
 }
 
 export async function completeFarmerOnboarding(userId: string, input: FarmerOnboardingInput) {
-  // Check if profile already exists
-  const existing = await prisma.farmerProfile.findUnique({
-    where: { userId },
-  });
-
-  if (existing) {
-    throw new ApiError(409, 'Farmer profile already exists');
-  }
-
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.role !== 'FARMER') {
-    throw new ApiError(403, 'Only farmers can create a farmer profile');
+    throw new ApiError(403, 'Only seller accounts can submit a seller application');
+  }
+
+  validateSellerApplication(input);
+
+  const data = {
+    sellerType: input.sellerType || ('FARMER' as const),
+    farmSizeAcres: input.farmSizeAcres ?? null,
+    cropsGrown: input.cropsGrown ?? [],
+    state: input.state,
+    country: input.country || user.country || 'India',
+    fpoName: input.fpoName || null,
+    apmcLicense: input.apmcLicense || null,
+    organicCertified: input.organicCertified || false,
+    certificationBody: input.certificationBody || null,
+    businessName: input.businessName?.trim() || null,
+    shopType: input.shopType || null,
+    address: input.address?.trim() || null,
+    fssaiLicense: input.fssaiLicense?.trim() || null,
+    gstin: input.gstin?.trim() || null,
+    minOrderValue: input.minOrderValue ?? null,
+    leadTimeDays: input.leadTimeDays ?? null,
+  };
+
+  const existing = await prisma.farmerProfile.findUnique({ where: { userId } });
+
+  if (existing) {
+    if (!RESUBMITTABLE.includes(existing.status)) {
+      throw new ApiError(409, 'Seller application already exists');
+    }
+    // Conditioned on the status, not just checked against it. An admin
+    // reviewing this application at the same moment commits a decision that a
+    // plain update-by-userId would silently overwrite, leaving SUBMITTED
+    // sitting on top of the reviewer, the audit row and the notification that
+    // say otherwise. Losing the race means the decision landed first, and the
+    // applicant is told so.
+    const claimed = await prisma.farmerProfile.updateMany({
+      where: { userId, status: { in: RESUBMITTABLE } },
+      data: { ...data, status: 'SUBMITTED', submittedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new ApiError(409, 'Seller application already exists');
+    }
+    const profile = await prisma.farmerProfile.findUniqueOrThrow({ where: { userId } });
+    await recordAudit({
+      actorId: userId, actorRole: 'FARMER',
+      action: 'partner.application.resubmit',
+      entityType: 'FarmerProfile', entityId: profile.id,
+      metadata: { sellerType: data.sellerType, previousStatus: existing.status },
+    });
+    return profile;
   }
 
   const profile = await prisma.farmerProfile.create({
-    data: {
-      userId,
-      farmSizeAcres: input.farmSizeAcres,
-      cropsGrown: input.cropsGrown,
-      state: input.state,
-      country: input.country || user.country || 'India',
-      fpoName: input.fpoName || null,
-      apmcLicense: input.apmcLicense || null,
-      organicCertified: input.organicCertified || false,
-      certificationBody: input.certificationBody || null,
-    },
+    data: { userId, ...data },
   });
-
+  await recordAudit({
+    actorId: userId, actorRole: 'FARMER',
+    action: 'partner.application.submit',
+    entityType: 'FarmerProfile', entityId: profile.id,
+    metadata: { sellerType: data.sellerType },
+  });
   return profile;
 }
 
@@ -1150,29 +1273,329 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
 }
 
 export async function completeBuyerOnboarding(userId: string, input: BuyerOnboardingInput) {
-  const existing = await prisma.buyerProfile.findUnique({
-    where: { userId },
-  });
-
-  if (existing) {
-    throw new ApiError(409, 'Buyer profile already exists');
-  }
-
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || user.role !== 'BUYER') {
-    throw new ApiError(403, 'Only buyers can create a buyer profile');
+    throw new ApiError(403, 'Only buyer accounts can submit a buyer application');
+  }
+
+  const data = {
+    companyName: input.companyName,
+    companyType: input.companyType,
+    country: input.country || user.country || 'India',
+    taxId: input.taxId || null,
+    annualProcurementVolume: input.annualProcurementVolume || null,
+    outletCount: input.outletCount ?? null,
+  };
+
+  const existing = await prisma.buyerProfile.findUnique({ where: { userId } });
+
+  if (existing) {
+    if (!RESUBMITTABLE.includes(existing.status)) {
+      throw new ApiError(409, 'Buyer application already exists');
+    }
+    // Conditioned on the status, not just checked against it. An admin
+    // reviewing this application at the same moment commits a decision that a
+    // plain update-by-userId would silently overwrite, leaving SUBMITTED
+    // sitting on top of the reviewer, the audit row and the notification that
+    // say otherwise. Losing the race means the decision landed first, and the
+    // applicant is told so.
+    const claimed = await prisma.buyerProfile.updateMany({
+      where: { userId, status: { in: RESUBMITTABLE } },
+      data: { ...data, status: 'SUBMITTED', submittedAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new ApiError(409, 'Buyer application already exists');
+    }
+    const profile = await prisma.buyerProfile.findUniqueOrThrow({ where: { userId } });
+    await recordAudit({
+      actorId: userId, actorRole: 'BUYER',
+      action: 'partner.application.resubmit',
+      entityType: 'BuyerProfile', entityId: profile.id,
+      metadata: { companyType: data.companyType, previousStatus: existing.status },
+    });
+    return profile;
   }
 
   const profile = await prisma.buyerProfile.create({
-    data: {
-      userId,
-      companyName: input.companyName,
-      companyType: input.companyType,
-      country: input.country || user.country || 'India',
-      taxId: input.taxId || null,
-      annualProcurementVolume: input.annualProcurementVolume || null,
+    data: { userId, ...data },
+  });
+  await recordAudit({
+    actorId: userId, actorRole: 'BUYER',
+    action: 'partner.application.submit',
+    entityType: 'BuyerProfile', entityId: profile.id,
+    metadata: { companyType: data.companyType },
+  });
+  return profile;
+}
+
+// ===========================================================================
+// PHONE SIGN-IN — the passwordless front door
+// ===========================================================================
+// One flow covers signing up and signing in, because to the person typing
+// their number there is no difference: the code proves the number, and the
+// account is either found or created. This is the ONLY auth path the consumer
+// UI offers, and the partner flow uses it too (with an intendedRole) so a
+// password is never asked for anywhere.
+//
+// Passwords are not gone from the codebase: accounts that already have one
+// (admins created by prisma/createAdmin.ts, anyone who signed up before this)
+// can still use /auth/login. New accounts made here simply have none.
+
+// Roles someone may claim for themselves. ADMIN is absent on purpose and must
+// stay that way — it is granted by running createAdmin.ts against the database,
+// never by anything reachable from the internet. FARMER and BUYER are safe to
+// self-assign because both land behind the partner approval gate.
+const SELF_ASSIGNABLE_ROLES = ['CONSUMER', 'FARMER', 'BUYER'] as const;
+export type SelfAssignableRole = (typeof SELF_ASSIGNABLE_ROLES)[number];
+
+export async function pruneExpiredPhoneChallenges(): Promise<number> {
+  const { count } = await prisma.phoneChallenge.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+  return count;
+}
+
+// ---------------------------------------------------------------------------
+// Step 1 — send a code to the handset
+// ---------------------------------------------------------------------------
+export async function startPhoneSignIn(input: {
+  phone: string;
+  intendedRole?: SelfAssignableRole;
+  /** Where to send the code if WhatsApp cannot reach the number. */
+  email?: string;
+}) {
+  const phone = normalizePhone(input.phone);
+  if (phone.replace(/[^0-9]/g, '').length < 7) {
+    throw new ApiError(400, 'Enter a valid phone number');
+  }
+
+  const intendedRole = SELF_ASSIGNABLE_ROLES.includes(input.intendedRole as SelfAssignableRole)
+    ? (input.intendedRole as SelfAssignableRole)
+    : 'CONSUMER';
+
+  // A suspended account must not be able to pull a fresh code — the number is
+  // checked here rather than at verification so the block is immediate.
+  const existing = await prisma.user.findUnique({
+    where: { phone },
+    select: { suspended: true, email: true, name: true },
+  });
+  if (existing?.suspended) {
+    throw new ApiError(403, 'This account has been suspended. Please contact support.');
+  }
+
+  // The email fallback prefers an address the person just typed, and otherwise
+  // uses the one already on the account. A returning shopper therefore never
+  // has to retype it, and a new number can still rescue itself by supplying one.
+  const fallbackEmail = input.email ? normalizeEmail(input.email) || null : existing?.email ?? null;
+
+  // Opportunistic sweep, same reasoning as pruneExpiredPendingSignups: cheap
+  // indexed range delete, no scheduler in this codebase to run it otherwise.
+  await pruneExpiredPhoneChallenges();
+
+  // Cooldown before minting anything, so hammering "resend" cannot flood a
+  // stranger's phone with our SMS.
+  const live = await prisma.phoneChallenge.findUnique({ where: { phone } });
+  if (live) {
+    const sinceLastSend = Date.now() - live.lastSentAt.getTime();
+    if (sinceLastSend < PHONE_OTP_RESEND_COOLDOWN_MS) {
+      const wait = Math.ceil((PHONE_OTP_RESEND_COOLDOWN_MS - sinceLastSend) / 1000);
+      throw new ApiError(429, `Please wait ${wait}s before asking for another code`);
+    }
+  }
+
+  const { code, codeHash } = generatePhoneOtp();
+  const expiresAt = phoneOtpExpiry();
+
+  // Upsert on phone: a resend REPLACES the live code, so one number never has
+  // two valid codes at once.
+  const challenge = await prisma.phoneChallenge.upsert({
+    where: { phone },
+    create: { phone, codeHash, intendedRole, expiresAt, email: fallbackEmail },
+    update: {
+      codeHash, intendedRole, expiresAt, email: fallbackEmail,
+      attempts: 0, lastSentAt: new Date(),
     },
   });
 
-  return profile;
+  // A failed send is not swallowed — the person would be staring at a code box
+  // with nothing to type. Scoped to OUR codeHash so a failure here can never
+  // delete a row that holds a code someone else's request already delivered.
+  let delivery;
+  try {
+    delivery = await deliverOtp({
+      phone,
+      code,
+      ttlMinutes: PHONE_OTP_TTL_MS / 60_000,
+      email: fallbackEmail,
+      name: existing?.name ?? null,
+    });
+  } catch (err) {
+    await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id, codeHash } }).catch(() => {});
+    // 422 rather than 500: "we could not reach that number, give us an email"
+    // is something the person can act on, not a server fault.
+    if (err instanceof OtpDeliveryError) {
+      throw new ApiError(422, err.message, err.needsEmail ? 'NEEDS_EMAIL' : undefined);
+    }
+    throw err;
+  }
+
+  // Record which channel won, so a resend and the code screen agree with each
+  // other about where the person should be looking.
+  await prisma.phoneChallenge
+    .update({ where: { id: challenge.id }, data: { channel: delivery.channel } })
+    .catch(() => {});
+
+  return {
+    challengeId: challenge.id,
+    phone,
+    expiresAt,
+    channel: delivery.channel,
+    sentTo: delivery.sentTo,
+    // Tells the client whether to ask for a name after the code — a returning
+    // shopper should never be asked again. Not sensitive: anyone can discover
+    // the same thing by attempting a signup with the number.
+    isNewAccount: !existing,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Step 2 — check the code, then sign in or create the account
+// ---------------------------------------------------------------------------
+export async function verifyPhoneSignIn(input: { challengeId: string; code: string; name?: string }) {
+  const challenge = await prisma.phoneChallenge.findUnique({ where: { id: input.challengeId } });
+
+  // An unknown id and an expired one are the same thing to the user: whatever
+  // they were holding is no longer usable, so start again.
+  if (!challenge || challenge.expiresAt < new Date()) {
+    if (challenge) await prisma.phoneChallenge.delete({ where: { id: challenge.id } }).catch(() => {});
+    throw new ApiError(400, 'That code has expired — start again to get a new one');
+  }
+
+  // Claim an attempt BEFORE checking the code, in one statement that carries
+  // the ceiling in its own WHERE. Reading `attempts` and then incrementing it
+  // is not the same thing: a burst of parallel guesses all read the same zero,
+  // all pass the check, and three tries at a six-digit code quietly becomes as
+  // many as the attacker can open sockets for. The rate limiter does not cover
+  // this either — its account key has no `challengeId` in it, so guesses from
+  // different IPs never share a bucket.
+  //
+  // As an UPDATE with the condition inline, Postgres re-evaluates `attempts <
+  // MAX` after taking the row lock, so the loser of a race sees the winner's
+  // committed value and matches zero rows.
+  const claimed = await prisma.phoneChallenge.updateMany({
+    where: { id: challenge.id, codeHash: challenge.codeHash, attempts: { lt: PHONE_OTP_MAX_ATTEMPTS } },
+    data: { attempts: { increment: 1 } },
+  });
+  if (claimed.count === 0) {
+    await prisma.phoneChallenge.delete({ where: { id: challenge.id } }).catch(() => {});
+    throw new ApiError(429, 'Too many wrong codes — start again to get a new one');
+  }
+
+  if (!phoneOtpMatches(input.code, challenge.codeHash)) {
+    const after = await prisma.phoneChallenge.findUnique({
+      where: { id: challenge.id },
+      select: { attempts: true },
+    });
+    const left = PHONE_OTP_MAX_ATTEMPTS - (after?.attempts ?? PHONE_OTP_MAX_ATTEMPTS);
+    throw new ApiError(
+      400,
+      left > 0 ? `That code is not right — ${left} ${left === 1 ? 'try' : 'tries'} left` : 'Too many wrong codes — start again to get a new one',
+    );
+  }
+
+  // No refund for a correct code, deliberately. Handing the slot back was an
+  // unconditional decrement by challenge id, which meant it could just as
+  // easily cancel a wrong guess that landed in between and hand an attacker
+  // back capacity they had already spent. The counter is only safe if nothing
+  // ever gives to it.
+  //
+  // The cost is that a correct code submitted without a name — the one path
+  // below that leaves the challenge alive — spends one of the three. The
+  // client asks for the name on the same screen as the code, so that is one
+  // try in an unusual case, against a ceiling that now cannot be walked back.
+
+  const existing = await prisma.user.findUnique({
+    where: { phone: challenge.phone },
+    include: { farmerProfile: true, buyerProfile: true },
+  });
+
+  // A new account needs a name, and the client may not have asked for one yet.
+  // Check BEFORE spending the challenge: consuming a correct code and then
+  // refusing it would force someone to request a whole new SMS just because a
+  // field was blank. The code stays valid until its own TTL runs out.
+  const name = input.name?.trim();
+  if (!existing && (!name || name.length < 2)) {
+    throw new ApiError(400, 'Tell us your name to finish creating your account');
+  }
+
+  // Correct code, and everything needed is present: the challenge is spent.
+  //
+  // The delete is the thing that makes the code single-use, so it decides who
+  // continues rather than being tidy-up after the fact. Two requests carrying
+  // the same correct code both get past the check above, and a swallowed delete
+  // let both go on to mint tokens — and, on the signup path, to race over
+  // creating the same account. Whoever's DELETE removes the row won.
+  const spent = await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id, codeHash: challenge.codeHash } });
+  if (spent.count === 0) {
+    throw new ApiError(400, 'That code has already been used — start again to get a new one');
+  }
+
+  // --- Returning account: just issue a session ---
+  if (existing) {
+    if (existing.suspended) {
+      throw new ApiError(403, 'This account has been suspended. Please contact support.');
+    }
+
+    const tokens = generateTokens(existing.id, existing.role);
+    await prisma.user.update({ where: { id: existing.id }, data: { refreshToken: tokens.refreshToken } });
+
+    const {
+      password: _, refreshToken: __, passwordResetToken: ___, passwordResetExpires: ____,
+      ...user
+    } = existing;
+
+    return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: false };
+  }
+
+  // --- New account (name was validated above, before the challenge was spent) ---
+  // No password column is written at all — this account signs in by code only
+  // until someone sets a password from settings.
+  const created = await prisma.user
+    .create({
+      data: {
+        // Non-null: the guard above rejects a new account without one.
+        name: name!,
+        phone: challenge.phone,
+        role: challenge.intendedRole,
+        country: 'India',
+      },
+      include: { farmerProfile: true, buyerProfile: true },
+    })
+    .catch((err) => {
+      // Two codes verified for the same number at once — the unique index picks
+      // a winner and the loser gets the same message as any other stale attempt.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ApiError(409, 'That number was just registered — try signing in again');
+      }
+      throw err;
+    });
+
+  const tokens = generateTokens(created.id, created.role);
+  await prisma.user.update({ where: { id: created.id }, data: { refreshToken: tokens.refreshToken } });
+
+  await recordAudit({
+    actorId: created.id,
+    actorRole: created.role,
+    action: 'auth.phone.signup',
+    entityType: 'User',
+    entityId: created.id,
+    metadata: { role: created.role },
+  });
+
+  const {
+    password: _, refreshToken: __, passwordResetToken: ___, passwordResetExpires: ____,
+    ...user
+  } = created;
+
+  return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: true };
 }

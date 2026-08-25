@@ -238,3 +238,66 @@ export async function updateEnquiryStatus(req: Request, res: Response, next: Nex
     next(error);
   }
 }
+
+// =============================================================================
+// PARTNER APPLICATIONS — approval queue endpoints
+// =============================================================================
+
+const partnerListQuerySchema = z.object({
+  status: z.enum(['SUBMITTED', 'UNDER_REVIEW', 'NEEDS_INFO', 'APPROVED', 'REJECTED', 'SUSPENDED']).optional(),
+  kind: z.enum(['SELLER', 'BUYER']).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+// GET /api/admin/partners — the queue, oldest submission first
+export async function getPartnerApplications(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = partnerListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: true, message: 'Invalid query' });
+      return;
+    }
+    const { status, kind, limit, offset } = parsed.data;
+    const [result, counts] = await Promise.all([
+      adminService.listPartnerApplications(status, kind, limit, offset),
+      adminService.getPartnerCounts(),
+    ]);
+    res.json({ ...result, counts });
+  } catch (error) {
+    next(error);
+  }
+}
+
+const partnerReviewSchema = z.object({
+  kind: z.enum(['SELLER', 'BUYER']),
+  action: z.enum(['APPROVE', 'REQUEST_INFO', 'REJECT', 'SUSPEND', 'REINSTATE']),
+  note: z.string().trim().max(1000).optional(),
+});
+
+const partnerIdParamSchema = z.object({
+  id: z.string().uuid('Invalid application id'),
+});
+
+// POST /api/admin/partners/:id/review — one endpoint, every decision.
+// The service enforces which transitions are legal from which status.
+export async function reviewPartnerApplication(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = partnerIdParamSchema.safeParse(req.params);
+    const body = partnerReviewSchema.safeParse(req.body);
+    if (!param.success || !body.success) {
+      res.status(400).json({ error: true, message: param.success ? (body as any).error.issues[0]?.message || 'Invalid input' : 'Invalid application id' });
+      return;
+    }
+    const profile = await adminService.reviewPartnerApplication({
+      kind: body.data.kind,
+      profileId: param.data.id,
+      action: body.data.action,
+      note: body.data.note,
+      adminId: req.user!.userId,
+    });
+    res.json({ profile });
+  } catch (error) {
+    next(error);
+  }
+}

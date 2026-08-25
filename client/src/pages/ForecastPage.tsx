@@ -172,7 +172,6 @@ export function ForecastPage() {
         <nav className="rp-nav-links" aria-label="Primary">
           <Link to="/">Marketplace</Link>
           <Link to="/rates">Live rates</Link>
-          <Link to="/how-it-works">How it works</Link>
           <Link to="/login" className="nav-signin">Sign in</Link>
           <Link to="/signup" className="cb-btn cb-btn-primary">
             Start trading

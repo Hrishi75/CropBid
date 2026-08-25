@@ -1,23 +1,37 @@
 // =============================================================================
-// OnboardingPage — Post-signup profile setup (step 2 of 2)
+// OnboardingPage — the PARTNER APPLICATION form (step 2 of 3)
 // =============================================================================
-// Shown right after signup, before the user can reach a dashboard (enforced by
-// ProtectedRoute). Renders a farmer OR buyer form based on user.role:
-//   - Farmer: region, farm size, organic cert, crops grown, India compliance
-//   - Buyer:  region, company name/type, tax id, annual volume
-// Region options and tax-id labels adapt to the user's country. On submit it
-// POSTs to /auth/onboarding/{farmer|buyer}, refreshes the user, and redirects.
+// Shown right after a partner creates their account, and again when a
+// reviewer sends the application back (NEEDS_INFO) or rejects it. Renders a
+// seller OR buyer form based on user.role:
+//   - Seller (role FARMER): subtype pills — Farmer / Local shop / Wholesaler —
+//     and the sections swap with the choice. A farmer fills acreage and crops;
+//     a shop fills shop name, type, address and FSSAI; a wholesaler fills firm
+//     name, GSTIN, minimums and lead time.
+//   - Buyer: company type pills (restaurant / small business / wholesaler /
+//     the legacy corporate types) + company details.
+//
+// Submitting files the application (status SUBMITTED) and lands on
+// /partner/status. NOTHING here unlocks a dashboard — an admin does that from
+// the review queue.
+//
+// The subtype arrives from /partner via sessionStorage (PARTNER_TYPE_KEY,
+// "FARMER:LOCAL_SHOP") but is changeable here — the landing-page choice is a
+// preselection, not a commitment.
 //
 // COUNTRY DATA: REGIONS_BY_COUNTRY and ALL_CROP_CATEGORIES are static lookup
 // tables driving the region <select> and the crop picker.
 // =============================================================================
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
+import { PARTNER_TYPE_KEY } from './SignupPage';
+import { SELLER_TYPE_LABEL, SHOP_TYPE_OPTIONS } from '../../utils/partner';
+import type { CompanyType, SellerType } from '../../types';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -167,11 +181,35 @@ function Stepper() {
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
       <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-forest)' }}>● Account</div>
       <div style={{ width: 24, height: 1, background: 'var(--cb-forest)' }} />
-      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● Profile</div>
+      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ember)' }}>● Application</div>
       <div style={{ width: 24, height: 1, background: 'var(--cb-line)' }} />
-      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>○ Live</div>
+      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>○ Review</div>
     </div>
   );
+}
+
+// Buyer company types, prominent ones first — the three from the partner
+// landing lead, the legacy corporate types follow.
+const BUYER_TYPE_PILLS: { value: CompanyType; label: string }[] = [
+  { value: 'RESTAURANT', label: 'Restaurant / café' },
+  { value: 'SMALL_BUSINESS', label: 'Small business' },
+  { value: 'WHOLESALER', label: 'Wholesaler' },
+  { value: 'PROCESSOR', label: 'Processor' },
+  { value: 'FMCG', label: 'FMCG' },
+  { value: 'EXPORTER', label: 'Exporter' },
+  { value: 'RETAILER', label: 'Retailer' },
+];
+
+// What /partner put in sessionStorage, e.g. "FARMER:LOCAL_SHOP".
+function partnerTypeHint(): { role: string; type: string } | null {
+  try {
+    const raw = sessionStorage.getItem(PARTNER_TYPE_KEY);
+    if (!raw || !raw.includes(':')) return null;
+    const [role, type] = raw.split(':');
+    return { role, type };
+  } catch {
+    return null;
+  }
 }
 
 export function OnboardingPage() {
@@ -179,17 +217,54 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const [farmSize, setFarmSize] = useState('');
-  const [state, setState] = useState('');
-  const [selectedCrops, setSelectedCrops] = useState<string[]>([]);
-  const [organic, setOrganic] = useState(false);
-  const [fpoName, setFpoName] = useState('');
-  const [apmcLicense, setApmcLicense] = useState('');
+  const hint = partnerTypeHint();
+  const isFarmer = user?.role === 'FARMER';
 
-  const [companyName, setCompanyName] = useState('');
-  const [companyType, setCompanyType] = useState('PROCESSOR');
-  const [taxId, setTaxId] = useState('');
-  const [volume, setVolume] = useState('');
+  // Resubmission: when a reviewer sent the application back, the same form
+  // reopens with the previous answers in place and the note on top.
+  const existingSeller = isFarmer ? user?.farmerProfile : null;
+  const existingBuyer = !isFarmer ? user?.buyerProfile : null;
+  const existing = existingSeller || existingBuyer || null;
+  const isResubmit = !!existing && (existing.status === 'NEEDS_INFO' || existing.status === 'REJECTED');
+
+  // --- Seller state ---
+  const [sellerType, setSellerType] = useState<SellerType>(
+    existingSeller?.sellerType
+    || (hint?.role === 'FARMER' && ['FARMER', 'LOCAL_SHOP', 'WHOLESALER'].includes(hint.type) ? hint.type as SellerType : 'FARMER')
+  );
+  const [farmSize, setFarmSize] = useState(existingSeller?.farmSizeAcres?.toString() || '');
+  const [state, setState] = useState(existingSeller?.state || '');
+  const [selectedCrops, setSelectedCrops] = useState<string[]>(existingSeller?.cropsGrown || []);
+  const [organic, setOrganic] = useState(existingSeller?.organicCertified || false);
+  const [fpoName, setFpoName] = useState(existingSeller?.fpoName || '');
+  const [apmcLicense, setApmcLicense] = useState(existingSeller?.apmcLicense || '');
+  const [businessName, setBusinessName] = useState(existingSeller?.businessName || '');
+  const [shopType, setShopType] = useState(existingSeller?.shopType || 'KIRANA');
+  const [address, setAddress] = useState(existingSeller?.address || '');
+  const [fssai, setFssai] = useState(existingSeller?.fssaiLicense || '');
+  const [gstin, setGstin] = useState(existingSeller?.gstin || '');
+  const [minOrderValue, setMinOrderValue] = useState(existingSeller?.minOrderValue?.toString() || '');
+  const [leadTimeDays, setLeadTimeDays] = useState(existingSeller?.leadTimeDays?.toString() || '');
+
+  // --- Buyer state ---
+  const [companyName, setCompanyName] = useState(existingBuyer?.companyName || '');
+  const [companyType, setCompanyType] = useState<CompanyType>(
+    existingBuyer?.companyType
+    || (hint?.role === 'BUYER' && BUYER_TYPE_PILLS.some((p) => p.value === hint.type) ? hint.type as CompanyType : 'RESTAURANT')
+  );
+  const [taxId, setTaxId] = useState(existingBuyer?.taxId || '');
+  const [volume, setVolume] = useState(existingBuyer?.annualProcurementVolume || '');
+  const [outletCount, setOutletCount] = useState(existingBuyer?.outletCount?.toString() || '');
+
+  // An application that's already waiting (or approved) has nothing to do
+  // here — the status page or dashboard owns those states.
+  useEffect(() => {
+    if (!existing) return;
+    if (!isResubmit) {
+      navigate(existing.status === 'APPROVED' ? '/' : '/partner/status', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function toggleCrop(crop: string) {
     setSelectedCrops((prev) => prev.includes(crop) ? prev.filter((c) => c !== crop) : [...prev, crop]);
@@ -199,14 +274,36 @@ export function OnboardingPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      if (user?.role === 'FARMER') {
+      if (isFarmer) {
         await api.post('/auth/onboarding/farmer', {
-          farmSizeAcres: parseFloat(farmSize),
-          cropsGrown: selectedCrops,
+          sellerType,
           state,
-          organicCertified: organic,
-          fpoName: fpoName || undefined,
-          apmcLicense: apmcLicense || undefined,
+          // Per-type payload: only send what the chosen type actually uses,
+          // so a shop application doesn't carry a stale farm size.
+          ...(sellerType === 'FARMER' ? {
+            farmSizeAcres: parseFloat(farmSize),
+            cropsGrown: selectedCrops,
+            organicCertified: organic,
+            fpoName: fpoName || undefined,
+            apmcLicense: apmcLicense || undefined,
+          } : {}),
+          ...(sellerType === 'LOCAL_SHOP' ? {
+            businessName,
+            shopType,
+            address,
+            fssaiLicense: fssai,
+            gstin: gstin || undefined,
+            cropsGrown: selectedCrops,
+          } : {}),
+          ...(sellerType === 'WHOLESALER' ? {
+            businessName,
+            gstin,
+            apmcLicense: apmcLicense || undefined,
+            address: address || undefined,
+            cropsGrown: selectedCrops,
+            minOrderValue: minOrderValue ? parseFloat(minOrderValue) : undefined,
+            leadTimeDays: leadTimeDays ? parseInt(leadTimeDays, 10) : undefined,
+          } : {}),
         });
       } else {
         await api.post('/auth/onboarding/buyer', {
@@ -214,15 +311,15 @@ export function OnboardingPage() {
           companyType,
           taxId: taxId || undefined,
           annualProcurementVolume: volume || undefined,
+          outletCount: companyType === 'RESTAURANT' && outletCount ? parseInt(outletCount, 10) : undefined,
         });
       }
       const { data } = await api.get('/auth/me');
       updateUser(data.user);
-      toast.success('Profile activated');
-      // Home is the marketplace storefront for every role
-      navigate('/');
+      toast.success(isResubmit ? 'Application resubmitted' : 'Application submitted');
+      navigate('/partner/status');
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Failed to save profile');
+      toast.error(err.response?.data?.message || 'Failed to submit application');
     } finally {
       setLoading(false);
     }
@@ -230,12 +327,14 @@ export function OnboardingPage() {
 
   const userCountry = user?.country || 'India';
   const regions = REGIONS_BY_COUNTRY[userCountry] || [];
-  const regionLabel = ['United States', 'India', 'Brazil'].includes(userCountry) ? 'State'
-    : userCountry === 'United Kingdom' ? 'Region' : 'Region';
+  const regionLabel = 'State';
 
   if (!user) return null;
 
-  const isFarmer = user.role === 'FARMER';
+  const isShop = isFarmer && sellerType === 'LOCAL_SHOP';
+  const isWholesale = isFarmer && sellerType === 'WHOLESALER';
+
+  const reviewerNote = isResubmit ? existing?.statusNote : null;
 
   return (
     <div className="cb-app" style={{ minHeight: '100vh' }}>
@@ -244,62 +343,122 @@ export function OnboardingPage() {
           <ArcMark size={22} />
           <span className="wordmark-text">CropBid</span>
         </Link>
-        <span className="cb-tiny">{user.name} · {user.role.toLowerCase()}</span>
+        <span className="cb-tiny">{user.name}</span>
       </header>
 
       <main style={{ maxWidth: 760, margin: '0 auto', padding: '36px 24px 64px' }}>
-        <div className="cb-eyebrow">Onboarding · step 02 / 02</div>
+        <div className="cb-eyebrow">Partner application · step 02 / 03</div>
         <Stepper />
 
         <h1 className="cb-h2" style={{ marginTop: 0 }}>
-          {isFarmer ? (
-            <>Calibrate your <span className="cb-italic">farm.</span></>
+          {isResubmit ? (
+            <>Round two — <span className="cb-italic">let's fix it.</span></>
+          ) : isFarmer ? (
+            <>Tell us what <span className="cb-italic">you sell.</span></>
           ) : (
-            <>Calibrate your <span className="cb-italic">company.</span></>
+            <>Tell us what <span className="cb-italic">you buy.</span></>
           )}
         </h1>
-        <p className="cb-body" style={{ marginTop: 14, marginBottom: 28 }}>
-          {isFarmer
-            ? 'Your agent uses these signals to match buyers, set reserve prices, and surface auctions worth your time.'
-            : 'Your agent uses these signals to find growers, brief negotiations, and price-anchor your bids.'}
+        <p className="cb-body" style={{ marginTop: 14, marginBottom: 20 }}>
+          {isResubmit
+            ? 'Update the answers below and resubmit — the reviewer picks it up from where you left off.'
+            : 'This goes to our review team, usually back to you within 24–48 hours. Licences speed it up; missing ones slow it down.'}
         </p>
 
+        {reviewerNote && (
+          <div className="cb-card" style={{ padding: 18, borderLeft: '3px solid var(--cb-ember)', marginBottom: 20 }}>
+            <div className="cb-eyebrow" style={{ marginBottom: 6 }}>From the reviewer</div>
+            <p className="cb-small" style={{ margin: 0 }}>{reviewerNote}</p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <SectionCard title="Location">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--cb-line)' }}>
-              <span style={{ fontSize: 14, fontWeight: 500 }}>{userCountry}</span>
-              <span className="cb-tiny" style={{ marginLeft: 'auto' }}>locked at signup</span>
-            </div>
-            <div>
-              <label htmlFor="region-select" className="cb-label">{regionLabel}</label>
-              {regions.length > 0 ? (
-                <select
-                  id="region-select"
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="cb-input"
-                  required
-                >
-                  <option value="">Select {regionLabel.toLowerCase()}</option>
-                  {regions.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              ) : (
+          {isFarmer && (
+            <SectionCard title="I sell as a">
+              <div className="cb-pill-group">
+                {(Object.keys(SELLER_TYPE_LABEL) as SellerType[]).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setSellerType(t)}
+                    className={`cb-pill ${sellerType === t ? 'active' : ''}`}
+                  >
+                    {SELLER_TYPE_LABEL[t]}
+                  </button>
+                ))}
+              </div>
+              <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
+                {sellerType === 'FARMER' && 'You grow what you sell. Second-day delivery tier.'}
+                {sellerType === 'LOCAL_SHOP' && 'You hold same-day stock for your neighbourhood. Needs an FSSAI licence.'}
+                {sellerType === 'WHOLESALER' && 'You move bulk with minimum orders. Needs a GSTIN.'}
+              </div>
+            </SectionCard>
+          )}
+
+          {!isFarmer && (
+            <SectionCard title="Business type">
+              <div className="cb-pill-group">
+                {BUYER_TYPE_PILLS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setCompanyType(p.value)}
+                    className={`cb-pill ${companyType === p.value ? 'active' : ''}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </SectionCard>
+          )}
+
+          {isFarmer && (
+            <SectionCard title="Location">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--cb-line)' }}>
+                <span style={{ fontSize: 14, fontWeight: 500 }}>{userCountry}</span>
+                <span className="cb-tiny" style={{ marginLeft: 'auto' }}>locked at signup</span>
+              </div>
+              <div>
+                <label htmlFor="region-select" className="cb-label">{regionLabel}</label>
+                {regions.length > 0 ? (
+                  <select
+                    id="region-select"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    className="cb-input"
+                    required
+                  >
+                    <option value="">Select {regionLabel.toLowerCase()}</option>
+                    {regions.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    placeholder={`Enter your ${regionLabel.toLowerCase()}`}
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    required
+                  />
+                )}
+              </div>
+              {(isShop || isWholesale) && (
                 <Input
-                  placeholder={`Enter your ${regionLabel.toLowerCase()}`}
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  required
+                  label={isShop ? 'Shop address' : 'Godown / office address'}
+                  placeholder="Street, area, city"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  required={isShop}
                 />
               )}
-            </div>
-          </SectionCard>
+            </SectionCard>
+          )}
 
-          {isFarmer ? (
+          {/* ---------------- FARMER ---------------- */}
+          {isFarmer && sellerType === 'FARMER' && (
             <>
               <SectionCard title="Operation">
-                <div className="cb-cols-2" style={{ gap: 14 }}>
+                <div className="cb-form-grid-2">
                   <Input
                     label="Farm size (acres)"
                     type="number"
@@ -343,7 +502,117 @@ export function OnboardingPage() {
                 </SectionCard>
               )}
             </>
-          ) : (
+          )}
+
+          {/* ---------------- LOCAL SHOP ---------------- */}
+          {isShop && (
+            <>
+              <SectionCard title="Your shop">
+                <Input
+                  label="Shop name"
+                  placeholder="As your customers know it"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  required
+                />
+                <div>
+                  <label className="cb-label">Shop type</label>
+                  <div className="cb-pill-group">
+                    {SHOP_TYPE_OPTIONS.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => setShopType(o.value)}
+                        className={`cb-pill ${shopType === o.value ? 'active' : ''}`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Licences">
+                <Input
+                  label="FSSAI licence number"
+                  placeholder="14-digit FSSAI number"
+                  value={fssai}
+                  onChange={(e) => setFssai(e.target.value)}
+                  required
+                />
+                <Input
+                  label="GSTIN (optional)"
+                  placeholder="e.g., 27AABCA1234A1ZA"
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value)}
+                />
+                <p className="cb-field-hint">
+                  Food sold to homes must trace to a licence — reviewers check this first.
+                </p>
+              </SectionCard>
+
+              <SectionCard title={`What you stock · ${selectedCrops.length} selected`} optional>
+                <CropPicker selected={selectedCrops} onToggle={toggleCrop} />
+              </SectionCard>
+            </>
+          )}
+
+          {/* ---------------- WHOLESALER ---------------- */}
+          {isWholesale && (
+            <>
+              <SectionCard title="Your firm">
+                <Input
+                  label="Firm name"
+                  placeholder="Registered trade name"
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  required
+                />
+                <Input
+                  label="GSTIN"
+                  placeholder="e.g., 27AABCA1234A1ZA"
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value)}
+                  required
+                />
+                <Input
+                  label="APMC / mandi licence (optional)"
+                  placeholder="e.g., MH-APMC-2024-1234"
+                  value={apmcLicense}
+                  onChange={(e) => setApmcLicense(e.target.value)}
+                />
+              </SectionCard>
+
+              <SectionCard title="Trade terms">
+                <div className="cb-form-grid-2">
+                  <Input
+                    label="Minimum order value (₹)"
+                    type="number"
+                    placeholder="e.g., 5000"
+                    value={minOrderValue}
+                    onChange={(e) => setMinOrderValue(e.target.value)}
+                  />
+                  <Input
+                    label="Lead time (days)"
+                    type="number"
+                    placeholder="e.g., 2"
+                    value={leadTimeDays}
+                    onChange={(e) => setLeadTimeDays(e.target.value)}
+                  />
+                </div>
+                <p className="cb-field-hint">
+                  Buyers see these before ordering — honest numbers mean fewer cancellations.
+                </p>
+              </SectionCard>
+
+              <SectionCard title={`Categories you trade · ${selectedCrops.length} selected`} optional>
+                <CropPicker selected={selectedCrops} onToggle={toggleCrop} />
+              </SectionCard>
+            </>
+          )}
+
+          {/* ---------------- BUYER ---------------- */}
+          {!isFarmer && (
             <>
               <SectionCard title="Company">
                 <Input
@@ -353,27 +622,15 @@ export function OnboardingPage() {
                   onChange={(e) => setCompanyName(e.target.value)}
                   required
                 />
-                <div>
-                  <label className="cb-label">Company type</label>
-                  <div className="cb-pill-group">
-                    {[
-                      ['PROCESSOR', 'Processor'],
-                      ['FMCG', 'FMCG'],
-                      ['RESTAURANT', 'Restaurant'],
-                      ['EXPORTER', 'Exporter'],
-                      ['RETAILER', 'Retailer'],
-                    ].map(([v, label]) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => setCompanyType(v)}
-                        className={`cb-pill ${companyType === v ? 'active' : ''}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                {companyType === 'RESTAURANT' && (
+                  <Input
+                    label="Number of outlets (optional)"
+                    type="number"
+                    placeholder="e.g., 6"
+                    value={outletCount}
+                    onChange={(e) => setOutletCount(e.target.value)}
+                  />
+                )}
               </SectionCard>
 
               <SectionCard title="Tax" optional>
@@ -405,10 +662,12 @@ export function OnboardingPage() {
             </>
           )}
 
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', marginTop: 8 }}>
-            <Link to={isFarmer ? '/farmer' : '/buyer'} className="cb-btn cb-btn-link">Skip for now</Link>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, justifyContent: 'flex-end', alignItems: 'center', marginTop: 8 }}>
+            <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 'auto' }}>
+              Reviewed by hand · 24–48h
+            </span>
             <Button type="submit" size="lg" loading={loading}>
-              Activate agent
+              {isResubmit ? 'Resubmit application' : 'Submit for review'}
               <ArrowIcon />
             </Button>
           </div>
