@@ -133,6 +133,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   useEffect(() => {
     if (open) {
       attemptRef.current += 1;
+      setSending(false); setSigningIn(false); setVerifying(false);
       setMode('code');
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
@@ -197,7 +198,10 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
       // Stays in the dialog: a wrong password is a retype, not a dead end.
       setError(err.response?.data?.message || 'Those details did not match an account');
     } finally {
-      setSigningIn(false);
+      // Guarded like the rest: the flag belongs to whichever attempt is
+      // current, so a superseded one must not clear it and re-enable a button
+      // whose request is still in flight.
+      if (attemptRef.current === attempt) setSigningIn(false);
     }
   }
 
@@ -278,7 +282,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
         setChallenge(null); setCode('');
       }
     } finally {
-      setVerifying(false);
+      if (attemptRef.current === attempt) setVerifying(false);
     }
   }
 
