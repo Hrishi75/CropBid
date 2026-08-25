@@ -1237,7 +1237,7 @@ export function LandingPage() {
           <>
             {!searching && <HeroBanner onShop={() => jumpTo('shelf')} board={board} currency={currency} user={user} />}
             <LiveShelf query={query} />
-            {!searching && <LiveRatesBoard board={board} currency={currency} />}
+            {!searching && <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />}
           </>
         ) : searching ? (
           <SearchResults query={query} currency={currency} shopHref={shopHref} />
