@@ -440,6 +440,23 @@ function StoreHeader({
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Where the header's account link goes, decided ONCE. The inline nav and the
+  // collapsed menu below both render it, and keeping two copies of the role
+  // ladder is what let them disagree.
+  //
+  // A CONSUMER has no dashboard by design, and their main action is the shop
+  // they are already looking at, so they get their orders instead. /admin is
+  // the fallback for ADMIN alone.
+  const account = user
+    ? {
+        to: user.role === 'FARMER' ? '/farmer'
+          : user.role === 'BUYER' ? '/buyer'
+          : user.role === 'CONSUMER' ? '/orders'
+          : '/admin',
+        label: user.role === 'CONSUMER' ? 'Orders' : 'Dashboard',
+      }
+    : { to: '/login', label: 'Sign in' };
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
     onScroll();
@@ -508,24 +525,8 @@ function StoreHeader({
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
-            //
-            // A CONSUMER has neither. They have no dashboard by design, and
-            // their main action is the shop they are already looking at — so
-            // they get one link, to their orders. Without this branch the
-            // role fell through to /admin and /buyer/browse, two routes
-            // ProtectedRoute would have bounced them straight back out of.
             <>
-              <Link
-                to={
-                  user.role === 'FARMER' ? '/farmer'
-                    : user.role === 'BUYER' ? '/buyer'
-                    : user.role === 'CONSUMER' ? '/orders'
-                    : '/admin'
-                }
-                className="nav-signin"
-              >
-                {user.role === 'CONSUMER' ? t('Orders') : t('Dashboard')}
-              </Link>
+              <Link to={account.to} className="nav-signin">{t(account.label)}</Link>
               {user.role !== 'CONSUMER' && (
                 <Link
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
@@ -573,14 +574,18 @@ function StoreHeader({
               ))}
               {/* Below 640px the header drops its .nav-signin slot to keep the
                   bar on one line, so whichever link lived there — Sign in, or
-                  Dashboard once you're logged in — has to reappear here. */}
+                  the account link once you're logged in — has to reappear here.
+                  It reads `account` rather than working the role out again:
+                  the second copy of that ladder had no CONSUMER rung, so a
+                  shopper on a phone got /admin, was bounced by ProtectedRoute,
+                  and had no route to their orders at all. */}
               <Link
-                to={user ? (user.role === 'FARMER' ? '/farmer' : user.role === 'BUYER' ? '/buyer' : '/admin') : '/login'}
+                to={account.to}
                 role="menuitem"
                 className="st-menu-link"
                 onClick={() => setMenuOpen(false)}
               >
-                {user ? t('Dashboard') : t('Sign in')}
+                {t(account.label)}
               </Link>
             </div>
           )}

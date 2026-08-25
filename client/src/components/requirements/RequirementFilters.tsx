@@ -60,6 +60,19 @@ export function RequirementFilters({ filters, onChange }: RequirementFiltersProp
     () => typeof window === 'undefined' || window.matchMedia('(min-width: 901px)').matches,
   );
 
+  // Reading the viewport once at mount was not enough. Desktop hides the
+  // <summary> that reopens this panel, so someone who collapsed the filters on
+  // a narrow window and then widened it was left with a shut <details> and
+  // nothing to click — every filter gone until a reload. Follow the breakpoint
+  // up as well as reading it at the start. Narrowing is left alone: a panel
+  // deliberately left open should stay open.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 901px)');
+    const sync = (e: MediaQueryListEvent) => { if (e.matches) setOpen(true); };
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
   useEffect(() => {
     api.get('/requirements/filters')
       .then(({ data }) => setAvailable(data))
