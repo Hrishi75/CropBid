@@ -707,6 +707,14 @@ model Bid {
   // created directly with status ACCEPTED, skipping the PENDING bid flow.
   isDirectPurchase Boolean  @default(false)
 
+  // Client-minted reference for ONE intended direct purchase, so a retry after
+  // a lost response returns the order that already exists instead of buying the
+  // same lot twice. Unique is the whole mechanism: the insert is what loses the
+  // race, and it rolls the stock decrement back with it. Null for everything
+  // that is not a direct purchase (negotiated bids have an accept step to be
+  // idempotent about instead).
+  idempotencyKey  String?   @unique
+
   status          BidStatus @default(PENDING)
   counterPrice    Float?    // If farmer counters, this is their price
 
