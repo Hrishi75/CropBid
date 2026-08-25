@@ -119,10 +119,20 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Which "attempt" is currently on screen. A sign-in request outlives the
+  // click that started it, and closing, reopening or switching lanes in that
+  // window leaves a continuation holding a dialog that no longer exists. It
+  // bumps on every one of those, and both submit handlers check it before they
+  // touch the UI — otherwise an abandoned password attempt closes the dialog
+  // somebody has since reopened, or navigates on a sign-in they walked away
+  // from. The session itself still lands; it is only the UI that is stale.
+  const attemptRef = useRef(0);
+
   // Every open starts clean. Leaving a half-typed number and a dead challenge
   // behind would show the next person a code box for an SMS they never got.
   useEffect(() => {
     if (open) {
+      attemptRef.current += 1;
       setMode('code');
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
@@ -174,13 +184,16 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   async function handlePasswordSignIn(e: React.FormEvent) {
     e.preventDefault();
     if (!passwordFormValid) { setError('Enter your phone or email and your password'); return; }
+    const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined);
     try {
       const user = await login(identifier.trim(), password);
+      if (attemptRef.current !== attempt) return; // dialog moved on without us
       toast.success('Welcome back');
       onClose();
       routeAfterAuth(user);
     } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
       // Stays in the dialog: a wrong password is a retype, not a dead end.
       setError(err.response?.data?.message || 'Those details did not match an account');
     } finally {
@@ -188,13 +201,27 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
     }
   }
 
-  // Switching lanes clears the other one's half-typed input and its error, so
-  // "Enter a valid phone number" never greets someone on the password form.
+  // Switching lanes empties the one being left, so nothing half-typed is
+  // sitting there submittable when someone comes back to it, and no stale
+  // "Enter a valid phone number" greets them on the password form.
+  //
+  // The identity itself travels, though. The password lane takes a phone as
+  // its identifier, so a number typed on the code step should not have to be
+  // typed again — and back the other way only when what they entered really is
+  // a number, since the code step has nowhere to send an email address.
   function switchTo(next: 'code' | 'password') {
-    setMode(next);
     setError(undefined);
-    if (next === 'password') { setChallenge(null); setCode(''); }
-    else { setPassword(''); }
+    attemptRef.current += 1;
+    if (next === 'password') {
+      setIdentifier(phone.trim());
+      setChallenge(null); setCode(''); setPhone('');
+    } else {
+      const typed = identifier.trim();
+      const digits = typed.replace(/[^0-9]/g, '');
+      setPhone(!typed.includes('@') && digits.length >= 7 ? typed : '');
+      setIdentifier(''); setPassword('');
+    }
+    setMode(next);
   }
 
   async function handleSendCode(e?: React.FormEvent) {
@@ -229,15 +256,18 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
     if (!codeValid) { setError('Enter the 6-digit code we sent you'); return; }
     if (!nameValid) { setError('Tell us your name to finish'); return; }
 
+    const attempt = attemptRef.current;
     setVerifying(true); setError(undefined);
     try {
       const { user, created } = await verifyPhoneSignIn(
         challenge.challengeId, code, needsName ? name.trim() : undefined,
       );
+      if (attemptRef.current !== attempt) return;
       toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
       onClose();
       routeAfterAuth(user);
     } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
       const message = err.response?.data?.message || 'Could not verify that code';
       setError(message);
       // The server ends the challenge after three wrong codes or on expiry.
