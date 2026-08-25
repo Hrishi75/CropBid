@@ -206,13 +206,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     setItems((prev) => {
       const existing = prev.find((it) => it.listingId === listing.id);
+      const nextQuantity = round(quantity);
       // Adding a lot that is already in the basket REPLACES the quantity rather
       // than adding to it. Every caller (the shelf stepper, the product page)
       // shows the shopper the number they are setting, so summing would move
       // the basket to a number nobody chose.
       const next: CartItem = {
         listingId: listing.id,
-        quantity: round(quantity),
+        quantity: nextQuantity,
         cropName: listing.cropName,
         cropVariety: listing.cropVariety,
         image: listing.images[0] ?? null,
@@ -223,10 +224,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         farmerName: listing.farmer?.user?.name ?? null,
         qualityGrade: listing.qualityGrade,
         organic: listing.organic,
-        // add() SETS the quantity rather than adding to it, so every call is a
-        // fresh intent and deserves a fresh key. Reusing the previous one would
-        // let a retry replay the quantity the shopper just changed away from.
-        purchaseKey: mintPurchaseKey(),
+        // The key tracks the INTENT, not the click. Setting the same lot to
+        // the same amount it already held changes nothing about what is being
+        // bought, so the key has to survive it — that path is reached by
+        // pressing the shelf's ADD again after a purchase whose response went
+        // missing, which is precisely when the replay has to work. Any other
+        // amount is a different order and gets its own key.
+        purchaseKey: existing && existing.quantity === nextQuantity
+          ? existing.purchaseKey
+          : mintPurchaseKey(),
       };
       return existing
         ? prev.map((it) => (it.listingId === listing.id ? next : it))
