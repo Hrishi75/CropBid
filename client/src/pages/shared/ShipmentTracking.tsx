@@ -221,7 +221,7 @@ export function ShipmentTracking() {
               <Button size="sm" onClick={() => setShowUpdateForm(true)}>Update status</Button>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="cb-cols-2" style={{ gap: 12 }}>
                   <div>
                     <label className="cb-label">Next status</label>
                     <select value={newStatus} onChange={(e) => setNewStatus(e.target.value)} className="cb-input">
@@ -242,7 +242,7 @@ export function ShipmentTracking() {
                   onChange={(e) => setUpdateNote(e.target.value)}
                   placeholder="Anything noteworthy"
                 />
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   <Button size="sm" onClick={handleStatusUpdate} loading={updating} disabled={!newStatus || !updateLocation}>
                     Confirm update
                   </Button>
@@ -254,7 +254,7 @@ export function ShipmentTracking() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="cb-cols-2" style={{ gap: 16, marginBottom: 16 }}>
         <Section title="Driver">
           {shipment.driverName ? (
             <>
@@ -276,7 +276,7 @@ export function ShipmentTracking() {
                   <Input label="Driver name" value={driverName} onChange={(e) => setDriverName(e.target.value)} />
                   <Input label="Phone" value={driverPhone} onChange={(e) => setDriverPhone(e.target.value)} />
                   <Input label="Vehicle number" value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} />
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     <Button size="sm" onClick={handleDriverUpdate} loading={updating}>Save</Button>
                     <Button size="sm" variant="ghost" onClick={() => setShowDriverForm(false)}>Cancel</Button>
                   </div>
@@ -301,19 +301,21 @@ export function ShipmentTracking() {
       {shipment.trackingUpdates && Array.isArray(shipment.trackingUpdates) && shipment.trackingUpdates.length > 0 && (
         <div className="cb-card" style={{ padding: 0 }}>
           <div className="cb-eyebrow" style={{ padding: '16px 20px 0' }}>Event log</div>
-          <table className="cb-table" style={{ marginTop: 8 }}>
-            <tbody>
-              {(shipment.trackingUpdates as any[]).slice().reverse().map((event, i) => (
-                <tr key={i}>
-                  <td className="cb-mono" style={{ color: 'var(--cb-ink-3)', width: 120 }}>
-                    {event.timestamp ? new Date(event.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </td>
-                  <td>{event.status?.replace('_', ' ') || event.note || 'Update'}</td>
-                  <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{event.location || ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="cb-table-wrap narrow">
+            <table className="cb-table" style={{ marginTop: 8 }}>
+              <tbody>
+                {(shipment.trackingUpdates as any[]).slice().reverse().map((event, i) => (
+                  <tr key={i}>
+                    <td className="cb-mono" style={{ color: 'var(--cb-ink-3)', width: 120 }}>
+                      {event.timestamp ? new Date(event.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td>{event.status?.replace('_', ' ') || event.note || 'Update'}</td>
+                    <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{event.location || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </DashboardLayout>

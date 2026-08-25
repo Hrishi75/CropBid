@@ -1046,6 +1046,115 @@ body * {
 
 /* Two-column form field grid — collapses to a single column on phones */
 .cb-app .cb-form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+/* -----------------------------------------------------------------------
+   Responsive layout primitives
+   -----------------------------------------------------------------------
+   Pages previously wrote their column counts as inline
+   `style={{ gridTemplateColumns: ... }}`. Inline styles win over stylesheets
+   regardless of media queries, so those layouts could never collapse — a
+   four-column row stayed four columns at 360px. These classes carry the same
+   desktop shapes and add the breakpoints. Gaps stay with the caller so each
+   page keeps its own rhythm.
+
+   minmax(0, 1fr) rather than 1fr: grid tracks are min-content-sized by
+   default, so long unbroken values (a price, an ID, a URL) would otherwise
+   push a track past its share and overflow the row.
+   ----------------------------------------------------------------------- */
+.cb-app .cb-cols-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cb-app .cb-cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cb-app .cb-cols-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Compact figure rows inside a card (price / quantity / total). These stay
+   multi-column on a phone — the values are short, and stacking them turns
+   every card into a tower — but reflow to fewer columns as room runs out. */
+.cb-app .cb-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
+
+/* Content + rail splits. Each keeps its desktop ratio and folds to one
+   column on tablets, where a 260-300px rail leaves the main column too
+   narrow to be worth the split. */
+.cb-app .cb-split { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); }
+.cb-app .cb-split-3-2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); }
+.cb-app .cb-split-rail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); }
+.cb-app .cb-split-filters { display: grid; grid-template-columns: 260px minmax(0, 1fr); }
+.cb-app .cb-split-2-1 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.cb-app .cb-split-1-1-4 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
+/* Content plus a shrink-to-fit trailing column (a submit button, a contact
+   block). The trailing column stops fitting long before the phone
+   breakpoint, so it drops onto its own row. */
+.cb-app .cb-split-auto { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+@media (max-width: 700px) {
+  .cb-app .cb-split-auto { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Card lists that size themselves to the viewport. */
+.cb-app .cb-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.cb-app .cb-cards-sm { display: grid; grid-template-columns: repeat(auto-fill, minmax(224px, 1fr)); }
+
+/* Footer line of a list row: figures on the left, sparkline, actions.
+   On a phone the sparkline is the first thing to go — it is decoration next
+   to the price — and the remaining items wrap with the actions pushed right. */
+.cb-app .cb-row-foot {
+  display: grid; grid-template-columns: 1fr 1fr auto auto;
+  gap: 16px; align-items: center;
+}
+@media (max-width: 700px) {
+  .cb-app .cb-row-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .cb-app .cb-row-foot-chart { display: none; }
+  .cb-app .cb-row-foot > :last-child { margin-left: auto; }
+}
+
+/* Filter rail. A <details> so it can collapse without any JS of its own: on
+   desktop it is always open and the summary is hidden, so the panel looks and
+   behaves exactly as it did. Once .cb-split-filters folds to one column the
+   rail lands on top of the results, and seven expanded sections would push
+   the first row of results off the screen — so there it becomes a
+   tap-to-open "Filters" header. */
+/* The sticky positioning lives here rather than on the element so the mobile
+   reset below can actually win — an inline `position: sticky` would outrank
+   any media query, which is the same trap the column counts fell into. */
+.cb-app .cb-filter-rail {
+  padding: 18px;
+  position: sticky; top: 76px; align-self: flex-start;
+}
+.cb-app .cb-filter-rail > summary { display: none; }
+.cb-app .cb-filter-rail > summary::-webkit-details-marker { display: none; }
+@media (max-width: 900px) {
+  .cb-app .cb-filter-rail { position: static; }
+  .cb-app .cb-filter-rail > summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    cursor: pointer; list-style: none;
+    font-family: var(--cb-font-mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--cb-ink-3); font-weight: 500;
+  }
+  .cb-app .cb-filter-rail > summary::after { content: '▾'; letter-spacing: 0; }
+  .cb-app .cb-filter-rail[open] > summary { margin-bottom: 14px; }
+  .cb-app .cb-filter-rail[open] > summary::after { content: '▴'; }
+}
+
+/* Tables keep their own scroll lane rather than widening the page. */
+.cb-app .cb-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.cb-app .cb-table-wrap > .cb-table { min-width: 480px; }
+.cb-app .cb-table-wrap.narrow > .cb-table { min-width: 0; }
+
+@media (max-width: 1024px) {
+  .cb-app .cb-cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .cb-app .cb-split,
+  .cb-app .cb-split-3-2,
+  .cb-app .cb-split-rail,
+  .cb-app .cb-split-filters,
+  .cb-app .cb-split-2-1,
+  .cb-app .cb-split-1-1-4 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .cb-app .cb-cols-2,
+  .cb-app .cb-cols-3,
+  .cb-app .cb-cols-4 { grid-template-columns: minmax(0, 1fr); }
+  .cb-app .cb-cards,
+  .cb-app .cb-cards-sm { grid-template-columns: minmax(0, 1fr); }
+}
 .cb-app .cb-pill {
   padding: 6px 12px; border-radius: 999px; border: 1px solid var(--cb-line);
   background: transparent; color: var(--cb-ink-2); cursor: pointer;
@@ -1064,19 +1173,28 @@ body * {
 .cb-app .cb-section-head h1,
 .cb-app .cb-section-head h2 { margin-top: 8px; }
 
-/* KPI strip — borderless top-rule cards */
+/* KPI strip — borderless top-rule cards
+   Cells auto-fit instead of taking a hard column count. Callers used to pass
+   `style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}`, and an inline style
+   outranks any media query, so a six-cell strip stayed six cells wide on a
+   360px phone. Auto-fit lets the same markup lay out 6-across on a desktop,
+   4-across on a tablet and 2-across on a phone with no per-page code.
+   The 1px grid gap (over a --cb-line background) draws the separators, so the
+   rules land correctly between wrapped rows as well as between columns — a
+   per-cell border-right cannot do that once the cells wrap. */
 .cb-app .cb-kpi-strip {
-  display: grid; gap: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
   border: 1px solid var(--cb-line);
   border-radius: var(--cb-r-lg);
-  background: var(--cb-paper);
+  background: var(--cb-line);
   overflow: hidden;
 }
 .cb-app .cb-kpi-cell {
   padding: 18px 20px;
-  border-right: 1px solid var(--cb-line);
+  background: var(--cb-paper);
 }
-.cb-app .cb-kpi-cell:last-child { border-right: none; }
 .cb-app .cb-kpi-label { font-family: var(--cb-font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cb-ink-3); margin-bottom: 8px; }
 .cb-app .cb-kpi-value { font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--cb-ink); font-family: var(--cb-font-mono); }
 .cb-app .cb-kpi-delta { margin-top: 6px; font-size: 12px; color: var(--cb-ink-3); font-family: var(--cb-font-mono); }
@@ -1141,7 +1259,10 @@ body * {
 .st-ticker-track {
   display: flex; align-items: center;
   padding: 7px 0; width: max-content;
-  animation: st-marquee 60s linear infinite;
+  /* Duration is set per render from the tick count (see Ticker) so the marquee
+     keeps a constant speed when the static ticks are replaced by the live
+     board. The fallback only applies if that inline value ever goes missing. */
+  animation: st-marquee var(--st-ticker-dur, 60s) linear infinite;
 }
 /* Each copy carries a trailing gap so the two copies are exactly equal in
    width — that is what makes -50% land on a seamless loop point. Putting the
@@ -1209,6 +1330,29 @@ body * {
 .st-header-link { font-size: 14px; color: var(--cb-ink-2); text-decoration: none; }
 .st-header-link:hover { color: var(--cb-ink); }
 
+/* --- collapsed section menu (≤960px) --- */
+/* Hidden on desktop, where the same destinations sit inline in the header. */
+.st-menu-wrap { position: relative; display: none; flex-shrink: 0; }
+.st-menu-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 11px;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  color: var(--cb-ink-2); cursor: pointer; padding: 0;
+  transition: border-color .15s ease, color .15s ease;
+}
+.st-menu-btn:hover { border-color: rgba(31,45,24,0.3); color: var(--cb-ink); }
+.st-menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
+  min-width: 190px; padding: 6px;
+  display: flex; flex-direction: column;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-radius: 12px; box-shadow: 0 16px 34px rgba(20,20,15,0.14);
+}
+.st-menu-link {
+  padding: 9px 12px; border-radius: 8px;
+  font-size: 14px; color: var(--cb-ink-2); text-decoration: none;
+}
+.st-menu-link:hover { background: rgba(20,20,15,0.04); color: var(--cb-ink); }
 .st-chip {
   flex-shrink: 0; cursor: pointer;
   font: inherit; font-size: 13px; font-weight: 500; color: var(--cb-ink-2);
@@ -1220,11 +1364,24 @@ body * {
 .st-chip.active { background: var(--cb-forest); border-color: var(--cb-forest); color: #f4f1ea; }
 
 /* --- page scaffold + reveal-on-scroll --- */
-.st-main { max-width: 1280px; margin: 0 auto; padding: 18px 24px 72px; }
-.st-reveal { opacity: 0; transform: translateY(18px); transition: opacity .55s ease, transform .55s ease; }
-.st-reveal.is-in { opacity: 1; transform: none; }
+/* width:100% is load-bearing, not decoration. .st-main is a flex item of the
+   .cb-landing column, and `margin: 0 auto` disables the default stretch — so
+   without an explicit width the browser falls back to fit-content sizing and
+   picks up the min-content of the product rails (a column-flow grid ~1290px
+   wide). That made every phone render the whole storefront at 1280px with a
+   horizontal scrollbar. A definite width keeps max-width/margin doing their
+   centring job on desktop and pins the page to the viewport on mobile. */
+.st-main { width: 100%; max-width: 1280px; margin: 0 auto; padding: 18px 24px 72px; }
+/* Reveal-on-scroll is OPT-OUT, not opt-in: a section is visible unless JS has
+   hidden it. useReveal only hides sections that mount below the fold, so the
+   prerendered HTML paints complete and a reload never flashes the page from
+   empty to filled. Never give .st-reveal a hidden state here — that rule runs
+   before the bundle does, on markup that is already on screen. */
+.st-reveal { transition: opacity .55s ease, transform .55s ease; }
+.st-reveal.is-out { opacity: 0; transform: translateY(18px); }
+.st-reveal.no-anim { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  .st-reveal { opacity: 1; transform: none; transition: none; }
+  .st-reveal, .st-reveal.is-out { opacity: 1; transform: none; transition: none; }
   .st-ticker-track, .st-roll-word { animation: none; }
 }
 
@@ -1319,8 +1476,23 @@ body * {
 .st-rate-v { font-size: 15px; font-weight: 700; margin-top: 2px; color: var(--cb-ink); }
 .st-rate-v .u { font-size: 10px; font-weight: 400; color: var(--cb-ink-3); }
 .st-rate-band { font-size: 10.5px; color: var(--cb-ink-3); margin-top: 2px; }
+
+/* --- loading placeholders (rates board + forecast strip) ---
+   Wraps real text and hides it, so the placeholder's line box is exactly the
+   one the live value will occupy. That is what makes the swap to real data
+   move nothing — no reserved heights to keep in sync with the font sizes. */
+.st-sk {
+  display: inline-block;
+  color: transparent;
+  background: var(--cb-line-2);
+  border-radius: 5px;
+  user-select: none;
+  animation: st-sk-pulse 1.7s ease-in-out infinite;
+}
+.st-sk-emoji { width: 18px; }
+@keyframes st-sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @media (prefers-reduced-motion: reduce) {
-  .st-float-chip { animation: none; }
+  .st-float-chip, .st-sk { animation: none; }
 }
 
 /* =============================================================================
@@ -1501,8 +1673,16 @@ body * {
   display: flex; flex-direction: column; align-items: center; gap: 12px;
   text-align: center;
 }
+.st-incub-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 26px; flex-wrap: wrap;
+}
+.st-incub-sep { width: 1px; align-self: stretch; min-height: 34px; background: var(--cb-line); }
 .st-incub-brand { display: flex; align-items: center; gap: 14px; color: var(--cb-ink); }
 .st-incub-brand img { width: 46px; height: 46px; object-fit: contain; }
+/* Founder Startup House is a wide lockup, not a square mark, so size it by
+   height to keep its cap-height level with the India 2047 wordmark beside it. */
+.st-incub-wordmark { height: 42px; width: auto; max-width: 100%; object-fit: contain; }
 .st-incub-name {
   font-size: 21px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
 }
@@ -1522,6 +1702,9 @@ body * {
 
 /* hero — centered, no side panel */
 .cb-landing .hiw-hero {
+  /* see .st-main — direct flex child of .cb-landing, so auto side margins
+     would otherwise drop it into fit-content sizing */
+  width: 100%;
   max-width: 880px; margin: 0 auto; padding: 96px 24px 88px;
   display: flex; flex-direction: column; align-items: center; text-align: center;
 }
@@ -1572,6 +1755,14 @@ body * {
   .cb-landing .hiw-steps { grid-template-columns: 1fr; }
   .cb-landing .hiw-grid { grid-template-columns: 1fr; }
   .cb-landing .hiw-facts { gap: 28px; }
+  /* These CTAs carry sentence-length labels ("The full forecast — every crop,
+     with the reasoning"). .cb-btn is nowrap by design, which on a narrow phone
+     turned them into 350px pills sticking out past the section. Let the label
+     wrap instead; the pill then sizes to the column. */
+  .cb-landing .hiw-cta-row .cb-btn,
+  .cb-landing .hiw-hero-actions .cb-btn {
+    white-space: normal; text-align: center; max-width: 100%;
+  }
 }
 
 /* --- quality standards (.qc-*) — crop dropdown + the checks behind a grade --- */
@@ -1671,6 +1862,12 @@ body * {
   .fc-tally-item .n { font-size: 24px; }
   .cb-landing .feat-grid { grid-template-columns: 1fr; }
   .st-incub-name { font-size: 17px; }
+  .st-incub-wordmark { height: 34px; }
+}
+
+@media (max-width: 520px) {
+  .st-incub-row { flex-direction: column; gap: 18px; }
+  .st-incub-sep { width: 44px; height: 1px; min-height: 0; align-self: center; }
 }
 
 /* =============================================================================
@@ -1794,6 +1991,7 @@ body * {
 /* --- storefront responsive --- */
 @media (max-width: 960px) {
   .st-source, .st-header-link { display: none; }
+  .st-menu-wrap { display: block; }
   .st-banner { grid-template-columns: 1fr; }
   .st-banner-media { display: none; }
   .st-banner-copy { padding: 34px 26px; }
@@ -1803,6 +2001,11 @@ body * {
   .st-header-row { flex-wrap: wrap; gap: 10px; padding: 10px 16px 8px; }
   .st-search { order: 3; flex-basis: 100%; padding: 9px 12px; }
   .st-header-links { margin-left: auto; gap: 10px; }
+  /* Sign in moves into the collapsed menu and "Start selling" drops to its
+     short label, which is what lets the brand, the actions and the menu
+     button share one row instead of spilling onto a second. */
+  .st-header-links .nav-signin { display: none; }
+  .st-header-links .cb-btn-primary { padding: 9px 14px; font-size: 13.5px; }
   .st-main { padding: 14px 16px 56px; }
   .st-promos { grid-template-columns: 1fr; }
 }
@@ -1915,6 +2118,22 @@ body * {
 }
 .cb-nav-menu-link:hover { background: rgba(20,20,15,0.04); color: var(--cb-ink); }
 
+/* Notification panel — anchored under the bell on desktop. On a phone the
+   bell sits close enough to the right edge that a 340px panel hanging off it
+   would run past the left edge of the screen, so below 640px the panel leaves
+   the bell behind and pins itself to the viewport instead. */
+.cb-notif-menu {
+  position: absolute; right: 0; top: calc(100% + 8px);
+  width: 340px; max-width: calc(100vw - 24px);
+  padding: 0; overflow: hidden; z-index: 50;
+}
+@media (max-width: 640px) {
+  .cb-notif-menu {
+    position: fixed; top: 64px; right: 12px; left: 12px;
+    width: auto; max-width: none;
+  }
+}
+
 /* Top-of-page primary nav — replaces the old left sidebar on desktop */
 .cb-topnav {
   display: flex; align-items: center; gap: 4px;
@@ -1981,8 +2200,17 @@ body * {
   padding: 18px 32px; display: flex; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--cb-line);
 }
-.cb-auth-nav-links { display: flex; gap: 22px; }
+.cb-auth-nav-links { display: flex; align-items: center; gap: 22px; }
 .cb-auth-nav-links a { color: var(--cb-ink-2); text-decoration: none; font-size: 14px; }
+@media (max-width: 640px) {
+  .cb-auth-nav { padding: 14px 16px; gap: 12px; }
+  .cb-auth-nav-links { gap: 14px; }
+  /* The marketing anchors go first. What matters on a sign-in screen is the
+     cross-link to sign-up (and back) plus the language picker; the marketing
+     pages are still one tap away through the wordmark. Keeping all four made
+     the bar 44px wider than the phone and scrolled the whole page sideways. */
+  .cb-auth-nav-extra { display: none; }
+}
 
 /* Responsive */
 @media (max-width: 960px) {
@@ -1995,15 +2223,16 @@ body * {
   .cb-auth-body { grid-template-columns: 1fr; }
   .cb-auth-rail { display: none; }
   .cb-auth-form-wrap { padding: 32px 20px; }
-  .cb-kpi-strip { grid-template-columns: repeat(2, 1fr); }
-  .cb-kpi-cell { border-right: none; border-bottom: 1px solid var(--cb-line); }
-  .cb-kpi-cell:nth-child(2n) { border-right: none; }
 }
 @media (max-width: 640px) {
   .cb-page-title { font-size: 26px; }
   .cb-page { padding: 16px 12px 40px; }
-  .cb-kpi-strip { grid-template-columns: 1fr; }
   .cb-app .cb-form-grid-2 { grid-template-columns: 1fr; }
+  /* Cells get tighter rather than dropping to a single column — two short
+     figures side by side beat one figure per screenful of scrolling. */
+  .cb-app .cb-kpi-strip { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+  .cb-app .cb-kpi-cell { padding: 14px 14px; }
+  .cb-app .cb-kpi-value { font-size: 22px; }
   /* The auth header is a wordmark and three or four links on one flex row. At
      phone width they wrap onto two lines and ride over the wordmark. Marketing
      links are not why anyone opened /login or /signup, so drop those and keep

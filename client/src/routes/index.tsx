@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth, SESSION_HINT_KEY } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
 
 // Auth pages (public)
@@ -85,25 +85,21 @@ import { SettingsPage } from '../pages/shared/SettingsPage';
 function RootRedirect() {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    // While the /auth/refresh check is in flight (slow when the API is cold):
-    //   - returning visitor (has a session hint) → spinner, then the right home
-    //   - anonymous visitor (no hint) → render the static landing immediately,
-    //     so a cold backend never blocks the public homepage.
-    const hadSession = (() => {
-      try { return localStorage.getItem(SESSION_HINT_KEY) === '1'; } catch { return false; }
-    })();
-
-    if (!hadSession) return <LandingPage />;
-
-    return (
-      <div className="min-h-screen bg-surface-alt flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
+  // The storefront renders straight away for everyone, including while
+  // /auth/refresh is still in flight.
+  //
+  // A returning visitor used to get a full-page spinner here instead. That was
+  // the worst flicker on the site: "/" is prerendered, so the browser had
+  // ALREADY painted the whole storefront from static HTML — and the first thing
+  // the bundle did on every reload was replace it with a blank page and a
+  // spinner, then put it back once the session check answered. On a cold API
+  // that lasted seconds.
+  //
+  // The spinner only ever existed so an admin wouldn't glimpse the storefront
+  // before being bounced. Showing them their own home page for one round-trip
+  // is a much smaller cost than blanking the page for every farmer and buyer,
+  // so the redirect just waits until the check has actually answered.
+  if (!loading && user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
 
   return <LandingPage />;
 }

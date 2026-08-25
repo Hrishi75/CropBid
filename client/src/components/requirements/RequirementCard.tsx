@@ -98,7 +98,7 @@ export function RequirementCard({
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 16 }}>
+      <div className="cb-metrics" style={{ gap: 16 }}>
         <div>
           <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>WANTS</div>
           <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>

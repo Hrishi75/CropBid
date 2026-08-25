@@ -109,7 +109,7 @@ export function BuyerAnalytics() {
         <MiniChart data={SPARK} color="#9bc97a" width={200} height={50} />
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Spent</div>
           <div className="cb-kpi-value">{formatCurrency(summary.totalSpent, currency)}</div>
@@ -153,7 +153,7 @@ export function BuyerAnalytics() {
         </ChartCard>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
+      <div className="cb-cols-2" style={{ gap: 18, marginBottom: 24 }}>
         <ChartCard title="Procurement mix">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>

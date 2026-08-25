@@ -209,7 +209,7 @@ export function AuctionRoom() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16, marginBottom: 16 }}>
+      <div className="cb-split-1-1-4" style={{ gap: 16, marginBottom: 16 }}>
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Current price</div>
           <div className="cb-mono" style={{ fontSize: 36, fontWeight: 500, letterSpacing: '-0.02em' }}>
@@ -269,7 +269,7 @@ export function AuctionRoom() {
       {!isFarmer && !ended && (
         <div className="cb-card" style={{ marginBottom: 16 }}>
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Your bid</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'flex-end' }}>
+          <div className="cb-split-auto" style={{ gap: 12, alignItems: 'flex-end' }}>
             <Input
               label={`Min ${auction ? formatCurrency(auction.currentPrice + 1, auction.currency) : ''}`}
               type="number"
@@ -296,7 +296,7 @@ export function AuctionRoom() {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
             <Button onClick={handleBid} disabled={timeLeft === '0:00'}>
               Place bid
               <ArrowIcon />

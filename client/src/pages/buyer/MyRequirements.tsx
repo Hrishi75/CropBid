@@ -102,7 +102,7 @@ export function MyRequirements() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+        <div className="cb-cards" style={{ gap: 16 }}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -119,7 +119,7 @@ export function MyRequirements() {
           onAction={statusFilter ? undefined : () => navigate('/buyer/requirements/new')}
         />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+        <div className="cb-cards" style={{ gap: 16 }}>
           {requirements.map((r) => (
             <RequirementCard key={r.id} requirement={r} href={`/buyer/requirements/${r.id}`}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
@@ -143,7 +143,7 @@ export function MyRequirements() {
       )}
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', justifyContent: 'center', marginTop: 28 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', justifyContent: 'center', marginTop: 28 }}>
           <button
             type="button"
             className="cb-btn cb-btn-link"

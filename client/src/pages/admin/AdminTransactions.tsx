@@ -116,7 +116,7 @@ export function AdminTransactions() {
         <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginTop: 8, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">In escrow</div>
           <div className="cb-kpi-value">{inEscrow}</div>
@@ -186,7 +186,7 @@ export function AdminTransactions() {
                     </span>
                   )}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="cb-cols-2" style={{ gap: 16 }}>
                   <div className="cb-mono" style={{ fontSize: 14 }}>
                     {formatCurrency(tx.totalAmount, tx.currency)}
                     {tx.bid && (
@@ -204,12 +204,11 @@ export function AdminTransactions() {
                     Falls back to the buyer's account phone when the order flow
                     didn't capture a separate contact number. */}
                 <div
+                  className="cb-split-auto"
                   style={{
                     marginTop: 10,
                     paddingTop: 10,
                     borderTop: '1px dashed var(--cb-line)',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr auto',
                     gap: 12,
                     alignItems: 'start',
                   }}
@@ -239,7 +238,7 @@ export function AdminTransactions() {
                     {[tx.bid.paymentTerms, tx.bid.deliveryTerms].filter(Boolean).join(' · ')}
                   </div>
                 )}
-                <div style={{ marginTop: 8, display: 'flex', gap: 12 }}>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <Link to={`/transactions/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
                   {tx.paymentStatus === 'ESCROW' && (
                     <button type="button" onClick={() => handleRefund(tx.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>
@@ -254,7 +253,7 @@ export function AdminTransactions() {
       )}
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
           <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
           <span>page {page + 1} of {totalPages}</span>
           <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>

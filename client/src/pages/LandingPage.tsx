@@ -26,6 +26,7 @@
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
@@ -81,6 +82,16 @@ const REFERENCE_TICKS: ReferenceTick[] = [
   { slug: 'cumin',        name: 'Cumin (Jeera)', emoji: '🌱', unit: 'QUINTAL', price: 24500 },
 ];
 
+// The header's section links. Rendered inline on desktop and inside the
+// collapsed menu below 960px, from one list so the two never drift apart.
+const SECTION_LINKS: Array<[label: string, to: string]> = [
+  ['Live rates', '/rates'],
+  ['Forecast', '/forecast'],
+  ['Yojana', '/schemes'],
+  ['Equipment', '/equipment'],
+  ['How it works', '/how-it-works'],
+];
+
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
 
 // =============================================================================
@@ -105,16 +116,26 @@ interface LiveRate {
 
 interface RatesBoardData { date: string; live: boolean; rates: LiveRate[]; }
 
-function useLiveRates(): RatesBoardData | null {
+// `pending` is what stops the board shoving the page around. The section holds
+// its height with a skeleton while the request is in flight, so today's rates
+// swap into a box that is already the right size instead of appearing from
+// nothing and pushing every rail below it down the page.
+//
+// It starts true and STAYS true through the prerender — effects don't run in
+// renderToString — so the static HTML reserves the space as well, and the
+// reload doesn't jump the moment React takes over either.
+function useLiveRates(): { board: RatesBoardData | null; pending: boolean } {
   const [board, setBoard] = useState<RatesBoardData | null>(null);
+  const [pending, setPending] = useState(true);
   useEffect(() => {
     let on = true;
     api.get('/rates/board')
       .then(({ data }) => { if (on && data?.rates?.length) setBoard(data); })
-      .catch(() => { /* ticker & board fall back to static reference prices */ });
+      .catch(() => { /* ticker & board fall back to static reference prices */ })
+      .finally(() => { if (on) setPending(false); });
     return () => { on = false; };
   }, []);
-  return board;
+  return { board, pending };
 }
 
 function Delta({ pct, flatLabel }: { pct: number; flatLabel?: string }) {
@@ -132,21 +153,37 @@ function Delta({ pct, flatLabel }: { pct: number; flatLabel?: string }) {
 // Hooks
 // =============================================================================
 
-// Fade-up sections as they enter the viewport (reduced-motion users see them
-// static — the CSS transition is disabled there, not the class).
+// Fade-up sections as they enter the viewport.
+//
+// The hidden state is applied HERE, from JS, and only to sections that start
+// below the fold. It deliberately is not a static class in the markup: this
+// page is prerendered, so a `.st-reveal { opacity: 0 }` rule painted the whole
+// storefront invisible below the hero until the bundle booted, and then faded
+// in everything already on screen — a blank-then-fill flash on every reload.
+//
+// Anything on screen at mount keeps the pixels it painted with. Anything below
+// the fold is hidden (invisibly, since it is off screen) and fades up when it
+// is scrolled to, which is the only place the animation was ever meant to run.
+// Reduced-motion users are opted out in CSS, so `is-out` is inert for them.
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      el.classList.add('is-in');
-      return;
-    }
+    if (typeof IntersectionObserver === 'undefined') return;
+    if (el.getBoundingClientRect().top < window.innerHeight) return;
+
+    // Hide without animating INTO the hidden state — the transition is only
+    // ever meant to run on the way back in. Without suppressing it, scrolling
+    // immediately after load could catch a section fading out under you.
+    el.classList.add('no-anim', 'is-out');
+    void el.offsetHeight; // flush the hidden state while the transition is off
+    el.classList.remove('no-anim');
+
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          el.classList.add('is-in');
+          el.classList.remove('is-out');
           io.disconnect();
         }
       },
@@ -189,7 +226,15 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
   // trailing gap and the halfway point is an exact seam.
   return (
     <div className="st-ticker" aria-hidden="true">
-      <div className="st-ticker-track">
+      <div
+        className="st-ticker-track"
+        // Constant scroll SPEED, not constant duration. The track is
+        // `width: max-content` and the keyframe travels a fixed -50% of it, so
+        // a hardcoded 60s meant the marquee lurched to nearly 3x speed the
+        // instant the 11 static ticks were replaced by the feed's 30. Two
+        // seconds per tick reproduces today's pace on a full board.
+        style={{ '--st-ticker-dur': `${ticks.length * 2}s` } as CSSProperties}
+      >
         {[0, 1].map((copy) => (
           <div key={copy} className="st-ticker-copy">
             {ticks.map((t, i) => (
@@ -220,8 +265,29 @@ function StoreHeader({
   user: User | null;
 }) {
   const { t } = useTranslation();
-  const [scrolled, setScrolled] = useState(false);
+  // Seeded from the restored scroll position rather than defaulting to false:
+  // reloading part-way down the page otherwise painted the header flat for a
+  // frame and then snapped the shadow on.
+  const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' && window.scrollY > 4);
   const [wordIdx, setWordIdx] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Where the header's account link goes, decided ONCE. The inline nav and the
+  // collapsed menu below both render it, and keeping two copies of the role
+  // ladder is what let them disagree.
+  //
+  // A CONSUMER has no dashboard by design, and their main action is the shop
+  // they are already looking at, so they get their orders instead. /admin is
+  // the fallback for ADMIN alone.
+  const account = user
+    ? {
+        to: user.role === 'FARMER' ? '/farmer'
+          : user.role === 'BUYER' ? '/buyer'
+          : user.role === 'CONSUMER' ? '/orders'
+          : '/admin',
+        label: user.role === 'CONSUMER' ? 'Orders' : 'Dashboard',
+      }
+    : { to: '/login', label: 'Sign in' };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -229,6 +295,23 @@ function StoreHeader({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // The section links collapse into this menu below 960px. Close it on any
+  // outside pointer press or Escape so it never sits open behind the page.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && (e.target as Element)?.closest?.('.st-menu-wrap')) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [menuOpen]);
 
   // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
   useEffect(() => {
@@ -266,31 +349,16 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <LanguageSwitcher />
-          <Link to="/rates" className="st-header-link">{t('Live rates')}</Link>
-          <Link to="/forecast" className="st-header-link">{t('Forecast')}</Link>
-          <Link to="/schemes" className="st-header-link">{t('Yojana')}</Link>
-          <Link to="/equipment" className="st-header-link">{t('Equipment')}</Link>
+          {/* "How it works" (last) is a pitch for people who aren't signed
+              up yet, so signed-in visitors don't get it in the inline row. */}
+          {SECTION_LINKS.slice(0, user ? -1 : undefined).map(([label, to]) => (
+            <Link key={to} to={to} className="st-header-link">{t(label)}</Link>
+          ))}
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
-            //
-            // A CONSUMER has neither. They have no dashboard by design, and
-            // their main action is the shop they are already looking at — so
-            // they get one link, to their orders. Without this branch the
-            // role fell through to /admin and /buyer/browse, two routes
-            // ProtectedRoute would have bounced them straight back out of.
             <>
-              <Link
-                to={
-                  user.role === 'FARMER' ? '/farmer'
-                    : user.role === 'BUYER' ? '/buyer'
-                    : user.role === 'CONSUMER' ? '/orders'
-                    : '/admin'
-                }
-                className="nav-signin"
-              >
-                {user.role === 'CONSUMER' ? t('Orders') : t('Dashboard')}
-              </Link>
+              <Link to={account.to} className="nav-signin">{t(account.label)}</Link>
               {user.role !== 'CONSUMER' && (
                 <Link
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
@@ -303,15 +371,57 @@ function StoreHeader({
             </>
           ) : (
             <>
-              <Link to="/how-it-works" className="st-header-link">{t('How it works')}</Link>
               <Link to="/login" className="nav-signin">{t('Sign in')}</Link>
               <Link to="/signup" className="cb-btn cb-btn-primary">
-                {t('Start selling')}
+                <span className="cb-btn-label">{t('Start selling')}</span>
+                <span className="cb-btn-label-short">{t('Sell')}</span>
                 <ArrowIcon />
               </Link>
             </>
           )}
         </nav>
+
+        {/* Below 960px the section links don't fit beside the search box, so
+            they collapse in here. Without this they were reachable only from
+            the footer — a whole storefront's worth of scrolling away. */}
+        <div className="st-menu-wrap">
+          <button
+            type="button"
+            className="st-menu-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={t('Menu')}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="st-menu" role="menu">
+              {SECTION_LINKS.map(([label, to]) => (
+                <Link key={to} to={to} role="menuitem" className="st-menu-link" onClick={() => setMenuOpen(false)}>
+                  {t(label)}
+                </Link>
+              ))}
+              {/* Below 640px the header drops its .nav-signin slot to keep the
+                  bar on one line, so whichever link lived there — Sign in, or
+                  the account link once you're logged in — has to reappear here.
+                  It reads `account` rather than working the role out again:
+                  the second copy of that ladder had no CONSUMER rung, so a
+                  shopper on a phone got /admin, was bounced by ProtectedRoute,
+                  and had no route to their orders at all. */}
+              <Link
+                to={account.to}
+                role="menuitem"
+                className="st-menu-link"
+                onClick={() => setMenuOpen(false)}
+              >
+                {t(account.label)}
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -399,13 +509,48 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   );
 }
 
+// Placeholder cards that occupy exactly the height the real board will, so the
+// swap to live rates moves nothing. Real elements carrying real (transparent)
+// text rather than fixed-height bars: the line boxes are then identical to the
+// live card's by construction, instead of by a magic number that drifts the
+// next time a font size changes.
+function RateSkeleton() {
+  return (
+    <div className="st-rate" aria-hidden="true">
+      <div className="st-rate-top">
+        <span className="st-sk st-sk-emoji">·</span>
+        <span className="st-sk">▲ 0.0%</span>
+      </div>
+      <div className="st-rate-n"><span className="st-sk">Tomato</span></div>
+      <div className="st-rate-v"><span className="st-sk">₹00/kg</span></div>
+      <div className="cb-mono st-rate-band"><span className="st-sk">₹00–₹00</span></div>
+    </div>
+  );
+}
+
 // Today's rates, front and centre — the shared price anchor every deal on
 // CropBid negotiates around. Live from the govt feed, honest about fallback.
-// NOTE: no st-reveal here — this section mounts empty (null) and only renders
-// once rates arrive, so a mount-time IntersectionObserver would never see it
-// and it would sit invisible at opacity 0, leaving a blank gap in the page.
-function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; currency: CurrencyCode }) {
-  if (!board) return null;
+// NOTE: no st-reveal here. The section is never hidden-then-revealed: it holds
+// its space from first paint and only its contents change, which is what keeps
+// the reload smooth. It collapses only if the feed is unreachable entirely.
+function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | null; pending: boolean; currency: CurrencyCode }) {
+  if (!board) {
+    if (!pending) return null; // feed unreachable — nothing honest to show
+    return (
+      <section className="st-rates">
+        <div className="st-rates-head">
+          <div className="st-rates-title">
+            <span className="cb-eyebrow">Today's mandi rates</span>
+          </div>
+          <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
+          <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
+        </div>
+        <div className="st-rates-track">
+          {Array.from({ length: 10 }, (_, i) => <RateSkeleton key={i} />)}
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="st-rates">
       <div className="st-rates-head">
@@ -456,21 +601,46 @@ interface StripPrediction {
   outlook: { direction: 'rise' | 'hold' | 'ease'; pct7d: number; low: number; high: number };
 }
 
-function useForecast(): StripPrediction[] {
+function useForecast(): { rows: StripPrediction[]; pending: boolean } {
   const [rows, setRows] = useState<StripPrediction[]>([]);
+  const [pending, setPending] = useState(true);
   useEffect(() => {
     let on = true;
     api.get('/rates/predictions')
       .then(({ data }) => { if (on && data?.predictions?.length) setRows(data.predictions); })
-      .catch(() => { /* strip simply doesn't render if the engine is unreachable */ });
+      .catch(() => { /* strip simply doesn't render if the engine is unreachable */ })
+      .finally(() => { if (on) setPending(false); });
     return () => { on = false; };
   }, []);
-  return rows;
+  return { rows, pending };
 }
 
 function ForecastStrip() {
-  const rows = useForecast();
-  if (rows.length === 0) return null;
+  const { rows, pending } = useForecast();
+  // Same rule as the rates board above: hold the height while the engine
+  // answers so the pills fill a box that is already there, rather than
+  // appearing under the reader and pushing the rails down mid-scroll.
+  if (rows.length === 0) {
+    if (!pending) return null;
+    return (
+      <section className="st-fc">
+        <div className="st-rates-head">
+          <div className="st-rates-title">
+            <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+          </div>
+          <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
+          <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
+        </div>
+        <div className="st-fc-track" aria-hidden="true">
+          {Array.from({ length: 10 }, (_, i) => (
+            <span key={i} className="st-fc-pill">
+              <span className="st-sk">🌾 Tomato ▲ 0.0% / 7d</span>
+            </span>
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="st-fc">
       <div className="st-rates-head">
@@ -588,9 +758,11 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
-// Incubation credit — last thing on the page before the footer.
-// Tries the real logo at /india-2047-ventures.png (drop it in client/public);
-// falls back to the SVG recreation until the file exists.
+// Incubation credit — last thing on the page before the footer. Two backers
+// share the row: India 2047 Ventures tries the real logo at
+// /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
+// recreation until that file exists; Founder Startup House ships as a real
+// wordmark PNG, so it is a plain <img> with the name as alt text.
 // -----------------------------------------------------------------------------
 
 function India2047Logo() {
@@ -612,14 +784,29 @@ function IncubatedBy() {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
-    <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
+    <section
+      className="st-incub st-reveal"
+      ref={ref}
+      aria-label="Incubated by India 2047 Ventures and Founder Startup House"
+    >
       <span className="cb-eyebrow">{t('Incubated by')}</span>
-      <div className="st-incub-brand">
-        <India2047Logo />
-        <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+      <div className="st-incub-row">
+        <div className="st-incub-brand">
+          <India2047Logo />
+          <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+        </div>
+        <span className="st-incub-sep" aria-hidden="true" />
+        <img
+          className="st-incub-wordmark"
+          src="/founder-startup-house.png"
+          alt="Founder Startup House"
+          width={150}
+          height={42}
+          loading="lazy"
+        />
       </div>
       <p className="cb-small st-incub-line">
-        {t('CropBid is built with the backing of India 2047 Ventures.')}
+        {t('CropBid is built with the backing of India 2047 Ventures and Founder Startup House.')}
       </p>
     </section>
   );
@@ -634,7 +821,7 @@ export function LandingPage() {
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
-  const board = useLiveRates();
+  const { board, pending: ratesPending } = useLiveRates();
 
   // Where the promo tiles land. The shelf is retail — bulk lots live behind
   // /buyer/browse and /auctions, so a signed-in buyer or farmer is sent to the
@@ -683,7 +870,7 @@ export function LandingPage() {
         <LiveShelf query={query} />
         {!searching && (
           <>
-            <LiveRatesBoard board={board} currency={currency} />
+            <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
             <ForecastStrip />
             <PromoTrio shopHref={shopHref} />
             <HowStrip />
