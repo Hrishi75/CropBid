@@ -16,6 +16,7 @@
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
@@ -191,16 +192,26 @@ interface LiveRate {
 
 interface RatesBoardData { date: string; live: boolean; rates: LiveRate[]; }
 
-function useLiveRates(): RatesBoardData | null {
+// `pending` is what stops the board shoving the page around. The section holds
+// its height with a skeleton while the request is in flight, so today's rates
+// swap into a box that is already the right size instead of appearing from
+// nothing and pushing every rail below it down the page.
+//
+// It starts true and STAYS true through the prerender — effects don't run in
+// renderToString — so the static HTML reserves the space as well, and the
+// reload doesn't jump the moment React takes over either.
+function useLiveRates(): { board: RatesBoardData | null; pending: boolean } {
   const [board, setBoard] = useState<RatesBoardData | null>(null);
+  const [pending, setPending] = useState(true);
   useEffect(() => {
     let on = true;
     api.get('/rates/board')
       .then(({ data }) => { if (on && data?.rates?.length) setBoard(data); })
-      .catch(() => { /* ticker & board fall back to static reference prices */ });
+      .catch(() => { /* ticker & board fall back to static reference prices */ })
+      .finally(() => { if (on) setPending(false); });
     return () => { on = false; };
   }, []);
-  return board;
+  return { board, pending };
 }
 
 function Delta({ pct, flatLabel }: { pct: number; flatLabel?: string }) {
@@ -334,21 +345,37 @@ function retailPack(p: Produce): RetailPack | null {
 // Hooks
 // =============================================================================
 
-// Fade-up sections as they enter the viewport (reduced-motion users see them
-// static — the CSS transition is disabled there, not the class).
+// Fade-up sections as they enter the viewport.
+//
+// The hidden state is applied HERE, from JS, and only to sections that start
+// below the fold. It deliberately is not a static class in the markup: this
+// page is prerendered, so a `.st-reveal { opacity: 0 }` rule painted the whole
+// storefront invisible below the hero until the bundle booted, and then faded
+// in everything already on screen — a blank-then-fill flash on every reload.
+//
+// Anything on screen at mount keeps the pixels it painted with. Anything below
+// the fold is hidden (invisibly, since it is off screen) and fades up when it
+// is scrolled to, which is the only place the animation was ever meant to run.
+// Reduced-motion users are opted out in CSS, so `is-out` is inert for them.
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      el.classList.add('is-in');
-      return;
-    }
+    if (typeof IntersectionObserver === 'undefined') return;
+    if (el.getBoundingClientRect().top < window.innerHeight) return;
+
+    // Hide without animating INTO the hidden state — the transition is only
+    // ever meant to run on the way back in. Without suppressing it, scrolling
+    // immediately after load could catch a section fading out under you.
+    el.classList.add('no-anim', 'is-out');
+    void el.offsetHeight; // flush the hidden state while the transition is off
+    el.classList.remove('no-anim');
+
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
-          el.classList.add('is-in');
+          el.classList.remove('is-out');
           io.disconnect();
         }
       },
@@ -403,7 +430,15 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
   // trailing gap and the halfway point is an exact seam.
   return (
     <div className="st-ticker" aria-hidden="true">
-      <div className="st-ticker-track">
+      <div
+        className="st-ticker-track"
+        // Constant scroll SPEED, not constant duration. The track is
+        // `width: max-content` and the keyframe travels a fixed -50% of it, so
+        // a hardcoded 60s meant the marquee lurched to nearly 3x speed the
+        // instant the 11 static ticks were replaced by the feed's 30. Two
+        // seconds per tick reproduces today's pace on a full board.
+        style={{ '--st-ticker-dur': `${ticks.length * 2}s` } as CSSProperties}
+      >
         {[0, 1].map((copy) => (
           <div key={copy} className="st-ticker-copy">
             {ticks.map((t, i) => (
@@ -435,7 +470,10 @@ function StoreHeader({
   user: User | null;
 }) {
   const { t } = useTranslation();
-  const [scrolled, setScrolled] = useState(false);
+  // Seeded from the restored scroll position rather than defaulting to false:
+  // reloading part-way down the page otherwise painted the header flat for a
+  // frame and then snapped the shadow on.
+  const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' && window.scrollY > 4);
   const [wordIdx, setWordIdx] = useState(0);
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -690,13 +728,48 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   );
 }
 
+// Placeholder cards that occupy exactly the height the real board will, so the
+// swap to live rates moves nothing. Real elements carrying real (transparent)
+// text rather than fixed-height bars: the line boxes are then identical to the
+// live card's by construction, instead of by a magic number that drifts the
+// next time a font size changes.
+function RateSkeleton() {
+  return (
+    <div className="st-rate" aria-hidden="true">
+      <div className="st-rate-top">
+        <span className="st-sk st-sk-emoji">·</span>
+        <span className="st-sk">▲ 0.0%</span>
+      </div>
+      <div className="st-rate-n"><span className="st-sk">Tomato</span></div>
+      <div className="st-rate-v"><span className="st-sk">₹00/kg</span></div>
+      <div className="cb-mono st-rate-band"><span className="st-sk">₹00–₹00</span></div>
+    </div>
+  );
+}
+
 // Today's rates, front and centre — the shared price anchor every deal on
 // CropBid negotiates around. Live from the govt feed, honest about fallback.
-// NOTE: no st-reveal here — this section mounts empty (null) and only renders
-// once rates arrive, so a mount-time IntersectionObserver would never see it
-// and it would sit invisible at opacity 0, leaving a blank gap in the page.
-function LiveRatesBoard({ board, currency }: { board: RatesBoardData | null; currency: CurrencyCode }) {
-  if (!board) return null;
+// NOTE: no st-reveal here. The section is never hidden-then-revealed: it holds
+// its space from first paint and only its contents change, which is what keeps
+// the reload smooth. It collapses only if the feed is unreachable entirely.
+function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | null; pending: boolean; currency: CurrencyCode }) {
+  if (!board) {
+    if (!pending) return null; // feed unreachable — nothing honest to show
+    return (
+      <section className="st-rates">
+        <div className="st-rates-head">
+          <div className="st-rates-title">
+            <span className="cb-eyebrow">Today's mandi rates</span>
+          </div>
+          <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
+          <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
+        </div>
+        <div className="st-rates-track">
+          {Array.from({ length: 10 }, (_, i) => <RateSkeleton key={i} />)}
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="st-rates">
       <div className="st-rates-head">
@@ -747,21 +820,46 @@ interface StripPrediction {
   outlook: { direction: 'rise' | 'hold' | 'ease'; pct7d: number; low: number; high: number };
 }
 
-function useForecast(): StripPrediction[] {
+function useForecast(): { rows: StripPrediction[]; pending: boolean } {
   const [rows, setRows] = useState<StripPrediction[]>([]);
+  const [pending, setPending] = useState(true);
   useEffect(() => {
     let on = true;
     api.get('/rates/predictions')
       .then(({ data }) => { if (on && data?.predictions?.length) setRows(data.predictions); })
-      .catch(() => { /* strip simply doesn't render if the engine is unreachable */ });
+      .catch(() => { /* strip simply doesn't render if the engine is unreachable */ })
+      .finally(() => { if (on) setPending(false); });
     return () => { on = false; };
   }, []);
-  return rows;
+  return { rows, pending };
 }
 
 function ForecastStrip() {
-  const rows = useForecast();
-  if (rows.length === 0) return null;
+  const { rows, pending } = useForecast();
+  // Same rule as the rates board above: hold the height while the engine
+  // answers so the pills fill a box that is already there, rather than
+  // appearing under the reader and pushing the rails down mid-scroll.
+  if (rows.length === 0) {
+    if (!pending) return null;
+    return (
+      <section className="st-fc">
+        <div className="st-rates-head">
+          <div className="st-rates-title">
+            <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+          </div>
+          <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
+          <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
+        </div>
+        <div className="st-fc-track" aria-hidden="true">
+          {Array.from({ length: 10 }, (_, i) => (
+            <span key={i} className="st-fc-pill">
+              <span className="st-sk">🌾 Tomato ▲ 0.0% / 7d</span>
+            </span>
+          ))}
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="st-fc">
       <div className="st-rates-head">
@@ -1083,7 +1181,7 @@ export function LandingPage() {
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
-  const board = useLiveRates();
+  const { board, pending: ratesPending } = useLiveRates();
 
   // Where every buy/bid CTA lands. The storefront catalogue is demo data, so
   // signed-in users go to the real market (buyers browse live lots, farmers
@@ -1139,14 +1237,14 @@ export function LandingPage() {
           <>
             {!searching && <HeroBanner onShop={() => jumpTo('shelf')} board={board} currency={currency} user={user} />}
             <LiveShelf query={query} />
-            {!searching && <LiveRatesBoard board={board} currency={currency} />}
+            {!searching && <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />}
           </>
         ) : searching ? (
           <SearchResults query={query} currency={currency} shopHref={shopHref} />
         ) : (
           <>
             <HeroBanner onShop={() => jumpTo('veg')} board={board} currency={currency} user={user} />
-            <LiveRatesBoard board={board} currency={currency} />
+            <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
             <ForecastStrip />
             <PromoTrio shopHref={shopHref} />
             <CategoryGrid onJump={jumpTo} />
