@@ -1483,7 +1483,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
   // MAX` after taking the row lock, so the loser of a race sees the winner's
   // committed value and matches zero rows.
   const claimed = await prisma.phoneChallenge.updateMany({
-    where: { id: challenge.id, attempts: { lt: PHONE_OTP_MAX_ATTEMPTS } },
+    where: { id: challenge.id, codeHash: challenge.codeHash, attempts: { lt: PHONE_OTP_MAX_ATTEMPTS } },
     data: { attempts: { increment: 1 } },
   });
   if (claimed.count === 0) {
@@ -1503,14 +1503,16 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
     );
   }
 
-  // The code was right, so hand the claimed attempt back: `attempts` counts
-  // wrong guesses, and the claim above exists only to make the ceiling atomic.
-  // This matters for the name check below, which deliberately leaves the
-  // challenge alive — three correct-but-nameless submissions must not burn a
-  // code that is still perfectly valid.
-  await prisma.phoneChallenge
-    .update({ where: { id: challenge.id }, data: { attempts: { decrement: 1 } } })
-    .catch(() => {});
+  // No refund for a correct code, deliberately. Handing the slot back was an
+  // unconditional decrement by challenge id, which meant it could just as
+  // easily cancel a wrong guess that landed in between and hand an attacker
+  // back capacity they had already spent. The counter is only safe if nothing
+  // ever gives to it.
+  //
+  // The cost is that a correct code submitted without a name — the one path
+  // below that leaves the challenge alive — spends one of the three. The
+  // client asks for the name on the same screen as the code, so that is one
+  // try in an unusual case, against a ceiling that now cannot be walked back.
 
   const existing = await prisma.user.findUnique({
     where: { phone: challenge.phone },
@@ -1533,7 +1535,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
   // the same correct code both get past the check above, and a swallowed delete
   // let both go on to mint tokens — and, on the signup path, to race over
   // creating the same account. Whoever's DELETE removes the row won.
-  const spent = await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id } });
+  const spent = await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id, codeHash: challenge.codeHash } });
   if (spent.count === 0) {
     throw new ApiError(400, 'That code has already been used — start again to get a new one');
   }

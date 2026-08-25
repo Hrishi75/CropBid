@@ -504,14 +504,20 @@ export async function reviewPartnerApplication(input: ReviewInput) {
     throw new ApiError(409, `Cannot ${input.action.toLowerCase().replace('_', ' ')} an application in status ${profile.status}`);
   }
 
-  // Apply the decision with the allowed statuses carried in the WHERE, not
-  // just checked above it. The read-then-write version made the 409 promised
+  // Apply the decision against the EXACT status that was just read and
+  // reviewed, not merely against the set this action allows. The read-then-write version made the 409 promised
   // by ACTION_RULES decorative: two admins clicking at once, or an applicant
   // resubmitting mid-review, both validate the same old status and then write
-  // by profile id, so the last write silently buries the first one. Conditioned
-  // on `status`, the loser updates nothing and gets the conflict it is owed.
+  // by profile id, so the last write silently buries the first one.
+  //
+  // `rule.from` is too loose to be the guard: REQUEST_INFO's destination sits
+  // inside APPROVE's allowed set, so two overlapping decisions would both pass
+  // it and the later one would still bury the earlier. Pinning the exact
+  // observed value also catches an applicant resubmitting mid-review — the row
+  // moves to SUBMITTED, which rule.from would have waved through, approving
+  // fields nobody looked at.
   const claimed = await (table as typeof prisma.farmerProfile).updateMany({
-    where: { id: input.profileId, status: { in: rule.from } },
+    where: { id: input.profileId, status: profile.status },
     data: {
       status: rule.to,
       statusNote: rule.needsNote ? input.note!.trim() : null,
