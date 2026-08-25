@@ -178,7 +178,7 @@ const QUALITY_STANDARDS: QStandard[] = [
       { test: 'Free fatty acids in the butter', limit: '≤ 1.75%', why: 'The lab measure of bad drying or storage. Past 1.75% the butter is graded inferior, whatever the beans looked like.' },
       { test: 'Cadmium', limit: '≤ 0.60 mg/kg', why: 'The EU limit for cocoa powder. Many buyers reject beans over 0.30 mg/kg outright, so it decides export access.' },
     ],
-    note: 'Cocoa is the odd one out on this list: it is graded by a cut test, not by weighing. 300 beans are drawn at random and sliced lengthwise, and each bean is scored on the single most serious defect it shows — so no bean is counted twice. Every percentage above is by count of those 300.',
+    note: 'Cocoa is the odd one out on this list: its defects are graded by a cut test, not by weighing. 300 beans are drawn at random and sliced lengthwise, and each bean is scored on the single most serious defect it shows — so no bean is counted twice. The mouldy, slaty, and insect-damaged/germinated/flat percentages are counts of those 300. The last three limits are not: bean size is a weight comparison, and moisture, free fatty acids and cadmium are all measured in a lab.',
   },
   {
     id: 'fresh',
