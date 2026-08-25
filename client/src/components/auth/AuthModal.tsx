@@ -131,8 +131,12 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   // Every open starts clean. Leaving a half-typed number and a dead challenge
   // behind would show the next person a code box for an SMS they never got.
   useEffect(() => {
+    // Bumped on BOTH transitions, not just opening. Closing mid-request is the
+    // commonest way to abandon one, and leaving the counter untouched there let
+    // the continuation sail through its guard and navigate someone who had
+    // already walked away.
+    attemptRef.current += 1;
     if (open) {
-      attemptRef.current += 1;
       setSending(false); setSigningIn(false); setVerifying(false);
       setMode('code');
       setChallenge(null); setPhone(''); setCode(''); setName('');
