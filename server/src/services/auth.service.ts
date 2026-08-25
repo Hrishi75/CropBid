@@ -14,6 +14,7 @@
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
+import type { PartnerStatus } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
@@ -1012,7 +1013,9 @@ interface BuyerOnboardingInput {
 }
 
 // Statuses an applicant is allowed to overwrite with a fresh submission.
-const RESUBMITTABLE: string[] = ['NEEDS_INFO', 'REJECTED'];
+// Typed as the enum rather than string[] so it can go straight into a Prisma
+// `status: { in: ... }` filter — which is where the check now lives.
+const RESUBMITTABLE: PartnerStatus[] = ['NEEDS_INFO', 'REJECTED'];
 
 // What each seller type must provide. Field-level shape is enforced by zod in
 // the controller; THIS is the cross-field business rule (which fields matter
@@ -1075,10 +1078,20 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     if (!RESUBMITTABLE.includes(existing.status)) {
       throw new ApiError(409, 'Seller application already exists');
     }
-    const profile = await prisma.farmerProfile.update({
-      where: { userId },
+    // Conditioned on the status, not just checked against it. An admin
+    // reviewing this application at the same moment commits a decision that a
+    // plain update-by-userId would silently overwrite, leaving SUBMITTED
+    // sitting on top of the reviewer, the audit row and the notification that
+    // say otherwise. Losing the race means the decision landed first, and the
+    // applicant is told so.
+    const claimed = await prisma.farmerProfile.updateMany({
+      where: { userId, status: { in: RESUBMITTABLE } },
       data: { ...data, status: 'SUBMITTED', submittedAt: new Date() },
     });
+    if (claimed.count === 0) {
+      throw new ApiError(409, 'Seller application already exists');
+    }
+    const profile = await prisma.farmerProfile.findUniqueOrThrow({ where: { userId } });
     await recordAudit({
       actorId: userId, actorRole: 'FARMER',
       action: 'partner.application.resubmit',
@@ -1280,10 +1293,20 @@ export async function completeBuyerOnboarding(userId: string, input: BuyerOnboar
     if (!RESUBMITTABLE.includes(existing.status)) {
       throw new ApiError(409, 'Buyer application already exists');
     }
-    const profile = await prisma.buyerProfile.update({
-      where: { userId },
+    // Conditioned on the status, not just checked against it. An admin
+    // reviewing this application at the same moment commits a decision that a
+    // plain update-by-userId would silently overwrite, leaving SUBMITTED
+    // sitting on top of the reviewer, the audit row and the notification that
+    // say otherwise. Losing the race means the decision landed first, and the
+    // applicant is told so.
+    const claimed = await prisma.buyerProfile.updateMany({
+      where: { userId, status: { in: RESUBMITTABLE } },
       data: { ...data, status: 'SUBMITTED', submittedAt: new Date() },
     });
+    if (claimed.count === 0) {
+      throw new ApiError(409, 'Buyer application already exists');
+    }
+    const profile = await prisma.buyerProfile.findUniqueOrThrow({ where: { userId } });
     await recordAudit({
       actorId: userId, actorRole: 'BUYER',
       action: 'partner.application.resubmit',
@@ -1504,7 +1527,16 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
   }
 
   // Correct code, and everything needed is present: the challenge is spent.
-  await prisma.phoneChallenge.delete({ where: { id: challenge.id } }).catch(() => {});
+  //
+  // The delete is the thing that makes the code single-use, so it decides who
+  // continues rather than being tidy-up after the fact. Two requests carrying
+  // the same correct code both get past the check above, and a swallowed delete
+  // let both go on to mint tokens — and, on the signup path, to race over
+  // creating the same account. Whoever's DELETE removes the row won.
+  const spent = await prisma.phoneChallenge.deleteMany({ where: { id: challenge.id } });
+  if (spent.count === 0) {
+    throw new ApiError(400, 'That code has already been used — start again to get a new one');
+  }
 
   // --- Returning account: just issue a session ---
   if (existing) {
