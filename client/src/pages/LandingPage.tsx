@@ -948,9 +948,11 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
-// Incubation credit — last thing on the page before the footer.
-// Tries the real logo at /india-2047-ventures.png (drop it in client/public);
-// falls back to the SVG recreation until the file exists.
+// Incubation credit — last thing on the page before the footer. Two backers
+// share the row: India 2047 Ventures tries the real logo at
+// /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
+// recreation until that file exists; Founder Startup House ships as a real
+// wordmark PNG, so it is a plain <img> with the name as alt text.
 // -----------------------------------------------------------------------------
 
 function India2047Logo() {
@@ -972,14 +974,29 @@ function IncubatedBy() {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
-    <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
+    <section
+      className="st-incub st-reveal"
+      ref={ref}
+      aria-label="Incubated by India 2047 Ventures and Founder Startup House"
+    >
       <span className="cb-eyebrow">{t('Incubated by')}</span>
-      <div className="st-incub-brand">
-        <India2047Logo />
-        <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+      <div className="st-incub-row">
+        <div className="st-incub-brand">
+          <India2047Logo />
+          <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+        </div>
+        <span className="st-incub-sep" aria-hidden="true" />
+        <img
+          className="st-incub-wordmark"
+          src="/founder-startup-house.png"
+          alt="Founder Startup House"
+          width={150}
+          height={42}
+          loading="lazy"
+        />
       </div>
       <p className="cb-small st-incub-line">
-        {t('CropBid is built with the backing of India 2047 Ventures.')}
+        {t('CropBid is built with the backing of India 2047 Ventures and Founder Startup House.')}
       </p>
     </section>
   );
