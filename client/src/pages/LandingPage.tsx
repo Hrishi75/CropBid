@@ -33,6 +33,7 @@ import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 import { LiveShelf } from './consumer/LiveShelf';
+import { CartLink } from '../components/consumer/CartBar';
 import type { User } from '../types';
 import {
   type Country, type CurrencyCode, type UnitCode,
@@ -359,7 +360,7 @@ function StoreHeader({
             // into the app (dashboard + the role's main action).
             <>
               <Link to={account.to} className="nav-signin">{t(account.label)}</Link>
-              {user.role !== 'CONSUMER' && (
+              {user.role !== 'CONSUMER' ? (
                 <Link
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
                   className="cb-btn cb-btn-primary"
@@ -367,6 +368,10 @@ function StoreHeader({
                   {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
                   <ArrowIcon />
                 </Link>
+              ) : (
+                // A shopper's primary action is the basket they are filling.
+                // Renders nothing until there is something in it.
+                <CartLink />
               )}
             </>
           ) : (

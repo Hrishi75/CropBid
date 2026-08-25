@@ -47,9 +47,10 @@ import { FarmerAnalytics } from '../pages/farmer/FarmerAnalytics';
 import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
 
 // Consumer (retail) pages — deliberately a small set. A shopper gets a product
-// page, a checkout and their orders; everything else in the app is B2B.
+// page, a cart, a checkout and their orders; everything else in the app is B2B.
 import { ProductDetail } from '../pages/consumer/ProductDetail';
-import { Checkout } from '../pages/consumer/Checkout';
+import { Cart } from '../pages/consumer/Cart';
+import { Checkout, BuyNowRedirect } from '../pages/consumer/Checkout';
 import { MyOrders } from '../pages/consumer/MyOrders';
 import { OrderDetail } from '../pages/consumer/OrderDetail';
 
@@ -317,10 +318,29 @@ export function AppRoutes() {
         }
       />
       <Route
-        path="/checkout/:listingId"
+        path="/cart"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <Cart />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/checkout"
         element={
           <ProtectedRoute allowedRoles={['CONSUMER']}>
             <Checkout />
+          </ProtectedRoute>
+        }
+      />
+      {/* Legacy one-lot checkout. The shop now buys through the cart, but this
+          URL is bookmarked and pasted, so it drops the lot into the basket and
+          hands over to the real checkout rather than 404ing. */}
+      <Route
+        path="/checkout/:listingId"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <BuyNowRedirect />
           </ProtectedRoute>
         }
       />
