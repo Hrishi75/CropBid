@@ -348,7 +348,10 @@ export default function StorefrontHomeScreen() {
     if (v.sellers > 1 && v.group) {
       // Several farmers sell this crop — open the comparison screen instead
       // of jumping into one farmer's lot.
-      nav.navigate('CropSellers', { crop: v.name, preview: v.group });
+      // `retailIn` carries this shelf's scope across, so the comparison screen
+      // re-fetches the same shelf rather than the whole country. Empty for a
+      // farmer or a buyer, who are looking at the open market on purpose.
+      nav.navigate('CropSellers', { crop: v.name, preview: v.group, retailIn: shopping ? city : undefined });
     } else if (v.listing) {
       nav.navigate('ListingDetail', { id: v.listing.id, preview: v.listing });
     }
