@@ -223,7 +223,7 @@ export function BidForm({ listing }: BidFormProps) {
           </div>
         </Section>
 
-        <div style={{ display: 'flex', gap: 12, padding: '18px 0' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '18px 0' }}>
           <Button type="submit" size="lg" loading={loading}>
             Send bid
             <ArrowIcon />

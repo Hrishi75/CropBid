@@ -256,7 +256,7 @@ export function CreateListing() {
       </h1>
       <p className="cb-page-lede">Set crop, grade, price floor, walk-away. Your agent takes it from there.</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
+      <div className="cb-split" style={{ gap: 24, marginTop: 28 }}>
         <form onSubmit={handleSubmit} className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '4px 24px' }}>
             {/* Voice input. Renders nothing when the server reports it is
@@ -332,7 +332,7 @@ export function CreateListing() {
             </Section>
 
             <Section title="Volume & grade">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Quantity"
                   type="number"
@@ -375,7 +375,7 @@ export function CreateListing() {
               <p className="cb-field-hint" style={{ marginTop: 0 }}>
                 Min = your floor price (won't sell below). Max = your ideal price.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Floor"
                   type="number"
@@ -403,7 +403,7 @@ export function CreateListing() {
             </Section>
 
             <Section title="Logistics">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Location (city)"
                   placeholder="e.g., Nashik"
@@ -529,7 +529,7 @@ export function CreateListing() {
               )}
             </Section>
 
-            <div style={{ display: 'flex', gap: 12, padding: '20px 0' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, padding: '20px 0' }}>
               <Button type="submit" size="lg" loading={loading || fetching}>
                 {isEditMode ? 'Update listing' : 'Publish lot'}
                 <ArrowIcon />

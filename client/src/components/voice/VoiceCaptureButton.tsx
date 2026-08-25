@@ -304,7 +304,7 @@ export function VoiceCaptureButton<F = VoiceDraftFields>({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
         {phase === 'recording' ? (
           <button type="button" className="cb-btn" onClick={stopRecording}>
             {t('Stop and fill the form')}

@@ -261,7 +261,7 @@ export function NegotiationChat() {
         <div className="cb-small">
           Agent watching · auto-counter within configured guardrails
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <Link to="/agent" className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5 }}>⚙ Adjust strategy</Link>
           <button
             type="button"

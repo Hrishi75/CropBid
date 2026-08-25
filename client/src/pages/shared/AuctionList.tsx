@@ -119,7 +119,7 @@ export function AuctionList() {
       </h1>
 
       {isFarmer && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 28, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 28, marginBottom: 16 }}>
           <Button onClick={() => setShowStartForm(!showStartForm)}>
             Start auction
             <ArrowIcon />
@@ -130,7 +130,7 @@ export function AuctionList() {
       {showStartForm && isFarmer && (
         <div className="cb-card" style={{ marginBottom: 24 }}>
           <div className="cb-eyebrow" style={{ marginBottom: 12 }}>Start auction</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+          <div className="cb-split-2-1" style={{ gap: 14 }}>
             <div>
               <label className="cb-label">Select listing</label>
               <select value={selectedListing} onChange={(e) => setSelectedListing(e.target.value)} className="cb-input">
@@ -152,7 +152,7 @@ export function AuctionList() {
               max={60}
             />
           </div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
             <Button onClick={handleStartAuction} loading={starting} disabled={!selectedListing}>
               Open auction
               <ArrowIcon />
@@ -194,7 +194,7 @@ export function AuctionList() {
                     {ending ? '⚠ ENDING' : 'LIVE'} · ◷ {left}
                   </span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginTop: 12 }}>
+                <div className="cb-metrics" style={{ gap: 14, marginTop: 12 }}>
                   <div>
                     <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>CURRENT</div>
                     <div className="cb-mono" style={{ fontWeight: 500 }}>{formatCurrency(a.currentPrice, a.currency)}/{a.unit.toLowerCase()}</div>

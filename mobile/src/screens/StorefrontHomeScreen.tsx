@@ -1,14 +1,23 @@
 // Storefront Home — the Home tab for ALL THREE roles (farmer, buyer,
-// consumer) AND the signed-out guest landing: an exact mobile mirror of the WEB homepage
-// (client/src/pages/LandingPage.tsx): forest price ticker, cream header with
-// wordmark + rotating-hint search + category chips, the mandi-photo hero
-// banner, promo trio, category tiles, then EVERY listing below in the same
-// four rails (Fresh Vegetables / Seasonal Fruits / Grains & Pulses / Spices &
-// Oilseeds), a how-it-works strip, and the sell CTA.
+// consumer) AND the signed-out guest landing: an exact mobile mirror of the WEB
+// homepage (client/src/pages/LandingPage.tsx): forest price ticker, cream
+// header with wordmark + rotating-hint search + category chips, the mandi-photo
+// hero banner, promo trio, category tiles, then EVERY live listing below in the
+// same rails, a how-it-works strip, and the sell CTA.
 //
-// Like the web, the market always renders with prices: the shared static
-// catalog (lib/catalog.ts) fills every rail, and live listings from the API
-// replace the demo card for their crop (consumers see direct-sale lots only).
+// EVERY CARD HERE IS A REAL LOT. It did not used to be: the shared static
+// catalog filled each rail with invented lots so the market "always rendered
+// with prices", and a live listing merely replaced the demo card for its crop.
+// The demo cards carried a village, a grade and a quantity in the same card
+// shape as a real listing, and shoppers read them as farmers' listings —
+// because that is exactly what they looked like. They are gone. What the rails
+// hold now is what the API returned, and nothing else.
+//
+// AND THE SHELF IS LOCAL FOR SHOPPERS. A household pack cannot be trucked
+// across a state, so a consumer or guest sees direct-sale lots in ONE city and
+// picks that city first — same rule as the web shelf. Farmers and buyers deal
+// in lots that move by the tonne, so their market stays national.
+//
 // Each crop gets ONE card: when several farmers sell the same crop, their lots
 // collapse into a grouped card ("N FARMERS", cheapest price first) that opens
 // the CropSellers comparison screen — farmer names, trust, grade, and price
@@ -42,14 +51,14 @@ import { LanguagePill } from '../components/LanguagePicker';
 import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
-import { browse } from '../api/endpoints';
+import { browse, retailCities, updateLocation } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
 import type { Listing } from '../api/types';
 import { money, unitLabel } from '../lib/format';
 import {
-  CATEGORY_TILES, CHIPS, DEMO_PRODUCTS, RAILS, TICKER,
+  CATEGORY_TILES, CHIPS, RAILS, TICKER,
   railFor, shopPack, type RailId, type ShopPack,
 } from '../lib/catalog';
 
@@ -103,7 +112,6 @@ interface ShopBasis {
 
 interface CardVM {
   key: string;
-  live: boolean;
   listing?: Listing;
   // All live lots for this crop, cheapest first, when more than one farmer
   // sells it — the card then opens CropSellers instead of ListingDetail.
@@ -146,7 +154,6 @@ const shopBasis = (l: Listing): ShopBasis | null =>
 function fromListing(l: Listing): CardVM {
   return {
     key: l.id,
-    live: true,
     listing: l,
     sellers: 1,
     cat: railFor(l.cropName),
@@ -224,12 +231,20 @@ export default function StorefrontHomeScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
-  const { user } = useAuth();
+  const { user, applyUser } = useAuth();
   const [listings, setListings] = useState<Listing[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<RailId | null>(null);
+  const [cities, setCities] = useState<Array<{ city: string; state: string }>>([]);
+  // A guest has no account to hold a city on, so theirs lives here for the
+  // session. A signed-in shopper's comes off User.location, which the checkout
+  // reads as the delivery default.
+  const [guestCity, setGuestCity] = useState('');
+  const [savingCity, setSavingCity] = useState('');
+  const [changingCity, setChangingCity] = useState(false);
   const board = useLiveRates();
 
   const role = user?.role;
@@ -240,23 +255,56 @@ export default function StorefrontHomeScreen() {
   // Card action mirrors what ListingDetail offers each role.
   const actionLabel = role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'ADD';
   const liveWord = role === 'CONSUMER' ? 'FARM DIRECT' : 'LIVE LOT';
+  // Whoever is being sold a pack is also being promised a delivery, so the
+  // shelf they see has to be one they can actually be delivered from.
+  const city = shopping ? (user ? (user.location?.trim() ?? '') : guestCity) : '';
+  const needsCity = shopping && (city === '' || changingCity);
+
+  // Which cities can be served at all — needed before any produce is fetched
+  // for a shopper, and again whenever they want to change city.
+  useEffect(() => {
+    if (!shopping) return;
+    let on = true;
+    retailCities()
+      .then((rows) => { if (on) setCities(rows); })
+      .catch(() => { if (on) setCities([]); });
+    return () => { on = false; };
+  }, [shopping]);
 
   const load = useCallback(async () => {
+    // No city means no shelf to fetch — the picker is showing instead.
+    if (needsCity) { setLoaded(true); return; }
     try {
-      // Consumers only see lots opened for direct retail; farmers and buyers
-      // see the whole open market.
-      const data = await browse(role === 'CONSUMER' ? { directSale: true } : {});
+      // Shoppers only see lots opened for direct retail, in their own city;
+      // farmers and buyers see the whole open market, nationwide.
+      const data = await browse(shopping ? { directSale: true, location: city } : {});
       glide();
       setListings(data.listings ?? []);
       setError(null);
     } catch (e) {
-      setError(errorMessage(e, 'Could not reach the market — showing reference prices.'));
+      setError(errorMessage(e, 'Could not reach the market. Pull down to try again.'));
+      setListings([]);
+    } finally {
+      setLoaded(true);
     }
-  }, [role]);
+  }, [shopping, city, needsCity]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const chooseCity = useCallback(async (next: string) => {
+    setChangingCity(false);
+    if (!user) { setGuestCity(next); return; }
+    setSavingCity(next);
+    try {
+      applyUser(await updateLocation(next));
+    } catch (e) {
+      Alert.alert('Could not save your city', errorMessage(e, 'Please try again.'));
+    } finally {
+      setSavingCity('');
+    }
+  }, [user, applyUser]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -264,11 +312,10 @@ export default function StorefrontHomeScreen() {
     setRefreshing(false);
   }, [load]);
 
-  // Live lots first — one card per CROP, not per lot: when several farmers
-  // sell the same crop their lots collapse into a grouped card that opens the
-  // CropSellers comparison screen. The static catalog then fills every crop
-  // that has no live lot yet, so the market always renders full, with prices —
-  // same as the web.
+  // One card per CROP, not per lot: when several farmers sell the same crop
+  // their lots collapse into a grouped card that opens the CropSellers
+  // comparison screen. Nothing is added underneath — an empty market renders
+  // empty, and says so.
   const items = useMemo<CardVM[]>(() => {
     const byCrop = new Map<string, Listing[]>();
     for (const l of listings) {
@@ -277,37 +324,7 @@ export default function StorefrontHomeScreen() {
       if (group) group.push(l);
       else byCrop.set(key, [l]);
     }
-    const live = [...byCrop.values()].map(fromGroup);
-    const liveNames = new Set(byCrop.keys());
-    const demo = DEMO_PRODUCTS
-      .filter((d) => !liveNames.has(d.name.trim().toLowerCase()))
-      .map<CardVM>((d) => ({
-        key: `demo-${d.slug}`,
-        live: false,
-        sellers: 1,
-        cat: d.cat,
-        name: d.name,
-        variety: d.variety,
-        emoji: d.emoji,
-        image: null,
-        unit: d.unit,
-        price: d.price,
-        anchor: d.anchor,
-        floor: d.price,
-        retail: null,
-        // Reference cards are the showroom — they open the mandi-price note,
-        // so they price a pack off their own band.
-        shop: { unit: d.unit, floor: d.price, ceiling: d.anchor, retail: null },
-        pack: null,
-        qty: d.qty,
-        location: d.location,
-        state: d.state,
-        grade: d.grade,
-        organic: !!d.organic,
-        trust: null,
-        low: false,
-      }));
-    const all = [...live, ...demo];
+    const all = [...byCrop.values()].map(fromGroup);
     if (!shopping) return all;
     // Price the household pack off whichever number the lot actually carries —
     // the farmer's own retail price, or the floor plus the shelf margin. A lot
@@ -331,14 +348,12 @@ export default function StorefrontHomeScreen() {
     if (v.sellers > 1 && v.group) {
       // Several farmers sell this crop — open the comparison screen instead
       // of jumping into one farmer's lot.
-      nav.navigate('CropSellers', { crop: v.name, preview: v.group });
-    } else if (v.live && v.listing) {
+      // `retailIn` carries this shelf's scope across, so the comparison screen
+      // re-fetches the same shelf rather than the whole country. Empty for a
+      // farmer or a buyer, who are looking at the open market on purpose.
+      nav.navigate('CropSellers', { crop: v.name, preview: v.group, retailIn: shopping ? city : undefined });
+    } else if (v.listing) {
       nav.navigate('ListingDetail', { id: v.listing.id, preview: v.listing });
-    } else {
-      Alert.alert(
-        'Reference price',
-        `${v.name} (${v.variety}) — typical ${v.location} mandi band. A real farmer's lot replaces this card the moment one is listed. Pull down to refresh.`,
-      );
     }
   };
 
@@ -427,7 +442,40 @@ export default function StorefrontHomeScreen() {
       >
         {error ? <Text style={styles.errorLine}>{error}</Text> : null}
 
-        {browsing ? (
+        {shopping && !needsCity ? (
+          <View style={styles.cityBar}>
+            <Text style={styles.cityBarText}>Delivering to {city}</Text>
+            <PressScale onPress={() => setChangingCity(true)} scaleTo={0.94}>
+              <Text style={styles.cityBarChange}>change</Text>
+            </PressScale>
+          </View>
+        ) : null}
+
+        {needsCity ? (
+          /* Asked before any produce is shown. An order that cannot be
+             delivered is worse than an empty shop, so the city comes first. */
+          <View style={styles.cityGate}>
+            <Mono style={styles.cityGateEyebrow}>DELIVERY</Mono>
+            <Text style={styles.cityGateTitle}>Where should we deliver?</Text>
+            <Text style={styles.cityGateBody}>
+              Fresh produce travels short distances. Pick your city and we'll show
+              you the farms that can actually reach you.
+            </Text>
+            {cities.length === 0 ? (
+              <Text style={styles.cityGateNote}>
+                No farm is selling direct anywhere yet. Check back shortly — growers
+                open lots for retail as they harvest.
+              </Text>
+            ) : (
+              <CityRow cities={cities} current={city} saving={savingCity} onPick={chooseCity} />
+            )}
+            {city ? (
+              <PressScale onPress={() => setChangingCity(false)} scaleTo={0.94}>
+                <Text style={styles.cityGateCancel}>Cancel</Text>
+              </PressScale>
+            ) : null}
+          </View>
+        ) : browsing ? (
           <>
             {/* hero banner — the web banner with the mandi photo */}
             <View style={styles.banner}>
@@ -437,7 +485,9 @@ export default function StorefrontHomeScreen() {
                 <View style={styles.bannerChip}>
                   <Pulse style={styles.liveDot} />
                   <Mono style={styles.bannerChipText}>
-                    LIVE · {listings.length > 0 ? `${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}` : 'MANDI PRICES'} · VERIFIED FARMS
+                    {listings.length > 0
+                      ? `LIVE · ${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                      : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                   </Mono>
                 </View>
                 <Text style={styles.bannerTitle}>
@@ -473,7 +523,33 @@ export default function StorefrontHomeScreen() {
               ))}
             </ScrollView>
 
-            {/* the market — every listing, in the web's four rails */}
+            {/* the market — every LIVE listing, in the web's rails. Nothing
+                backfills an empty rail, so when there is no stock the whole
+                block is one plain line saying so. */}
+            {loaded && items.length === 0 ? (
+              <View style={styles.emptyMarket}>
+                <Text style={styles.emptyEmoji}>🌾</Text>
+                <Text style={styles.emptyMarketTitle}>
+                  {shopping
+                    ? `No farm near ${city} is selling direct yet.`
+                    : 'No lots are open right now.'}
+                </Text>
+                <Text style={styles.emptyMarketBody}>
+                  {shopping
+                    ? 'We only show produce that can actually reach you. Pull down to refresh, or pick another city.'
+                    : 'Pull down to refresh — new lots appear here the moment a farmer lists one.'}
+                </Text>
+                {shopping && cities.length > 0 ? (
+                  <CityRow
+                    cities={cities}
+                    current={city}
+                    saving={savingCity}
+                    onPick={chooseCity}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+
             {RAILS.map((rail) => {
               const railItems = items.filter((v) => v.cat === rail.id);
               if (railItems.length === 0) return null;
@@ -681,6 +757,39 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
   );
 }
 
+// The cities that actually have direct-sale stock, as pills. Not a free-text
+// field: a typo would silently return an empty shelf, and only these cities
+// can be served at all.
+function CityRow({
+  cities, current, saving, onPick,
+}: {
+  cities: Array<{ city: string; state: string }>;
+  current: string;
+  saving: string;
+  onPick: (city: string) => void;
+}) {
+  return (
+    <View style={styles.cityWrap}>
+      {cities.map((c) => {
+        const on = current.toLowerCase() === c.city.toLowerCase();
+        return (
+          <PressScale
+            key={`${c.city}-${c.state}`}
+            onPress={() => onPick(c.city)}
+            scaleTo={0.94}
+            cardStyle={[styles.cityPill, on && styles.cityPillOn]}
+          >
+            <Text style={[styles.cityPillText, on && styles.cityPillTextOn]}>
+              {saving === c.city ? 'Saving…' : c.city}
+            </Text>
+            <Mono style={[styles.cityPillState, on && styles.cityPillTextOn]}>{c.state}</Mono>
+          </PressScale>
+        );
+      })}
+    </View>
+  );
+}
+
 function PromoCard({
   tone, emoji, title, desc, onPress,
 }: {
@@ -740,7 +849,7 @@ function ProductCard({
   // a direct-sale lot with no household pack (cotton, maize) is bought whole by
   // the quintal, and everything else is a bidding lot. Farmers and buyers keep
   // their own verb — they never see packs.
-  const label = !shopping || pack ? action : vm.live && vm.shop ? 'BUY' : 'BID';
+  const label = !shopping || pack ? action : vm.shop ? 'BUY' : 'BID';
   return (
     <PressScale
       onPress={onPress}
@@ -768,13 +877,11 @@ function ProductCard({
         <View style={styles.liveRow}>
           <Pulse style={styles.liveDotSm} />
           <Mono style={styles.liveText}>
-            {!vm.live
-              ? 'MANDI PRICE'
-              : vm.sellers > 1
-                ? `${vm.sellers} FARMERS · ${liveWord}`
-                : vm.trust != null
-                  ? `★ ${vm.trust} · ${liveWord}`
-                  : liveWord}
+            {vm.sellers > 1
+              ? `${vm.sellers} FARMERS · ${liveWord}`
+              : vm.trust != null
+                ? `★ ${vm.trust} · ${liveWord}`
+                : liveWord}
           </Mono>
         </View>
         <Text style={styles.cardName} numberOfLines={1}>
@@ -900,6 +1007,56 @@ const styles = StyleSheet.create({
     color: colors.ember,
     paddingHorizontal: 16,
     paddingTop: 10,
+  },
+
+  // --- delivery city ---
+  cityBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  cityBarText: { fontFamily: font.sansMed, fontSize: 12.5, color: design.ink2 },
+  cityBarChange: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
+  cityGate: { paddingHorizontal: 16, paddingTop: 24, gap: 8 },
+  cityGateEyebrow: { fontSize: 10, letterSpacing: 1, color: design.ink3 },
+  cityGateTitle: { fontFamily: font.sansSemi, fontSize: 21, letterSpacing: -0.3, color: design.ink },
+  cityGateBody: { fontFamily: font.sans, fontSize: 14, lineHeight: 20, color: design.ink2 },
+  cityGateNote: { fontFamily: font.sans, fontSize: 13, lineHeight: 19, color: design.ink3, marginTop: 6 },
+  cityGateCancel: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink3, marginTop: 14 },
+  cityWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  cityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: design.paper,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  cityPillOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  cityPillText: { fontFamily: font.sansMed, fontSize: 13, color: design.ink2 },
+  cityPillState: { fontSize: 10, color: design.ink3 },
+  cityPillTextOn: { color: colors.textInverse },
+
+  // --- empty market ---
+  emptyMarket: { alignItems: 'center', paddingHorizontal: 24, paddingTop: 40, gap: 8 },
+  emptyMarketTitle: {
+    fontFamily: font.sansSemi,
+    fontSize: 16,
+    letterSpacing: -0.2,
+    color: design.ink,
+    textAlign: 'center',
+  },
+  emptyMarketBody: {
+    fontFamily: font.sans,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: design.ink3,
+    textAlign: 'center',
   },
 
   sectionTitle: {

@@ -98,7 +98,7 @@ export function RequirementDetail() {
         Accept an offer to close the deal. Each accepted fill becomes its own transaction.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(300px, 380px)', gap: 24, marginTop: 28, alignItems: 'start' }}>
+      <div className="cb-split-rail" style={{ gap: 24, marginTop: 28, alignItems: 'start' }}>
         <div className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '18px 20px', borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-pill-group">

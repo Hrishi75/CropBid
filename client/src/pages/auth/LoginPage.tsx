@@ -69,8 +69,8 @@ export function LoginPage() {
           <span className="wordmark-text">CropBid</span>
         </Link>
         <nav className="cb-auth-nav-links">
-          <a href="/#how">{t('How it works')}</a>
-          <a href="/#marketplace">{t('Marketplace')}</a>
+          <a href="/#how" className="cb-auth-nav-extra">{t('How it works')}</a>
+          <a href="/#marketplace" className="cb-auth-nav-extra">{t('Marketplace')}</a>
           <Link to="/signup">{t('Sign up')}</Link>
           <LanguageSwitcher />
         </nav>
