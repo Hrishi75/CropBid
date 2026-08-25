@@ -48,7 +48,7 @@ function sortCheapestFirst(lots: Listing[]): Listing[] {
 }
 
 export default function CropSellersScreen({ route, navigation }: Props) {
-  const { crop, preview } = route.params;
+  const { crop, preview, retailIn } = route.params;
   const { t } = useTranslation();
   const { user } = useAuth();
   const [lots, setLots] = useState<Listing[]>(() => sortCheapestFirst(preview ?? []));
@@ -65,11 +65,15 @@ export default function CropSellersScreen({ route, navigation }: Props) {
 
   const load = useCallback(async () => {
     try {
-      // Exact crop match server-side; consumers only see lots opened for
-      // direct retail — same gate as Home.
+      // Exact crop match server-side, under the SAME gate the shelf was built
+      // with. `retailIn` is set whenever Home was shopping, which covers guests
+      // as well as signed-in consumers — keying off role alone let a guest
+      // through, and dropping the city let everyone see lots that cannot be
+      // delivered to them. The preview shown a moment earlier was city-scoped;
+      // this refresh has to agree with it or the list silently grows.
       const res = await browse({
         crop,
-        ...(role === 'CONSUMER' ? { directSale: true } : {}),
+        ...(retailIn ? { directSale: true, location: retailIn } : {}),
       });
       glide();
       setLots(sortCheapestFirst(res.listings ?? []));
@@ -79,7 +83,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [crop, role]);
+  }, [crop, retailIn]);
 
   useEffect(() => {
     load();
