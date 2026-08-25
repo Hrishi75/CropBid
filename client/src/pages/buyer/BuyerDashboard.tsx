@@ -106,7 +106,7 @@ export function BuyerDashboard() {
 
       <AgentCard role="BUYER" watching={working.length} />
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginBottom: 24 }}>
         <Kpi label="Bids working" value={working.length} loading={loading} unavailable={bidsFailed} />
         <Kpi label="Deals won" value={wonDeals} loading={loading} unavailable={statsFailed} />
         <Kpi
@@ -134,33 +134,35 @@ export function BuyerDashboard() {
           </EmptyState>
         ) : (
           <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table className="cb-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 92 }}>When</th>
-                  <th>Lot</th>
-                  <th>Farmer</th>
-                  <th className="num">Your bid</th>
-                  <th style={{ width: 96 }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((b) => (
-                  <tr key={b.id}>
-                    <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{timeAgo(b.createdAt)}</td>
-                    <td style={{ color: 'var(--cb-ink)' }}>{b.listing?.cropName || '—'}</td>
-                    <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.farmer?.name || '—'}</td>
-                    <td className="num cb-mono">
-                      {formatCurrency(b.bidPricePerUnit, currency)}
-                      {b.listing?.unit ? `/${UNIT_LABEL[b.listing.unit] ?? b.listing.unit}` : ''}
-                    </td>
-                    <td className="cb-mono cb-tiny" style={{ color: b.status === 'COUNTERED' ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
-                      {b.status.toLowerCase()}
-                    </td>
+            <div className="cb-table-wrap">
+              <table className="cb-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 92 }}>When</th>
+                    <th>Lot</th>
+                    <th>Farmer</th>
+                    <th className="num">Your bid</th>
+                    <th style={{ width: 96 }}>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {recent.map((b) => (
+                    <tr key={b.id}>
+                      <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{timeAgo(b.createdAt)}</td>
+                      <td style={{ color: 'var(--cb-ink)' }}>{b.listing?.cropName || '—'}</td>
+                      <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.farmer?.name || '—'}</td>
+                      <td className="num cb-mono">
+                        {formatCurrency(b.bidPricePerUnit, currency)}
+                        {b.listing?.unit ? `/${UNIT_LABEL[b.listing.unit] ?? b.listing.unit}` : ''}
+                      </td>
+                      <td className="cb-mono cb-tiny" style={{ color: b.status === 'COUNTERED' ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
+                        {b.status.toLowerCase()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </Section>

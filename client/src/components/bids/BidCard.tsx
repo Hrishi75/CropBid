@@ -114,7 +114,7 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           {bid.isAgentBid && ' · agent'}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 12 }}>
+        <div className="cb-metrics" style={{ gap: 16, marginBottom: 12 }}>
           <div>
             <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>BID</div>
             <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>
@@ -212,7 +212,7 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
         )}
 
         {viewAs === 'buyer' && (bid.status === 'PENDING' || bid.status === 'COUNTERED') && (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
             <Button size="sm" variant="ghost" onClick={() => setShowUpdate(!showUpdate)}>
               {bid.status === 'COUNTERED' ? 'Revise bid' : 'Update price'}
             </Button>

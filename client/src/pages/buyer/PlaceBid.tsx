@@ -77,7 +77,7 @@ export function PlaceBid() {
         <span className="cb-italic">opening bid.</span>
       </h1>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
+      <div className="cb-split" style={{ gap: 24, marginTop: 28 }}>
         <BidForm listing={listing} />
 
         <aside style={{ position: 'sticky', top: 76, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 16 }}>

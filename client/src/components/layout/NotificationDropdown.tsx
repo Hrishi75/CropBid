@@ -170,12 +170,8 @@ export function NotificationDropdown() {
 
       {isOpen && (
         <div
-          className="cb-card"
-          style={{
-            position: 'absolute', right: 0, top: 'calc(100% + 8px)',
-            width: 340, padding: 0, overflow: 'hidden', zIndex: 50,
-            boxShadow: '0 16px 40px -10px rgba(20,30,15,0.18)',
-          }}
+          className="cb-card cb-notif-menu"
+          style={{ boxShadow: '0 16px 40px -10px rgba(20,30,15,0.18)' }}
         >
           <div
             style={{

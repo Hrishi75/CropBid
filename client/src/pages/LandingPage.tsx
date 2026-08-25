@@ -142,6 +142,16 @@ const CHIPS: Array<[label: string, target: RailId | 'top']> = [
   ['Spices & Oilseeds', 'spices'],
 ];
 
+// The header's section links. Rendered inline on desktop and inside the
+// collapsed menu below 960px, from one list so the two never drift apart.
+const SECTION_LINKS: Array<[label: string, to: string]> = [
+  ['Live rates', '/rates'],
+  ['Forecast', '/forecast'],
+  ['Yojana', '/schemes'],
+  ['Equipment', '/equipment'],
+  ['How it works', '/how-it-works'],
+];
+
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
 
 // Top ticker — crop, ₹ floor price, day-over-day move.
@@ -428,6 +438,24 @@ function StoreHeader({
   const [scrolled, setScrolled] = useState(false);
   const [wordIdx, setWordIdx] = useState(0);
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Where the header's account link goes, decided ONCE. The inline nav and the
+  // collapsed menu below both render it, and keeping two copies of the role
+  // ladder is what let them disagree.
+  //
+  // A CONSUMER has no dashboard by design, and their main action is the shop
+  // they are already looking at, so they get their orders instead. /admin is
+  // the fallback for ADMIN alone.
+  const account = user
+    ? {
+        to: user.role === 'FARMER' ? '/farmer'
+          : user.role === 'BUYER' ? '/buyer'
+          : user.role === 'CONSUMER' ? '/orders'
+          : '/admin',
+        label: user.role === 'CONSUMER' ? 'Orders' : 'Dashboard',
+      }
+    : { to: '/login', label: 'Sign in' };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -435,6 +463,23 @@ function StoreHeader({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // The section links collapse into this menu below 960px. Close it on any
+  // outside pointer press or Escape so it never sits open behind the page.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && (e.target as Element)?.closest?.('.st-menu-wrap')) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [menuOpen]);
 
   // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
   useEffect(() => {
@@ -472,31 +517,16 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <LanguageSwitcher />
-          <Link to="/rates" className="st-header-link">{t('Live rates')}</Link>
-          <Link to="/forecast" className="st-header-link">{t('Forecast')}</Link>
-          <Link to="/schemes" className="st-header-link">{t('Yojana')}</Link>
-          <Link to="/equipment" className="st-header-link">{t('Equipment')}</Link>
+          {/* "How it works" (last) is a pitch for people who aren't signed
+              up yet, so signed-in visitors don't get it in the inline row. */}
+          {SECTION_LINKS.slice(0, user ? -1 : undefined).map(([label, to]) => (
+            <Link key={to} to={to} className="st-header-link">{t(label)}</Link>
+          ))}
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
-            //
-            // A CONSUMER has neither. They have no dashboard by design, and
-            // their main action is the shop they are already looking at — so
-            // they get one link, to their orders. Without this branch the
-            // role fell through to /admin and /buyer/browse, two routes
-            // ProtectedRoute would have bounced them straight back out of.
             <>
-              <Link
-                to={
-                  user.role === 'FARMER' ? '/farmer'
-                    : user.role === 'BUYER' ? '/buyer'
-                    : user.role === 'CONSUMER' ? '/orders'
-                    : '/admin'
-                }
-                className="nav-signin"
-              >
-                {user.role === 'CONSUMER' ? t('Orders') : t('Dashboard')}
-              </Link>
+              <Link to={account.to} className="nav-signin">{t(account.label)}</Link>
               {user.role !== 'CONSUMER' && (
                 <Link
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
@@ -509,15 +539,57 @@ function StoreHeader({
             </>
           ) : (
             <>
-              <Link to="/how-it-works" className="st-header-link">{t('How it works')}</Link>
               <Link to="/login" className="nav-signin">{t('Sign in')}</Link>
               <Link to="/signup" className="cb-btn cb-btn-primary">
-                {t('Start selling')}
+                <span className="cb-btn-label">{t('Start selling')}</span>
+                <span className="cb-btn-label-short">{t('Sell')}</span>
                 <ArrowIcon />
               </Link>
             </>
           )}
         </nav>
+
+        {/* Below 960px the section links don't fit beside the search box, so
+            they collapse in here. Without this they were reachable only from
+            the footer — a whole storefront's worth of scrolling away. */}
+        <div className="st-menu-wrap">
+          <button
+            type="button"
+            className="st-menu-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={t('Menu')}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="st-menu" role="menu">
+              {SECTION_LINKS.map(([label, to]) => (
+                <Link key={to} to={to} role="menuitem" className="st-menu-link" onClick={() => setMenuOpen(false)}>
+                  {t(label)}
+                </Link>
+              ))}
+              {/* Below 640px the header drops its .nav-signin slot to keep the
+                  bar on one line, so whichever link lived there — Sign in, or
+                  the account link once you're logged in — has to reappear here.
+                  It reads `account` rather than working the role out again:
+                  the second copy of that ladder had no CONSUMER rung, so a
+                  shopper on a phone got /admin, was bounced by ProtectedRoute,
+                  and had no route to their orders at all. */}
+              <Link
+                to={account.to}
+                role="menuitem"
+                className="st-menu-link"
+                onClick={() => setMenuOpen(false)}
+              >
+                {t(account.label)}
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="st-chips" role="tablist" aria-label="Categories">

@@ -47,6 +47,26 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function ListingFilters({ filters, onChange }: ListingFiltersProps) {
   const [available, setAvailable] = useState<AvailableFilters>({ crops: [], states: [], qualities: ['A', 'B', 'C'] });
   const [searchInput, setSearchInput] = useState(filters.search);
+  // Below 900px the rail stops being a rail and stacks above the results —
+  // and seven sections of filters is a screen and a half of scrolling before
+  // the first lot. Start collapsed there. On desktop the panel is always open
+  // and its summary is hidden, so nothing changes.
+  const [open, setOpen] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 901px)').matches,
+  );
+
+  // Reading the viewport once at mount was not enough. Desktop hides the
+  // <summary> that reopens this panel, so someone who collapsed the filters on
+  // a narrow window and then widened it was left with a shut <details> and
+  // nothing to click — every filter gone until a reload. Follow the breakpoint
+  // up as well as reading it at the start. Narrowing is left alone: a panel
+  // deliberately left open should stay open.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 901px)');
+    const sync = (e: MediaQueryListEvent) => { if (e.matches) setOpen(true); };
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     api.get('/browse/filters')
@@ -79,7 +99,12 @@ export function ListingFilters({ filters, onChange }: ListingFiltersProps) {
     || filters.organic || filters.freshProduce || filters.priceMin || filters.priceMax;
 
   return (
-    <div className="cb-card" style={{ padding: 18, position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
+    <details
+      className="cb-card cb-filter-rail"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary>Filters{hasActiveFilters ? ' · active' : ''}</summary>
       <Section title="Search">
         <input
           type="search"
@@ -180,6 +205,6 @@ export function ListingFilters({ filters, onChange }: ListingFiltersProps) {
           ↺ Clear all
         </button>
       )}
-    </div>
+    </details>
   );
 }

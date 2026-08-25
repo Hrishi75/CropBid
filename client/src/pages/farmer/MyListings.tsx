@@ -99,7 +99,7 @@ export function MyListings() {
         <span className="cb-italic">on the market.</span>
       </h1>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 28, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 28, marginBottom: 24 }}>
         {[
           ['Active', 'ACTIVE'],
           ['Draft', 'DRAFT'],
@@ -171,7 +171,7 @@ export function MyListings() {
           </div>
 
           {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
               <button
                 type="button"
                 disabled={page <= 1}

@@ -208,7 +208,7 @@ export function CreateRequirement() {
         Post the crop, volume and price you'll pay. Farmers fill it outright or counter with their own price.
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)', gap: 24, marginTop: 28 }}>
+      <div className="cb-split" style={{ gap: 24, marginTop: 28 }}>
         <form onSubmit={handleSubmit} className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '4px 24px' }}>
             {/* Voice input. Renders nothing when the server reports it is
@@ -289,7 +289,7 @@ export function CreateRequirement() {
             </Section>
 
             <Section title="Volume & grade">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Quantity needed"
                   type="number"
@@ -355,7 +355,7 @@ export function CreateRequirement() {
             </Section>
 
             <Section title="Delivery">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Deliver to (city/town)"
                   placeholder="e.g., Nagpur"
@@ -383,7 +383,7 @@ export function CreateRequirement() {
             </Section>
 
             <Section title="Commercial terms (optional)">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <div>
                   <label className="cb-label">Payment terms</label>
                   <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className="cb-input">
@@ -415,7 +415,7 @@ export function CreateRequirement() {
             </Section>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '18px 24px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', padding: '18px 24px' }}>
             <Button type="submit" loading={loading} disabled={fetching}>
               {isEditMode ? 'Save changes' : 'Post requirement'} <ArrowIcon />
             </Button>
@@ -435,7 +435,7 @@ export function CreateRequirement() {
               {organic && <span className="cb-chip cb-chip-sage">Organic only</span>}
               {belowMsp && <span className="cb-chip cb-chip-ember">Below MSP</span>}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div className="cb-cols-2" style={{ gap: 12 }}>
               <div>
                 <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>WANTS</div>
                 <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>

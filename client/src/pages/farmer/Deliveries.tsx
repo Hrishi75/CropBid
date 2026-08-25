@@ -76,7 +76,7 @@ export function Deliveries() {
         </div>
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 8, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">To book</div>
           <div className="cb-kpi-value">{toBook.length}</div>

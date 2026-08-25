@@ -76,7 +76,7 @@ export function AdminDashboard() {
         <span className="cb-italic">live.</span>
       </h1>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(6, 1fr)', marginTop: 24, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 24, marginBottom: 24 }}>
         {/* Every delta below is derived from the stats payload. There are no
             rate-of-change figures (per-day signups, bids/min, QoQ growth)
             because /admin/stats returns point-in-time counts only — inventing
@@ -114,9 +114,9 @@ export function AdminDashboard() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="cb-cols-2" style={{ gap: 16, marginBottom: 24 }}>
         <div className="cb-card" style={{ padding: 0 }}>
-          <div style={{ padding: '14px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--cb-line)' }}>
+          <div style={{ padding: '14px 18px', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-eyebrow">Live event stream</div>
             <button
               type="button"
@@ -139,7 +139,7 @@ export function AdminDashboard() {
                 <div
                   key={i}
                   style={{
-                    display: 'grid', gridTemplateColumns: '90px 1fr auto',
+                    display: 'grid', gridTemplateColumns: '78px minmax(0, 1fr) auto',
                     gap: 12, padding: '10px 18px',
                     borderBottom: i < events.length - 1 ? '1px solid var(--cb-line)' : 'none',
                     background: event.warn ? 'rgba(200,96,43,0.04)' : 'transparent',
@@ -187,7 +187,7 @@ export function AdminDashboard() {
         <div className="cb-small" style={{ marginBottom: 14 }}>
           Geo and category splits live on the analytics page.
         </div>
-        <div style={{ display: 'flex', gap: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
           <Link to="/admin/analytics" className="cb-btn cb-btn-link">View full analytics →</Link>
           <Link to="/admin/transactions" className="cb-btn cb-btn-link">Review orders →</Link>
         </div>

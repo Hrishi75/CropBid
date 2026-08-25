@@ -158,7 +158,7 @@ export function DemandBoard() {
           : 'Every open requirement on CropBid — what is being asked for, in what volume, and at what price. Yours are marked.'}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 260px) minmax(0, 1fr)', gap: 24, marginTop: 28, alignItems: 'start' }}>
+      <div className="cb-split-filters" style={{ gap: 24, marginTop: 28, alignItems: 'start' }}>
         <RequirementFilters filters={filters} onChange={setFilters} />
 
         <div>
@@ -167,7 +167,7 @@ export function DemandBoard() {
           </div>
 
           {loading ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+            <div className="cb-cards" style={{ gap: 16 }}>
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
@@ -178,7 +178,7 @@ export function DemandBoard() {
               description="Nothing matches these filters right now. Loosen them, or check back — buyers post new demand daily."
             />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+            <div className="cb-cards" style={{ gap: 16 }}>
               {requirements.map((r) => {
                 const isOpen = openAction?.id === r.id;
                 const mode = isOpen ? openAction!.mode : null;
@@ -211,7 +211,7 @@ export function DemandBoard() {
 
                     {isOpen && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 4, padding: 12, background: 'var(--cb-paper-2)', borderRadius: 6 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: mode === 'counter' ? '1fr 1fr' : '1fr', gap: 10 }}>
+                        <div className={mode === 'counter' ? 'cb-cols-2' : undefined} style={{ display: 'grid', gap: 10 }}>
                           <Input
                             label={`Quantity (${r.unit.toLowerCase()})`}
                             type="number"
@@ -251,7 +251,7 @@ export function DemandBoard() {
                           {mode === 'fill' && ' — the deal closes immediately.'}
                           {mode === 'counter' && ' if the buyer accepts.'}
                         </div>
-                        <div style={{ display: 'flex', gap: 10 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                           <Button size="sm" onClick={() => submitAction(r)} loading={submitting}>
                             {mode === 'fill' ? 'Confirm fill' : 'Send offer'}
                           </Button>
@@ -268,7 +268,7 @@ export function DemandBoard() {
           )}
 
           {totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
               <button
                 type="button"
                 disabled={page <= 1}

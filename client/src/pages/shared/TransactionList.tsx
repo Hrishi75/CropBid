@@ -84,7 +84,7 @@ export function TransactionList() {
       </div>
 
       {stats && (
-        <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 8, marginBottom: 24 }}>
+        <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
           <div className="cb-kpi-cell">
             <div className="cb-kpi-label">In escrow</div>
             <div className="cb-kpi-value">{stats.inEscrow}</div>
@@ -151,7 +151,7 @@ export function TransactionList() {
                 <div className="cb-small" style={{ marginBottom: 8 }}>
                   {tx.farmer?.name} → {tx.buyer?.name} · {new Date(tx.createdAt).toLocaleDateString()}
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                <div className="cb-metrics" style={{ gap: 16 }}>
                   <div className="cb-mono" style={{ fontSize: 14 }}>
                     {formatCurrency(tx.totalAmount, tx.currency)}
                   </div>

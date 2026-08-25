@@ -107,7 +107,7 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
           {new Date(offer.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 12 }}>
+        <div className="cb-metrics" style={{ gap: 16, marginBottom: 12 }}>
           <div>
             <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>PRICE</div>
             <div className="cb-mono" style={{ fontSize: 16, fontWeight: 500 }}>

@@ -54,6 +54,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export function RequirementFilters({ filters, onChange }: RequirementFiltersProps) {
   const [available, setAvailable] = useState<AvailableFilters>({ crops: [], states: [], qualities: ['A', 'B', 'C'], buyerTypes: [] });
   const [searchInput, setSearchInput] = useState(filters.search);
+  // Collapsed below 900px, where the rail stacks above the feed — see the
+  // matching note in ListingFilters.
+  const [open, setOpen] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 901px)').matches,
+  );
+
+  // Reading the viewport once at mount was not enough. Desktop hides the
+  // <summary> that reopens this panel, so someone who collapsed the filters on
+  // a narrow window and then widened it was left with a shut <details> and
+  // nothing to click — every filter gone until a reload. Follow the breakpoint
+  // up as well as reading it at the start. Narrowing is left alone: a panel
+  // deliberately left open should stay open.
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 901px)');
+    const sync = (e: MediaQueryListEvent) => { if (e.matches) setOpen(true); };
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     api.get('/requirements/filters')
@@ -85,7 +103,12 @@ export function RequirementFilters({ filters, onChange }: RequirementFiltersProp
     || filters.buyerType || filters.organic || filters.priceMin || filters.priceMax;
 
   return (
-    <div className="cb-card" style={{ padding: 18, position: 'sticky', top: 76, alignSelf: 'flex-start' }}>
+    <details
+      className="cb-card cb-filter-rail"
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary>Filters{hasActiveFilters ? ' · active' : ''}</summary>
       <Section title="Search">
         <input
           type="search"
@@ -187,6 +210,6 @@ export function RequirementFilters({ filters, onChange }: RequirementFiltersProp
           ↺ Clear all
         </button>
       )}
-    </div>
+    </details>
   );
 }
