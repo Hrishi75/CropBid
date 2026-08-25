@@ -3,7 +3,7 @@
 // everything; the sticky bottom bar becomes the login gate ("Log in to buy") —
 // browsing is free, acting needs an account.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -18,6 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { directPurchase, fetchListing, placeBid } from '../api/endpoints';
+import { mintPurchaseKey } from '../lib/idempotency';
 import { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
@@ -411,6 +412,18 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
     setCount(String(next));
   };
 
+  // The reference for the order this bar is about to place. A failed attempt
+  // is indistinguishable from one whose response was lost, so tapping Buy
+  // again has to replay the same key rather than order a second time.
+  const purchaseKey = useRef(mintPurchaseKey());
+
+  // A different amount is a different order, so it gets its own key —
+  // otherwise a retry after changing the quantity would return the order for
+  // the old one and look like the change never took.
+  useEffect(() => {
+    purchaseKey.current = mintPurchaseKey();
+  }, [qtyNum]);
+
   async function submit() {
     if (!(n > 0)) {
       setError(pack ? 'Choose how many packs you want' : 'Enter how much you want to buy');
@@ -423,7 +436,13 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
     setError(null);
     setSubmitting(true);
     try {
-      await directPurchase({ listingId: listing.id, quantity: qtyNum });
+      await directPurchase({
+        listingId: listing.id,
+        quantity: qtyNum,
+        idempotencyKey: purchaseKey.current,
+      });
+      // Spent. Anything bought from this screen afterwards is a new order.
+      purchaseKey.current = mintPurchaseKey();
       Alert.alert(
         'Order placed',
         `Pay ${money(total, listing.currency)} from the Orders tab to complete your purchase.`,

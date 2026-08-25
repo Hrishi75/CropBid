@@ -19,6 +19,16 @@
 // would hide an order they still want; retrying the whole basket would
 // double-order the two that worked.
 //
+// AND A FAILURE IS NOT ALWAYS A FAILURE
+// A request whose response is lost on the way back is indistinguishable here
+// from one the server rejected: both land in the catch, and both leave the lot
+// sitting in the cart looking unbought. Retrying used to buy it a second time.
+// Every line therefore carries a purchaseKey (see CartContext), sent as the
+// request's idempotencyKey, and a retry with the same key returns the order
+// that already exists instead of claiming the stock again. The key lives in the
+// stored cart rather than in this component, because a shopper whose request
+// vanished may well reload the page before trying again.
+//
 // WHY THE ADDRESS AND PHONE ARE COLLECTED HERE
 // The API treats both as optional and falls back to the buyer's profile, but
 // bid.service then REFUSES a retail order that ends up with neither. Asking
@@ -89,6 +99,11 @@ export function Checkout() {
           quantity: line.quantity,
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
+          // The line's own key, minted when it was added and re-minted whenever
+          // its quantity moved. A failure leaves the line in the cart carrying
+          // it, so pressing Place order again replays THIS purchase rather than
+          // making a second one.
+          idempotencyKey: line.item.purchaseKey,
         });
         placed.push(line.item.listingId);
         lastBidId = bid.id;

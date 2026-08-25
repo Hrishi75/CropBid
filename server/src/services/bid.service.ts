@@ -17,6 +17,7 @@
 //   PENDING → EXPIRED (time ran out, if expiresAt was set)
 // =============================================================================
 
+import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
@@ -41,6 +42,8 @@ interface DirectPurchaseInput {
   quantity: number;
   deliveryAddress?: string;
   contactPhone?: string;
+  /** See createDirectPurchase. Optional, so older clients keep working. */
+  idempotencyKey?: string;
 }
 
 // Counterparty-safe farmer shape: public display fields only — never the
@@ -175,6 +178,33 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   return bid;
 }
 
+// The include used for every direct-purchase result, replay or not. A retry has
+// to be indistinguishable from the response it lost, so both paths build the
+// bid the same way.
+const DIRECT_PURCHASE_INCLUDE = {
+  listing: true,
+  buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+} as const;
+
+// P2002 is Prisma's unique-constraint violation. Narrowed to our column so an
+// unrelated collision — two rows racing on some other unique field — still
+// surfaces as the error it is instead of being answered with somebody's order.
+function isIdempotencyKeyConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  const fields = Array.isArray(target) ? target : typeof target === 'string' ? [target] : [];
+  return fields.some((f) => String(f).includes('idempotencyKey'));
+}
+
+function findByIdempotencyKey(key: string, buyerId: string) {
+  // Scoped to the buyer: a key belonging to somebody else is not this caller's
+  // order to be handed back, however it was come by.
+  return prisma.bid.findFirst({
+    where: { idempotencyKey: key, buyerId },
+    include: DIRECT_PURCHASE_INCLUDE,
+  });
+}
+
 // =============================================================================
 // DIRECT PURCHASE — Consumer instant-buys a fixed-price quantity, no bidding
 // =============================================================================
@@ -182,7 +212,34 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
 // opt into directSaleEnabled with a retailPricePerUnit, and the purchase creates
 // an already-ACCEPTED bid so it can flow through the exact same
 // createTransaction/payment/shipment pipeline as a negotiated deal.
+//
+// IDEMPOTENCY, AND WHY IT IS NOT OPTIONAL HERE
+// This endpoint spends money and stock in one shot, and the client cannot tell
+// a request that failed from one that succeeded and lost its response on the
+// way back. Without a key, that ambiguity is unresolvable: the cart shows the
+// lot as unsold, the shopper taps buy again, and they own two of it. The window
+// is not theoretical — checkout walks the basket one lot at a time over a phone
+// connection.
+//
+// So the caller mints a key for the purchase it INTENDS, and sends the same one
+// on every retry of that intent. The column is unique, which makes the database
+// the arbiter rather than a read-then-write check that races: a replay either
+// finds the first order up front, or loses the insert and is handed the winner.
+// Losing rolls the stock decrement back with it, because both live in the same
+// transaction.
+//
+// A changed order is a different intent and needs a new key — the client mints
+// one whenever the quantity moves. Leaving the key off entirely still works and
+// still buys, it just leaves the caller carrying the ambiguity, which is what
+// every pre-existing client does.
 export async function createDirectPurchase(consumerId: string, input: DirectPurchaseInput) {
+  // Before anything is validated or claimed: if this exact purchase already
+  // happened, hand back what it produced.
+  if (input.idempotencyKey) {
+    const already = await findByIdempotencyKey(input.idempotencyKey, consumerId);
+    if (already) return { bid: already, replayed: true };
+  }
+
   const listing = await prisma.listing.findUnique({
     where: { id: input.listingId },
     include: { farmer: true },
@@ -215,7 +272,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   // Same conditional-claim pattern as acceptBid below: only decrement stock if
   // enough remains and the listing is still active, closing the same TOCTOU
   // race two concurrent purchases could otherwise hit.
-  const bid = await prisma.$transaction(async (tx) => {
+  const purchase = async () => prisma.$transaction(async (tx) => {
     const claim = await tx.listing.updateMany({
       where: { id: listing.id, status: 'ACTIVE', remainingQuantity: { gte: input.quantity } },
       data: { remainingQuantity: { decrement: input.quantity } },
@@ -241,12 +298,10 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
         contactPhone: contact.contactPhone,
         isAgentBid: false,
         isDirectPurchase: true,
+        idempotencyKey: input.idempotencyKey ?? null,
         status: 'ACCEPTED',
       },
-      include: {
-        listing: true,
-        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
-      },
+      include: DIRECT_PURCHASE_INCLUDE,
     });
 
     // Create the escrow transaction in the SAME tx so the sale and its payable
@@ -255,6 +310,24 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
     return created;
   });
 
+  let bid;
+  try {
+    bid = await purchase();
+  } catch (err) {
+    // The replay check at the top of this function only sees orders that had
+    // already committed when it ran. Two retries in flight together both pass
+    // it, and the unique index picks the winner — the loser arrives here with
+    // its stock decrement already rolled back, and is owed the same answer the
+    // winner got.
+    if (!isIdempotencyKeyConflict(err) || !input.idempotencyKey) throw err;
+    const winner = await findByIdempotencyKey(input.idempotencyKey, consumerId);
+    if (winner) return { bid: winner, replayed: true };
+    // The key exists but belongs to someone else's order. Nothing to replay,
+    // and quietly minting a second one under a fresh key would be worse: the
+    // caller believes this key identifies their purchase, and it does not.
+    throw new ApiError(409, 'That purchase reference has already been used. Start the order again.');
+  }
+
   // Notify the farmer (best-effort — the sale is already committed above)
   notifyDirectPurchase(
     listing.farmer.userId, bid.buyer!.name, listing.cropName,
@@ -262,7 +335,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   ).catch(() => {});
   void alertNewOrder(bid.id, 'DIRECT_PURCHASE');
 
-  return bid;
+  return { bid, replayed: false };
 }
 
 // =============================================================================

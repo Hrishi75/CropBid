@@ -47,6 +47,11 @@ const directPurchaseSchema = z.object({
   // then snapshots the consumer's profile phone/location onto the order.
   deliveryAddress: z.string().max(500).optional(),
   contactPhone: z.string().max(20).optional(),
+  // Client-minted reference for one intended purchase, so a retry after a lost
+  // response returns the existing order instead of buying twice. Bounded and
+  // charset-limited because it lands in a unique index: it is an opaque handle,
+  // not somewhere to put a sentence.
+  idempotencyKey: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/, 'idempotencyKey must be url-safe').optional(),
 });
 
 // POST /api/bids — Place a bid
@@ -77,7 +82,7 @@ export async function createDirectPurchase(req: Request, res: Response, next: Ne
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
-    const bid = await bidService.createDirectPurchase(req.user!.userId, parsed.data);
+    const { bid, replayed } = await bidService.createDirectPurchase(req.user!.userId, parsed.data);
     await auditFromRequest(req, {
       action: 'bid.direct_purchase',
       entityType: 'Bid',
@@ -86,9 +91,15 @@ export async function createDirectPurchase(req: Request, res: Response, next: Ne
         listingId: parsed.data.listingId,
         quantity: parsed.data.quantity,
         totalAmount: (bid as any)?.totalAmount ?? null,
+        // A replay hands back the order that already existed, so without this
+        // the log would read as two purchases where the shopper made one.
+        replayed,
       },
     });
-    res.status(201).json(bid);
+    // 201 bought something; 200 means this key had already bought it. The body
+    // is identical either way, so a client that ignores the distinction still
+    // behaves correctly.
+    res.status(replayed ? 200 : 201).json(bid);
   } catch (error) {
     next(error);
   }

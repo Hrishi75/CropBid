@@ -50,6 +50,20 @@ export interface CartItem {
   farmerName: string | null;
   qualityGrade: QualityGrade;
   organic: boolean;
+  /**
+   * Reference for the ONE purchase this line intends, sent to
+   * /bids/direct-purchase so a retry after a lost response returns the order
+   * that already exists instead of buying the lot twice.
+   *
+   * It lives on the line, and therefore in localStorage, on purpose: the case
+   * it exists for is a response that never arrived, and the shopper's next move
+   * may well be to reload the page. A key held in component state would not
+   * survive that, which is exactly when it is needed.
+   *
+   * Re-minted whenever the quantity changes, because a different quantity is a
+   * different intent — replaying the old key would quietly buy the old amount.
+   */
+  purchaseKey: string;
 }
 
 interface CartContextType {
@@ -70,6 +84,16 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | null>(null);
 
+// Url-safe, unique per intent, and short enough for the server's 64-char cap.
+// randomUUID is not everywhere (it needs a secure context, and Safari only got
+// it in 15.4), and a basket that cannot mint a key must still be able to check
+// out — so the fallback is random rather than absent.
+function mintPurchaseKey(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `ck_${uuid.replace(/-/g, '')}`;
+  return `ck_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
 // Versioned so a shape change can be ignored rather than crash on old JSON.
 const KEY_PREFIX = 'cb_cart_v1';
 const storageKey = (userId: string) => `${KEY_PREFIX}:${userId}`;
@@ -85,7 +109,14 @@ function readStored(userId: string): CartItem[] {
     if (!Array.isArray(parsed)) return [];
     // A row without an id or a positive quantity can't be rendered or ordered,
     // so drop it here rather than defend against it in five components.
-    return parsed.filter((it: any) => it && typeof it.listingId === 'string' && Number(it.quantity) > 0);
+    return parsed
+      .filter((it: any) => it && typeof it.listingId === 'string' && Number(it.quantity) > 0)
+      // A basket stored before purchaseKey existed has none. Minting here beats
+      // making every reader defend against a missing field, and a fresh key is
+      // right: nothing has been ordered under the old line yet.
+      .map((it: any) => (typeof it.purchaseKey === 'string' && it.purchaseKey
+        ? it
+        : { ...it, purchaseKey: mintPurchaseKey() }));
   } catch {
     return [];
   }
@@ -175,13 +206,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     setItems((prev) => {
       const existing = prev.find((it) => it.listingId === listing.id);
+      const nextQuantity = round(quantity);
       // Adding a lot that is already in the basket REPLACES the quantity rather
       // than adding to it. Every caller (the shelf stepper, the product page)
       // shows the shopper the number they are setting, so summing would move
       // the basket to a number nobody chose.
       const next: CartItem = {
         listingId: listing.id,
-        quantity: round(quantity),
+        quantity: nextQuantity,
         cropName: listing.cropName,
         cropVariety: listing.cropVariety,
         image: listing.images[0] ?? null,
@@ -192,6 +224,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
         farmerName: listing.farmer?.user?.name ?? null,
         qualityGrade: listing.qualityGrade,
         organic: listing.organic,
+        // The key tracks the INTENT, not the click. Setting the same lot to
+        // the same amount it already held changes nothing about what is being
+        // bought, so the key has to survive it — that path is reached by
+        // pressing the shelf's ADD again after a purchase whose response went
+        // missing, which is precisely when the replay has to work. Any other
+        // amount is a different order and gets its own key.
+        purchaseKey: existing && existing.quantity === nextQuantity
+          ? existing.purchaseKey
+          : mintPurchaseKey(),
       };
       return existing
         ? prev.map((it) => (it.listingId === listing.id ? next : it))
@@ -203,7 +244,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prev) =>
       quantity <= 0
         ? prev.filter((it) => it.listingId !== listingId)
-        : prev.map((it) => (it.listingId === listingId ? { ...it, quantity: round(quantity) } : it)),
+        : prev.map((it) => {
+            if (it.listingId !== listingId) return it;
+            const next = round(quantity);
+            if (next === it.quantity) return it;
+            // Changing the amount changes what is being bought, so the old key
+            // must not carry over: replaying it would return an order for the
+            // previous quantity and look like the change never took.
+            return { ...it, quantity: next, purchaseKey: mintPurchaseKey() };
+          }),
     );
   }, [setItems]);
 

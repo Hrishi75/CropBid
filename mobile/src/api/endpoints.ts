@@ -246,11 +246,16 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
 // --- Consumer direct purchase (instant-buy, no negotiation) ---
 // deliveryAddress/contactPhone are optional: when omitted the server snapshots
 // the consumer's profile phone/location onto the order for the seller.
+//
+// idempotencyKey identifies the ORDER being intended, not the request. Send the
+// same one on every retry and a purchase that already went through comes back
+// instead of happening twice; see lib/idempotency.ts.
 export async function directPurchase(input: {
   listingId: string;
   quantity: number;
   deliveryAddress?: string;
   contactPhone?: string;
+  idempotencyKey?: string;
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids/direct-purchase', input);
   return data;
