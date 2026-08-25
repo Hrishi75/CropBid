@@ -48,11 +48,15 @@ export function Navbar({ onMenuClick }: NavbarProps) {
     ? user.name.split(/\s+/).slice(0, 2).map((n) => n[0]).join('').toUpperCase()
     : '?';
 
+  // The fallback is the ADMIN wording, so every non-admin role needs its own —
+  // a shopper has no lots or txns to search, they have produce and orders.
   const searchPlaceholder = user?.role === 'FARMER'
     ? t('Search bids, buyers, lots…')
     : user?.role === 'BUYER'
       ? t('Search lots, sellers, regions…')
-      : t('Search users, lots, txns…');
+      : user?.role === 'CONSUMER'
+        ? t('Search fruit, veg, grains…')
+        : t('Search users, lots, txns…');
 
   return (
     <header className="cb-nav-wrap" role="banner">

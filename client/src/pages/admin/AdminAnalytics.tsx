@@ -110,7 +110,7 @@ export function AdminAnalytics() {
         ))}
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(6, 1fr)', marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">GMV</div>
           <div className="cb-kpi-value">{formatCurrency(totalGMV, 'INR')}</div>
@@ -165,7 +165,7 @@ export function AdminAnalytics() {
         </ChartCard>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+      <div className="cb-cols-2" style={{ gap: 18, marginBottom: 18 }}>
         <ChartCard title="Fee revenue · weekly">
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={charts.monthlyRevenue} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
@@ -215,7 +215,7 @@ export function AdminAnalytics() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
+      <div className="cb-cols-2" style={{ gap: 18, marginBottom: 18 }}>
         <ChartCard title="Top crops by GMV">
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
@@ -257,31 +257,33 @@ export function AdminAnalytics() {
 
       <div className="cb-card" style={{ marginBottom: 18 }}>
         <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Cohort retention · % returning by week</div>
-        <table className="cb-table">
-          <thead>
-            <tr>
-              <th></th>
-              {['W1', 'W2', 'W3', 'W4', 'W8', 'W12'].map((w) => <th key={w} className="num">{w}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {COHORT.map((row) => (
-              <tr key={row.month}>
-                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{row.month}</td>
-                {row.vals.map((v, i) => (
-                  <td key={i} className="num" style={{ color: v === null ? 'var(--cb-ink-3)' : v >= 65 ? 'var(--cb-sage)' : v >= 45 ? 'var(--cb-wheat)' : 'var(--cb-ember)' }}>
-                    {v === null ? '—' : `${v}`}
-                  </td>
-                ))}
+        <div className="cb-table-wrap">
+          <table className="cb-table">
+            <thead>
+              <tr>
+                <th></th>
+                {['W1', 'W2', 'W3', 'W4', 'W8', 'W12'].map((w) => <th key={w} className="num">{w}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {COHORT.map((row) => (
+                <tr key={row.month}>
+                  <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{row.month}</td>
+                  {row.vals.map((v, i) => (
+                    <td key={i} className="num" style={{ color: v === null ? 'var(--cb-ink-3)' : v >= 65 ? 'var(--cb-sage)' : v >= 45 ? 'var(--cb-wheat)' : 'var(--cb-ember)' }}>
+                      {v === null ? '—' : `${v}`}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="cb-card">
         <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Negotiation performance</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div className="cb-cols-2" style={{ gap: 8 }}>
           {[
             ['Total agent negotiations', '8,142'],
             ['Match rate', '72.7%'],

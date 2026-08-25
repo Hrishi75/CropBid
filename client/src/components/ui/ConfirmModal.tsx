@@ -81,7 +81,7 @@ export function ConfirmModal({
         </div>
         <div
           style={{
-            display: 'flex', justifyContent: 'flex-end', gap: 10,
+            display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 10,
             padding: '14px 24px', background: 'var(--cb-paper-2)',
           }}
         >

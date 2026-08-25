@@ -79,6 +79,28 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
     ];
   }
 
+  // CONSUMER — the retail tier. Three items on purpose: a shopper buying a kilo
+  // of tomatoes has no bids to chase, no demand to post and no lots to auction,
+  // so everything the B2B menu carries would be dead weight. Shop is "/" for the
+  // same reason it is for everyone else: the storefront IS the product.
+  if (role === 'CONSUMER') {
+    return [
+      {
+        title: 'Menu',
+        items: [
+          { label: 'Shop', path: '/' },
+          { label: 'Orders', path: '/orders' },
+        ],
+      },
+      {
+        title: 'Settings',
+        items: [
+          { label: 'Account', path: '/settings' },
+        ],
+      },
+    ];
+  }
+
   // BUYER (and default before role loads)
   return [
     {

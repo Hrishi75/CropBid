@@ -197,7 +197,7 @@ export function TransactionDetail() {
           })}
         </div>
         {nextAction && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 20 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', marginTop: 20 }}>
             <Button onClick={() => updateDelivery(nextAction.status)} loading={updating}>
               {nextAction.label}
               <ArrowIcon />
@@ -206,7 +206,7 @@ export function TransactionDetail() {
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="cb-cols-2" style={{ gap: 16, marginBottom: 16 }}>
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Contract terms</div>
           <SpecRow label="Crop" value={transaction.listing?.cropName} />
@@ -238,11 +238,16 @@ export function TransactionDetail() {
                 <> · <a href={`tel:${transaction.bid?.contactPhone || transaction.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.bid?.contactPhone || transaction.buyer?.phone}</a></>
               )}
             </div>
+            {!isBuyer && transaction.contactReleased === false && (
+              <div className="cb-tiny" style={{ marginTop: 2, color: 'var(--cb-ink-3)' }}>
+                Contact details unlock once payment reaches escrow.
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="cb-cols-2" style={{ gap: 16, marginBottom: 16 }}>
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Payment</div>
           <SpecRow label="Status" value={<span style={{ color: 'var(--cb-wheat)' }}>● {transaction.paymentStatus}</span>} />
@@ -287,27 +292,29 @@ export function TransactionDetail() {
 
       <div className="cb-card" style={{ padding: 0 }}>
         <div className="cb-eyebrow" style={{ padding: '16px 20px 0' }}>Audit log</div>
-        <table className="cb-table" style={{ marginTop: 8 }}>
-          <tbody>
-            <tr>
-              <td className="cb-mono" style={{ color: 'var(--cb-ink-3)', width: 100 }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-              <td>Match confirmed</td>
-              <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>contract drafted</td>
-            </tr>
-            <tr>
-              <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-              <td>Escrow lodged</td>
-              <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{formatCurrency(transaction.totalAmount, transaction.currency)}</td>
-            </tr>
-            {transaction.deliveryStatus !== 'PENDING' && (
+        <div className="cb-table-wrap narrow">
+          <table className="cb-table" style={{ marginTop: 8 }}>
+            <tbody>
               <tr>
-                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>—</td>
-                <td>Status: {transaction.deliveryStatus}</td>
-                <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>delivery update</td>
+                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)', width: 100 }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td>Match confirmed</td>
+                <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>contract drafted</td>
               </tr>
-            )}
-          </tbody>
-        </table>
+              <tr>
+                <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{new Date(transaction.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td>Escrow lodged</td>
+                <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{formatCurrency(transaction.totalAmount, transaction.currency)}</td>
+              </tr>
+              {transaction.deliveryStatus !== 'PENDING' && (
+                <tr>
+                  <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>—</td>
+                  <td>Status: {transaction.deliveryStatus}</td>
+                  <td className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>delivery update</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </DashboardLayout>
   );

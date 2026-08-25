@@ -31,6 +31,9 @@ interface BrowseQuery {
   crop?: string;
   crops?: string[]; // match any crop in this list (e.g. a "Fresh produce" category)
   state?: string;
+  // City/town. Used by the consumer storefront to keep retail orders local —
+  // see the filter body for why this is city-level and not state-level.
+  location?: string;
   country?: string;
   priceMin?: number;
   priceMax?: number;
@@ -68,6 +71,21 @@ export async function browseListings(query: BrowseQuery) {
 
   if (query.state) {
     where.state = { equals: query.state, mode: 'insensitive' };
+  }
+
+  // City-level filter, for the retail channel.
+  //
+  // WHY CITY AND NOT STATE: a shopper buying 2 kg cannot be served from the
+  // other end of their own state. Nashik and Nagpur are both Maharashtra and
+  // 600 km apart — a state filter would put a Nagpur household's order on a
+  // Nashik farm and the delivery would never happen. The unit economics of a
+  // 2 kg order only work when the farm is local, so local is what this means.
+  //
+  // Exact match rather than `contains`: "Nashik" must not pull in a town that
+  // merely has it as a substring, and a partial match is the kind of thing
+  // that silently widens a radius nobody can then reason about.
+  if (query.location) {
+    where.location = { equals: query.location, mode: 'insensitive' };
   }
 
   if (query.country) {
@@ -236,6 +254,30 @@ export async function smartMatch(context: SmartMatchContext, limitResults: numbe
 // coffee. Dynamic filters only show options that have actual listings,
 // giving buyers a realistic view of what's available.
 // =============================================================================
+// =============================================================================
+// RETAIL CITIES — where the shop can actually deliver from
+// =============================================================================
+// Powers the consumer storefront's city picker. Only cities with live
+// direct-sale stock are returned, so a shopper can never pick their way into an
+// empty shelf — the same rule the requirement feed's filters follow.
+//
+// Deliberately NOT every city with a listing: a town with only bulk lots cannot
+// serve a household, and offering it would promise a shop that isn't there.
+export async function getRetailCities() {
+  const rows = await prisma.listing.findMany({
+    where: {
+      status: 'ACTIVE',
+      directSaleEnabled: true,
+      remainingQuantity: { gt: 0 },
+    },
+    select: { location: true, state: true },
+    distinct: ['location'],
+    orderBy: { location: 'asc' },
+  });
+
+  return rows.map((r) => ({ city: r.location, state: r.state }));
+}
+
 export async function getAvailableFilters() {
   const [crops, states, countries] = await Promise.all([
     prisma.listing.findMany({

@@ -55,7 +55,7 @@ export function SkeletonCard() {
 
 export function SkeletonStats() {
   return (
-    <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+    <div className="cb-kpi-strip">
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="cb-kpi-cell">
           <Skeleton height={12} width="50%" />

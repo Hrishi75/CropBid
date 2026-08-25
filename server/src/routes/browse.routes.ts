@@ -7,6 +7,7 @@
 //
 //   GET /api/browse              → Filtered, paginated browse
 //   GET /api/browse/filters      → Available filter options
+//   GET /api/browse/cities       → Cities with live retail stock
 //   GET /api/browse/smart-match  → Scored recommendations
 // =============================================================================
 
@@ -18,6 +19,7 @@ const router = Router();
 // All browse endpoints are public
 router.get('/', browseController.browseListings);
 router.get('/filters', browseController.getFilters);
+router.get('/cities', browseController.getRetailCities);
 router.get('/smart-match', browseController.smartMatch);
 
 export default router;

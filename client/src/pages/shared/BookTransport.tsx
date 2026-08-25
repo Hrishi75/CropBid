@@ -205,11 +205,11 @@ export function BookTransport() {
         <div className="cb-card">
           <div style={{ padding: '4px 0' }}>
             <Section title="Route">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input label="Pickup" placeholder="e.g., Pune APMC" value={pickupLocation} onChange={(e) => setPickupLocation(e.target.value)} />
                 <Input label="Drop" placeholder="e.g., Mumbai dock 4" value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value)} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Distance (km)"
                   type="number"
@@ -275,7 +275,7 @@ export function BookTransport() {
               </Section>
             )}
 
-            <div style={{ display: 'flex', gap: 10, padding: '18px 0' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '18px 0' }}>
               <Button onClick={handleBook} loading={booking} size="lg">
                 Confirm & book
                 <ArrowIcon />

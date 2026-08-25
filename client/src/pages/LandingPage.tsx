@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
+import { LiveShelf } from './consumer/LiveShelf';
 import type { User } from '../types';
 import {
   type Country, type CurrencyCode, type UnitCode,
@@ -140,6 +141,16 @@ const CHIPS: Array<[label: string, target: RailId | 'top']> = [
   ['Fruits', 'fruits'],
   ['Grains & Pulses', 'grains'],
   ['Spices & Oilseeds', 'spices'],
+];
+
+// The header's section links. Rendered inline on desktop and inside the
+// collapsed menu below 960px, from one list so the two never drift apart.
+const SECTION_LINKS: Array<[label: string, to: string]> = [
+  ['Live rates', '/rates'],
+  ['Forecast', '/forecast'],
+  ['Yojana', '/schemes'],
+  ['Equipment', '/equipment'],
+  ['How it works', '/how-it-works'],
 ];
 
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
@@ -465,6 +476,24 @@ function StoreHeader({
   const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' && window.scrollY > 4);
   const [wordIdx, setWordIdx] = useState(0);
   const [activeChip, setActiveChip] = useState<RailId | 'top'>('top');
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Where the header's account link goes, decided ONCE. The inline nav and the
+  // collapsed menu below both render it, and keeping two copies of the role
+  // ladder is what let them disagree.
+  //
+  // A CONSUMER has no dashboard by design, and their main action is the shop
+  // they are already looking at, so they get their orders instead. /admin is
+  // the fallback for ADMIN alone.
+  const account = user
+    ? {
+        to: user.role === 'FARMER' ? '/farmer'
+          : user.role === 'BUYER' ? '/buyer'
+          : user.role === 'CONSUMER' ? '/orders'
+          : '/admin',
+        label: user.role === 'CONSUMER' ? 'Orders' : 'Dashboard',
+      }
+    : { to: '/login', label: 'Sign in' };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -472,6 +501,23 @@ function StoreHeader({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // The section links collapse into this menu below 960px. Close it on any
+  // outside pointer press or Escape so it never sits open behind the page.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && (e.target as Element)?.closest?.('.st-menu-wrap')) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [menuOpen]);
 
   // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
   useEffect(() => {
@@ -509,39 +555,79 @@ function StoreHeader({
 
         <nav className="st-header-links" aria-label="Primary">
           <LanguageSwitcher />
-          <Link to="/rates" className="st-header-link">{t('Live rates')}</Link>
-          <Link to="/forecast" className="st-header-link">{t('Forecast')}</Link>
-          <Link to="/schemes" className="st-header-link">{t('Yojana')}</Link>
-          <Link to="/equipment" className="st-header-link">{t('Equipment')}</Link>
+          {/* "How it works" (last) is a pitch for people who aren't signed
+              up yet, so signed-in visitors don't get it in the inline row. */}
+          {SECTION_LINKS.slice(0, user ? -1 : undefined).map(([label, to]) => (
+            <Link key={to} to={to} className="st-header-link">{t(label)}</Link>
+          ))}
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
             <>
-              <Link
-                to={user.role === 'FARMER' ? '/farmer' : user.role === 'BUYER' ? '/buyer' : '/admin'}
-                className="nav-signin"
-              >
-                {t('Dashboard')}
-              </Link>
-              <Link
-                to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
-                className="cb-btn cb-btn-primary"
-              >
-                {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
-                <ArrowIcon />
-              </Link>
+              <Link to={account.to} className="nav-signin">{t(account.label)}</Link>
+              {user.role !== 'CONSUMER' && (
+                <Link
+                  to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
+                  className="cb-btn cb-btn-primary"
+                >
+                  {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
+                  <ArrowIcon />
+                </Link>
+              )}
             </>
           ) : (
             <>
-              <Link to="/how-it-works" className="st-header-link">{t('How it works')}</Link>
               <Link to="/login" className="nav-signin">{t('Sign in')}</Link>
               <Link to="/signup" className="cb-btn cb-btn-primary">
-                {t('Start selling')}
+                <span className="cb-btn-label">{t('Start selling')}</span>
+                <span className="cb-btn-label-short">{t('Sell')}</span>
                 <ArrowIcon />
               </Link>
             </>
           )}
         </nav>
+
+        {/* Below 960px the section links don't fit beside the search box, so
+            they collapse in here. Without this they were reachable only from
+            the footer — a whole storefront's worth of scrolling away. */}
+        <div className="st-menu-wrap">
+          <button
+            type="button"
+            className="st-menu-btn"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={t('Menu')}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="st-menu" role="menu">
+              {SECTION_LINKS.map(([label, to]) => (
+                <Link key={to} to={to} role="menuitem" className="st-menu-link" onClick={() => setMenuOpen(false)}>
+                  {t(label)}
+                </Link>
+              ))}
+              {/* Below 640px the header drops its .nav-signin slot to keep the
+                  bar on one line, so whichever link lived there — Sign in, or
+                  the account link once you're logged in — has to reappear here.
+                  It reads `account` rather than working the role out again:
+                  the second copy of that ladder had no CONSUMER rung, so a
+                  shopper on a phone got /admin, was bounced by ProtectedRoute,
+                  and had no route to their orders at all. */}
+              <Link
+                to={account.to}
+                role="menuitem"
+                className="st-menu-link"
+                onClick={() => setMenuOpen(false)}
+              >
+                {t(account.label)}
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="st-chips" role="tablist" aria-label="Categories">
@@ -572,12 +658,16 @@ const FLOAT_CHIP_PICKS = ['tomato', 'wheat', 'mango'];
 function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
   const { t } = useTranslation();
   // Secondary hero action follows the viewer: guests are asked to join,
-  // farmers are sent to list a crop, buyers to their working bids.
+  // farmers are sent to list a crop, buyers to their working bids, shoppers to
+  // their orders. A signed-in shopper must not fall through to the guest CTA —
+  // "Sell your harvest" is the one thing they are certainly not here to do.
   const secondary = user?.role === 'FARMER'
     ? { to: '/farmer/listings/new', label: 'List your harvest' }
     : user?.role === 'BUYER'
       ? { to: '/buyer/bids', label: 'My bids' }
-      : { to: '/signup', label: 'Sell your harvest' };
+      : user?.role === 'CONSUMER'
+        ? { to: '/orders', label: 'My orders' }
+        : { to: '/signup', label: 'Sell your harvest' };
   // Floating live-price chips over the hero photo. Always three, always in the
   // same corners: today's real number when the govt feed answered for that
   // crop, the catalogue reference price tagged "ref" when it didn't — the same
@@ -1028,9 +1118,11 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
-// Incubation credit — last thing on the page before the footer.
-// Tries the real logo at /india-2047-ventures.png (drop it in client/public);
-// falls back to the SVG recreation until the file exists.
+// Incubation credit — last thing on the page before the footer. Two backers
+// share the row: India 2047 Ventures tries the real logo at
+// /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
+// recreation until that file exists; Founder Startup House ships as a real
+// wordmark PNG, so it is a plain <img> with the name as alt text.
 // -----------------------------------------------------------------------------
 
 function India2047Logo() {
@@ -1052,14 +1144,29 @@ function IncubatedBy() {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
-    <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
+    <section
+      className="st-incub st-reveal"
+      ref={ref}
+      aria-label="Incubated by India 2047 Ventures and Founder Startup House"
+    >
       <span className="cb-eyebrow">{t('Incubated by')}</span>
-      <div className="st-incub-brand">
-        <India2047Logo />
-        <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+      <div className="st-incub-row">
+        <div className="st-incub-brand">
+          <India2047Logo />
+          <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+        </div>
+        <span className="st-incub-sep" aria-hidden="true" />
+        <img
+          className="st-incub-wordmark"
+          src="/founder-startup-house.png"
+          alt="Founder Startup House"
+          width={150}
+          height={42}
+          loading="lazy"
+        />
       </div>
       <p className="cb-small st-incub-line">
-        {t('CropBid is built with the backing of India 2047 Ventures.')}
+        {t('CropBid is built with the backing of India 2047 Ventures and Founder Startup House.')}
       </p>
     </section>
   );
@@ -1078,10 +1185,18 @@ export function LandingPage() {
 
   // Where every buy/bid CTA lands. The storefront catalogue is demo data, so
   // signed-in users go to the real market (buyers browse live lots, farmers
-  // watch auctions); guests are asked to join first.
+  // watch auctions); guests are asked to join first. Consumers never see these
+  // CTAs — LiveShelf replaces the demo rails for them and its cards link to the
+  // actual product — so '/' is just a harmless self-link.
   const shopHref = user?.role === 'BUYER' ? '/buyer/browse'
     : user?.role === 'FARMER' ? '/auctions'
+    : user?.role === 'CONSUMER' ? '/'
     : '/signup';
+
+  // A signed-in shopper gets the real shop in place of the marketing rails.
+  // Everything else on the page (ticker, rates, forecast) is live data and
+  // stays useful to them.
+  const isShopper = user?.role === 'CONSUMER';
 
   const handleChangeCountry = (next: Country) => {
     setCountry(next);
@@ -1089,8 +1204,9 @@ export function LandingPage() {
   };
 
   // Chips & category tiles jump to a rail; clear any active search first so
-  // the rails are actually on screen to scroll to.
-  const jumpTo = (target: RailId | 'top') => {
+  // the rails are actually on screen to scroll to. 'shelf' is the shopper's
+  // real product grid, which stands in for the rails on a consumer account.
+  const jumpTo = (target: RailId | 'top' | 'shelf') => {
     setQuery('');
     requestAnimationFrame(() => {
       if (target === 'top') {
@@ -1115,7 +1231,15 @@ export function LandingPage() {
         user={user}
       />
       <main className="st-main">
-        {searching ? (
+        {/* A shopper searches the real shelf, not the demo catalogue — the
+            catalogue would return results they cannot buy. */}
+        {isShopper ? (
+          <>
+            {!searching && <HeroBanner onShop={() => jumpTo('shelf')} board={board} currency={currency} user={user} />}
+            <LiveShelf query={query} />
+            {!searching && <LiveRatesBoard board={board} currency={currency} />}
+          </>
+        ) : searching ? (
           <SearchResults query={query} currency={currency} shopHref={shopHref} />
         ) : (
           <>

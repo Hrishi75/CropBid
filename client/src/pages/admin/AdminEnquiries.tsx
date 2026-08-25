@@ -118,7 +118,7 @@ export function AdminEnquiries() {
         </div>
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 8, marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Unworked</div>
           <div className="cb-kpi-value">{newCount}</div>
@@ -198,12 +198,11 @@ export function AdminEnquiries() {
                 {/* Both phone numbers — working a lead means calling the
                     farmer and the dealer who holds the machine. */}
                 <div
+                  className="cb-cols-2"
                   style={{
                     marginTop: 10,
                     paddingTop: 10,
                     borderTop: '1px dashed var(--cb-line)',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
                     gap: 12,
                   }}
                 >
@@ -240,7 +239,7 @@ export function AdminEnquiries() {
       )}
 
       {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 24 }} className="cb-mono cb-tiny">
           <button type="button" disabled={page <= 0} onClick={() => setPage((p) => p - 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>← prev</button>
           <span>page {page + 1} of {totalPages}</span>
           <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>next →</button>

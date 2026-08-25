@@ -98,7 +98,7 @@ export function FarmerAnalytics() {
         ))}
       </div>
 
-      <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Revenue</div>
           <div className="cb-kpi-value">{formatCurrency(summary.totalRevenue, currency)}</div>
@@ -137,7 +137,7 @@ export function FarmerAnalytics() {
         </ChartCard>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 24 }}>
+      <div className="cb-cols-2" style={{ gap: 18, marginBottom: 24 }}>
         <ChartCard title="Crop mix · revenue">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
