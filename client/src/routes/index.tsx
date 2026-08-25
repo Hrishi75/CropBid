@@ -46,6 +46,13 @@ import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
 import { FarmerAnalytics } from '../pages/farmer/FarmerAnalytics';
 import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
 
+// Consumer (retail) pages — deliberately a small set. A shopper gets a product
+// page, a checkout and their orders; everything else in the app is B2B.
+import { ProductDetail } from '../pages/consumer/ProductDetail';
+import { Checkout } from '../pages/consumer/Checkout';
+import { MyOrders } from '../pages/consumer/MyOrders';
+import { OrderDetail } from '../pages/consumer/OrderDetail';
+
 // Shared pages
 import { ListingDetail } from '../pages/shared/ListingDetail';
 import { AgentConfigPage } from '../pages/shared/AgentConfigPage';
@@ -298,6 +305,42 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <BuyerAnalytics />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Consumer (retail) routes. The storefront itself is "/" — the same
+          LandingPage everyone lands on — so there is no /shop index here, only
+          the pages that hang off it. */}
+      <Route
+        path="/shop/:id"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <ProductDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/checkout/:listingId"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <Checkout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <MyOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders/:id"
+        element={
+          <ProtectedRoute allowedRoles={['CONSUMER']}>
+            <OrderDetail />
           </ProtectedRoute>
         }
       />

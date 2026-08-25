@@ -21,6 +21,7 @@ export async function browseListings(req: Request, res: Response, next: NextFunc
             .filter(Boolean)
         : undefined,
       state: req.query.state as string,
+      location: req.query.location as string,
       country: req.query.country as string,
       priceMin: req.query.priceMin ? Number(req.query.priceMin) : undefined,
       priceMax: req.query.priceMax ? Number(req.query.priceMax) : undefined,
@@ -66,6 +67,15 @@ export async function getFilters(req: Request, res: Response, next: NextFunction
   try {
     const filters = await browseService.getAvailableFilters();
     res.json(filters);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/browse/cities — cities with live retail stock (consumer city picker)
+export async function getRetailCities(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(await browseService.getRetailCities());
   } catch (error) {
     next(error);
   }

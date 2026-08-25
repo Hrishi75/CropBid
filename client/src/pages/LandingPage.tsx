@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
+import { LiveShelf } from './consumer/LiveShelf';
 import type { User } from '../types';
 import {
   type Country, type CurrencyCode, type UnitCode,
@@ -507,20 +508,33 @@ function StoreHeader({
           {user ? (
             // Logged in: the store stays the home page; these are the doors
             // into the app (dashboard + the role's main action).
+            //
+            // A CONSUMER has neither. They have no dashboard by design, and
+            // their main action is the shop they are already looking at — so
+            // they get one link, to their orders. Without this branch the
+            // role fell through to /admin and /buyer/browse, two routes
+            // ProtectedRoute would have bounced them straight back out of.
             <>
               <Link
-                to={user.role === 'FARMER' ? '/farmer' : user.role === 'BUYER' ? '/buyer' : '/admin'}
+                to={
+                  user.role === 'FARMER' ? '/farmer'
+                    : user.role === 'BUYER' ? '/buyer'
+                    : user.role === 'CONSUMER' ? '/orders'
+                    : '/admin'
+                }
                 className="nav-signin"
               >
-                {t('Dashboard')}
+                {user.role === 'CONSUMER' ? t('Orders') : t('Dashboard')}
               </Link>
-              <Link
-                to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
-                className="cb-btn cb-btn-primary"
-              >
-                {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
-                <ArrowIcon />
-              </Link>
+              {user.role !== 'CONSUMER' && (
+                <Link
+                  to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
+                  className="cb-btn cb-btn-primary"
+                >
+                  {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
+                  <ArrowIcon />
+                </Link>
+              )}
             </>
           ) : (
             <>
@@ -601,12 +615,16 @@ const FLOAT_CHIP_PICKS = ['tomato', 'wheat', 'mango'];
 function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
   const { t } = useTranslation();
   // Secondary hero action follows the viewer: guests are asked to join,
-  // farmers are sent to list a crop, buyers to their working bids.
+  // farmers are sent to list a crop, buyers to their working bids, shoppers to
+  // their orders. A signed-in shopper must not fall through to the guest CTA —
+  // "Sell your harvest" is the one thing they are certainly not here to do.
   const secondary = user?.role === 'FARMER'
     ? { to: '/farmer/listings/new', label: 'List your harvest' }
     : user?.role === 'BUYER'
       ? { to: '/buyer/bids', label: 'My bids' }
-      : { to: '/signup', label: 'Sell your harvest' };
+      : user?.role === 'CONSUMER'
+        ? { to: '/orders', label: 'My orders' }
+        : { to: '/signup', label: 'Sell your harvest' };
   // Floating live-price chips over the hero photo. Always three, always in the
   // same corners: today's real number when the govt feed answered for that
   // crop, the catalogue reference price tagged "ref" when it didn't — the same
@@ -997,9 +1015,11 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
-// Incubation credit — last thing on the page before the footer.
-// Tries the real logo at /india-2047-ventures.png (drop it in client/public);
-// falls back to the SVG recreation until the file exists.
+// Incubation credit — last thing on the page before the footer. Two backers
+// share the row: India 2047 Ventures tries the real logo at
+// /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
+// recreation until that file exists; Founder Startup House ships as a real
+// wordmark PNG, so it is a plain <img> with the name as alt text.
 // -----------------------------------------------------------------------------
 
 function India2047Logo() {
@@ -1021,14 +1041,29 @@ function IncubatedBy() {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
   return (
-    <section className="st-incub st-reveal" ref={ref} aria-label="Incubated by India 2047 Ventures">
+    <section
+      className="st-incub st-reveal"
+      ref={ref}
+      aria-label="Incubated by India 2047 Ventures and Founder Startup House"
+    >
       <span className="cb-eyebrow">{t('Incubated by')}</span>
-      <div className="st-incub-brand">
-        <India2047Logo />
-        <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+      <div className="st-incub-row">
+        <div className="st-incub-brand">
+          <India2047Logo />
+          <span className="st-incub-name">India 2047 <span>Ventures</span></span>
+        </div>
+        <span className="st-incub-sep" aria-hidden="true" />
+        <img
+          className="st-incub-wordmark"
+          src="/founder-startup-house.png"
+          alt="Founder Startup House"
+          width={150}
+          height={42}
+          loading="lazy"
+        />
       </div>
       <p className="cb-small st-incub-line">
-        {t('CropBid is built with the backing of India 2047 Ventures.')}
+        {t('CropBid is built with the backing of India 2047 Ventures and Founder Startup House.')}
       </p>
     </section>
   );
@@ -1047,10 +1082,18 @@ export function LandingPage() {
 
   // Where every buy/bid CTA lands. The storefront catalogue is demo data, so
   // signed-in users go to the real market (buyers browse live lots, farmers
-  // watch auctions); guests are asked to join first.
+  // watch auctions); guests are asked to join first. Consumers never see these
+  // CTAs — LiveShelf replaces the demo rails for them and its cards link to the
+  // actual product — so '/' is just a harmless self-link.
   const shopHref = user?.role === 'BUYER' ? '/buyer/browse'
     : user?.role === 'FARMER' ? '/auctions'
+    : user?.role === 'CONSUMER' ? '/'
     : '/signup';
+
+  // A signed-in shopper gets the real shop in place of the marketing rails.
+  // Everything else on the page (ticker, rates, forecast) is live data and
+  // stays useful to them.
+  const isShopper = user?.role === 'CONSUMER';
 
   const handleChangeCountry = (next: Country) => {
     setCountry(next);
@@ -1058,8 +1101,9 @@ export function LandingPage() {
   };
 
   // Chips & category tiles jump to a rail; clear any active search first so
-  // the rails are actually on screen to scroll to.
-  const jumpTo = (target: RailId | 'top') => {
+  // the rails are actually on screen to scroll to. 'shelf' is the shopper's
+  // real product grid, which stands in for the rails on a consumer account.
+  const jumpTo = (target: RailId | 'top' | 'shelf') => {
     setQuery('');
     requestAnimationFrame(() => {
       if (target === 'top') {
@@ -1084,7 +1128,15 @@ export function LandingPage() {
         user={user}
       />
       <main className="st-main">
-        {searching ? (
+        {/* A shopper searches the real shelf, not the demo catalogue — the
+            catalogue would return results they cannot buy. */}
+        {isShopper ? (
+          <>
+            {!searching && <HeroBanner onShop={() => jumpTo('shelf')} board={board} currency={currency} user={user} />}
+            <LiveShelf query={query} />
+            {!searching && <LiveRatesBoard board={board} currency={currency} />}
+          </>
+        ) : searching ? (
           <SearchResults query={query} currency={currency} shopHref={shopHref} />
         ) : (
           <>

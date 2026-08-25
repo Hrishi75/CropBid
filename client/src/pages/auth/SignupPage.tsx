@@ -27,7 +27,17 @@ import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import toast from 'react-hot-toast';
 import type { Currency } from '../../types';
 
-type SignupRole = 'FARMER' | 'BUYER';
+type SignupRole = 'FARMER' | 'BUYER' | 'CONSUMER';
+
+// Labels split on what someone is here to DO, not on trade jargon. "Buyer" and
+// "Consumer" are synonyms to a first-time visitor, so the pills say Business vs
+// Shopper and the sub-line spells out the difference in volume — which is the
+// actual thing that separates the two accounts.
+const ROLE_PILLS: { role: SignupRole; label: string; hint: string }[] = [
+  { role: 'FARMER', label: 'Farmer', hint: 'I sell crops' },
+  { role: 'BUYER', label: 'Business', hint: 'I buy in bulk' },
+  { role: 'CONSUMER', label: 'Shopper', hint: 'I buy for my home' },
+];
 
 // Matches SIGNUP_OTP_RESEND_COOLDOWN_MS on the server. The server is the one
 // that enforces it — this only keeps the button from offering a request that
@@ -295,6 +305,15 @@ export function SignupPage() {
         return;
       }
 
+      // A shopper has no profile to complete — no farm, no company — so they go
+      // straight to the storefront. ProtectedRoute exempts them from the
+      // onboarding gate for the same reason.
+      if (role === 'CONSUMER') {
+        toast.success('Account created. Happy shopping.');
+        navigate('/');
+        return;
+      }
+
       toast.success('Account created. Complete your profile.');
       navigate('/onboarding');
     } catch (err: any) {
@@ -304,7 +323,6 @@ export function SignupPage() {
     }
   }
 
-  const isFarmer = role === 'FARMER';
 
   return (
     <div className="cb-app cb-auth">
@@ -330,28 +348,36 @@ export function SignupPage() {
           <div className="cb-auth-form">
             <div className="cb-eyebrow">Auth · create account</div>
             <h1 className="cb-h2" style={{ marginTop: 14 }}>
-              Deploy your agent<br />
-              <span className="cb-italic">in 60 seconds.</span>
+              {role === 'CONSUMER' ? (
+                <>Straight from the farm<br /><span className="cb-italic">to your kitchen.</span></>
+              ) : (
+                <>Deploy your agent<br /><span className="cb-italic">in 60 seconds.</span></>
+              )}
             </h1>
             <p className="cb-body" style={{ marginTop: 14, marginBottom: 28 }}>
-              Pick a role. Brief your agent. Run auctions while you sleep.
+              {role === 'CONSUMER'
+                ? 'Buy what you need, in the quantity you need, at the price the grower set.'
+                : 'Pick a role. Brief your agent. Run auctions while you sleep.'}
             </p>
 
             <div role="radiogroup" aria-label="Account type" style={{ marginBottom: 24 }}>
               <div className="cb-label">I'm a</div>
               <div className="cb-pill-group">
-                {(['FARMER', 'BUYER'] as const).map((r) => (
+                {ROLE_PILLS.map((p) => (
                   <button
-                    key={r}
+                    key={p.role}
                     type="button"
                     role="radio"
-                    aria-checked={role === r}
-                    onClick={() => setRole(r)}
-                    className={`cb-pill ${role === r ? 'active' : ''}`}
+                    aria-checked={role === p.role}
+                    onClick={() => setRole(p.role)}
+                    className={`cb-pill ${role === p.role ? 'active' : ''}`}
                   >
-                    {r === 'FARMER' ? 'Farmer' : 'Buyer'}
+                    {p.label}
                   </button>
                 ))}
+              </div>
+              <div className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
+                {ROLE_PILLS.find((p) => p.role === role)?.hint}
               </div>
             </div>
 
@@ -455,7 +481,7 @@ export function SignupPage() {
         </div>
 
         <aside className="cb-auth-rail">
-          {isFarmer ? (
+          {role === 'FARMER' ? (
             <>
               <div>
                 <span className="cb-eyebrow" style={{ color: 'rgba(244,241,234,0.6)' }}>● for farmers</span>
@@ -477,6 +503,30 @@ export function SignupPage() {
                 <div className="cb-eyebrow">Live · growers onboarded</div>
                 <div className="v">14,247</div>
                 <div className="sub">+312 today · 23 countries</div>
+              </div>
+            </>
+          ) : role === 'CONSUMER' ? (
+            <>
+              <div>
+                <span className="cb-eyebrow" style={{ color: 'rgba(244,241,234,0.6)' }}>● for shoppers</span>
+                <h2 className="cb-h2" style={{ marginTop: 14, color: '#f4f1ea' }}>
+                  One hop from the field.<br />
+                  <span style={{ fontFamily: 'var(--cb-font-serif)', fontStyle: 'italic', fontWeight: 400, color: '#e0cf9e' }}>No middlemen.</span>
+                </h2>
+              </div>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(-1deg)' }}>
+                <div className="cb-eyebrow">"I'm a Shopper"</div>
+                <div className="v">You get:</div>
+                <div className="sub">
+                  · Buy by the kilo, not the tonne<br />
+                  · The grower's own price, no bidding<br />
+                  · Track it from farm to door
+                </div>
+              </div>
+              <div className="cb-auth-rail-card" style={{ transform: 'rotate(1.2deg)', marginLeft: 32 }}>
+                <div className="cb-eyebrow">Live · vs supermarket shelf</div>
+                <div className="v">−22%</div>
+                <div className="sub">avg on graded produce · paid to the farmer</div>
               </div>
             </>
           ) : (

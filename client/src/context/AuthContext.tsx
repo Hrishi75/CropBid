@@ -47,7 +47,7 @@ interface SignupData {
   phone: string; // primary contact + login identifier
   email?: string;
   password: string;
-  role: 'FARMER' | 'BUYER';
+  role: 'FARMER' | 'BUYER' | 'CONSUMER';
   country?: string;
   currency?: string;
   language?: string;
@@ -62,7 +62,8 @@ export interface PendingSignup {
 }
 
 // signup() ends one of two ways depending on role, so callers have to branch:
-// farmers are signed in on the spot, buyers have a code to enter first.
+// farmers and consumers are signed in on the spot, buyers have a code to enter
+// first — only a company account has to prove it controls its email.
 export type SignupResult =
   | { status: 'created' }
   | { status: 'verification-required'; pending: PendingSignup };

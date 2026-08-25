@@ -137,7 +137,14 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           </div>
         </div>
 
-        {viewAs === 'farmer' && (bid.deliveryAddress || bid.contactPhone || bid.buyer?.phone || bid.paymentTerms || bid.deliveryTerms) && (
+        {viewAs === 'farmer' && bid.contactReleased === false && (
+          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, color: 'var(--cb-ink-3)' }}>
+            <span className="cb-mono cb-tiny" style={{ marginRight: 6 }}>CONTACT</span>
+            Delivery address and phone are shared once the buyer's payment clears.
+          </div>
+        )}
+
+        {viewAs === 'farmer' && (bid.deliveryAddress || bid.contactPhone || bid.paymentTerms || bid.deliveryTerms) && (
           <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {bid.deliveryAddress && (
               <div>
@@ -145,11 +152,11 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
                 {bid.deliveryAddress}
               </div>
             )}
-            {(bid.contactPhone || bid.buyer?.phone) && (
+            {bid.contactPhone && (
               <div>
                 <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>CONTACT</span>
-                <a href={`tel:${bid.contactPhone || bid.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>
-                  {bid.contactPhone || bid.buyer?.phone}
+                <a href={`tel:${bid.contactPhone}`} style={{ color: 'var(--cb-ink)' }}>
+                  {bid.contactPhone}
                 </a>
               </div>
             )}

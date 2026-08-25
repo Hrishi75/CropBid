@@ -238,6 +238,11 @@ export function TransactionDetail() {
                 <> · <a href={`tel:${transaction.bid?.contactPhone || transaction.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.bid?.contactPhone || transaction.buyer?.phone}</a></>
               )}
             </div>
+            {!isBuyer && transaction.contactReleased === false && (
+              <div className="cb-tiny" style={{ marginTop: 2, color: 'var(--cb-ink-3)' }}>
+                Contact details unlock once payment reaches escrow.
+              </div>
+            )}
           </div>
         </div>
       </div>
