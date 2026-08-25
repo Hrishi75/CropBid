@@ -7,7 +7,10 @@
 // =============================================================================
 
 // --- Enums ---
-export type Role = 'FARMER' | 'BUYER' | 'ADMIN';
+// CONSUMER is the retail tier: a household buying a kilo, not a company buying a
+// lot. They instant-buy at a listing's fixed retail price and never bid,
+// negotiate, or hold a company profile. See Role in prisma/schema.prisma.
+export type Role = 'FARMER' | 'BUYER' | 'CONSUMER' | 'ADMIN';
 export type Currency = 'INR' | 'USD' | 'EUR' | 'GBP';
 export type Language = 'EN' | 'HI' | 'MR';
 export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
@@ -80,11 +83,19 @@ export interface Listing {
   cropName: string;
   cropVariety: string | null;
   quantity: number;
+  // Stock left for direct sale — decremented on every consumer purchase. Equals
+  // `quantity` on a listing that has never had a retail sale.
+  remainingQuantity: number;
   unit: Unit;
   qualityGrade: QualityGrade;
   pricePerUnitMin: number;
   pricePerUnitMax: number;
   currency: Currency;
+  // The retail channel, running alongside bidding. When directSaleEnabled is on,
+  // a CONSUMER can instant-buy any quantity up to remainingQuantity at
+  // retailPricePerUnit — no bid, no negotiation.
+  directSaleEnabled: boolean;
+  retailPricePerUnit: number | null;
   harvestDate: string | null;
   expiryDate: string | null;
   description: string | null;
@@ -134,9 +145,14 @@ export interface Bid {
   quantity: number;
   currency: Currency;
   message: string | null;
-  // Order fulfilment details — where to deliver and whom to call
+  // Order fulfilment details — where to deliver and whom to call. Both arrive
+  // null on the seller's side until the buyer's payment is captured; read
+  // `contactReleased` rather than inferring "missing" from the nulls.
   deliveryAddress?: string | null;
   contactPhone?: string | null;
+  // false while the deal is still AWAITING_PAYMENT — the contact exists, the
+  // platform is just holding it back. See server/src/services/contactVisibility.ts.
+  contactReleased?: boolean;
   paymentTerms?: string | null;
   deliveryTerms?: string | null;
   isAgentBid: boolean;
@@ -258,6 +274,10 @@ export interface Transaction {
   razorpayPaymentId?: string | null;
   // Present when /transactions is asked to include shipment state (Deliveries page)
   shipment?: Shipment | null;
+  // false while the seller is looking at a deal the buyer hasn't paid for yet:
+  // buyer.phone and bid.contactPhone/deliveryAddress all come back null. True
+  // for the buyer's own rows and for admins.
+  contactReleased?: boolean;
   createdAt: string;
 }
 

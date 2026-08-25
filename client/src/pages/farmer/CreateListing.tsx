@@ -63,6 +63,12 @@ export function CreateListing() {
   const [harvestDate, setHarvestDate] = useState('');
   const [description, setDescription] = useState('');
   const [organic, setOrganic] = useState(false);
+  // The retail channel. Off by default: a farmer opting into consumer sales is
+  // a deliberate choice about packing and last-mile, not something to inherit.
+  // Until this is on with a price, the lot is invisible to shoppers — the
+  // consumer storefront queries /browse?directSale=true.
+  const [directSaleEnabled, setDirectSaleEnabled] = useState(false);
+  const [retailPrice, setRetailPrice] = useState('');
   const [location, setLocation] = useState('');
   const [state, setState] = useState('');
 
@@ -126,6 +132,8 @@ export function CreateListing() {
         setHarvestDate(l.harvestDate ? l.harvestDate.split('T')[0] : '');
         setDescription(l.description || '');
         setOrganic(l.organic || false);
+        setDirectSaleEnabled(l.directSaleEnabled || false);
+        setRetailPrice(l.retailPricePerUnit != null ? String(l.retailPricePerUnit) : '');
         setLocation(l.location || '');
         setState(l.state || '');
       })
@@ -141,6 +149,19 @@ export function CreateListing() {
     if (parseFloat(priceMin) > parseFloat(priceMax)) {
       toast.error('Minimum price cannot exceed maximum price');
       return;
+    }
+    // Both rules are enforced server-side (listing.service.ts); mirroring them
+    // here names the field that's wrong instead of surfacing a generic 400.
+    if (directSaleEnabled) {
+      const retail = parseFloat(retailPrice);
+      if (!(retail > 0)) {
+        toast.error('Set a retail price, or turn off direct sale');
+        return;
+      }
+      if (retail < parseFloat(priceMin)) {
+        toast.error('Retail price cannot be below your bulk floor price');
+        return;
+      }
     }
     // Government MSP guard — warn (but don't block) when the floor is below
     // the official support price. Listings are ₹-native (like the MSP and
@@ -171,6 +192,8 @@ export function CreateListing() {
       if (harvestDate) formData.append('harvestDate', harvestDate);
       if (description) formData.append('description', description);
       formData.append('organic', String(organic));
+      formData.append('directSaleEnabled', String(directSaleEnabled));
+      if (directSaleEnabled) formData.append('retailPricePerUnit', retailPrice);
       formData.append('location', location);
       formData.append('country', user?.country || 'India');
       formData.append('state', state);
@@ -193,6 +216,12 @@ export function CreateListing() {
           harvestDate: harvestDate || undefined,
           description: description || undefined,
           organic,
+          directSaleEnabled,
+          // Only sent when the channel is on. The update schema treats this as
+          // optional, so omitting it leaves the stored price untouched — which
+          // is what should happen when a farmer closes the retail channel and
+          // later reopens it.
+          ...(directSaleEnabled && { retailPricePerUnit: parseFloat(retailPrice) }),
           location,
           country: user?.country || 'India',
           state,
@@ -418,6 +447,42 @@ export function CreateListing() {
                 />
                 <span style={{ fontSize: 14 }}>Organic certified</span>
               </label>
+            </Section>
+
+            {/* The retail channel. Deliberately its own section rather than a
+                checkbox next to "organic": it changes who can buy this lot and
+                at what price, which is a bigger decision than a quality flag. */}
+            <Section title="Sell directly to shoppers">
+              <p className="cb-small" style={{ color: 'var(--cb-ink-3)', marginTop: -4 }}>
+                Households buy any amount at a fixed price you set — no bidding, no waiting.
+                Bulk buyers can still bid on whatever is left.
+              </p>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={directSaleEnabled}
+                  onChange={(e) => setDirectSaleEnabled(e.target.checked)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--cb-forest)' }}
+                />
+                <span style={{ fontSize: 14 }}>Open this lot to shoppers</span>
+              </label>
+              {directSaleEnabled && (
+                <div>
+                  <label className="cb-label">Retail price per {unit.toLowerCase()} (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={retailPrice}
+                    onChange={(e) => setRetailPrice(e.target.value)}
+                    placeholder="e.g. 45"
+                    className="cb-input"
+                  />
+                  <p className="cb-field-hint">
+                    Usually above your bulk floor — retail covers grading, packing and the last mile.
+                  </p>
+                </div>
+              )}
             </Section>
 
             <Section title="Photos">
