@@ -166,8 +166,8 @@ export function PartnerPage() {
         <div style={{ maxWidth: 680 }}>
           <div className="cb-eyebrow">Partner with CropBid</div>
           <h1 className="cb-page-title" style={{ marginTop: 14 }}>
-            Your trade, minus<br />
-            <span className="cb-italic">the middlemen.</span>
+            Your trade,<br />
+            <span className="cb-italic">direct.</span>
           </h1>
           <p className="cb-body" style={{ marginTop: 18, maxWidth: 560 }}>
             One marketplace connecting the people who grow food, the shops that

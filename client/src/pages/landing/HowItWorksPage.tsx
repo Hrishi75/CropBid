@@ -520,7 +520,7 @@ function BuyDirect() {
         <SectionHead
           eyebrow="Not a trader?"
           title={<>Buy for your kitchen,<br /><span className="italic">straight from the source.</span></>}
-          sub="Anyone can buy here — one sack or a week's vegetables, at the seller's own listed price. No bidding, no minimums, no middlemen. Your phone number and a 6-digit code is the whole sign-up; you only need it when you check out."
+          sub="Anyone can buy here — one sack or a week's vegetables, at the seller's own listed price. No bidding, no minimums. Your phone number and a 6-digit code is the whole sign-up; you only need it when you check out."
         />
         <div className="hiw-cta-row">
           <Link to="/" className="cb-btn cb-btn-primary">

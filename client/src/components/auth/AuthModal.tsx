@@ -89,7 +89,7 @@ const SIDE_DOORS = [
     href: '/partner#buy',
     eyebrow: 'Buying at volume',
     title: 'Open a business account',
-    body: 'Restaurants, cafés and food businesses — source direct, skip the middlemen, order on repeat.',
+    body: 'Restaurants, cafés and food businesses — source direct at listed prices, order on repeat.',
   },
 ];
 
