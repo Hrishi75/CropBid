@@ -62,7 +62,7 @@ Shown on the storefront, shop page, cards, cart (grouped, so a two-delivery bask
 
 ### Kilograms
 
-The retail surface is kg end to end, grams below 1 kg, opening at 1 kg and stepping by 500 g.
+The retail surface is kg end to end, showing grams below 1 kg. A picker opens at **1 kg** (`Math.min(1, stock)`), steps by 500 g, and **500 g is the floor** (`STEP_KG`), where the minus button becomes a remove.
 
 **The cart stores kilograms, not the seller's unit.** Half a kilo of a quintal lot is `0.005`, and 2dp rounding turns that into `0.01`, ordering double. Conversion back to the seller's unit happens in exactly one place, `Checkout.tsx`, at 6dp, using the **live** listing unit rather than the cart snapshot.
 
@@ -91,7 +91,7 @@ Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery 
 
 ## 6. Known gaps: read before touching payments or copy
 
-**Settlement moves no money.** Capture is real; money genuinely reaches the platform account. But `releaseFunds` and `refundTransaction` **only update a database column**. Paying a seller's bank needs Razorpay Route (not built), and the refund path never calls Razorpay's refund API at all. Every payout and refund is a manual bank transfer.
+**Settlement moves no money.** Capture is real; money genuinely reaches the platform account. But the release (inside `updateDeliveryStatus`, when the buyer confirms) and `refundTransaction` **only update a database column**. Paying a seller's bank needs Razorpay Route (not built), and the refund path never calls Razorpay's refund API at all. Every payout and refund is a manual bank transfer.
 
 It is invisible in the UI: an order reads "Released" and looks finished. **Never write copy promising an automatic payout.**
 
@@ -116,7 +116,7 @@ DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run de
 - Blank Razorpay keys → payment endpoints return 503 and everything else works.
 - Blank `DATA_GOV_API_KEY` → rates fall back to static reference prices, badged `ref`. This is also true in production and looks like a UI bug but is not.
 
-**CI runs typecheck and build only. It does not run the test suites.** Run `npx vitest run` in `server/` by hand before merging. Client typecheck needs `tsc -b`, not `tsc --noEmit` (project references).
+**CI runs the server test suite** (`Test (vitest)` in the server job, `.github/workflows/ci.yml`). The client job is lint + build and the mobile job is typecheck, neither of which runs tests, because neither has a suite. Client typecheck needs `tsc -b`, not `tsc --noEmit` (project references).
 
 ## 8. Working agreements
 
