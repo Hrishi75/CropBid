@@ -151,6 +151,14 @@ export const ROUTES: RouteMeta[] = [
     },
   },
   {
+    path: '/terms',
+    title: 'Terms and Conditions',
+    description:
+      'The agreement between you and CropBid: who can trade, how prices and the 2% fee work, escrow and settlement, delivery, cancellations and refunds.',
+    priority: '0.3',
+    changefreq: 'yearly',
+  },
+  {
     path: '/privacy',
     title: 'Privacy Policy',
     description:

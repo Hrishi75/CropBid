@@ -373,13 +373,14 @@ export function CBFooter() {
 
         <div className="cb-footer-bottom">
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
-          {/* Terms and Disclosures lived here as href="#" — restore them when
-              those pages exist. Privacy and FAQ are real pages and stay: the
-              two things someone scrolls to the bottom looking for are "what do
-              you do with my data" and "how does this actually work". */}
+          {/* Disclosures lived here as href="#" — restore it when that page
+              exists. The other three are real. Terms and Privacy are the pair a
+              payment provider and an app store both look for, and FAQ is what a
+              person who scrolled this far is usually actually after. */}
           <span className="cb-footer-bottom-right">
             <span className="cb-footer-bottom-links">
               <Link to="/faq">{t('FAQ')}</Link>
+              <Link to="/terms">{t('Terms')}</Link>
               <Link to="/privacy">{t('Privacy')}</Link>
             </span>
             {/*

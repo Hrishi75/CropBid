@@ -515,7 +515,13 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
           )}
 
           <p className="cb-tiny" style={{ marginTop: 22, color: 'var(--cb-ink-3)' }}>
+            {/* You agree to TERMS; a privacy policy is something you are told,
+                not something you accept. This line pointed only at privacy and
+                used the wrong verb for it, because there was nothing to agree
+                to until /terms existed. */}
             By continuing you agree to our{' '}
+            <a href="/terms" style={{ color: 'var(--cb-ink-2)' }}>terms</a>{' '}
+            and acknowledge our{' '}
             <a href="/privacy" style={{ color: 'var(--cb-ink-2)' }}>privacy policy</a>.
           </p>
         </div>
