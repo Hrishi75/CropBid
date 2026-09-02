@@ -20,35 +20,36 @@
 // If you change how the product works, change the answer in the same PR.
 // =============================================================================
 
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
 import { FAQ_GROUPS } from '../content/faq';
 
+/**
+ * One question, as a native <details>.
+ *
+ * NOT a button with `hidden` on the answer, which is what this was first
+ * written as. `hidden` is exactly as invisible to the browser's own find-in-page
+ * as it is to a reader — so a page built to make its answers findable had
+ * fourteen of fifteen answers that Ctrl-F could not find. <details> is the one
+ * collapsed-content element browsers open when a find lands inside it, and it
+ * carries the keyboard and screen-reader behaviour for free rather than
+ * needing aria-expanded bolted on.
+ *
+ * The structured data is unaffected either way: the answer is in the markup,
+ * which is what Google asks for, and accordions are explicitly allowed.
+ */
 function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="faq-item">
-      <button
-        type="button"
-        className="faq-q"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-      >
+    <details className="faq-item">
+      <summary className="faq-q">
         <span>{q}</span>
-        <span className="faq-mark" aria-hidden="true">{open ? '−' : '+'}</span>
-      </button>
-      {/*
-        Rendered whether or not it is open, and hidden with CSS rather than
-        unmounted. An answer that only exists in the DOM after a click is not
-        "visible on the page" to a crawler, which is exactly the problem this
-        page was built to solve — and it keeps the text findable with ctrl-F.
-      */}
-      <div className="faq-a" hidden={!open}>
+        <span className="faq-mark" aria-hidden="true" />
+      </summary>
+      <div className="faq-a">
         <p>{a}</p>
       </div>
-    </div>
+    </details>
   );
 }
 

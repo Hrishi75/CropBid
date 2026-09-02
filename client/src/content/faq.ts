@@ -56,7 +56,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'When do I pay, and what if the order never turns up?',
-        a: 'You pay after placing the order, and CropBid holds the money rather than passing it straight on. It is released to the seller only once you confirm the delivery arrived. If it does not arrive, the money has not left escrow.',
+        a: 'You pay after placing the order, and CropBid holds the money rather than passing it straight on. The seller only becomes due their share once you confirm the delivery arrived. If it never arrives, do not confirm it: the money stays held, and you can report the problem to us.',
       },
     ],
   },
@@ -84,7 +84,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How does payment work on CropBid?',
-        a: 'Once a price is agreed the buyer pays into escrow via Razorpay. The money is held, not released. The crop then ships through a logistics partner, and the payment releases to the farmer once delivery is confirmed. The buyer is protected against non-delivery and the farmer against non-payment.',
+        a: 'Once a price is agreed the buyer pays through Razorpay and the money is held by CropBid rather than passed straight on. The crop then ships. When the buyer confirms delivery the deal is marked settled and the seller is due their money less our 2% fee. That transfer is made by us separately and is not instant, so allow several working days for it to reach the seller\u2019s bank. Until a buyer confirms, nothing is owed to anyone: the buyer is protected against non-delivery and the seller against non-payment.',
       },
       {
         q: 'Does it cost anything to join CropBid?',

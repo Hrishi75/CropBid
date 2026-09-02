@@ -118,9 +118,11 @@ export function PrivacyPolicyPage() {
           </p>
           <p>
             <strong>If you order for your home,</strong> the shop or farm you bought from is
-            given the delivery address and phone number you entered at checkout, and what you
-            ordered. They need it to bring it to you. It goes only to the seller you bought
-            that order from, and browsing a shop shares nothing.
+            told what you ordered straight away, but <strong>your delivery address and phone
+            number are withheld from them until your payment clears</strong>. Placing an order
+            creates it unpaid; the seller sees your contact details only once the money is
+            held, because that is the point at which a delivery has to be arranged. They go
+            only to the seller you bought that order from, and browsing a shop shares nothing.
           </p>
         </Section>
 
