@@ -12,15 +12,18 @@
 // settlement as manual because releaseFunds only moves a database column and
 // paying a seller's bank needs Razorpay Route, which is not built.
 //
-// THREE THINGS ARE COMMERCIAL DECISIONS, NOT CODE, and are lifted to constants
-// so they can be corrected in one edit:
-//   OPERATOR   — the legal entity. Blank until CropBid is registered; the page
-//                falls back to naming the platform rather than inventing a
-//                company, because claiming an entity that does not exist is
-//                worse than naming none.
-//   JURISDICTION — courts named in the governing-law clause.
+// COMMERCIAL DECISIONS, NOT CODE, lifted to constants so they can be corrected
+// in one edit:
+//   OPERATOR   — the registered entity. Incorporation is in progress, so this
+//                stays empty and section 1 says so outright. Naming a company
+//                that does not exist yet is worse than saying "being
+//                incorporated": one is a false statement about who the
+//                customer's contract is with, the other is a true one.
+//                FILL THIS IN THE DAY THE CERTIFICATE ARRIVES, and add the
+//                registered address to section 18.
+//   JURISDICTION — courts named in the governing-law clause. CropBid is based
+//                in India and operates only in India.
 //   CANCEL_WINDOW — how long a household order can be cancelled for.
-// Confirm all three before this goes in front of a real customer.
 // =============================================================================
 
 import { Link } from 'react-router-dom';
@@ -30,9 +33,11 @@ import { SignInLink } from '../components/auth/SignInLink';
 const UPDATED = '2 September 2026';
 const CONTACT = 'info@cropbid.in';
 
-/** Registered entity. Empty until incorporation — see the header note. */
+/** Registered entity. Empty until incorporation completes — see the header note. */
 const OPERATOR = '';
 const OPERATOR_NAME = OPERATOR || 'CropBid';
+/** Drops the "being incorporated" wording the moment OPERATOR is filled in. */
+const INCORPORATED = OPERATOR !== '';
 const JURISDICTION = 'Pune, Maharashtra';
 const CANCEL_WINDOW = '30 minutes';
 
@@ -86,6 +91,15 @@ export function TermsPage() {
             placing an order means you accept these terms. If you do not accept them, do not
             use the platform.
           </p>
+          {!INCORPORATED && (
+            <p>
+              <strong>CropBid is based in India and operates only in India.</strong> The
+              business is currently in the process of being incorporated. Until that completes,
+              the platform is run by its founder, who stands behind the commitments in these
+              terms. We will name the registered company and its address on this page as soon
+              as incorporation is done, and these terms will continue to apply to it.
+            </p>
+          )}
           <p>
             These terms sit alongside our{' '}
             <Link to="/privacy">Privacy Policy</Link>, which explains what we do with your
@@ -330,8 +344,9 @@ export function TermsPage() {
 
         <Section title="16. Governing law">
           <p>
-            These terms are governed by the laws of India, and the courts at{' '}
-            {JURISDICTION} have jurisdiction over any dispute arising from them.
+            CropBid operates only in India. These terms are governed by the laws of India, and
+            the courts at {JURISDICTION} have exclusive jurisdiction over any dispute arising
+            from them.
           </p>
         </Section>
 
@@ -345,8 +360,9 @@ export function TermsPage() {
 
         <Section title="18. Contact">
           <p>
-            {OPERATOR_NAME} — <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. Questions about how
-            the platform works are answered on the <Link to="/faq">FAQ</Link>.
+            {OPERATOR_NAME}, {JURISDICTION}, India —{' '}
+            <a href={`mailto:${CONTACT}`}>{CONTACT}</a>. Questions about how the platform works
+            are answered on the <Link to="/faq">FAQ</Link>.
           </p>
         </Section>
       </main>

@@ -73,6 +73,14 @@ export function PrivacyPolicyPage() {
             CropBid is an agricultural marketplace that connects farmers directly with buyers.
             This policy covers the CropBid website and the CropBid Android app.
           </p>
+          <p>
+            <strong>CropBid is based in India and operates only in India.</strong> The business
+            is in the process of being incorporated; until that completes it is run by its
+            founder, who is responsible for the personal data described here. We will name the
+            registered company and its address on this page once incorporation is done. The{' '}
+            <Link to="/terms">Terms and Conditions</Link> set out the rest of the agreement
+            between us.
+          </p>
         </Section>
 
         <Section title="What we collect">
@@ -240,10 +248,11 @@ export function PrivacyPolicyPage() {
 
         <Section title="Where your data is held">
           <p>
-            The platform is hosted with providers who may store and process data on servers
-            outside India, including in the United States and Europe. Where that happens we
-            rely on the provider's contractual data-protection commitments. Payments are
-            processed by Razorpay in India.
+            CropBid itself operates only in India. Some of the providers we rely on to run the
+            platform — hosting, image storage, messaging — are international companies that may
+            store or process data on servers outside India, including in the United States and
+            Europe. Where that happens we rely on the provider's contractual data-protection
+            commitments. Payments are processed by Razorpay in India.
           </p>
         </Section>
 

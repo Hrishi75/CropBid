@@ -372,7 +372,10 @@ export function CBFooter() {
         </div>
 
         <div className="cb-footer-bottom">
-          <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
+          {/* No "Inc." — that reads as a US corporation, and CropBid is an
+              Indian business still being incorporated. The registered name
+              goes here once the certificate exists; see TermsPage's OPERATOR. */}
+          <span>© {new Date().getFullYear()} CropBid  ·  {t('All rights reserved')}</span>
           {/* Disclosures lived here as href="#" — restore it when that page
               exists. The other three are real. Terms and Privacy are the pair a
               payment provider and an app store both look for, and FAQ is what a
