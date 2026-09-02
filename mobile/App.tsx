@@ -23,6 +23,7 @@ import {
   InstrumentSerif_400Regular_Italic,
 } from '@expo-google-fonts/instrument-serif';
 import { AuthProvider } from './src/context/AuthContext';
+import { CartProvider } from './src/context/CartContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { IdleGuard } from './src/components/IdleGuard';
@@ -53,8 +54,14 @@ export default function App() {
         <AuthProvider>
           {/* Inside AuthProvider — it needs the session to know when to end it. */}
           <IdleGuard>
-            <StatusBar style="dark" />
-            <RootNavigator />
+            {/* Above the navigator so the basket survives every screen change,
+                and inside AuthProvider because a basket belongs to an account:
+                it is read back per user id and re-priced against the shopper's
+                own city. */}
+            <CartProvider>
+              <StatusBar style="dark" />
+              <RootNavigator />
+            </CartProvider>
           </IdleGuard>
         </AuthProvider>
       </ErrorBoundary>

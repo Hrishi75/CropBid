@@ -2,8 +2,20 @@
 // with an inline form for buyers to place a bid (placeBid). Guests can view
 // everything; the sticky bottom bar becomes the login gate ("Log in to buy") —
 // browsing is free, acting needs an account.
+//
+// A SHOPPER'S BAR ADDS TO THE BASKET, IT DOES NOT BUY.
+// It used to place the order on the spot. That made every extra item its own
+// errand — its own address fallback, its own escrow settlement, no running
+// total anywhere — and a household shop is three or four lots, not one. So the
+// bar now sets a quantity and puts the lot in the cart, exactly as the web
+// product page does (client/src/pages/consumer/ProductDetail.tsx), and the one
+// place money is committed is the checkout, where the delivery address is
+// actually confirmed. The idempotency key that used to live in this bar now
+// lives on the cart line (context/CartContext.tsx), which is a better home for
+// it: it survives the app being killed between the failed attempt and the
+// retry.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -16,12 +28,13 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { directPurchase, fetchListing, placeBid } from '../api/endpoints';
-import { mintPurchaseKey } from '../lib/idempotency';
+import { fetchListing, placeBid } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
@@ -143,10 +156,10 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         ) : null}
       </ScrollView>
 
-      {/* Blinkit-style sticky buy bar — quantity stepper + total + Buy now.
+      {/* Blinkit-style sticky bar — quantity stepper + total + Add to cart.
           Guests get the login gate here instead: price + "Log in to buy". */}
       {canDirectBuy ? (
-        <BuyBar listing={listing} pack={pack} onDone={() => navigation.goBack()} />
+        <BuyBar listing={listing} pack={pack} />
       ) : isGuest ? (
         <GuestBar listing={listing} onLogin={() => (navigation as any).navigate('Login')} />
       ) : null}
@@ -379,52 +392,53 @@ function GuestBar({ listing, onLogin }: { listing: Listing; onLogin: () => void 
   );
 }
 
-// Sticky bottom purchase bar: − / + quantity stepper, live total, and a Buy
-// button — the quick-commerce "Add to cart" bar, adapted for loose produce.
-// The stepper counts PACKS when the crop has one ("2 × 500 g"), so a shopper
-// buys exactly what the storefront card offered; the order still goes to the
-// server in the listing's own unit. Crops without a pack step by the unit.
-function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | null; onDone: () => void }) {
+// Sticky bottom bar for a shopper: − / + quantity stepper, live total, and the
+// button that puts the lot in the basket. The stepper counts PACKS when the
+// crop has one ("2 × 500 g"), so a shopper picks exactly what the storefront
+// card offered; the amount stored on the cart line is still the listing's own
+// unit, which is what the order eventually carries. Crops without a pack step
+// by the unit.
+//
+// Once the lot is in the basket the button becomes "Update cart" and a second
+// row appears with the way to the cart — the shopper has somewhere to go next,
+// and the number they are looking at is the one that is already saved.
+function BuyBar({ listing, pack }: { listing: Listing; pack: ShopPack | null }) {
   const insets = useSafeAreaInsets();
-  const [count, setCount] = useState('1');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const navigation = useNavigation<any>();
+  const { add, quantityOf, count: cartCount } = useCart();
 
   const step = pack ? pack.units : 1; // listing units per tap of the stepper
-  const n = Number(count);
+  const inStock = listing.remainingQuantity;
+  const unit = unitLabel(listing.unit);
+  const maxCount = Math.floor(inStock / step);
+
+  // Opening on what the basket already holds, not on a fresh 1 — this bar has
+  // to agree with the cart it is editing, or "Update cart" would quietly move
+  // the amount to a number the shopper never chose.
+  const inCart = quantityOf(listing.id);
+  const [picked, setPicked] = useState(() =>
+    String(inCart > 0 ? Math.max(1, Math.round(inCart / step)) : 1));
+  const [error, setError] = useState<string | null>(null);
+
+  const n = Number(picked);
   const price = listing.retailPricePerUnit ?? 0;
   // Rounded because 3 × 0.05 quintal is 0.15000000000000002 in binary floating
   // point, and that goes on an order. Packs round in kg then convert, so a
   // small pack off a TONNE lot survives the trip.
   const qtyNum = n > 0 ? (pack ? orderQuantity(pack, n) : Number(n.toFixed(3))) : 0;
   const total = qtyNum > 0 ? qtyNum * price : 0;
-  const inStock = listing.remainingQuantity;
-  const unit = unitLabel(listing.unit);
-  const maxCount = Math.floor(inStock / step);
   const valid = n > 0 && qtyNum > 0 && qtyNum <= inStock;
   // Six decimals: a gram of a TONNE lot is 0.000001, and rounding the display
   // to the usual three would show a 500 g pack as "0 t".
   const qtyText = `${qtyNum.toLocaleString('en-IN', { maximumFractionDigits: 6 })} ${unit}`;
 
   const bump = (d: number) => {
-    const next = Math.min(Math.max((Number(count) || 0) + d, 1), Math.max(maxCount, 1));
+    const next = Math.min(Math.max((Number(picked) || 0) + d, 1), Math.max(maxCount, 1));
     setError(null);
-    setCount(String(next));
+    setPicked(String(next));
   };
 
-  // The reference for the order this bar is about to place. A failed attempt
-  // is indistinguishable from one whose response was lost, so tapping Buy
-  // again has to replay the same key rather than order a second time.
-  const purchaseKey = useRef(mintPurchaseKey());
-
-  // A different amount is a different order, so it gets its own key —
-  // otherwise a retry after changing the quantity would return the order for
-  // the old one and look like the change never took.
-  useEffect(() => {
-    purchaseKey.current = mintPurchaseKey();
-  }, [qtyNum]);
-
-  async function submit() {
+  function addToCart() {
     if (!(n > 0)) {
       setError(pack ? 'Choose how many packs you want' : 'Enter how much you want to buy');
       return;
@@ -434,30 +448,22 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
       return;
     }
     setError(null);
-    setSubmitting(true);
-    try {
-      await directPurchase({
-        listingId: listing.id,
-        quantity: qtyNum,
-        idempotencyKey: purchaseKey.current,
-      });
-      // Spent. Anything bought from this screen afterwards is a new order.
-      purchaseKey.current = mintPurchaseKey();
-      Alert.alert(
-        'Order placed',
-        `Pay ${money(total, listing.currency)} from the Orders tab to complete your purchase.`,
-        [{ text: 'OK', onPress: onDone }],
-      );
-    } catch (e) {
-      setError(errorMessage(e, 'Could not place order'));
-    } finally {
-      setSubmitting(false);
-    }
+    add(listing, qtyNum);
   }
 
   return (
     <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       {error ? <Text style={styles.buyBarError}>{error}</Text> : null}
+
+      {inCart > 0 ? (
+        <Pressable onPress={() => navigation.navigate('ConsumerTabs', { screen: 'Cart' })} hitSlop={6} style={styles.cartStrip}>
+          <Text style={styles.cartStripText}>
+            In your cart · {cartCount === 1 ? '1 lot' : `${cartCount} lots`}
+          </Text>
+          <Text style={styles.cartStripLink}>View cart →</Text>
+        </Pressable>
+      ) : null}
+
       <View style={styles.buyBarRow}>
         <View style={styles.stepper}>
           <Pressable onPress={() => bump(-1)} hitSlop={8} style={styles.stepBtn}>
@@ -465,8 +471,8 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
           </Pressable>
           <TextInput
             style={styles.stepInput}
-            value={count}
-            onChangeText={(t) => { setError(null); setCount(t.replace(/[^0-9]/g, '')); }}
+            value={picked}
+            onChangeText={(t) => { setError(null); setPicked(t.replace(/[^0-9]/g, '')); }}
             keyboardType="numeric"
             maxLength={6}
           />
@@ -487,11 +493,8 @@ function BuyBar({ listing, pack, onDone }: { listing: Listing; pack: ShopPack | 
         {/* Dim but still pressable when the amount doesn't work — a tap then
             says why (out of stock, less than one pack left) instead of the
             button silently doing nothing. */}
-        <PressScale
-          onPress={submitting ? undefined : submit}
-          cardStyle={[styles.buyBtn, (submitting || !valid) && styles.buyBtnDim]}
-        >
-          <Text style={styles.buyBtnText}>{submitting ? 'Placing…' : 'Buy now'}</Text>
+        <PressScale onPress={addToCart} cardStyle={[styles.buyBtn, !valid && styles.buyBtnDim]}>
+          <Text style={styles.buyBtnText}>{inCart > 0 ? 'Update cart' : 'Add to cart'}</Text>
         </PressScale>
       </View>
     </View>
@@ -563,6 +566,19 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   buyBarError: { color: colors.error, fontFamily: font.sansMed, fontSize: 12.5, marginBottom: 8 },
+  cartStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    backgroundColor: design.mint,
+    borderRadius: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  cartStripText: { fontFamily: font.sansMed, fontSize: 12, color: colors.forest },
+  cartStripLink: { fontFamily: font.sansBold, fontSize: 12, color: colors.forest },
   buyBarRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepper: {
     flexDirection: 'row',

@@ -82,6 +82,13 @@ export default function LoginScreen() {
             returnKeyType="go"
           />
 
+          {/* Under the password field, where somebody who has just failed to
+              remember it is already looking. It went missing from the web sign-in
+              once and cost people their accounts; it is not going missing here. */}
+          <Pressable onPress={() => navigation.navigate('ForgotPassword')} hitSlop={8}>
+            <Text style={styles.forgot}>Forgot password?</Text>
+          </Pressable>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <View style={styles.spacer} />
@@ -127,6 +134,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.surface,
     marginBottom: spacing.lg,
+  },
+  forgot: {
+    alignSelf: 'flex-end',
+    color: colors.ember,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: -spacing.sm,
+    marginBottom: spacing.md,
   },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
   spacer: { height: spacing.xs },
