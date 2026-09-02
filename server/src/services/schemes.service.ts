@@ -70,7 +70,7 @@ const SCHEMES: Scheme[] = [
     emoji: '💰',
     category: 'income',
     tagline: '₹6,000 every year, straight to your bank account.',
-    benefit: '₹2,000 three times a year (every 4 months), paid directly into your bank account by the central government. No middleman, no fee.',
+    benefit: '₹2,000 three times a year (every 4 months), paid directly into your bank account by the central government. Nobody to pay, no fee.',
     eligibility: 'All landholding farmer families — the land must be in your (or your family\'s) name. Institutional landholders and income-tax payers are excluded.',
     apply: 'Register free at pmkisan.gov.in ("New Farmer Registration") or at your nearest CSC centre with Aadhaar, bank passbook and land papers. Check your installment status on the same site under "Know Your Status".',
     link: 'https://pmkisan.gov.in',
