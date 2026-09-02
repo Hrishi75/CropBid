@@ -38,11 +38,41 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 // =============================================================================
+// Helper: Phone normalization
+// =============================================================================
+// MUST match normalizePhone() in src/services/auth.service.ts. Phone is the
+// primary login identifier and is looked up on its normalized form, so a row
+// written with separators ("+91-98765 43210") can never be found by anyone
+// typing that same number — password login 401s and phone OTP reports the
+// account as new. Real signups normalize on write and the phone_primary_contact
+// migration backfilled existing rows; seeded rows have to do it themselves.
+function normalizePhone(phone: string): string {
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/[^0-9]/g, '');
+  return trimmed.startsWith('+') ? `+${digits}` : digits;
+}
+
+// =============================================================================
 // SEED DATA DEFINITIONS
 // =============================================================================
 
 // All test users share this password
 const DEFAULT_PASSWORD = 'password123';
+
+// ---------------------------------------------------------------------------
+// Where CropBid actually delivers to households
+// ---------------------------------------------------------------------------
+// Retail runs in Pune and Nagpur, and nowhere else yet. The WHOLESALE market is
+// national — a farmer in Amritsar can take a bid from a buyer in Chennai and
+// freight a lot between them — but a household order is a few kilos that has to
+// be carried across a city the same day or the next morning, and that only
+// works where there are people to carry it.
+//
+// So direct sale is switched on ONLY in these cities. getRetailCities derives
+// the shopper's city picker from live direct-sale stock, which means this list
+// IS the storefront's coverage: seed retail stock elsewhere and the app starts
+// promising deliveries nobody can make.
+const RETAIL_CITIES = ['Pune', 'Nagpur'];
 
 // ---------------------------------------------------------------------------
 // Indian Farmers (15) — the primary market
@@ -53,14 +83,14 @@ const indianFarmers = [
   { name: 'Lakshmi Devi',       email: 'lakshmi@cropbid.test',   phone: '+91-9876543212', location: 'Lucknow',       state: 'Uttar Pradesh',  farmSize: 8,  crops: ['rice', 'sugarcane', 'potato'],           organic: false, fpo: 'UP Kisan Samiti',         apmc: null },
   { name: 'Venkatesh Reddy',    email: 'venkatesh@cropbid.test', phone: '+91-9876543213', location: 'Bangalore',     state: 'Karnataka',      farmSize: 15, crops: ['coffee', 'turmeric', 'pepper'],          organic: true,  fpo: null,                      apmc: 'KA-APMC-2024-9012',  certBody: 'NPOP' },
   { name: 'Amit Sharma',        email: 'amit@cropbid.test',      phone: '+91-9876543214', location: 'Indore',        state: 'Madhya Pradesh', farmSize: 30, crops: ['soybean', 'wheat', 'chana'],             organic: false, fpo: 'MP Soy Producers FPO',    apmc: 'MP-APMC-2024-3456' },
-  { name: 'Priya Kumari',       email: 'priya@cropbid.test',     phone: '+91-9876543215', location: 'Jaipur',        state: 'Rajasthan',      farmSize: 20, crops: ['mustard', 'wheat', 'bajra'],             organic: false, fpo: null,                      apmc: 'RJ-APMC-2024-7890' },
+  { name: 'Priya Kumari',       email: 'priya.kumari@cropbid.test', phone: '+91-9876543215', location: 'Jaipur',        state: 'Rajasthan',      farmSize: 20, crops: ['mustard', 'wheat', 'bajra'],             organic: false, fpo: null,                      apmc: 'RJ-APMC-2024-7890' },
   { name: 'Murugan Subramanian', email: 'murugan@cropbid.test',  phone: '+91-9876543216', location: 'Madurai',       state: 'Tamil Nadu',     farmSize: 6,  crops: ['rice', 'banana', 'turmeric'],            organic: true,  fpo: 'TN Organic Farmers FPO',  apmc: null,                  certBody: 'NPOP' },
   { name: 'Jagdish Mehta',      email: 'jagdish@cropbid.test',   phone: '+91-9876543217', location: 'Ahmedabad',     state: 'Gujarat',        farmSize: 18, crops: ['cotton', 'groundnut', 'castor'],         organic: false, fpo: null,                      apmc: 'GJ-APMC-2024-2345' },
   { name: 'Srinivas Rao',       email: 'srinivas@cropbid.test',  phone: '+91-9876543218', location: 'Vijayawada',    state: 'Andhra Pradesh', farmSize: 10, crops: ['rice', 'cotton', 'chili'],               organic: false, fpo: 'AP Cotton Growers FPO',   apmc: 'AP-APMC-2024-6789' },
   { name: 'Ramesh Reddy',       email: 'ramesh@cropbid.test',    phone: '+91-9876543219', location: 'Hyderabad',     state: 'Telangana',      farmSize: 14, crops: ['rice', 'turmeric', 'cotton'],            organic: false, fpo: null,                      apmc: 'TG-APMC-2024-0123' },
   { name: 'Baldev Singh',       email: 'baldev@cropbid.test',    phone: '+91-9876543220', location: 'Ludhiana',      state: 'Punjab',         farmSize: 35, crops: ['wheat', 'rice', 'potato'],               organic: false, fpo: 'Punjab Grain FPO',        apmc: 'PB-APMC-2024-4567' },
   { name: 'Kavitha Nair',       email: 'kavitha@cropbid.test',   phone: '+91-9876543221', location: 'Kochi',         state: 'Kerala',         farmSize: 5,  crops: ['coconut', 'pepper', 'cardamom'],         organic: true,  fpo: null,                      apmc: null,                  certBody: 'NPOP' },
-  { name: 'Deepak Yadav',       email: 'deepak@cropbid.test',    phone: '+91-9876543222', location: 'Bhopal',        state: 'Madhya Pradesh', farmSize: 22, crops: ['wheat', 'soybean', 'gram'],              organic: false, fpo: null,                      apmc: 'MP-APMC-2024-8901' },
+  { name: 'Deepak Yadav',       email: 'deepak@cropbid.test',    phone: '+91-9876543222', location: 'Nagpur',        state: 'Maharashtra',    farmSize: 22, crops: ['soybean', 'cotton', 'orange'],           organic: false, fpo: 'Vidarbha Growers FPO',    apmc: 'MH-APMC-2024-8901' },
   { name: 'Sunita Patil',       email: 'sunita@cropbid.test',    phone: '+91-9876543223', location: 'Pune',          state: 'Maharashtra',    farmSize: 9,  crops: ['sugarcane', 'onion', 'pomegranate'],     organic: true,  fpo: 'Pune Organic Collective', apmc: 'MH-APMC-2024-5670', certBody: 'NPOP' },
   { name: 'Ravi Kumar',         email: 'ravi@cropbid.test',      phone: '+91-9876543224', location: 'Mysore',        state: 'Karnataka',      farmSize: 11, crops: ['rice', 'ragi', 'coconut'],               organic: false, fpo: null,                      apmc: 'KA-APMC-2024-1230' },
 ];
@@ -258,7 +288,7 @@ async function main() {
       email: 'admin@cropbid.test',
       password: hashedPassword,
       role: 'ADMIN',
-      phone: '+91-9000000000',
+      phone: normalizePhone('+91-9000000000'),
       location: 'Mumbai',
       country: 'India',
       trustScore: 100,
@@ -279,7 +309,7 @@ async function main() {
         email: f.email,
         password: hashedPassword,
         role: 'FARMER',
-        phone: f.phone,
+        phone: normalizePhone(f.phone),
         location: f.location,
         country: 'India',
         currency: 'INR',
@@ -318,7 +348,7 @@ async function main() {
         email: f.email,
         password: hashedPassword,
         role: 'FARMER',
-        phone: f.phone,
+        phone: normalizePhone(f.phone),
         location: f.location,
         country: f.country,
         currency: f.currency,
@@ -357,7 +387,7 @@ async function main() {
         email: b.email,
         password: hashedPassword,
         role: 'BUYER',
-        phone: b.phone,
+        phone: normalizePhone(b.phone),
         location: b.location,
         country: 'India',
         currency: 'INR',
@@ -392,7 +422,7 @@ async function main() {
         email: b.email,
         password: hashedPassword,
         role: 'BUYER',
-        phone: b.phone,
+        phone: normalizePhone(b.phone),
         location: b.location,
         country: b.country,
         currency: b.currency,
@@ -427,6 +457,14 @@ async function main() {
     // Distribute listings across Indian farmers (round-robin)
     const farmerProfile = farmerProfiles[i % 15]; // first 15 are Indian
     const farmerUser = farmerUsers[i % 15];
+    // On the household shelf only if it is ACTIVE, inside the delivery
+    // footprint, and not a bulk lot. TONNE is the tell: nobody sells a
+    // household a tonne of anything, and pricing one per kilo produces the
+    // sort of number that makes a storefront look broken (a 30-tonne
+    // sugarcane lot lands at 48 paise a kilo).
+    const onRetailShelf = i < 35
+      && RETAIL_CITIES.includes(farmerUser.location)
+      && l.unit !== 'TONNE';
 
     const listing = await prisma.listing.create({
       data: {
@@ -448,6 +486,16 @@ async function main() {
         country: 'India',
         state: farmerProfile.state,
         status: i < 35 ? 'ACTIVE' : (i < 38 ? 'IN_AUCTION' : 'SOLD'), // mostly active
+        // Stock left for direct sale. A fresh listing has its whole quantity
+        // available; a SOLD one has none, matching what acceptBid writes.
+        remainingQuantity: i < 38 ? l.quantity : 0,
+        // On the consumer shelf only if it is ACTIVE and the farm is in a city
+        // we actually deliver to. Without any of this the storefront is dead on
+        // arrival, since getRetailCities derives the city picker from live
+        // direct-sale stock; without the city test it offers fifteen cities we
+        // cannot serve. Retail sits above the wholesale ceiling, as a shop price does.
+        directSaleEnabled: onRetailShelf,
+        retailPricePerUnit: onRetailShelf ? Math.round(l.maxPrice * 1.15) : null,
       },
     });
 
@@ -484,11 +532,150 @@ async function main() {
         country: l.country,
         state: l.state,
         status: 'ACTIVE',
+        remainingQuantity: l.quantity,
       },
     });
 
     allListings.push(listing);
   }
+
+  // =========================================================================
+  // 7b. Create Local Shops and their shelves
+  // =========================================================================
+  // The consumer storefront is shop-first: a shopper picks a city, then a
+  // counter, then what is on it. Without LOCAL_SHOP sellers there is nothing
+  // to pick, and the whole retail surface reads as a flat list of farm lots.
+  //
+  // Shops are denominated in KG, unlike the farm lots above, because that is
+  // how a neighbourhood shop actually sells and because it keeps the kg path
+  // exercised by the seed rather than only by quintal conversion.
+  console.log('  Creating local shops and their shelves...');
+
+  const LOCAL_SHOPS = [
+    {
+      owner: 'Ramji Patil', email: 'ramji@cropbid.test', phone: '+91-9700000001',
+      shop: 'Ramji Sabji Bhandar', shopType: 'vegetable', city: 'Pune', state: 'Maharashtra',
+      fssai: '11522998000123',
+      stock: [
+        { crop: 'Tomato',      variety: 'Hybrid',     qty: 120, price: 24, grade: 'A' as const, organic: false },
+        { crop: 'Onion',       variety: 'Nashik Red', qty: 300, price: 19, grade: 'A' as const, organic: false },
+        { crop: 'Potato',      variety: 'Jyoti',      qty: 200, price: 17, grade: 'B' as const, organic: false },
+        { crop: 'Green Chilli',variety: 'Local',      qty: 40,  price: 52, grade: 'A' as const, organic: false },
+        { crop: 'Coriander',   variety: 'Local',      qty: 25,  price: 60, grade: 'A' as const, organic: true  },
+      ],
+    },
+    {
+      owner: 'Sunita Kale', email: 'sunita.shop@cropbid.test', phone: '+91-9700000002',
+      shop: 'Green Basket Fresh', shopType: 'vegetable', city: 'Pune', state: 'Maharashtra',
+      fssai: '11522998000124',
+      stock: [
+        { crop: 'Tomato',   variety: 'Desi',    qty: 80,  price: 28, grade: 'A' as const, organic: true  },
+        { crop: 'Spinach',  variety: 'Local',   qty: 30,  price: 35, grade: 'A' as const, organic: true  },
+        { crop: 'Cabbage',  variety: 'Local',   qty: 90,  price: 18, grade: 'B' as const, organic: false },
+        { crop: 'Carrot',   variety: 'Ooty',    qty: 60,  price: 42, grade: 'A' as const, organic: false },
+      ],
+    },
+    {
+      owner: 'Iqbal Shaikh', email: 'iqbal@cropbid.test', phone: '+91-9700000003',
+      shop: 'Shaikh Kirana & General Stores', shopType: 'kirana', city: 'Pune', state: 'Maharashtra',
+      fssai: '11522998000125',
+      stock: [
+        { crop: 'Rice',    variety: 'Kolam',      qty: 400, price: 62,  grade: 'A' as const, organic: false },
+        { crop: 'Wheat',   variety: 'Sharbati',   qty: 500, price: 38,  grade: 'A' as const, organic: false },
+        { crop: 'Chana',   variety: 'Desi',       qty: 150, price: 88,  grade: 'B' as const, organic: false },
+        { crop: 'Turmeric',variety: 'Salem',      qty: 40,  price: 145, grade: 'A' as const, organic: true  },
+      ],
+    },
+    {
+      owner: 'Pramod Deshmukh', email: 'pramod@cropbid.test', phone: '+91-9700000004',
+      shop: 'Deshmukh Bhaji Center', shopType: 'vegetable', city: 'Nagpur', state: 'Maharashtra',
+      fssai: '11522998000126',
+      stock: [
+        { crop: 'Tomato',      variety: 'Local',   qty: 100, price: 22, grade: 'A' as const, organic: false },
+        { crop: 'Brinjal',     variety: 'Local',   qty: 70,  price: 26, grade: 'A' as const, organic: false },
+        { crop: 'Lady Finger', variety: 'Local',   qty: 45,  price: 38, grade: 'A' as const, organic: false },
+        { crop: 'Onion',       variety: 'Local',   qty: 250, price: 20, grade: 'B' as const, organic: false },
+      ],
+    },
+    {
+      owner: 'Rekha Wankhede', email: 'rekha@cropbid.test', phone: '+91-9700000005',
+      shop: 'Orange City Fresh Mart', shopType: 'general', city: 'Nagpur', state: 'Maharashtra',
+      fssai: '11522998000127',
+      stock: [
+        { crop: 'Orange',   variety: 'Nagpur Santra', qty: 200, price: 55, grade: 'A' as const, organic: false },
+        { crop: 'Rice',     variety: 'Chinnor',       qty: 300, price: 58, grade: 'A' as const, organic: false },
+        { crop: 'Soybean',  variety: 'Local',         qty: 180, price: 66, grade: 'B' as const, organic: false },
+        { crop: 'Coriander',variety: 'Local',         qty: 20,  price: 58, grade: 'A' as const, organic: true  },
+      ],
+    },
+  ];
+
+  let shopListingCount = 0;
+  for (const sh of LOCAL_SHOPS) {
+    const user = await prisma.user.create({
+      data: {
+        name: sh.owner,
+        email: sh.email,
+        password: hashedPassword,
+        role: 'FARMER', // the seller role — see the SellerType note on FarmerProfile
+        phone: normalizePhone(sh.phone),
+        location: sh.city,
+        country: 'India',
+        currency: 'INR',
+        trustScore: 55 + Math.random() * 30,
+      },
+    });
+
+    const profile = await prisma.farmerProfile.create({
+      data: {
+        userId: user.id,
+        sellerType: 'LOCAL_SHOP',
+        status: 'APPROVED', // seeded demo partners skip the review queue
+        businessName: sh.shop,
+        shopType: sh.shopType,
+        address: `${sh.shop}, Main Road, ${sh.city}`,
+        fssaiLicense: sh.fssai,
+        // Doubles as "categories stocked" for a shop, per the schema note.
+        cropsGrown: sh.stock.map((it) => it.crop),
+        country: 'India',
+        state: sh.state,
+        verified: true,
+      },
+    });
+
+    for (const it of sh.stock) {
+      await prisma.listing.create({
+        data: {
+          farmerId: profile.id,
+          cropName: it.crop,
+          cropVariety: it.variety,
+          quantity: it.qty,
+          remainingQuantity: it.qty,
+          unit: 'KG',
+          qualityGrade: it.grade,
+          // A shop's buy/sell spread. The retail price is what a household
+          // pays; the range below it is what the shop would take in bulk.
+          pricePerUnitMin: Math.round(it.price * 0.8),
+          pricePerUnitMax: it.price,
+          retailPricePerUnit: it.price,
+          directSaleEnabled: true,
+          currency: 'INR',
+          harvestDate: new Date(Date.now() - Math.random() * 3 * 24 * 60 * 60 * 1000),
+          expiryDate: new Date(Date.now() + (5 + Math.random() * 15) * 24 * 60 * 60 * 1000),
+          description: `${it.crop} at ${sh.shop}, ${sh.city}. Same-day stock.`,
+          images: cropImageFor(it.crop) ? [cropImageFor(it.crop)!] : [],
+          organic: it.organic,
+          location: sh.city,
+          country: 'India',
+          state: sh.state,
+          status: 'ACTIVE',
+        },
+      });
+      shopListingCount++;
+    }
+  }
+
+  console.log(`  ✅ Created ${LOCAL_SHOPS.length} local shops holding ${shopListingCount} lines`);
 
   // =========================================================================
   // 8. Create Agent Configs (30)
@@ -863,7 +1050,7 @@ async function main() {
       email: 'priya@cropbid.test',
       password: hashedPassword,
       role: 'CONSUMER',
-      phone: '+91-9123456789',
+      phone: normalizePhone('+91-9123456789'),
       location: 'Pune',
       country: 'India',
       currency: 'INR',

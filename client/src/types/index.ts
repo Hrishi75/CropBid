@@ -420,3 +420,24 @@ export interface ApiError {
   message: string;
   statusCode: number;
 }
+
+// A seller as the consumer storefront sees them: the counter a shopper picks
+// before they pick produce. Shape mirrors listRetailShops() in browse.service.
+export interface RetailShop {
+  id: string;
+  name: string;
+  sellerType: SellerType;
+  shopType: string | null;
+  city: string;
+  state: string;
+  verified: boolean;
+  trustScore: number;
+  itemCount: number;
+  crops: string[];
+  organicCount: number;
+  currency: string;
+  /** Cheapest per-kilo price on the shelf. Null when nothing is retail-priced. */
+  fromPricePerKg: number | null;
+  image: string | null;
+  lastRestockedAt: string;
+}

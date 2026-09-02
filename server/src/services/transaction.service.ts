@@ -20,6 +20,7 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
+import { PUBLIC_SELLER_SELECT } from './publicSeller';
 import { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../utils/ApiError';
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
@@ -79,7 +80,11 @@ export async function createTransaction(bidId: string, client: Prisma.Transactio
       deliveryStatus: 'PENDING',
     },
     include: {
-      listing: true,
+      // The seller travels with the listing so an order can name the shop it
+      // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
+      // same public-safe projection the storefront uses, so this adds identity
+      // (trading name, seller type) and no compliance data.
+      listing: { include: { farmer: { select: PUBLIC_SELLER_SELECT } } },
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true } },
       bid: true,
@@ -106,7 +111,11 @@ export async function getMyTransactions(userId: string, role: string) {
     where,
     orderBy: { createdAt: 'desc' },
     include: {
-      listing: true,
+      // The seller travels with the listing so an order can name the shop it
+      // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
+      // same public-safe projection the storefront uses, so this adds identity
+      // (trading name, seller type) and no compliance data.
+      listing: { include: { farmer: { select: PUBLIC_SELLER_SELECT } } },
       // The farmer's phone is NEVER exposed to the counterparty — only the
       // platform (admin endpoints) may see it. The buyer's phone is selected
       // here but redacted below unless the money is actually in escrow: a row
@@ -143,7 +152,11 @@ export async function getTransaction(transactionId: string, userId: string) {
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
     include: {
-      listing: true,
+      // The seller travels with the listing so an order can name the shop it
+      // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
+      // same public-safe projection the storefront uses, so this adds identity
+      // (trading name, seller type) and no compliance data.
+      listing: { include: { farmer: { select: PUBLIC_SELLER_SELECT } } },
       // Neither side's email is ever exposed to the other — a phone number is
       // what a delivery needs, an email address is what a direct-sourcing
       // relationship starts with. The farmer's phone is likewise never exposed;
@@ -213,7 +226,11 @@ export async function updateDeliveryStatus(
     where: { id: transactionId },
     data: { deliveryStatus: status as any },
     include: {
-      listing: true,
+      // The seller travels with the listing so an order can name the shop it
+      // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
+      // same public-safe projection the storefront uses, so this adds identity
+      // (trading name, seller type) and no compliance data.
+      listing: { include: { farmer: { select: PUBLIC_SELLER_SELECT } } },
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true } },
     },
@@ -279,7 +296,11 @@ export async function refundTransaction(transactionId: string) {
     where: { id: transactionId },
     data: { paymentStatus: 'REFUNDED' },
     include: {
-      listing: true,
+      // The seller travels with the listing so an order can name the shop it
+      // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
+      // same public-safe projection the storefront uses, so this adds identity
+      // (trading name, seller type) and no compliance data.
+      listing: { include: { farmer: { select: PUBLIC_SELLER_SELECT } } },
       farmer: { select: { id: true, name: true } },
       buyer: { select: { id: true, name: true } },
     },

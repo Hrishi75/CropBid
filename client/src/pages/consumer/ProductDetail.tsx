@@ -37,7 +37,7 @@ import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { localizedDescription } from '../../utils/localized';
 import { QuantityStepper } from './QuantityStepper';
-import { toKg } from '../../utils/units';
+import { formatWeight, pricePerKg, toKg } from '../../utils/units';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
@@ -61,9 +61,10 @@ export function ProductDetail() {
     api.get(`/listings/${id}`)
       .then(({ data }) => {
         setListing(data);
-        // A quintal-denominated listing would otherwise open at "1", which is
-        // 100 kg — start at the smallest sensible step instead.
-        setQty(data.unit === 'KG' ? 1 : 0.5);
+        // One kilo, the same opening amount on every lot. Quantities here are
+        // kilograms, so this no longer has to care what the farmer sells in:
+        // "1" used to mean 1 kg on a KG lot and 100 kg on a quintal one.
+        setQty(Math.min(1, toKg(data.remainingQuantity, data.unit)));
       })
       .catch(() => {
         toast.error('Product not found');
@@ -94,9 +95,12 @@ export function ProductDetail() {
 
   if (!listing) return null;
 
-  const unit = listing.unit.toLowerCase();
-  const retail = listing.retailPricePerUnit;
-  const inStock = listing.remainingQuantity;
+  // Retail is priced and stocked in kilograms. The lot's own unit is a
+  // wholesale detail and never reaches this page.
+  const retail = listing.retailPricePerUnit == null
+    ? null
+    : pricePerKg(listing.retailPricePerUnit, listing.unit);
+  const inStock = toKg(listing.remainingQuantity, listing.unit);
 
   // The shelf only ever shows local produce, but a link can be shared, pasted
   // or bookmarked — so the city rule is re-checked here rather than trusted to
@@ -113,7 +117,7 @@ export function ProductDetail() {
     && !outOfRange;
 
   const description = localizedDescription(listing, i18n.language);
-  const total = retail != null ? retail * qty : 0;
+  const total = retail != null ? Math.round(retail * qty * 100) / 100 : 0;
   const image = listing.images[selectedImage] || cropImageFor(listing.cropName);
 
   return (
@@ -187,10 +191,10 @@ export function ProductDetail() {
                 <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
                   <div className="cb-mono" style={{ fontSize: 22, fontWeight: 500 }}>
                     {formatCurrency(retail!, listing.currency)}
-                    <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontWeight: 400 }}> /{unit}</span>
+                    <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)', fontWeight: 400 }}> /kg</span>
                   </div>
                   <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-                    {inStock} {unit} left
+                    {formatWeight(inStock)} left
                   </div>
                 </div>
 
@@ -199,7 +203,6 @@ export function ProductDetail() {
                   <QuantityStepper
                     value={qty}
                     onChange={setQty}
-                    unit={listing.unit}
                     max={inStock}
                   />
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 16 }}>
@@ -208,11 +211,6 @@ export function ProductDetail() {
                       {formatCurrency(total, listing.currency)}
                     </span>
                   </div>
-                  {listing.unit !== 'KG' && (
-                    <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', textAlign: 'right', marginTop: 2 }}>
-                      that's {toKg(qty, listing.unit)} kg
-                    </div>
-                  )}
                 </div>
 
                 <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -22,19 +22,33 @@ import { useEffect, useState } from 'react';
 import api from '../../lib/axios';
 import type { CartItem } from '../../context/CartContext';
 import type { Listing } from '../../types';
+import { formatWeight, pricePerKg, toKg } from '../../utils/units';
+import { laneFor } from '../../utils/delivery';
+import type { DeliveryLane } from '../../utils/delivery';
 
 export interface CartLine {
   item: CartItem;
   /** Null when the lot could not be fetched at all (deleted, or the API failed). */
   listing: Listing | null;
-  /** Live retail price. Falls back to the snapshot only so a line always renders. */
+  /**
+   * Live retail price, per the LOT's unit — the number the server prices in.
+   * Divide by KG_PER_UNIT (pricePerKg) before showing it to a shopper.
+   * Falls back to the snapshot only so a line always renders.
+   */
   price: number;
+  /** Kilograms, matching CartItem.quantity. */
   quantity: number;
   lineTotal: number;
   /** Why this line cannot be ordered right now. Null means it can. */
   problem: string | null;
   /** True when the live price differs from the one the shopper last saw. */
   repriced: boolean;
+  /**
+   * When this line can arrive. Taken from the LIVE listing where the check has
+   * landed, and from the snapshot before that, so the promise never flickers
+   * from "tomorrow" to "today" mid-render.
+   */
+  lane: DeliveryLane;
 }
 
 export interface CartTotals {
@@ -65,8 +79,12 @@ function problemWith(item: CartItem, listing: Listing | null, city: string): str
   if (city !== '' && listing.location.toLowerCase() !== city.toLowerCase()) {
     return `Ships from ${listing.location}, and you're in ${city} — too far for a fresh delivery.`;
   }
-  if (item.quantity > listing.remainingQuantity) {
-    return `Only ${listing.remainingQuantity} ${listing.unit.toLowerCase()} left — lower the quantity.`;
+  // Both sides in kilograms: the basket row is kg, the listing's stock is in
+  // whatever the farmer sells in. Comparing them raw would call a 2 kg order
+  // short against a 30-quintal lot, or pass an order a hundred times the stock.
+  const stockKg = toKg(listing.remainingQuantity, listing.unit);
+  if (item.quantity > stockKg) {
+    return `Only ${formatWeight(stockKg)} left — lower the quantity.`;
   }
   return null;
 }
@@ -132,10 +150,14 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
       listing,
       price,
       quantity: item.quantity,
-      lineTotal: Math.round(price * item.quantity * 100) / 100,
+      // price is per the lot's unit, quantity is kg. Converting the price
+      // rather than the quantity keeps this identical to the server's own
+      // retailPricePerUnit × quantity, so the bill on screen is the bill charged.
+      lineTotal: Math.round(pricePerKg(price, item.unit) * item.quantity * 100) / 100,
       problem: loading ? null : problemWith(item, listing, city),
       repriced: !loading && listing != null && listing.retailPricePerUnit != null
         && listing.retailPricePerUnit !== item.pricePerUnit,
+      lane: laneFor(listing?.farmer?.sellerType ?? item.sellerType),
     };
   });
 

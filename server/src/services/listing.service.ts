@@ -13,6 +13,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { PUBLIC_SELLER_SELECT } from './publicSeller';
 
 // --- Types for service inputs ---
 interface CreateListingInput {
@@ -151,16 +152,6 @@ export async function createListing(userId: string, input: CreateListingInput) {
 // Public listing endpoints must not broadcast a farmer's private profile
 // (bank details, APMC license, FPO name, internal userId). Expose only the
 // display fields the marketplace UI actually uses. Reused by getListings,
-// getListingById, and mirrored in browse.service.
-const PUBLIC_FARMER_SELECT = {
-  id: true,
-  state: true,
-  country: true,
-  organicCertified: true,
-  certificationBody: true,
-  verified: true,
-  user: { select: { id: true, name: true, trustScore: true, avatar: true, location: true } },
-} as const;
 
 export async function getListings(query: ListingsQuery) {
   const page = Math.max(1, query.page || 1);
@@ -190,7 +181,7 @@ export async function getListings(query: ListingsQuery) {
       take: limit,
       orderBy: { [sort]: order },
       include: {
-        farmer: { select: PUBLIC_FARMER_SELECT },
+        farmer: { select: PUBLIC_SELLER_SELECT },
         _count: { select: { bids: true } },
       },
     }),
@@ -231,7 +222,7 @@ export async function getListingById(id: string) {
   const listing = await prisma.listing.findUnique({
     where: { id },
     include: {
-      farmer: { select: PUBLIC_FARMER_SELECT },
+      farmer: { select: PUBLIC_SELLER_SELECT },
       _count: { select: { bids: true } },
     },
   });
