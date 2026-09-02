@@ -2046,17 +2046,6 @@ body * {
 .st-add:active { transform: scale(0.96); }
 /* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */
 
-/* --- compact how-it-works strip --- */
-.st-how { margin-top: 48px; }
-.st-how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.st-how-step {
-  display: flex; flex-direction: column; gap: 6px;
-  background: var(--cb-paper); border: 1px solid var(--cb-line); border-radius: 14px; padding: 20px;
-}
-.st-how-n { font-size: 11px; color: var(--cb-ember); letter-spacing: 0.1em; }
-.st-how-t { font-size: 15px; font-weight: 600; color: var(--cb-ink); }
-.st-how-d { font-size: 13px; line-height: 1.5; color: var(--cb-ink-2); }
-
 /* --- storefront responsive --- */
 @media (max-width: 960px) {
   .st-source, .st-header-link { display: none; }
@@ -2064,7 +2053,6 @@ body * {
   .st-banner { grid-template-columns: 1fr; }
   .st-banner-media { display: none; }
   .st-banner-copy { padding: 34px 26px; }
-  .st-how-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .st-header-row { flex-wrap: wrap; gap: 10px; padding: 10px 16px 8px; }
@@ -2795,3 +2783,43 @@ body * {
 }
 .cn-lane-bar strong { font-size: 13px; }
 .cn-lane-bar span { font-size: 12px; color: var(--cb-ink-3); }
+
+/* ===========================================================================
+   FAQ — /faq
+   ---------------------------------------------------------------------------
+   Answers are in the DOM whether open or closed (hidden with [hidden], not
+   unmounted) so a crawler and ctrl-F both find them — the FAQPage markup on
+   this page is only legitimate if the text is genuinely there.
+   =========================================================================== */
+
+.faq-list { border-top: 1px solid var(--cb-line); }
+.faq-item { border-bottom: 1px solid var(--cb-line); }
+
+/* The default disclosure triangle is replaced by the +/− drawn below, so it is
+   removed in both the standard and the WebKit-prefixed form. */
+.faq-q {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 16px 0; cursor: pointer; list-style: none;
+  font-size: 15.5px; font-weight: 500; color: var(--cb-ink);
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q:hover { color: var(--cb-sage); }
+.faq-q:focus-visible { outline: 2px solid var(--cb-sage); outline-offset: 3px; border-radius: 4px; }
+
+/* Drawn in CSS off the parent's open state, so React holds no open/closed
+   state at all and the browser stays the single source of truth — including
+   when IT opens one because a find-in-page landed inside. */
+.faq-mark { flex-shrink: 0; width: 14px; height: 18px; position: relative; }
+.faq-mark::before,
+.faq-mark::after {
+  content: ''; position: absolute; background: var(--cb-ink-3);
+  top: 50%; left: 0; width: 13px; height: 1.5px; margin-top: -0.75px;
+  transition: transform .18s ease;
+}
+.faq-mark::after { transform: rotate(90deg); }
+.faq-item[open] .faq-mark::after { transform: rotate(0deg); }
+.faq-a { padding: 0 0 18px; }
+.faq-a p {
+  margin: 0; max-width: 72ch;
+  font-size: 14.5px; line-height: 1.65; color: var(--cb-ink-2);
+}

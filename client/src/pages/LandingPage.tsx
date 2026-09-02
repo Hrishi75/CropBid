@@ -86,12 +86,18 @@ const REFERENCE_TICKS: ReferenceTick[] = [
 
 // The header's section links. Rendered inline on desktop and inside the
 // collapsed menu below 960px, from one list so the two never drift apart.
+//
+// These are PLACES TO GO AND DO SOMETHING: check a rate, look at machinery,
+// see what the forecast says. "How it works" is not one of those — it is
+// something you read once, and it earns its place in the footer's Learn
+// column next to Pricing and the FAQ rather than in a header competing with
+// the search box and the shop. It is still reachable from the footer, from the
+// hero's promo cards, and from the FAQ page.
 const SECTION_LINKS: Array<[label: string, to: string]> = [
   ['Live rates', '/rates'],
   ['Forecast', '/forecast'],
   ['Yojana', '/schemes'],
   ['Equipment', '/equipment'],
-  ['How it works', '/how-it-works'],
 ];
 
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
@@ -734,48 +740,6 @@ function PromoTrio({ shopHref, user }: { shopHref: string; user: User | null }) 
   );
 }
 
-const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
-  ['01', 'Farmers list from the field', 'Crop, grade, quantity, floor price — in any language, without leaving the farm.'],
-  ['02', 'You buy or bid', 'Households add a pack at the listed price. Bulk buyers bid on the whole lot.'],
-  ['03', 'Escrow keeps it safe', 'Money held on-platform, tracked paid → shipped → delivered, released when you confirm.'],
-];
-
-// The same three steps as the shopper walks them. Step 02 above offers a
-// choice a household does not have — they cannot bid — and step 01 describes
-// work someone else does. This describes THEIR journey instead.
-const SHOPPER_HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
-  ['01', 'Pick your shop', 'Local shops for today, farms for tomorrow morning. Each one prices its own stock, so you can see the difference.'],
-  ['02', 'Fill your basket', 'Buy by the kilo, or half of one. One bill for everything in it, at the price on the shelf.'],
-  ['03', 'Pay when it arrives', 'Money is held by CropBid and only reaches the seller once you confirm the delivery turned up.'],
-];
-
-function HowStrip({ user }: { user: User | null }) {
-  const { t } = useTranslation();
-  const ref = useReveal<HTMLElement>();
-  const shopper = user?.role === 'CONSUMER';
-  const steps = shopper ? SHOPPER_HOW_STEPS : HOW_STEPS;
-  return (
-    <section className="st-how st-reveal" ref={ref}>
-      <div className="st-rail-head">
-        <div>
-          <span className="cb-eyebrow">{t('Simple by design')}</span>
-          <h2 className="st-rail-title">{shopper ? t('How shopping here works') : t('How CropBid works')}</h2>
-        </div>
-        <Link to="/how-it-works" className="st-seeall">{t('the full story')} <ArrowIcon size={12} /></Link>
-      </div>
-      <div className="st-how-grid">
-        {steps.map(([n, title, desc]) => (
-          <div key={n} className="st-how-step">
-            <span className="cb-mono st-how-n">{n}</span>
-            <span className="st-how-t">{t(title)}</span>
-            <span className="st-how-d">{t(desc)}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SellCTA({ user }: { user: User | null }) {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
@@ -924,7 +888,14 @@ export function LandingPage() {
         <LiveShelf query={query} />
         {!searching && (
           <>
-            {/* Order follows what the viewer came for. A shopper gets the
+            {/* "How CropBid works" is deliberately NOT here. It was a
+                three-step explainer sitting between the shelf and the footer on
+                a page whose job is to sell produce, and it now lives in one
+                place — /how-it-works, reached from the footer's Learn column
+                and from the FAQ — rather than being half-told on the home page
+                and fully told there.
+
+                Order follows what the viewer came for. A shopper gets the
                 three things they act on right under the shelf; the rates board
                 stays, because "today's real mandi price behind every pack" is
                 the hero's promise and this is where it is kept.
@@ -936,7 +907,6 @@ export function LandingPage() {
               <>
                 <PromoTrio shopHref={shopHref} user={user} />
                 <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
-                <HowStrip user={user} />
                 <IncubatedBy />
               </>
             ) : (
@@ -944,7 +914,6 @@ export function LandingPage() {
                 <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
                 <ForecastStrip />
                 <PromoTrio shopHref={shopHref} user={user} />
-                <HowStrip user={user} />
                 <SellCTA user={user} />
                 <IncubatedBy />
               </>
