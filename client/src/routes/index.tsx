@@ -81,6 +81,7 @@ import { SchemesPage } from '../pages/SchemesPage';
 import { PublicDemandPage } from '../pages/PublicDemandPage';
 import { EquipmentPage } from '../pages/EquipmentPage';
 import { FaqPage } from '../pages/FaqPage';
+import { TermsPage } from '../pages/TermsPage';
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
@@ -154,6 +155,7 @@ export function AppRoutes() {
       {/* Linked from the footer, and the URL given to Google Play's Data Safety
           form — it must stay publicly reachable without a login. */}
       <Route path="/faq" element={<FaqPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
       {/* Public auth routes */}
