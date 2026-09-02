@@ -19,6 +19,7 @@
 
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
+import type { Unit } from '../generated/prisma/enums';
 import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
@@ -44,6 +45,12 @@ interface DirectPurchaseInput {
   contactPhone?: string;
   /** See createDirectPurchase. Optional, so older clients keep working. */
   idempotencyKey?: string;
+  /**
+   * The unit the CALLER converted its kilograms with. Optional, so older
+   * clients keep working; when present it is checked against the listing's
+   * current unit and a mismatch is refused. See createDirectPurchase.
+   */
+  unit?: Unit;
 }
 
 // Counterparty-safe farmer shape: public display fields only — never the
@@ -251,6 +258,45 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   }
   if (listing.farmer.userId === consumerId) {
     throw new ApiError(400, 'You cannot buy from your own listing');
+  }
+
+  // LOCALITY, ENFORCED HERE AND NOT ONLY IN THE UI
+  // Retail is city-scoped by construction: a few kilos of fresh produce cannot
+  // be trucked across a state, and the storefront only ever shows a shopper
+  // stock from their own city. That rule lived entirely in the client, which
+  // means it was advisory — the shelf, the shop page and the cart all decline
+  // to check when the shopper has no city at all, and this endpoint never
+  // checked. A shopper who had never picked a city could therefore buy from
+  // anywhere, and the order would be created and the stock decremented before
+  // anyone noticed it could not be delivered.
+  const buyer = await prisma.user.findUnique({
+    where: { id: consumerId },
+    select: { location: true },
+  });
+  const buyerCity = buyer?.location?.trim() ?? '';
+  if (buyerCity === '') {
+    throw new ApiError(400, 'Choose your delivery city before ordering.');
+  }
+  if (buyerCity.toLowerCase() !== listing.location.trim().toLowerCase()) {
+    throw new ApiError(
+      400,
+      `This lot ships from ${listing.location} and cannot be delivered to ${buyerCity}.`,
+    );
+  }
+
+  // UNIT AGREEMENT
+  // The retail surface is denominated in kilograms and converts to the seller's
+  // unit on the way here, so the number below only means what the caller thinks
+  // it means if both sides agree on that unit. A seller can re-denominate an
+  // active listing at any moment, including between the client's last read and
+  // this request, which would silently rescale the order by a hundred or a
+  // thousand. Callers that did the conversion say which unit they used, and a
+  // disagreement is refused rather than guessed at.
+  if (input.unit && input.unit !== listing.unit) {
+    throw new ApiError(
+      409,
+      'The seller changed how this lot is sold. Open your basket and check the amount.',
+    );
   }
 
   const retailPrice = listing.retailPricePerUnit;

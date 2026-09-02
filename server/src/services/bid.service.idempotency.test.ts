@@ -64,6 +64,10 @@ const LISTING = {
   directSaleEnabled: true,
   retailPricePerUnit: 30,
   remainingQuantity: 100,
+  // Matches the buyer's city in beforeEach. Retail is city-scoped and the
+  // service refuses an order it cannot deliver, so a fixture without a
+  // location is a fixture that can never be bought.
+  location: 'Pune',
   farmer: { userId: 'farmer-1' },
 };
 
@@ -198,5 +202,66 @@ describe('createDirectPurchase — without a key', () => {
     expect(bidCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ idempotencyKey: KEY }) }),
     );
+  });
+});
+
+// =============================================================================
+// The two rules the client cannot be trusted to keep
+// =============================================================================
+// Both of these were enforced only in the browser, which means they were not
+// enforced. The shelf, the shop page and the cart all decline to check locality
+// when the shopper has no city at all, and no amount of client-side conversion
+// can survive a seller re-denominating a lot between the last fetch and the
+// request landing. Reviewed onto the server, and pinned here.
+// =============================================================================
+describe('createDirectPurchase — locality', () => {
+  it('refuses a lot that ships from another city', async () => {
+    findFirst.mockResolvedValue(null);
+    listingFindUnique.mockResolvedValue({ ...LISTING, location: 'Nagpur' });
+
+    await expect(createDirectPurchase(CONSUMER, input()))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(listingUpdateMany).not.toHaveBeenCalled();
+  });
+
+  // A shopper who has never picked a city is exactly the case the client-side
+  // rule skips, so it is the one the server has to answer.
+  it('refuses when the buyer has no city at all', async () => {
+    findFirst.mockResolvedValue(null);
+    userFindUnique.mockResolvedValue({ id: CONSUMER, phone: '9876543210', location: null });
+
+    await expect(createDirectPurchase(CONSUMER, input()))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(listingUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('matches the city case-insensitively', async () => {
+    findFirst.mockResolvedValue(null);
+    listingFindUnique.mockResolvedValue({ ...LISTING, location: 'pune' });
+
+    await expect(createDirectPurchase(CONSUMER, input())).resolves.toBeDefined();
+  });
+});
+
+describe('createDirectPurchase — unit agreement', () => {
+  it('refuses a quantity converted with a unit the listing no longer uses', async () => {
+    findFirst.mockResolvedValue(null);
+
+    // The caller converted kilograms as if this were a QUINTAL lot; it is KG.
+    // Accepting it would buy a hundred times what was asked for.
+    await expect(createDirectPurchase(CONSUMER, input({ unit: 'QUINTAL' })))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(listingUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('buys when the caller and the listing agree', async () => {
+    findFirst.mockResolvedValue(null);
+    await expect(createDirectPurchase(CONSUMER, input({ unit: 'KG' }))).resolves.toBeDefined();
+  });
+
+  // Every client written before the field existed omits it, and must keep working.
+  it('buys when no unit is sent at all', async () => {
+    findFirst.mockResolvedValue(null);
+    await expect(createDirectPurchase(CONSUMER, input())).resolves.toBeDefined();
   });
 });

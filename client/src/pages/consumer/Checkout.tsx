@@ -109,6 +109,12 @@ export function Checkout() {
           // — a 1 kg order arriving as 1 quintal, charged and decremented as
           // such. The line carries the live unit for exactly this call.
           quantity: fromKg(line.quantity, line.unit),
+          // The unit that conversion used. Reading the live listing narrows the
+          // window where a seller re-denominates mid-basket; it cannot close it,
+          // because the seller can change it between our last fetch and this
+          // request landing. Sending the unit lets the server refuse the
+          // mismatch instead of silently rescaling the order by a hundred.
+          unit: line.unit,
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           // The line's own key, minted when it was added and re-minted whenever

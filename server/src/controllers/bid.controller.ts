@@ -52,6 +52,10 @@ const directPurchaseSchema = z.object({
   // charset-limited because it lands in a unique index: it is an opaque handle,
   // not somewhere to put a sentence.
   idempotencyKey: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/, 'idempotencyKey must be url-safe').optional(),
+  // The unit the client converted its kilograms with, so the server can refuse
+  // a purchase where the two no longer agree. Optional: older clients omit it
+  // and are simply not protected by the check.
+  unit: z.enum(['KG', 'QUINTAL', 'TONNE']).optional(),
 });
 
 // POST /api/bids — Place a bid
