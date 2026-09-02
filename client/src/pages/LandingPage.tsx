@@ -86,12 +86,18 @@ const REFERENCE_TICKS: ReferenceTick[] = [
 
 // The header's section links. Rendered inline on desktop and inside the
 // collapsed menu below 960px, from one list so the two never drift apart.
+//
+// These are PLACES TO GO AND DO SOMETHING: check a rate, look at machinery,
+// see what the forecast says. "How it works" is not one of those — it is
+// something you read once, and it earns its place in the footer's Learn
+// column next to Pricing and the FAQ rather than in a header competing with
+// the search box and the shop. It is still reachable from the footer, from the
+// hero's promo cards, and from the FAQ page.
 const SECTION_LINKS: Array<[label: string, to: string]> = [
   ['Live rates', '/rates'],
   ['Forecast', '/forecast'],
   ['Yojana', '/schemes'],
   ['Equipment', '/equipment'],
-  ['How it works', '/how-it-works'],
 ];
 
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
