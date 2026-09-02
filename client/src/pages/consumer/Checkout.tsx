@@ -45,6 +45,8 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
+import { formatWeight, fromKg, pricePerKg, toKg } from '../../utils/units';
+import { LANES } from '../../utils/delivery';
 import { cropImageFor } from '../../utils/cropImages';
 import { BillDetails } from './BillDetails';
 import { useCartLines } from './cartLines';
@@ -96,7 +98,23 @@ export function Checkout() {
       try {
         const { data: bid } = await api.post('/bids/direct-purchase', {
           listingId: line.item.listingId,
-          quantity: line.quantity,
+          // The one place kilograms turn back into the lot's own unit. The
+          // whole retail surface is denominated in kg; the API is denominated
+          // in whatever the farmer listed in, and this is the seam.
+          //
+          // line.unit, NOT line.item.unit: the second is the snapshot taken
+          // when the row went into the basket, and a seller can change an
+          // active listing's denomination while it sits there. Converting with
+          // the stale one sends a number the server reads in a different unit
+          // — a 1 kg order arriving as 1 quintal, charged and decremented as
+          // such. The line carries the live unit for exactly this call.
+          quantity: fromKg(line.quantity, line.unit),
+          // The unit that conversion used. Reading the live listing narrows the
+          // window where a seller re-denominates mid-basket; it cannot close it,
+          // because the seller can change it between our last fetch and this
+          // request landing. Sending the unit lets the server refuse the
+          // mismatch instead of silently rescaling the order by a hundred.
+          unit: line.unit,
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           // The line's own key, minted when it was added and re-minted whenever
@@ -198,9 +216,12 @@ export function Checkout() {
               <Skeleton height={64} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {/* The order summary states the delivery day per line, because
+                    this is the last screen before money moves and "when does
+                    it come?" must not be a surprise after it does. */}
                 {bill.lines.map((line) => {
-                  const unit = line.item.unit.toLowerCase();
                   const image = line.item.image || cropImageFor(line.item.cropName);
+                  const lane = LANES[line.lane];
                   return (
                     <div
                       key={line.item.listingId}
@@ -217,8 +238,13 @@ export function Checkout() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 500, fontSize: 14 }}>{line.item.cropName}</div>
                         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-                          {line.quantity} {unit} · {formatCurrency(line.price, line.item.currency)}/{unit}
+                          {formatWeight(line.quantity)} · {formatCurrency(pricePerKg(line.price, line.unit), line.item.currency)}/kg
                         </div>
+                        {!line.problem && (
+                          <div className="cb-tiny" style={{ color: lane.color, marginTop: 2 }}>
+                            {lane.promise}
+                          </div>
+                        )}
                         {line.problem && (
                           <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 2 }}>
                             {line.problem} <Link to="/cart" style={{ color: 'inherit' }}>Fix in cart</Link>
@@ -288,10 +314,9 @@ export function BuyNowRedirect() {
     api.get(`/listings/${listingId}`)
       .then(({ data }: { data: Listing }) => {
         if (!on) return;
-        // A quintal-denominated lot with no qty in the link would otherwise be
-        // added as 0 and dropped; fall back to the same opening quantity the
-        // product page uses.
-        add(data, qty > 0 ? qty : data.unit === 'KG' ? 1 : 0.5);
+        // A link with no qty would otherwise add 0 and drop the row; fall back
+        // to the same opening kilo the product page and the shelf both use.
+        add(data, qty > 0 ? qty : Math.min(1, toKg(data.remainingQuantity, data.unit)));
         navigate('/checkout', { replace: true });
       })
       .catch(() => {

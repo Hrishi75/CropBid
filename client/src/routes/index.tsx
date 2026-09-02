@@ -56,6 +56,7 @@ import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
 // Consumer (retail) pages — deliberately a small set. A shopper gets a product
 // page, a cart, a checkout and their orders; everything else in the app is B2B.
 import { ProductDetail } from '../pages/consumer/ProductDetail';
+import { ShopDetail } from '../pages/consumer/ShopDetail';
 import { Cart } from '../pages/consumer/Cart';
 import { Checkout, BuyNowRedirect } from '../pages/consumer/Checkout';
 import { MyOrders } from '../pages/consumer/MyOrders';
@@ -317,7 +318,17 @@ export function AppRoutes() {
 
       {/* Consumer (retail) routes. The storefront itself is "/" — the same
           LandingPage everyone lands on — so there is no /shop index here, only
-          the pages that hang off it. */}
+          the pages that hang off it.
+
+          "/store/:id" is one SELLER's whole counter; "/shop/:id" is one LOT.
+          Different words on purpose: a path pair differing by a single letter
+          is the kind of thing that gets mixed up at 2am.
+
+          The shop page is deliberately PUBLIC, unlike the lot page. It is the
+          window a stranger looks through, and ShelfCard already sends a guest
+          who tries to add something to signup — so the gate is the cart, not
+          the window. */}
+      <Route path="/store/:id" element={<ShopDetail />} />
       <Route
         path="/shop/:id"
         element={

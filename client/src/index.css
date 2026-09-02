@@ -203,6 +203,11 @@ body * {
 
   --cb-forest: #1f2d18;
   --cb-sage: #6b8e4e;
+  /* Kept in step with .cb-app, which has carried this token for longer. The
+     storefront renders delivery-lane colours inside .cb-landing, and a token
+     that exists in one scope but not the other silently collapses the two
+     lanes onto one colour. */
+  --cb-wheat: #c9b27a;
   --cb-ember: #c8602b;
   --cb-ember-2: #e07a3f;
 
@@ -2685,3 +2690,108 @@ body * {
   .cn-cartbar { left: 10px; right: 10px; bottom: 10px; padding: 11px 14px; }
   .cn-step-val { min-width: 46px; }
 }
+
+/* ===========================================================================
+   SHOP CARDS — the storefront's top level
+   ---------------------------------------------------------------------------
+   A shopper picks a counter before they pick produce, so these sit in the same
+   .cn-grid the product cards use and have to read as peers of them: same
+   radius, same border, same lift on hover. They are deliberately TEXT-first
+   and shorter than a product card — what decides between two shops is what is
+   on the shelf and what it starts at, not a photo of one vegetable.
+   =========================================================================== */
+
+.cn-shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.cn-shop-card:hover { transform: translateY(-4px); box-shadow: 0 14px 28px rgba(20,20,15,0.09); }
+
+.cn-shop-head { display: flex; flex-direction: column; gap: 2px; }
+.cn-shop-name { font-size: 16px; font-weight: 600; line-height: 1.25; }
+.cn-shop-kind {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--cb-ink-3);
+}
+.cn-shop-tick { color: var(--cb-sage); }
+
+/* Two lines of stock, then ellipsis. A kirana holding forty lines must not
+   make its card four times the height of the greengrocer beside it. */
+.cn-shop-crops {
+  font-size: 13px; line-height: 1.45; color: var(--cb-ink-2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.9em;
+}
+
+.cn-shop-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-top: auto;
+  padding-top: 10px; border-top: 1px solid var(--cb-line);
+  font-size: 13px; color: var(--cb-ink-3);
+}
+.cn-shop-organic { font-size: 12px; color: var(--cb-sage); }
+
+.cn-shop-header { padding-bottom: 20px; border-bottom: 1px solid var(--cb-line); margin-bottom: 8px; }
+
+/* ===========================================================================
+   DELIVERY LANES — quick from a shop, next morning from a farm
+   ---------------------------------------------------------------------------
+   Colour is passed in as --lane-color by whoever renders the element, so the
+   lane's identity is defined once in utils/delivery.ts and never re-decided in
+   CSS. A second palette here would drift from that one.
+   =========================================================================== */
+
+.cn-lane-stack { display: flex; flex-direction: column; gap: 36px; }
+.cn-lane-group { display: flex; flex-direction: column; gap: 14px; }
+.cn-lane-head { display: flex; flex-direction: column; gap: 4px; }
+
+.cn-lane-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 17px; font-weight: 600; margin: 0;
+}
+.cn-lane-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--lane-color, var(--cb-sage));
+  flex-shrink: 0;
+}
+.cn-lane-why {
+  font-size: 13px; line-height: 1.5; color: var(--cb-ink-3);
+  margin: 0; max-width: 60ch;
+}
+
+/* The badge on a card. Sized to sit inline without pushing the layout. */
+.cn-lane {
+  display: inline-flex; align-self: flex-start; align-items: center;
+  font-size: 11px; font-weight: 500; letter-spacing: .02em;
+  padding: 2px 8px; border-radius: 999px;
+  color: var(--lane-color, var(--cb-sage));
+  border: 1px solid color-mix(in srgb, var(--lane-color, var(--cb-sage)) 35%, transparent);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 10%, transparent);
+}
+
+/* The full-width statement on a shop page. */
+.cn-lane-banner {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 14px; padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--lane-color, var(--cb-sage)) 30%, transparent);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 8%, transparent);
+}
+.cn-lane-banner strong { font-size: 14px; color: var(--cb-ink); }
+.cn-lane-banner span { font-size: 12.5px; line-height: 1.5; color: var(--cb-ink-3); }
+
+/* The header strip on a grouped cart block. */
+.cn-lane-bar {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--cb-line);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 8%, transparent);
+}
+.cn-lane-bar strong { font-size: 13px; }
+.cn-lane-bar span { font-size: 12px; color: var(--cb-ink-3); }

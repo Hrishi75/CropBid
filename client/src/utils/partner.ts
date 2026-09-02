@@ -51,3 +51,23 @@ export function isPendingPartner(user: User | null | undefined): boolean {
   const app = partnerApplication(user);
   return app !== null && app.status !== 'APPROVED';
 }
+
+/**
+ * The name a shopper sees above a lot: the shop's trading name if it has one,
+ * otherwise the person's own. Mirrors displayName() in browse.service.ts, which
+ * is what the shop list and shop page are keyed by — the two must agree or a
+ * search result and the shop it belongs to will disagree about the shop's name.
+ */
+export function sellerDisplayName(
+  seller: { businessName?: string | null; user?: { name?: string | null } | null } | null | undefined,
+): string | null {
+  if (!seller) return null;
+  return seller.businessName?.trim() || seller.user?.name?.trim() || null;
+}
+
+/** Human label for FarmerProfile.shopType, which is stored free-form. */
+export function shopTypeLabel(shopType: string | null | undefined): string | null {
+  if (!shopType) return null;
+  const match = SHOP_TYPE_OPTIONS.find((o) => o.value.toLowerCase() === shopType.toLowerCase());
+  return match?.label ?? shopType;
+}

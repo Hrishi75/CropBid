@@ -80,3 +80,37 @@ export async function getRetailCities(_req: Request, res: Response, next: NextFu
     next(error);
   }
 }
+
+// GET /api/browse/shops?city=Nashik — the shops holding retail stock in a city
+export async function getRetailShops(req: Request, res: Response, next: NextFunction) {
+  try {
+    const city = (req.query.city as string ?? '').trim();
+    // Without a city this would return every shop in the country, which is not
+    // a storefront — retail is a local channel by construction.
+    if (!city) {
+      res.status(400).json({ error: true, message: 'Pick a city first', statusCode: 400 });
+      return;
+    }
+    res.json({ shops: await browseService.listRetailShops({ city }) });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/browse/shops/:id?city=Nashik — one shop and what is on its shelf
+export async function getRetailShop(req: Request, res: Response, next: NextFunction) {
+  try {
+    const city = (req.query.city as string ?? '').trim();
+    const result = await browseService.getRetailShop(req.params.id as string, city);
+    // Same answer for "no such shop" and "that shop is in another city": a
+    // shared link must not become a way to order across cities, and the
+    // distinction is of no use to the shopper either way.
+    if (!result) {
+      res.status(404).json({ error: true, message: 'Shop not found', statusCode: 404 });
+      return;
+    }
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}

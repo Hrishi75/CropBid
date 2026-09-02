@@ -23,6 +23,9 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
+import { formatWeight, pricePerKg, toKg } from '../../utils/units';
+import { sellerDisplayName } from '../../utils/partner';
+import { laneMeta } from '../../utils/delivery';
 import { ORDER_STAGE } from './orderStage';
 import api from '../../lib/axios';
 import { openCheckout } from '../../lib/razorpay';
@@ -135,7 +138,18 @@ export function OrderDetail() {
   }
 
   const stage = ORDER_STAGE(order);
-  const unit = order.listing?.unit?.toLowerCase() ?? '';
+  // Orders come back in the lot's unit. The shopper bought kilograms, so that
+  // is what the receipt shows, price included.
+  const orderedKg = order.listing?.unit ? toKg(order.bid?.quantity ?? 0, order.listing.unit) : null;
+  const perKg = order.listing?.unit && order.finalPricePerUnit != null
+    ? pricePerKg(order.finalPricePerUnit, order.listing.unit)
+    : null;
+  // Who sold it, and therefore when it comes. Falls back to the transaction's
+  // own farmer relation, which is the person rather than the shop, so an order
+  // predating shop identity still names someone.
+  const sellerType = order.listing?.farmer?.sellerType;
+  const seller = sellerDisplayName(order.listing?.farmer) ?? order.farmer?.name ?? null;
+  const lane = laneMeta(sellerType);
   const image = order.listing?.images?.[0] || cropImageFor(order.listing?.cropName ?? '');
   const stepIndex = STEPS.findIndex((s) => s.key === order.deliveryStatus);
   const awaitingPayment = order.paymentStatus === 'AWAITING_PAYMENT';
@@ -160,7 +174,7 @@ export function OrderDetail() {
             {order.listing?.cropVariety && <span className="cb-italic" style={{ marginLeft: 8 }}>· {order.listing.cropVariety}</span>}
           </h1>
           <div className="cb-small" style={{ marginTop: 2 }}>
-            {order.bid?.quantity} {unit} · {formatCurrency(order.totalAmount, order.currency)}
+            {orderedKg != null ? formatWeight(orderedKg) : ''} · {formatCurrency(order.totalAmount, order.currency)}
           </div>
           <div className="cb-tiny" style={{ color: stage.color, marginTop: 4 }}>● {stage.label}</div>
         </div>
@@ -219,8 +233,8 @@ export function OrderDetail() {
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Summary</div>
           <Row label="Item" value={order.listing?.cropName} />
-          <Row label="Quantity" value={`${order.bid?.quantity} ${unit}`} />
-          <Row label="Price" value={<span className="cb-mono">{formatCurrency(order.finalPricePerUnit, order.currency)}/{unit}</span>} />
+          <Row label="Quantity" value={orderedKg != null ? formatWeight(orderedKg) : '—'} />
+          <Row label="Price" value={<span className="cb-mono">{perKg != null ? `${formatCurrency(perKg, order.currency)}/kg` : '—'}</span>} />
           <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
             <Row label="Paid" value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(order.totalAmount, order.currency)}</span>} />
           </div>
@@ -232,7 +246,11 @@ export function OrderDetail() {
           {order.bid?.deliveryAddress && <Row label="To" value={order.bid.deliveryAddress} />}
           {order.bid?.contactPhone && <Row label="Phone" value={order.bid.contactPhone} />}
           <Row label="From" value={`${order.listing?.location ?? ''}${order.listing?.state ? `, ${order.listing.state}` : ''}`} />
-          {order.farmer?.name && <Row label="Grown by" value={order.farmer.name} />}
+          {/* "Grown by" is right for a farm and wrong for a shop, which did not
+              grow anything. The label follows the seller, and the name is the
+              shop's trading one so it matches the shelf the order came off. */}
+          {seller && <Row label={sellerType === 'LOCAL_SHOP' ? 'Sold by' : 'Grown by'} value={seller} />}
+          <Row label="Delivery" value={<span style={{ color: lane.color }}>{lane.promise}</span>} />
         </div>
       </div>
     </DashboardLayout>
