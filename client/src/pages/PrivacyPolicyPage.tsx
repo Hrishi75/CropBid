@@ -15,7 +15,7 @@ import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '20 July 2026';
+const UPDATED = '2 September 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -95,6 +95,13 @@ export function PrivacyPolicyPage() {
             significant account actions (for example account deletion) used for security and
             dispute resolution.
           </p>
+          <p>
+            <strong>Stored in your browser, not on our servers.</strong> Your shopping basket
+            and your chosen delivery city are kept in your own browser's local storage so the
+            basket survives a reload. They stay on your device, are never sent to us as
+            analytics, and clearing your browser data removes them. We do not use advertising
+            or tracking cookies.
+          </p>
         </Section>
 
         <Section title="What the other side of a trade can see">
@@ -108,6 +115,12 @@ export function PrivacyPolicyPage() {
             listings, bidding, or negotiating.</strong> Contact details are exchanged only once
             an order is confirmed between the two of you, because at that point a delivery has
             to be arranged.
+          </p>
+          <p>
+            <strong>If you order for your home,</strong> the shop or farm you bought from is
+            given the delivery address and phone number you entered at checkout, and what you
+            ordered. They need it to bring it to you. It goes only to the seller you bought
+            that order from, and browsing a shop shares nothing.
           </p>
         </Section>
 

@@ -295,6 +295,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
       ['Buy direct',   '/how-it-works#consumers'],
       ['Pricing',      '/how-it-works#pricing'],
       ['Features',     '/how-it-works#features'],
+      ['FAQ',          '/faq'],
     ],
   },
   // The three doors into CropBid, repeated here because the footer is where
@@ -373,9 +374,12 @@ export function CBFooter() {
         <div className="cb-footer-bottom">
           <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
           {/* Terms and Disclosures lived here as href="#" — restore them when
-              those pages exist. /privacy is real and stays. */}
+              those pages exist. Privacy and FAQ are real pages and stay: the
+              two things someone scrolls to the bottom looking for are "what do
+              you do with my data" and "how does this actually work". */}
           <span className="cb-footer-bottom-right">
             <span className="cb-footer-bottom-links">
+              <Link to="/faq">{t('FAQ')}</Link>
               <Link to="/privacy">{t('Privacy')}</Link>
             </span>
             {/*
