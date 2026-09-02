@@ -2046,17 +2046,6 @@ body * {
 .st-add:active { transform: scale(0.96); }
 /* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */
 
-/* --- compact how-it-works strip --- */
-.st-how { margin-top: 48px; }
-.st-how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.st-how-step {
-  display: flex; flex-direction: column; gap: 6px;
-  background: var(--cb-paper); border: 1px solid var(--cb-line); border-radius: 14px; padding: 20px;
-}
-.st-how-n { font-size: 11px; color: var(--cb-ember); letter-spacing: 0.1em; }
-.st-how-t { font-size: 15px; font-weight: 600; color: var(--cb-ink); }
-.st-how-d { font-size: 13px; line-height: 1.5; color: var(--cb-ink-2); }
-
 /* --- storefront responsive --- */
 @media (max-width: 960px) {
   .st-source, .st-header-link { display: none; }
@@ -2064,7 +2053,6 @@ body * {
   .st-banner { grid-template-columns: 1fr; }
   .st-banner-media { display: none; }
   .st-banner-copy { padding: 34px 26px; }
-  .st-how-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .st-header-row { flex-wrap: wrap; gap: 10px; padding: 10px 16px 8px; }
