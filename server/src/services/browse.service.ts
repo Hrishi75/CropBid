@@ -440,13 +440,23 @@ export async function listRetailShops(query: RetailShopQuery) {
 }
 
 /**
- * One shop and everything it currently has on the shelf.
+ * One shop and everything it currently has on the shelf, in `city`.
  *
- * `city` is checked rather than assumed: a shop page reached by a shared link
- * must not become a way to order across cities that the shelf itself refuses.
- * Pass '' to skip the check (nothing does today).
+ * The city is REQUIRED, and deliberately has no "skip the check" value. It
+ * started out as one, on the reasoning that nothing passed an empty string.
+ * Something did: a shopper who has never picked a city — a new account, or
+ * anyone following a shared /store/:id link before the city picker has run —
+ * has no location on their profile, sent '', and got a shop that does not
+ * deliver to them. Everything downstream then agreed with that first answer,
+ * because the cart's locality check is also skipped for an empty city.
+ *
+ * An optional locality filter is not a locality filter. It is one the caller
+ * can switch off by leaving out an argument.
  */
 export async function getRetailShop(sellerId: string, city: string) {
+  // Refuse rather than widen. The caller has to know where the shopper is.
+  if (city.trim() === '') return null;
+
   const seller = await prisma.farmerProfile.findUnique({
     where: { id: sellerId },
     select: PUBLIC_SELLER_SELECT,
@@ -460,7 +470,7 @@ export async function getRetailShop(sellerId: string, city: string) {
     where: {
       ...RETAIL_STOCK,
       farmerId: sellerId,
-      ...(city !== '' ? { location: { equals: city, mode: 'insensitive' as const } } : {}),
+      location: { equals: city, mode: 'insensitive' as const },
     },
     include: { farmer: { select: PUBLIC_SELLER_SELECT } },
     orderBy: { updatedAt: 'desc' },

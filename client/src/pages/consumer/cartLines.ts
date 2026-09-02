@@ -21,7 +21,7 @@
 import { useEffect, useState } from 'react';
 import api from '../../lib/axios';
 import type { CartItem } from '../../context/CartContext';
-import type { Listing } from '../../types';
+import type { Listing, Unit } from '../../types';
 import { formatWeight, pricePerKg, toKg } from '../../utils/units';
 import { laneFor } from '../../utils/delivery';
 import type { DeliveryLane } from '../../utils/delivery';
@@ -38,6 +38,17 @@ export interface CartLine {
   price: number;
   /** Kilograms, matching CartItem.quantity. */
   quantity: number;
+  /**
+   * The unit the SERVER will read this line's quantity in — the live listing's,
+   * falling back to the snapshot only until the check lands.
+   *
+   * It has to travel on the line rather than be read off `item` at each call
+   * site. A seller can change an active listing's denomination while it sits in
+   * a basket, and the snapshot then disagrees with the server by a factor of a
+   * hundred or a thousand: converting 1 kg with a stale KG unit sends
+   * quantity 1, which a listing since changed to QUINTAL reads as 100 kg.
+   */
+  unit: Unit;
   lineTotal: number;
   /** Why this line cannot be ordered right now. Null means it can. */
   problem: string | null;
@@ -145,6 +156,8 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
     // marked unbuyable — a spinner-time "sold out" that resolves to "in stock"
     // is worse than a moment of stale price.
     const price = listing?.retailPricePerUnit ?? item.pricePerUnit;
+    // Live unit wins over the snapshot, for the same reason the live price does.
+    const unit = listing?.unit ?? item.unit;
     return {
       item,
       listing,
@@ -153,11 +166,12 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
       // price is per the lot's unit, quantity is kg. Converting the price
       // rather than the quantity keeps this identical to the server's own
       // retailPricePerUnit × quantity, so the bill on screen is the bill charged.
-      lineTotal: Math.round(pricePerKg(price, item.unit) * item.quantity * 100) / 100,
+      lineTotal: Math.round(pricePerKg(price, unit) * item.quantity * 100) / 100,
       problem: loading ? null : problemWith(item, listing, city),
       repriced: !loading && listing != null && listing.retailPricePerUnit != null
         && listing.retailPricePerUnit !== item.pricePerUnit,
       lane: laneFor(listing?.farmer?.sellerType ?? item.sellerType),
+      unit,
     };
   });
 

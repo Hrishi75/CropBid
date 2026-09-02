@@ -74,7 +74,7 @@ function CartRow({
           {seller ? ` · ${seller}` : ''}
         </div>
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-          {formatCurrency(pricePerKg(price, item.unit), item.currency)}/kg
+          {formatCurrency(pricePerKg(price, line.unit), item.currency)}/kg
         </div>
 
         {problem && (

@@ -101,7 +101,14 @@ export function Checkout() {
           // The one place kilograms turn back into the lot's own unit. The
           // whole retail surface is denominated in kg; the API is denominated
           // in whatever the farmer listed in, and this is the seam.
-          quantity: fromKg(line.quantity, line.item.unit),
+          //
+          // line.unit, NOT line.item.unit: the second is the snapshot taken
+          // when the row went into the basket, and a seller can change an
+          // active listing's denomination while it sits there. Converting with
+          // the stale one sends a number the server reads in a different unit
+          // — a 1 kg order arriving as 1 quintal, charged and decremented as
+          // such. The line carries the live unit for exactly this call.
+          quantity: fromKg(line.quantity, line.unit),
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           // The line's own key, minted when it was added and re-minted whenever
@@ -225,7 +232,7 @@ export function Checkout() {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 500, fontSize: 14 }}>{line.item.cropName}</div>
                         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-                          {formatWeight(line.quantity)} · {formatCurrency(pricePerKg(line.price, line.item.unit), line.item.currency)}/kg
+                          {formatWeight(line.quantity)} · {formatCurrency(pricePerKg(line.price, line.unit), line.item.currency)}/kg
                         </div>
                         {!line.problem && (
                           <div className="cb-tiny" style={{ color: lane.color, marginTop: 2 }}>

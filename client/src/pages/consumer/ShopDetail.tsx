@@ -17,7 +17,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import { pricePerKg } from '../../utils/units';
@@ -44,6 +44,7 @@ interface ShopHeader {
 
 export function ShopDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const city = user ? (user.location?.trim() || '') : loadGuestCity().trim();
 
@@ -61,15 +62,24 @@ export function ShopDetail() {
   const key = `${id}:${city}`;
 
   useEffect(() => {
+    // No city, no shop. The API refuses a request without one, so asking would
+    // only render the "not open for orders" card at someone whose real problem
+    // is that they have never picked a city — which happens on a shared
+    // /store/:id link before the storefront's picker has ever run. Send them
+    // to the picker instead.
+    if (!city) {
+      navigate('/', { replace: true });
+      return;
+    }
     let on = true;
-    api.get(`/browse/shops/${id}`, { params: city ? { city } : {} })
+    api.get(`/browse/shops/${id}`, { params: { city } })
       .then(({ data }) => { if (on) setFetched({ key, data: { shop: data.shop, listings: data.listings ?? [] } }); })
       // A shop that is gone, closed for the day, or in another city are one
       // answer to a shopper: there is nothing to buy here. The API deliberately
       // does not distinguish them either.
       .catch(() => { if (on) setFetched({ key, data: null }); });
     return () => { on = false; };
-  }, [id, city, key]);
+  }, [id, city, key, navigate]);
 
   const state: { status: 'loading' } | { status: 'gone' } | { status: 'ok'; shop: ShopHeader; listings: Listing[] } =
     fetched?.key !== key ? { status: 'loading' }
