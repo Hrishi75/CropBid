@@ -23,7 +23,13 @@
 //                registered address to section 18.
 //   JURISDICTION — courts named in the governing-law clause. CropBid is based
 //                in India and operates only in India.
-//   CANCEL_WINDOW — how long a household order can be cancelled for.
+//
+// Section 9 promised a 30-minute self-service cancellation window until review
+// pointed out there is no cancel path anywhere: not in the consumer UI, not on
+// transaction.routes, not in the order state machine. Only an admin refund can
+// undo an order. The clause now describes that, and says outright that there is
+// no button — a terms page is the last place to invent a right the reader will
+// go looking for. If cancellation gets built, rewrite the clause with it.
 // =============================================================================
 
 import { Link } from 'react-router-dom';
@@ -39,7 +45,6 @@ const OPERATOR_NAME = OPERATOR || 'CropBid';
 /** Drops the "being incorporated" wording the moment OPERATOR is filled in. */
 const INCORPORATED = OPERATOR !== '';
 const JURISDICTION = 'Pune, Maharashtra';
-const CANCEL_WINDOW = '30 minutes';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -241,9 +246,16 @@ export function TermsPage() {
 
         <Section title="9. Cancellations and refunds">
           <p>
-            <strong>Household orders.</strong> You can cancel within {CANCEL_WINDOW} of placing
-            an order, provided the seller has not already dispatched it. After that, a fresh
-            order has usually been picked or packed for you and cannot be cancelled.
+            <strong>Household orders.</strong> To cancel, write to us at{' '}
+            <a href={`mailto:${CONTACT}`}>{CONTACT}</a> with your order number as soon as you
+            can. If the seller has not yet dispatched it we will cancel the order and return
+            anything you have paid. Once it has been picked or packed for you it cannot be
+            cancelled — fresh produce put aside for one order cannot always be sold to someone
+            else.
+          </p>
+          <p>
+            There is no self-service cancel button in the app today. We would rather say that
+            here than describe a right you would go looking for and not find.
           </p>
           <p>
             <strong>If it does not arrive, or arrives wrong.</strong> Do not confirm the
