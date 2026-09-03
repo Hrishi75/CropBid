@@ -80,6 +80,7 @@ import { ForecastPage } from '../pages/ForecastPage';
 import { SchemesPage } from '../pages/SchemesPage';
 import { PublicDemandPage } from '../pages/PublicDemandPage';
 import { EquipmentPage } from '../pages/EquipmentPage';
+import { AgriInputsPage } from '../pages/AgriInputsPage';
 import { FaqPage } from '../pages/FaqPage';
 import { TermsPage } from '../pages/TermsPage';
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
@@ -152,6 +153,7 @@ export function AppRoutes() {
       {/* Machinery is lead-gen, not checkout — browsing stays public so it
           works as a farmer acquisition surface; only enquiring needs a login. */}
       <Route path="/equipment" element={<EquipmentPage />} />
+      <Route path="/inputs" element={<AgriInputsPage />} />
       {/* Linked from the footer, and the URL given to Google Play's Data Safety
           form — it must stay publicly reachable without a login. */}
       <Route path="/faq" element={<FaqPage />} />

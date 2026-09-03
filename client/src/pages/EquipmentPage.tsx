@@ -182,6 +182,7 @@ export function EquipmentPage() {
         <nav className="rp-nav-links" aria-label="Primary">
           <Link to="/">Marketplace</Link>
           <Link to="/rates">Live rates</Link>
+          <Link to="/inputs">Seeds &amp; fertiliser</Link>
           <Link to="/schemes">Yojana</Link>
           <Link to="/partner" className="nav-signin">Become a partner</Link>
           <SignInLink className="cb-btn cb-btn-primary">
