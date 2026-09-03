@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 import { AuthModalProvider } from './context/AuthModalContext';
 import { CartProvider } from './context/CartContext';
 import { CartBar } from './components/consumer/CartBar';
+import { CookieNotice } from './components/ui/CookieNotice';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -33,9 +34,11 @@ import { useSeo } from './lib/useSeo';
  *   - this file wraps it in BrowserRouter for the browser
  *   - entry-server.tsx wraps it in StaticRouter to prerender public pages
  *
- * Toaster and Analytics deliberately stay OUT of it. Both are browser-only side
- * effects with nothing to contribute to static markup, and keeping them on the
- * client side of the line means the prerender build never has to load them.
+ * Toaster, Analytics and CookieNotice deliberately stay OUT of it. All three
+ * are browser-only side effects with nothing to contribute to static markup,
+ * and keeping them on the client side of the line means the prerender build
+ * never has to load them. The cookie notice in particular is a statement about
+ * this visitor's device, so a crawler has no business being shown one.
  *
  * useSeo() lives here because it needs router context (useLocation) and must
  * run for every route.
@@ -61,6 +64,9 @@ function App() {
   return (
     <BrowserRouter>
       <AppContent />
+      {/* Inside the router because it links to the privacy policy, outside
+          AppContent because it must never reach the prerendered HTML. */}
+      <CookieNotice />
       <Toaster
         position="top-right"
         toastOptions={{
