@@ -48,11 +48,16 @@ export function PrivacyPolicyPage() {
   // section wants to BE there, not watch 1,500px of policy scroll past; and the
   // smooth animation is cancellable, so a browser that interrupts it leaves the
   // reader stranded a few pixels from the top with no idea why.
-  const { hash } = useLocation();
+  // `key` is in the deps alongside `hash`, and it is doing real work. The notice
+  // stays on screen until it is dismissed, including on this page, so a reader
+  // can follow its link, scroll away, and click the same link again. That is a
+  // fresh navigation with a fresh key but an identical '#cookies' hash, and on
+  // `hash` alone the effect would not rerun and the link would do nothing.
+  const { hash, key } = useLocation();
   useEffect(() => {
     if (!hash) return;
     document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start', behavior: 'instant' });
-  }, [hash]);
+  }, [hash, key]);
 
   return (
     <div className="cb-landing rp">
