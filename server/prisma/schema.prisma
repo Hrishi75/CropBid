@@ -228,6 +228,7 @@ model User {
   buyerTransactions  Transaction[] @relation("BuyerTransactions")
   notifications Notification[]
   equipmentEnquiries EquipmentEnquiry[] // Machinery leads this user has raised
+  agriInputEnquiries AgriInputEnquiry[] // Seed / fertiliser leads this user has raised
   buyerRequirements BuyerRequirement[]  // Demand this buyer has posted
   requirementOffers RequirementOffer[]  // Responses this farmer has sent
 }
@@ -1155,6 +1156,166 @@ model EquipmentEnquiry {
   rentTo      DateTime?
 
   status      EnquiryStatus @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
+
+// =============================================================================
+// Model 16: InputSupplier — Licensed seed, fertiliser and crop-protection shops
+// =============================================================================
+// Modelled exactly like EquipmentDealer: a curated offline partner, NOT a User
+// with a login. We pass leads over the phone.
+//
+// WHY THIS IS NOT JUST ANOTHER EquipmentDealer
+// Selling agri-inputs is a LICENSED trade and machinery is not. A seed dealer
+// needs a licence under the Seeds (Control) Order 1983, fertiliser needs one
+// under the Fertiliser (Control) Order 1985, and pesticides under the
+// Insecticides Act 1968 — issued per state, per premises, by the state
+// agriculture department. A tractor dealer needs none of these.
+//
+// Holding the licence numbers here is what keeps CropBid on the right side of
+// that line. The SHOP is the seller of record; CropBid lists what they stock
+// and hands over a lead. If CropBid ever bought stock and resold it, CropBid
+// would need all three licences in every state it operated — and would own the
+// spurious-seed liability when a crop fails. It does neither.
+
+model InputSupplier {
+  id            String   @id @default(uuid())
+  name          String
+  location      String   // City/town
+  state         String
+  country       String   @default("India")
+
+  contactPhone  String   // Revealed to a farmer only once they raise an enquiry
+  contactEmail  String?
+
+  // Curated trust signals — CropBid vouches for verified suppliers.
+  verified      Boolean  @default(false)
+  rating        Float    @default(4.0)
+
+  // --- Statutory licences (see the note above) ---
+  // Nullable because a shop may hold one and not the others: plenty sell seed
+  // and fertiliser but not pesticide. The service refuses to surface stock in a
+  // category whose licence the supplier does not hold, so these are load-bearing
+  // and not decoration.
+  seedLicence       String? // Seeds (Control) Order 1983
+  fertiliserLicence String? // Fertiliser (Control) Order 1985
+  pesticideLicence  String? // Insecticides Act 1968
+
+  active        Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inputs AgriInput[]
+
+  // Same identity rule as EquipmentDealer: a chain with branches in two states
+  // is two suppliers, each with its own phone number, licences and stock.
+  @@unique([name, state])
+}
+
+// =============================================================================
+// Model 17: AgriInput — A seed, fertiliser or crop-protection product
+// =============================================================================
+// Priced BY THE PACK, not by the unit, because that is how the trade actually
+// sells: seed in 1 kg foil packets, urea in 45 kg bags, micronutrients in 500 g
+// pouches. A farmer buying wheat seed asks "what does a bag cost", so storing a
+// per-kg price would mean every screen had to reconstruct the number the farmer
+// actually pays.
+
+enum AgriInputCategory {
+  SEED            // Certified and hybrid seed
+  FERTILISER      // Straight and complex fertilisers (urea, DAP, NPK blends)
+  ORGANIC         // Vermicompost, bio-fertilisers, soil conditioners
+  CROP_PROTECTION // Pesticides, herbicides, fungicides
+  MICRONUTRIENT   // Zinc, boron, sulphur supplements
+  SEEDLING        // Nursery saplings and grafted planting material
+}
+
+model AgriInput {
+  id          String            @id @default(uuid())
+
+  supplierId  String
+  supplier    InputSupplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  title       String            // e.g., "Mahyco Bt Cotton MRC 7351"
+  category    AgriInputCategory
+  brand       String?
+
+  // Which crops this is for. Drives the "for your crop" filter — the question a
+  // farmer asks first is "what do I sow in cotton", not "show me seeds".
+  cropNames   String[]
+
+  // --- Pack economics ---
+  packSize     String  // Free text: "1 kg", "45 kg bag", "500 ml". Units vary
+                       // wildly by category and a numeric column would force a
+                       // second "unit" column and a join in every read.
+  pricePerPack Float
+  currency     Currency @default(INR)
+
+  // Urea, DAP and MOP carry a statutory MRP under the Fertiliser (Control)
+  // Order — the price is set by government, not the shop. Flagging it stops a
+  // farmer reading a controlled price as this supplier undercutting the market,
+  // and stops us appearing to compete on a number nobody can move.
+  subsidised   Boolean @default(false)
+
+  // --- Category-specific facts, all optional ---
+  composition    String? // "NPK 10:26:26" for fertiliser, "Bt Cotton hybrid" for seed
+  germinationPct Float?  // SEED only — the germination guarantee on the label
+  seedTreatment  String? // SEED only — e.g. "Thiram treated"
+  dosagePerAcre  String? // "2 bags / acre", "500 ml / acre"
+
+  specs       String[]  // Anything else worth a chip on the card
+  description String?
+  images      String[]
+
+  location    String
+  state       String
+
+  active      Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  enquiries AgriInputEnquiry[]
+
+  // Browse is always filtered by these — index the hot paths, same as Equipment.
+  @@index([category, active])
+  @@index([state, active])
+
+  // The catalogue loader's identity for a product, enforced here so two
+  // concurrent runs cannot both decide a row is missing and insert it.
+  @@unique([supplierId, title])
+}
+
+// =============================================================================
+// Model 18: AgriInputEnquiry — A farmer's lead, handed to the supplier
+// =============================================================================
+// The whole point of the surface, and the only path that returns the
+// supplier's phone number. Same bargain as EquipmentEnquiry: we capture the
+// lead instead of letting the catalogue be scraped for contacts.
+
+model AgriInputEnquiry {
+  id           String        @id @default(uuid())
+
+  agriInputId  String
+  agriInput    AgriInput     @relation(fields: [agriInputId], references: [id], onDelete: Cascade)
+
+  userId       String        // Whoever raised it — usually a FARMER
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // How many packs they want. Advisory: the supplier confirms stock on the
+  // call, since we hold no inventory count.
+  packQuantity Int?
+  // Acreage they are buying for. The single most useful thing a supplier can
+  // know before calling back, because it sizes the order for them.
+  acres        Float?
+  message      String?
+
+  status       EnquiryStatus @default(NEW)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

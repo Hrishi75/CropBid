@@ -39,6 +39,7 @@ import statsRoutes from './routes/stats.routes';
 import ratesRoutes from './routes/rates.routes';
 import schemesRoutes from './routes/schemes.routes';
 import equipmentRoutes from './routes/equipment.routes';
+import agriInputRoutes from './routes/agriInput.routes';
 import voiceRoutes from './routes/voice.routes';
 
 const app = express();
@@ -128,6 +129,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/rates', ratesRoutes);
 app.use('/api/schemes', schemesRoutes);
 app.use('/api/equipment', equipmentRoutes);
+app.use('/api/agri-inputs', agriInputRoutes);
 // voiceLimiter is applied INSIDE this router, after authenticate — it keys on
 // the user id, which does not exist until auth has run.
 app.use('/api/voice', voiceRoutes);

@@ -111,6 +111,14 @@ export const ROUTES: RouteMeta[] = [
     changefreq: 'weekly',
   },
   {
+    path: '/inputs',
+    title: 'Seeds, Fertiliser & Crop Protection from Licensed Shops',
+    description:
+      'Certified seed, fertiliser, organic inputs and crop protection from licensed dealers near you: pack prices, dose per acre and germination on the tag, before you go.',
+    priority: '0.8',
+    changefreq: 'weekly',
+  },
+  {
     path: '/crop-demand',
     title: 'Crop Demand — Buyers Looking to Purchase Now',
     description:
