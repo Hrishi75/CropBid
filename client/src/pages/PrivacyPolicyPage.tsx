@@ -18,16 +18,17 @@
 // user data belongs in "Who we share it with".
 // =============================================================================
 
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '2 September 2026';
+const UPDATED = '3 September 2026';
 const CONTACT = 'info@cropbid.in';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section style={{ marginTop: 36 }}>
+    <section id={id} style={{ marginTop: 36, scrollMarginTop: 24 }}>
       <h2 className="cb-h2" style={{ marginBottom: 12 }}>{title}</h2>
       <div className="cb-body" style={{ maxWidth: '72ch', display: 'grid', gap: 12 }}>
         {children}
@@ -37,6 +38,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function PrivacyPolicyPage() {
+  // The browser jumps to #cookies by itself only on a full document load. The
+  // cookie notice links here from inside the app, where the URL changes without
+  // one, so the jump has to be done by hand or the link lands at the top of a
+  // long policy and looks broken.
+  //
+  // behavior: 'instant' overrides the `scroll-behavior: smooth` this page
+  // inherits from html. Two reasons: someone who followed a link to one named
+  // section wants to BE there, not watch 1,500px of policy scroll past; and the
+  // smooth animation is cancellable, so a browser that interrupts it leaves the
+  // reader stranded a few pixels from the top with no idea why.
+  // `key` is in the deps alongside `hash`, and it is doing real work. The notice
+  // stays on screen until it is dismissed, including on this page, so a reader
+  // can follow its link, scroll away, and click the same link again. That is a
+  // fresh navigation with a fresh key but an identical '#cookies' hash, and on
+  // `hash` alone the effect would not rerun and the link would do nothing.
+  const { hash, key } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [hash, key]);
+
   return (
     <div className="cb-landing rp">
       <header className="rp-nav">
@@ -148,18 +170,39 @@ export function PrivacyPolicyPage() {
             significant account actions (for example account deletion) used for security and
             dispute resolution.
           </p>
+        </Section>
+
+        <Section title="Cookies and browser storage" id="cookies">
           <p>
-            <strong>Stored in your browser, not on our servers.</strong> Your shopping basket,
-            your chosen delivery city and your sign-in session are kept in your own browser's
-            storage, so the basket survives a reload and you are not signed out on every visit.
-            They stay on your device and clearing your browser data removes them.
+            Everything in this section is on your own device, not on our servers, and clearing
+            your browser data removes all of it. None of it is optional, because none of it is
+            advertising: the site cannot do its job without it, which is why the notice you
+            see when you arrive tells you about it rather than asking you to choose.
           </p>
           <p>
-            <strong>Usage analytics.</strong> The website uses Vercel Analytics to count page
-            views and see which pages are used. It is privacy-focused and cookie-free: it does
-            not set advertising cookies, does not follow you to other websites, and does not
-            build a profile of you. We use it to know which parts of the site are worth
-            improving. We do not run advertising trackers of any kind.
+            <strong>One cookie.</strong> Signing in sets a single cookie named{' '}
+            <code>refreshToken</code>. It keeps you signed in as you move between pages, is
+            marked httpOnly so no script on the page can read it, is sent only to our
+            sign-in endpoints, and expires shortly after a period of inactivity. Signing out
+            deletes it. If you never sign in, we set no cookies at all.
+          </p>
+          <p>
+            <strong>Browser storage.</strong> Your shopping basket, your chosen delivery city,
+            your language, a marker that this browser has been signed in before, whether you
+            have already dismissed the notice about this page, and the timestamps that drive
+            the idle sign-out are kept in your browser's own local and session storage. That is
+            what lets a basket survive a reload and saves you being signed out on every visit.
+          </p>
+          <p>
+            <strong>No tracking cookies.</strong> We run no advertising, retargeting or
+            social-media trackers, and nothing here follows you to other websites or builds a
+            profile of you. The website uses Vercel Analytics to count page views and see which
+            pages are used; it is privacy-focused and cookie-free, and we use it only to know
+            which parts of the site are worth improving.
+          </p>
+          <p>
+            If we ever add anything optional, we will ask for your consent first and give you a
+            way to change your answer, rather than quietly adding it to this list.
           </p>
         </Section>
 
