@@ -1045,10 +1045,23 @@ function validateSellerApplication(input: FarmerOnboardingInput): void {
   }
 }
 
+// APPLYING, not editing. The role you are applying for cannot also be the
+// entry requirement, or only people who already have it can apply — which is
+// exactly what kept a signed-in shopper out of the seller form.
+//
+// CONSUMER is the normal case now: everyone lands on CropBid as a shopper and
+// applies from inside that account. FARMER is still allowed so a seller can
+// resubmit after NEEDS_INFO. ADMIN and BUYER are refused: a buyer wanting to
+// sell needs a decision about one account holding both, not a silent overwrite.
+//
+// Nothing here grants the role. reviewPartnerApplication does that, on approval.
+const CAN_APPLY_AS_SELLER = ['CONSUMER', 'FARMER'];
+const CAN_APPLY_AS_BUYER = ['CONSUMER', 'BUYER'];
+
 export async function completeFarmerOnboarding(userId: string, input: FarmerOnboardingInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.role !== 'FARMER') {
-    throw new ApiError(403, 'Only seller accounts can submit a seller application');
+  if (!user || !CAN_APPLY_AS_SELLER.includes(user.role)) {
+    throw new ApiError(403, 'This account cannot submit a seller application');
   }
 
   validateSellerApplication(input);
@@ -1274,8 +1287,8 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
 
 export async function completeBuyerOnboarding(userId: string, input: BuyerOnboardingInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || user.role !== 'BUYER') {
-    throw new ApiError(403, 'Only buyer accounts can submit a buyer application');
+  if (!user || !CAN_APPLY_AS_BUYER.includes(user.role)) {
+    throw new ApiError(403, 'This account cannot submit a buyer application');
   }
 
   const data = {

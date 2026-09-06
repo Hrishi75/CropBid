@@ -218,7 +218,22 @@ export function OnboardingPage() {
   const [loading, setLoading] = useState(false);
 
   const hint = partnerTypeHint();
-  const isFarmer = user?.role === 'FARMER';
+
+  // Which form to show. The parked intent wins, because it is what the person
+  // just clicked on /partner; user.role is the fallback for someone who landed
+  // here without going through the door (a resubmission, a bookmark).
+  //
+  // Reading role alone was wrong for the case this flow now supports: a
+  // CONSUMER applying to sell is not a FARMER yet, so `role === 'FARMER'` was
+  // false and they were handed the BUYER form after clicking "Apply as
+  // farmer". Silently the wrong application.
+  // Order matters. An application already on file wins outright: a farmer
+  // resubmitting after NEEDS_INFO must get their own form back with their
+  // answers in it, even if a stale hint from browsing /partner says otherwise.
+  const isFarmer = user?.farmerProfile ? true
+    : user?.buyerProfile ? false
+    : hint ? hint.role === 'FARMER'
+    : user?.role === 'FARMER';
 
   // Resubmission: when a reviewer sent the application back, the same form
   // reopens with the previous answers in place and the note on top.

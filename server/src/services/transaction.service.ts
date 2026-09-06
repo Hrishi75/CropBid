@@ -23,7 +23,7 @@ import { prisma } from '../lib/prisma';
 import { PUBLIC_SELLER_SELECT } from './publicSeller';
 import { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../utils/ApiError';
-import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
+import { notifyDeliveryUpdate, notifyPaymentReleased, notifyAdminsDealClosed } from './notification.helpers';
 import { redactTransactionContact, redactTransactionContacts } from './contactVisibility';
 
 const PLATFORM_FEE_PERCENT = 2.0;
@@ -91,6 +91,25 @@ export async function createTransaction(bidId: string, client: Prisma.Transactio
     },
   });
 
+  // Tell ops. A closed deal is freight we have to arrange (CLAUDE.md §2a), so
+  // this is the trigger for booking a carrier, and it lands in the admin bell
+  // alongside the /admin/attention queue.
+  //
+  // Fire-and-forget, and deliberately NOT awaited: `client` may be a
+  // Prisma.TransactionClient, so awaiting a second connection's writes inside
+  // an open interactive transaction is how you deadlock a pool. A failed ping
+  // must never roll back a settled deal, and it cannot lose the work either —
+  // /admin/attention derives the queue from transactions with no shipment, not
+  // from these rows.
+  notifyAdminsDealClosed(
+    transaction.listing.cropName,
+    transaction.farmer?.name ?? 'Seller',
+    transaction.buyer?.name ?? 'Buyer',
+    transaction.totalAmount,
+    transaction.currency,
+    transaction.id,
+  ).catch(() => {});
+
   return transaction;
 }
 
@@ -123,12 +142,15 @@ export async function getMyTransactions(userId: string, role: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
-      // The Deliveries page renders shipment state per deal in one request
-      shipment: {
-        include: {
-          logisticsPartner: { select: { id: true, name: true, type: true } },
-        },
-      },
+      // The Deliveries page renders shipment state per deal in one request.
+      //
+      // logisticsPartner is admin-only. CropBid hires the haulier, so the
+      // trader gets the route and the status, not the company we hired. This
+      // used to be included unconditionally and the seller's dispatch board
+      // printed the carrier's name on every row.
+      shipment: role === 'ADMIN'
+        ? { include: { logisticsPartner: { select: { id: true, name: true, type: true } } } }
+        : true,
     },
   });
 
@@ -164,6 +186,25 @@ export async function getTransaction(transactionId: string, userId: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
+      // Freight, for the settlement breakdown: the seller pays it, so they
+      // need to see the amount alongside the platform fee.
+      //
+      // An explicit select, not `true`. Only the two counterparties reach this
+      // endpoint, and they are exactly who the carrier's identity is withheld
+      // from, so listing the visible columns means a future column on Shipment
+      // cannot appear here by simply existing.
+      shipment: {
+        select: {
+          id: true,
+          status: true,
+          transportCost: true,
+          currency: true,
+          paidBy: true,
+          pickupDate: true,
+          estimatedDeliveryDate: true,
+          actualDeliveryDate: true,
+        },
+      },
     },
   });
 

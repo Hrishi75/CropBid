@@ -34,6 +34,9 @@ router.delete('/listings/:id', adminController.deleteListing);
 // POST /api/admin/purge-demo-data — Wipe seeded demo data (confirm phrase required)
 router.post('/purge-demo-data', adminController.purgeDemoData);
 
+// GET /api/admin/attention — Ops triage queue (deals with no freight booked)
+router.get('/attention', adminController.getAttentionItems);
+
 // GET /api/admin/transactions — Transaction oversight
 router.get('/transactions', adminController.getAllTransactions);
 

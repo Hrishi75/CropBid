@@ -467,10 +467,17 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/*
+        Booking is ops, not self-service. CropBid picks the carrier because
+        CropBid inspects the goods, so this page moved out of the farmer/buyer
+        routes and into admin. The server agrees: /logistics/book, /quote and
+        /partners/:transactionId are all requireRole('ADMIN') now, so a stale
+        bookmark gets a 403 rather than a broken form.
+      */}
       <Route
-        path="/logistics/book/:transactionId"
+        path="/admin/logistics/book/:transactionId"
         element={
-          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+          <ProtectedRoute allowedRoles={['ADMIN']}>
             <BookTransport />
           </ProtectedRoute>
         }
@@ -478,7 +485,7 @@ export function AppRoutes() {
       <Route
         path="/logistics/shipment/transaction/:transactionId"
         element={
-          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER', 'ADMIN']}>
             <ShipmentTracking />
           </ProtectedRoute>
         }

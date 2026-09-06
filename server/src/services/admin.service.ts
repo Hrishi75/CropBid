@@ -164,6 +164,9 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
             isDirectPurchase: true,
           },
         },
+        // Whether freight is already booked. Ops arranges every delivery now,
+        // so this row is the queue: no shipment means nobody has booked it yet.
+        shipment: { select: { id: true, status: true } },
       },
     }),
     prisma.transaction.count({ where }),
@@ -540,6 +543,29 @@ export async function reviewPartnerApplication(input: ReviewInput) {
     where: { id: input.profileId },
   });
 
+  // APPROVAL IS WHAT GRANTS THE ROLE.
+  //
+  // An applicant fills the form from a signed-in CONSUMER account, so approving
+  // them has to promote them or they would sit approved and still be a shopper,
+  // with a profile they cannot use. This is the only place a role is granted
+  // outside signup, and it is admin-only by construction: the route above it is
+  // requireRole('ADMIN').
+  //
+  // Awaited, unlike the notification and email below: those are announcements
+  // of a decision already committed, while this IS the decision. An approval
+  // that failed to promote is not a partly-sent message, it is a partner who
+  // cannot trade.
+  //
+  // Narrow update, not a blind write: it only promotes an account still sitting
+  // at CONSUMER, so it can never demote an ADMIN or flip an approved seller
+  // into a buyer if someone files both applications.
+  if (rule.to === 'APPROVED') {
+    await prisma.user.updateMany({
+      where: { id: profile.user.id, role: 'CONSUMER' },
+      data: { role: input.kind === 'SELLER' ? 'FARMER' : 'BUYER' },
+    });
+  }
+
   await recordAudit({
     actorId: input.adminId,
     actorRole: 'ADMIN',
@@ -575,4 +601,53 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   }
 
   return updated;
+}
+
+// =============================================================================
+// NEEDS ATTENTION — the ops triage queue
+// =============================================================================
+// What ops has to do something about, derived from state rather than from a
+// worklist table. Nothing here is a stored flag, so an item cannot get stuck
+// "open" after the underlying thing was handled, and it cannot be lost if the
+// notification that announced it failed to send.
+//
+// One source today: deals with no shipment. CropBid arranges the freight on
+// every deal (CLAUDE.md §2a), so an unbooked deal is unstarted work. Disputes
+// and KYC failures belong here too when those states exist; add them as more
+// queries into the same shape rather than inventing a triage table.
+export async function getAttentionItems(limit = 20) {
+  const awaitingTransport = await prisma.transaction.findMany({
+    where: {
+      shipment: null,
+      // A cancelled or refunded deal is not freight waiting to move.
+      paymentStatus: { notIn: ['REFUNDED'] },
+    },
+    orderBy: { createdAt: 'asc' }, // oldest first: that is the one aging
+    take: limit,
+    include: {
+      listing: { select: { cropName: true, unit: true } },
+      farmer: { select: { name: true } },
+      buyer: { select: { name: true } },
+      bid: { select: { quantity: true, deliveryAddress: true } },
+    },
+  });
+
+  const now = Date.now();
+
+  return awaitingTransport.map((tx) => {
+    const ageHours = Math.floor((now - tx.createdAt.getTime()) / 3_600_000);
+    return {
+      type: 'NEEDS TRANSPORT',
+      id: `#T-${tx.id.slice(-6).toUpperCase()}`,
+      desc: `${tx.listing.cropName} · ${tx.bid?.quantity ?? '—'} ${tx.listing.unit.toLowerCase()} · ${tx.farmer.name} → ${tx.buyer.name}`,
+      // Real elapsed time, not an invented SLA target. We have not committed to
+      // a booking window anywhere, so claiming one on an ops screen would be
+      // making up a promise the business has not made.
+      sla: ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`,
+      cta: 'Book transport',
+      href: `/admin/logistics/book/${tx.id}`,
+      transactionId: tx.id,
+      createdAt: tx.createdAt,
+    };
+  });
 }

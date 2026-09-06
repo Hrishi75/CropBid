@@ -11,6 +11,13 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as logisticsService from '../services/logistics.service';
 
+// The service needs the role as well as the id: an admin is neither the farmer
+// nor the buyer on a transaction, so an ownership check that only sees a userId
+// cannot let ops through. authenticate() has already populated req.user.
+function actorOf(req: Request): logisticsService.Actor {
+  return { userId: req.user!.userId, role: req.user!.role };
+}
+
 const uuid = z.string().uuid();
 
 const quoteSchema = z.object({
@@ -28,8 +35,8 @@ const bookSchema = z.object({
   distanceKm: z.number().positive().max(50000),
   totalWeightKg: z.number().positive().max(1_000_000),
   vehicleType: z.string().min(1).max(100),
-  paidBy: z.enum(['BUYER', 'FARMER', 'SPLIT']),
-  splitPercentBuyer: z.number().min(0).max(100).optional(),
+  // No paidBy. The seller carries the freight cost, so there is no request
+  // shape that can put it on the buyer. bookShipment writes FARMER itself.
 });
 
 const shipmentStatusSchema = z.object({
@@ -104,7 +111,7 @@ export async function getMatchingPartners(req: Request, res: Response, next: Nex
   try {
     const params = parseOr(res, transactionIdParamSchema, req.params);
     if (!params) return;
-    const result = await logisticsService.getMatchingPartners(params.transactionId, req.user!.userId);
+    const result = await logisticsService.getMatchingPartners(params.transactionId, actorOf(req));
     res.json(result);
   } catch (error) {
     next(error);
@@ -136,7 +143,7 @@ export async function bookShipment(req: Request, res: Response, next: NextFuncti
   try {
     const body = parseOr(res, bookSchema, req.body);
     if (!body) return;
-    const shipment = await logisticsService.bookShipment(body, req.user!.userId);
+    const shipment = await logisticsService.bookShipment(body, actorOf(req));
     res.status(201).json(shipment);
   } catch (error) {
     next(error);
@@ -148,7 +155,7 @@ export async function getShipment(req: Request, res: Response, next: NextFunctio
   try {
     const params = parseOr(res, idParamSchema, req.params);
     if (!params) return;
-    const shipment = await logisticsService.getShipment(params.id, req.user!.userId);
+    const shipment = await logisticsService.getShipment(params.id, actorOf(req));
     res.json(shipment);
   } catch (error) {
     next(error);
@@ -162,7 +169,7 @@ export async function getShipmentByTransaction(req: Request, res: Response, next
     if (!params) return;
     const shipment = await logisticsService.getShipmentByTransaction(
       params.transactionId,
-      req.user!.userId
+      actorOf(req)
     );
     res.json(shipment || { shipment: null });
   } catch (error) {
@@ -181,7 +188,7 @@ export async function updateShipmentStatus(req: Request, res: Response, next: Ne
       params.id,
       body.status,
       { location: body.location ?? '', note: body.note ?? '' },
-      req.user!.userId
+      actorOf(req)
     );
     res.json(shipment);
   } catch (error) {
@@ -196,7 +203,7 @@ export async function updateDriverInfo(req: Request, res: Response, next: NextFu
     if (!params) return;
     const body = parseOr(res, driverInfoSchema, req.body);
     if (!body) return;
-    const shipment = await logisticsService.updateDriverInfo(params.id, body, req.user!.userId);
+    const shipment = await logisticsService.updateDriverInfo(params.id, body, actorOf(req));
     res.json(shipment);
   } catch (error) {
     next(error);
@@ -213,7 +220,7 @@ export async function uploadProofOfDelivery(req: Request, res: Response, next: N
     const shipment = await logisticsService.uploadProofOfDelivery(
       params.id,
       body.imageUrl,
-      req.user!.userId
+      actorOf(req)
     );
     res.json(shipment);
   } catch (error) {

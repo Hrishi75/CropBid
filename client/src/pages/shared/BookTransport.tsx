@@ -1,10 +1,20 @@
 // =============================================================================
-// BookTransport — Arrange shipping for a closed deal
+// BookTransport — Arrange shipping for a closed deal (OPS)
 // =============================================================================
-// Reached from a transaction (/logistics/book/:transactionId). Loads available
-// logistics partners and the cargo info (weight, perishable, origin), lets the
-// user pick a partner, fetch a price quote, set pickup/delivery details and who
-// pays (buyer / farmer / split), then books the shipment.
+// Admin-only, reached at /admin/logistics/book/:transactionId. CropBid books
+// the carrier because CropBid inspects the goods on the way through, so this is
+// an ops console, not something the two sides of the deal ever see. The three
+// endpoints it drives (/logistics/partners/:id, /quote, /book) are all
+// requireRole('ADMIN').
+//
+// Loads available logistics partners and the cargo info (weight, perishable,
+// origin), lets ops pick a partner, fetch a price quote, set pickup/delivery
+// details, then books the shipment.
+//
+// There is no "who pays" control. The seller carries the freight cost on every
+// deal, so the server writes paidBy: FARMER itself and the request schema has
+// no field for it. Restoring a picker here means changing the rule, not just
+// this form.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -53,8 +63,6 @@ export function BookTransport() {
   const [pickupDate, setPickupDate] = useState('');
   const [distanceKm, setDistanceKm] = useState('');
   const [vehicleType, setVehicleType] = useState('');
-  const [paidBy, setPaidBy] = useState<'BUYER' | 'FARMER' | 'SPLIT'>('BUYER');
-  const [splitPercent, setSplitPercent] = useState(50);
   const [booking, setBooking] = useState(false);
 
   useEffect(() => {
@@ -114,8 +122,6 @@ export function BookTransport() {
         distanceKm: Number(distanceKm),
         totalWeightKg: txInfo?.weightKg,
         vehicleType,
-        paidBy,
-        splitPercentBuyer: paidBy === 'SPLIT' ? splitPercent : undefined,
       });
       toast.success('Shipment booked');
       navigate(`/logistics/shipment/transaction/${transactionId}`);
@@ -235,24 +241,13 @@ export function BookTransport() {
               </div>
             </Section>
 
-            <Section title="Cost split">
-              <div className="cb-pill-group">
-                {(['BUYER', 'FARMER', 'SPLIT'] as const).map((m) => (
-                  <button key={m} type="button" className={`cb-pill ${paidBy === m ? 'active' : ''}`} onClick={() => setPaidBy(m)}>
-                    {m === 'BUYER' ? 'Buyer pays' : m === 'FARMER' ? 'Farmer pays' : 'Split'}
-                  </button>
-                ))}
-              </div>
-              {paidBy === 'SPLIT' && (
-                <Input
-                  label="Buyer percent"
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={splitPercent}
-                  onChange={(e) => setSplitPercent(Number(e.target.value))}
-                />
-              )}
+            {/* Was a Buyer/Farmer/Split picker. The seller pays the freight on
+                every deal now, so this states the rule instead of offering a
+                choice the server would ignore. */}
+            <Section title="Cost">
+              <p className="cb-small" style={{ margin: 0 }}>
+                Billed to the seller and deducted from their settlement.
+              </p>
             </Section>
 
             {quote && (
