@@ -273,10 +273,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         // Anything added while the read-back was in flight wins. Replacing
         // wholesale would silently drop a lot the shopper watched go into the
         // basket a moment ago, which is the one thing a cart must never do.
+        //
+        // ONE EXCEPTION, AND IT IS ABOUT MONEY: the purchase key. A row added
+        // before hydration finished was minted against an EMPTY basket, so
+        // add() could not see the stored row and always minted a fresh key.
+        // That is exactly the relaunch-after-a-lost-response case the key
+        // exists for: the shopper reopens the app and presses ADD on the same
+        // lot at the same amount, and dropping the stored key here would send
+        // the retry under a key the server has never seen. Idempotency misses,
+        // and they get a second order, a second stock decrement and a second
+        // payment.
+        //
+        // Same rule as add() applies across the hydration boundary: same lot at
+        // the same amount is the same intent, so the STORED key wins. A
+        // different amount is a different order and keeps its fresh key.
+        const stored = new Map(fromDisk.map((it) => [it.listingId, it]));
+        const reconciled = prev.items.map((it) => {
+          const disk = stored.get(it.listingId);
+          return disk && disk.quantity === it.quantity
+            ? { ...it, purchaseKey: disk.purchaseKey }
+            : it;
+        });
+
         const added = new Set(prev.items.map((it) => it.listingId));
         return {
           ...prev,
-          items: [...prev.items, ...fromDisk.filter((it) => !added.has(it.listingId))],
+          items: [...reconciled, ...fromDisk.filter((it) => !added.has(it.listingId))],
           hydrated: true,
         };
       });
