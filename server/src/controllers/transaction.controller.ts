@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import * as transactionService from '../services/transaction.service';
 import { auditFromRequest } from '../services/audit.service';
+import { alertNewOrder } from '../services/orderAlert.service';
 
 const createTxSchema = z.object({
   bidId: z.string().min(1, 'bidId is required'),
@@ -41,6 +42,18 @@ export async function createTransaction(req: Request, res: Response, next: NextF
     }
 
     const transaction = await transactionService.createTransaction(bidId);
+
+    // Post-commit, like every other path that closes a deal. createTransaction
+    // is called with the top-level client here, so it is committed by this
+    // line, and alertNewOrder re-reads before doing anything.
+    //
+    // This route had never fired it, so the ops email was already missing for
+    // deals struck through it. That went unnoticed while the admin notification
+    // lived inside createTransaction and covered this path by accident; moving
+    // the notification onto alertNewOrder would have turned one silent gap into
+    // two. One call closes both.
+    void alertNewOrder(bidId, 'BID_ACCEPTED');
+
     res.status(201).json(transaction);
   } catch (error) {
     next(error);

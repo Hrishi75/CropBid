@@ -17,7 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import { partnerApplication, PARTNER_STATUS_META } from '../../utils/partner';
-import api, { setAccessToken } from '../../lib/axios';
+import api, { keepAliveSession } from '../../lib/axios';
 
 // The three review stages, as a timeline. Which dot is lit depends on status.
 function Timeline({ status }: { status: string }) {
@@ -77,11 +77,15 @@ export function PartnerStatusPage() {
 
         const approved = partnerApplication(data.user)?.status === 'APPROVED';
         if (approved && data.user.role !== user?.role) {
-          // Best-effort: if it fails the applicant sees the waiting screen and
-          // a reload fixes it, which beats a dashboard that 403s at them.
-          const { data: refreshed } = await api.post('/auth/refresh');
+          // Through keepAliveSession, NOT a bare post to /auth/refresh. Refresh
+          // tokens rotate, so two overlapping refreshes leave one holding a
+          // revoked credential: if the interceptor or the idle keepalive lost
+          // that race it would sign out the applicant we just approved.
+          // keepAliveSession holds the same isRefreshing lock those two use, and
+          // returns early when one is already in flight, which is fine here
+          // because the server mints from the freshly read user.role either way.
+          await keepAliveSession();
           if (!on) return;
-          setAccessToken(refreshed.accessToken);
         }
 
         if (on) updateUser(data.user);

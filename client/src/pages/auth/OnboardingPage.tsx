@@ -217,7 +217,13 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const hint = partnerTypeHint();
+  // Read ONCE, into state. `partnerTypeHint()` reads sessionStorage on every
+  // render, and the effect below clears it, so re-reading would return null on
+  // the next render and silently fall back to the account role. /onboarding can
+  // stay mounted with `user` still null while auth restores, so that re-render
+  // is the normal path, not an edge case: a consumer who clicked "Apply as
+  // farmer" would have been shown the buyer form.
+  const [hint] = useState(partnerTypeHint);
 
   // Which form to show. The parked intent wins, because it is what the person
   // just clicked on /partner; user.role is the fallback for someone who landed
@@ -245,7 +251,8 @@ export function OnboardingPage() {
 
   // Consume it. Left in place, a hint would outrank the profile on every later
   // visit for the rest of the session, so a farmer who once looked at the buyer
-  // cards would keep reopening the wrong form. Read once, above; cleared here.
+  // cards would keep reopening the wrong form. Safe to clear because `hint`
+  // above is state, captured before this runs and unaffected by the removal.
   useEffect(() => { forgetPartnerType(); }, []);
 
   // Resubmission: when a reviewer sent the application back, the same form
