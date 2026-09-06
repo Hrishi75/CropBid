@@ -519,16 +519,48 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   // observed value also catches an applicant resubmitting mid-review — the row
   // moves to SUBMITTED, which rule.from would have waved through, approving
   // fields nobody looked at.
-  const claimed = await (table as typeof prisma.farmerProfile).updateMany({
-    where: { id: input.profileId, status: profile.status },
-    data: {
-      status: rule.to,
-      statusNote: rule.needsNote ? input.note!.trim() : null,
-      reviewedAt: new Date(),
-      reviewedById: input.adminId,
-      // Approval doubles as the legacy verified badge.
-      ...(rule.to === 'APPROVED' ? { verified: true } : {}),
-    },
+  // The decision and the role promotion commit TOGETHER or not at all.
+  //
+  // They were two separate writes, which left a hole: if the promotion failed
+  // after the profile went APPROVED, the applicant was approved without the
+  // role, and a retry could not repair it because APPROVE no longer accepts an
+  // already-APPROVED row. The reviewer's only remaining move was the database.
+  const claimed = await prisma.$transaction(async (tx) => {
+    const table = input.kind === 'SELLER' ? tx.farmerProfile : tx.buyerProfile;
+
+    const decided = await (table as typeof prisma.farmerProfile).updateMany({
+      where: { id: input.profileId, status: profile.status },
+      data: {
+        status: rule.to,
+        statusNote: rule.needsNote ? input.note!.trim() : null,
+        reviewedAt: new Date(),
+        reviewedById: input.adminId,
+        // Approval doubles as the legacy verified badge.
+        ...(rule.to === 'APPROVED' ? { verified: true } : {}),
+      },
+    });
+    if (decided.count === 0) return decided;
+
+    // APPROVAL IS WHAT GRANTS THE ROLE.
+    //
+    // An applicant fills the form from a signed-in CONSUMER account, so
+    // approving them has to promote them or they sit approved and still a
+    // shopper, holding a profile they cannot use. Admin-only by construction:
+    // the route above is requireRole('ADMIN').
+    //
+    // Scoped to a row still at CONSUMER so it can never demote an ADMIN or flip
+    // an approved seller into a buyer if someone files both applications. A
+    // zero count there is NOT a failure: it means the account already holds a
+    // partner role, which is the ordinary resubmission and second-application
+    // case, and the approval itself still stands.
+    if (rule.to === 'APPROVED') {
+      await tx.user.updateMany({
+        where: { id: profile.user.id, role: 'CONSUMER' },
+        data: { role: input.kind === 'SELLER' ? 'FARMER' : 'BUYER' },
+      });
+    }
+
+    return decided;
   });
   if (claimed.count === 0) {
     // Somebody moved the row between the read above and this write. Re-read so
@@ -542,29 +574,6 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   const updated = await (table as typeof prisma.farmerProfile).findUnique({
     where: { id: input.profileId },
   });
-
-  // APPROVAL IS WHAT GRANTS THE ROLE.
-  //
-  // An applicant fills the form from a signed-in CONSUMER account, so approving
-  // them has to promote them or they would sit approved and still be a shopper,
-  // with a profile they cannot use. This is the only place a role is granted
-  // outside signup, and it is admin-only by construction: the route above it is
-  // requireRole('ADMIN').
-  //
-  // Awaited, unlike the notification and email below: those are announcements
-  // of a decision already committed, while this IS the decision. An approval
-  // that failed to promote is not a partly-sent message, it is a partner who
-  // cannot trade.
-  //
-  // Narrow update, not a blind write: it only promotes an account still sitting
-  // at CONSUMER, so it can never demote an ADMIN or flip an approved seller
-  // into a buyer if someone files both applications.
-  if (rule.to === 'APPROVED') {
-    await prisma.user.updateMany({
-      where: { id: profile.user.id, role: 'CONSUMER' },
-      data: { role: input.kind === 'SELLER' ? 'FARMER' : 'BUYER' },
-    });
-  }
 
   await recordAudit({
     actorId: input.adminId,
