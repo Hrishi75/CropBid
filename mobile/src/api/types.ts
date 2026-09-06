@@ -6,6 +6,15 @@ export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
 export type QualityGrade = 'A' | 'B' | 'C';
 export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED';
 export type ListingStatus = 'ACTIVE' | 'IN_AUCTION' | 'SOLD' | 'EXPIRED';
+// Where a seller's or buyer's application sits in review. Mirrors the
+// PartnerStatus enum in server/prisma/schema.prisma.
+export type PartnerStatus =
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'NEEDS_INFO'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SUSPENDED';
 
 export interface User {
   id: string;
@@ -23,8 +32,18 @@ export interface User {
     state?: string;
     cropsGrown?: string[];
     organicCertified?: boolean;
+    // The partner application's lifecycle. A profile exists from the moment the
+    // application is filed, so its presence means "applied", not "approved" —
+    // only `status` says that. See lib/partner.ts.
+    status?: PartnerStatus;
+    statusNote?: string | null;
   } | null;
-  buyerProfile?: { companyName?: string; companyType?: string } | null;
+  buyerProfile?: {
+    companyName?: string;
+    companyType?: string;
+    status?: PartnerStatus;
+    statusNote?: string | null;
+  } | null;
 }
 
 export interface Listing {
@@ -53,6 +72,98 @@ export interface Listing {
   createdAt: string;
   matchScore?: number;
   _count?: { bids: number };
+}
+
+// --- The demand board (the reverse marketplace) -----------------------------
+// A requirement is a buyer saying "I need this, at this price, by this date";
+// farmers fill it outright or counter with their own price. Mirrors the shapes
+// in client/src/types/index.ts, trimmed to the fields the app reads.
+
+export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
+export type RequirementOfferStatus =
+  | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+/** INSTANT filled at the buyer's own price; COUNTER proposed the farmer's. */
+export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
+
+// The counterparty-safe buyer shape the API returns on a requirement: company
+// details only, never taxId, procurement volume, phone or email. It is absent
+// entirely when the reader is another BUYER — the server redacts competitor
+// identity, so treat a missing buyer as normal, not as an error.
+export interface RequirementBuyer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  buyerProfile?: {
+    companyName?: string | null;
+    companyType?: string | null;
+    country?: string;
+    verified?: boolean;
+  } | null;
+}
+
+export interface RequirementOfferFarmer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  farmerProfile?: { state?: string | null; organicCertified?: boolean; verified?: boolean } | null;
+}
+
+export interface BuyerRequirement {
+  id: string;
+  buyerId: string;
+  buyer?: RequirementBuyer;
+  cropName: string;
+  cropVariety: string | null;
+  quantity: number;
+  /** What is still unfilled. A requirement can be filled in pieces. */
+  remainingQuantity: number;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  currency: string;
+  deliveryLocation: string;
+  deliveryState: string;
+  deliveryCountry?: string;
+  neededBy: string | null;
+  description: string | null;
+  organic: boolean;
+  paymentTerms: string | null;
+  deliveryTerms: string | null;
+  status: RequirementStatus;
+  createdAt: string;
+  updatedAt?: string;
+  offers?: RequirementOffer[];
+  // On the feed this counts ALL offers; on /my it counts only PENDING ones,
+  // because that is the number the buyer has to act on.
+  _count?: { offers: number };
+}
+
+export interface RequirementOffer {
+  id: string;
+  requirementId: string;
+  requirement?: BuyerRequirement;
+  farmerId: string;
+  farmer?: RequirementOfferFarmer;
+  kind: RequirementOfferKind;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  currency: string;
+  message: string | null;
+  status: RequirementOfferStatus;
+  listingId: string | null;
+  bidId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
+/** What the feed can actually be narrowed by, as the server reports it. */
+export interface RequirementFilterOptions {
+  crops?: string[];
+  states?: string[];
+  buyerTypes?: string[];
 }
 
 export interface Bid {

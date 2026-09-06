@@ -23,6 +23,8 @@ import type { Listing } from '../api/types';
 import type { GuestStackParamList } from '../navigation/types';
 import { Mono } from '../components/buyerKit';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
+import { CartBar } from '../components/CartBar';
+import { useCart } from '../context/CartContext';
 import { colors, design, font } from '../theme';
 import { money, timeAgo, unitLabel } from '../lib/format';
 
@@ -96,6 +98,9 @@ export default function CropSellersScreen({ route, navigation }: Props) {
   }, [load]);
 
   const cheapest = lots.length > 0 ? effectivePrice(lots[0]) : null;
+  // Room at the foot of the list for the cart bar, when there is one to make
+  // room for.
+  const { count: cartCount } = useCart();
   const heroImg = lots.find((l) => l.images?.length)?.images?.[0] ?? null;
   const heroUri = heroImg ? mediaUrl(heroImg) : cropImageFor(crop);
 
@@ -104,7 +109,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
       <FlatList
         data={lots}
         keyExtractor={(l) => l.id}
-        contentContainerStyle={{ paddingBottom: 28 }}
+        contentContainerStyle={{ paddingBottom: cartCount > 0 ? 104 : 28 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
         ListHeaderComponent={
@@ -166,6 +171,11 @@ export default function CropSellersScreen({ route, navigation }: Props) {
           />
         )}
       />
+
+      {/* A shopper comparing farmers may already have a basket going. This is a
+          pushed screen, not a tab, so the bar takes the home-indicator inset
+          itself. */}
+      <CartBar />
     </View>
   );
 }

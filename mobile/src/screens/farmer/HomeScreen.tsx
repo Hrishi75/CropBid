@@ -205,6 +205,18 @@ export default function FarmerHomeScreen() {
             <Text style={styles.quickGhostText}>See offers</Text>
           </Pressable>
         </View>
+        {/* Demand runs the other way: buyers post what they need and a farmer
+            fills it or counters. It gets its own full-width row rather than a
+            third of the one above, because it is the only quick action that
+            leads somewhere the farmer has not already been. */}
+        <View style={[styles.sidePad, styles.quickRow, { marginTop: 10 }]}>
+          <Pressable style={({ pressed }) => [styles.quickGhost, pressed && styles.pressed]} onPress={() => nav.navigate('Demand')}>
+            <Text style={styles.quickGhostText}>What buyers need</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.quickGhost, pressed && styles.pressed]} onPress={() => nav.navigate('MyOffers')}>
+            <Text style={styles.quickGhostText}>Your offers</Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </View>
   );

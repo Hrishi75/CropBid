@@ -1,7 +1,18 @@
-// Onboarding — post-signup profile setup (required before entering the app).
+// Onboarding — the partner application (required before entering the app).
 // Renders a farmer OR buyer form based on user.role and POSTs to
-// /auth/onboarding/{farmer|buyer}. On success it re-pulls /auth/me so the root
-// navigator drops the onboarding gate and shows the role's tabs.
+// /auth/onboarding/{farmer|buyer}. On success it re-pulls /auth/me.
+//
+// THIS IS AN APPLICATION, NOT A PROFILE FORM. The server files what is typed
+// here as a partner application with status SUBMITTED and refuses every seller
+// and buyer route until an admin approves it, so submitting does NOT open the
+// dashboard: the navigator swaps to PartnerStatusScreen, where the applicant
+// waits for a decision. The copy says so before anything is typed — a form that
+// promises a dashboard and then delivers a waiting room is a worse experience
+// than one that was honest about the queue.
+//
+// It is also the RESUBMISSION form. A reviewer who asks for more (NEEDS_INFO)
+// or turns an application down (REJECTED) sends the applicant back here from
+// the status screen, and the same POST re-files it.
 
 import React, { useState } from 'react';
 import {
@@ -19,6 +30,7 @@ import { useAuth } from '../context/AuthContext';
 import { errorMessage } from '../api/client';
 import { buyerOnboarding, farmerOnboarding, type BuyerOnboardingInput } from '../api/endpoints';
 import { Button } from '../components/ui';
+import { partnerApplication } from '../lib/partner';
 import { colors, radius, spacing } from '../theme';
 
 // Compact crop set for the farmer picker (server accepts any string[]).
@@ -46,6 +58,9 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { user, refreshUser, signOut } = useAuth();
   const country = user?.country || 'India';
+  // A reviewer who asked for more, or said no, sends the applicant back here.
+  // The form is identical; only the framing changes.
+  const resubmitting = partnerApplication(user) !== null;
   const isFarmer = user?.role === 'FARMER';
 
   // Farmer fields
@@ -107,7 +122,9 @@ export default function OnboardingScreen() {
           annualProcurementVolume: volume.trim() || undefined,
         });
       }
-      await refreshUser(); // navigator swaps to the app once the profile exists
+      // Swaps the navigator to the status screen — the application now exists,
+      // and it is not approved yet.
+      await refreshUser();
     } catch (e) {
       setError(errorMessage(e, 'Could not save your profile'));
     } finally {
@@ -122,16 +139,18 @@ export default function OnboardingScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.headerRow}>
-          <Text style={styles.eyebrow}>Step 2 of 2</Text>
+          <Text style={styles.eyebrow}>
+            {resubmitting ? 'Update your application' : 'Partner application'}
+          </Text>
           <Pressable onPress={signOut} hitSlop={8}>
             <Text style={styles.logout}>Log out</Text>
           </Pressable>
         </View>
-        <Text style={styles.title}>{isFarmer ? 'Set up your farm' : 'Set up your company'}</Text>
+        <Text style={styles.title}>{isFarmer ? 'Tell us about your farm' : 'Tell us about your company'}</Text>
         <Text style={styles.sub}>
           {isFarmer
-            ? 'Your agent uses these to match buyers and price your listings.'
-            : 'Your agent uses these to find growers and anchor your bids.'}
+            ? 'Our team reviews every seller by hand, usually within 24 to 48 hours. These details are what they read — and what your agent later uses to match buyers and price your listings.'
+            : 'Our team reviews every buyer by hand, usually within 24 to 48 hours. These details are what they read — and what your agent later uses to find growers and anchor your bids.'}
         </Text>
 
         <View style={styles.card}>
@@ -248,7 +267,13 @@ export default function OnboardingScreen() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <View style={styles.spacer} />
-          <Button label="Activate account" onPress={onSubmit} loading={submitting} />
+          {/* Not "Activate account": nothing activates here. What this button
+              does is file an application that a person then reads. */}
+          <Button
+            label={resubmitting ? 'Resubmit application' : 'Submit application'}
+            onPress={onSubmit}
+            loading={submitting}
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

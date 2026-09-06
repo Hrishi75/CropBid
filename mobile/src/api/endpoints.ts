@@ -5,12 +5,17 @@ import type {
   AppNotification,
   Auction,
   Bid,
+  BuyerRequirement,
   DeliveryStatus,
   Listing,
   Negotiation,
   Paginated,
+  QualityGrade,
+  RequirementFilterOptions,
+  RequirementOffer,
   Transaction,
   TransactionStats,
+  Unit,
   User,
 } from './types';
 
@@ -88,6 +93,14 @@ export async function resendSignupOtp(pendingId: string): Promise<PendingSignup>
     { pendingId },
   );
   return data.pendingSignup;
+}
+
+// Asks for a single-use reset link, emailed to the address given. The endpoint
+// is deliberately enumeration-safe — it answers the same way whether or not an
+// account exists — so the screen must show the same confirmation either way.
+// The link itself opens the web reset page; there is no in-app reset step.
+export async function forgotPassword(email: string): Promise<void> {
+  await api.post('/auth/forgot-password', { email });
 }
 
 export async function fetchMe(): Promise<User> {
@@ -258,6 +271,138 @@ export async function directPurchase(input: {
   idempotencyKey?: string;
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids/direct-purchase', input);
+  return data;
+}
+
+// --- Demand board (the reverse marketplace) ---------------------------------
+// Buyers post what they need; farmers fill it at the posted price or counter
+// with their own. The board is READ-ONLY for buyers — the fill and counter
+// routes are FARMER-only on the server, so hiding those buttons is a courtesy,
+// not the boundary. The server also strips a competitor buyer's identity from
+// the rows it serves to another buyer, so a row with no `buyer` is normal.
+
+export interface RequirementFeedParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  crop?: string;
+  state?: string;
+  quality?: QualityGrade;
+  /** BuyerProfile.companyType — "restaurant chains only", and so on. */
+  buyerType?: string;
+  organic?: 'true' | 'false';
+  priceMin?: number;
+  priceMax?: number;
+  sort?: 'createdAt' | 'pricePerUnit' | 'quantity' | 'neededBy';
+}
+
+export interface RequirementFeedPage {
+  requirements: BuyerRequirement[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export async function requirementFeed(params: RequirementFeedParams = {}): Promise<RequirementFeedPage> {
+  const { data } = await api.get<RequirementFeedPage>('/requirements/feed', {
+    params: {
+      ...params,
+      // A deadline sorts soonest-first; everything else newest or highest
+      // first. Same pairing the web board uses, so the two agree on what
+      // "sorted by needed-by" means.
+      ...(params.sort ? { order: params.sort === 'neededBy' ? 'asc' : 'desc' } : {}),
+    },
+  });
+  return data;
+}
+
+// Which crops, states and buyer types the board actually holds right now — so
+// the filter sheet offers only choices that can return a row.
+export async function requirementFilters(): Promise<RequirementFilterOptions> {
+  const { data } = await api.get<RequirementFilterOptions>('/requirements/filters');
+  return data;
+}
+
+export async function fetchRequirement(id: string): Promise<BuyerRequirement> {
+  const { data } = await api.get<BuyerRequirement>(`/requirements/${id}`);
+  return data;
+}
+
+// --- Farmer actions on the board ---
+// Fills at the buyer's posted price. This CLOSES the deal: the server mints an
+// already-accepted bid and opens the transaction, so there is nothing for the
+// buyer to approve afterwards.
+export async function fillRequirement(
+  id: string,
+  input: { quantity: number; message?: string },
+): Promise<RequirementOffer> {
+  const { data } = await api.post<RequirementOffer>(`/requirements/${id}/accept`, input);
+  return data;
+}
+
+// Counters with the farmer's own price. Unlike a fill, this waits on the buyer.
+export async function offerOnRequirement(
+  id: string,
+  input: { quantity: number; pricePerUnit: number; message?: string },
+): Promise<RequirementOffer> {
+  const { data } = await api.post<RequirementOffer>(`/requirements/${id}/offers`, input);
+  return data;
+}
+
+export async function myRequirementOffers(): Promise<RequirementOffer[]> {
+  const { data } = await api.get<RequirementOffer[]>('/requirements/offers/my');
+  return data;
+}
+
+export async function withdrawRequirementOffer(offerId: string): Promise<void> {
+  await api.delete(`/requirements/offers/${offerId}`);
+}
+
+// --- Buyer actions on their own demand ---
+export interface RequirementInput {
+  cropName: string;
+  cropVariety?: string;
+  quantity: number;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  /** Always INR: prices are typed against ₹ MSP and mandi anchors. */
+  currency: 'INR';
+  deliveryLocation: string;
+  deliveryState: string;
+  neededBy?: string;
+  description?: string;
+  organic: boolean;
+  paymentTerms?: string;
+  deliveryTerms?: string;
+}
+
+export async function myRequirements(status?: string): Promise<RequirementFeedPage> {
+  const { data } = await api.get<RequirementFeedPage>('/requirements/my', {
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
+export async function createRequirement(input: RequirementInput): Promise<BuyerRequirement> {
+  const { data } = await api.post<BuyerRequirement>('/requirements', input);
+  return data;
+}
+
+export async function closeRequirement(id: string): Promise<void> {
+  await api.put(`/requirements/${id}/close`);
+}
+
+export async function offersForRequirement(id: string): Promise<RequirementOffer[]> {
+  const { data } = await api.get<RequirementOffer[]>(`/requirements/${id}/offers`);
+  return data;
+}
+
+export async function acceptRequirementOffer(offerId: string): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/accept`);
+  return data;
+}
+
+export async function rejectRequirementOffer(offerId: string): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/reject`);
   return data;
 }
 

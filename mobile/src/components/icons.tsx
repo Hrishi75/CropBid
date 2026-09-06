@@ -73,6 +73,16 @@ export const IconSearch = (p: IcoProps) => (
   </Ico>
 );
 
+// Shopping basket — the consumer Cart tab. Tapered body so it reads as a
+// basket rather than a bucket at 23px.
+export const IconBasket = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M3 9h18l-1.6 10.2a2 2 0 0 1-2 1.8H6.6a2 2 0 0 1-2-1.8L3 9z" />
+    <Path d="M8.5 9L11 3M15.5 9L13 3" />
+    <Path d="M9.5 13v4M14.5 13v4" />
+  </Ico>
+);
+
 export const IconCheck = (p: IcoProps) => <Ico {...p} d="M4 12l5 5L20 6" />;
 
 export const IconShield = (p: IcoProps) => (

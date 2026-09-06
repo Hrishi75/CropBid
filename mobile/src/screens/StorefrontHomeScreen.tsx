@@ -35,6 +35,7 @@ import {
   Animated,
   Easing,
   Image,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -55,7 +56,10 @@ import { browse, retailCities, updateLocation } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
-import type { Listing } from '../api/types';
+import { useCart, type CartPack } from '../context/CartContext';
+import { CartBar } from '../components/CartBar';
+import { QuantityStepper } from '../components/QuantityStepper';
+import type { Listing, Unit } from '../api/types';
 import { money, unitLabel } from '../lib/format';
 import {
   CATEGORY_TILES, CHIPS, RAILS, TICKER,
@@ -232,6 +236,7 @@ export default function StorefrontHomeScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
   const { user, applyUser } = useAuth();
+  const { add, quantityOf, setQuantity, remove, count: cartCount } = useCart();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -249,6 +254,7 @@ export default function StorefrontHomeScreen() {
 
   const role = user?.role;
   const isFarmer = role === 'FARMER';
+  const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
   const shopping = role !== 'BUYER' && !isFarmer && role !== 'ADMIN';
@@ -357,6 +363,34 @@ export default function StorefrontHomeScreen() {
     }
   };
 
+  // The basket wiring one card gets — null for anyone who is not a signed-in
+  // shopper, and for a card that fronts several farmers. A grouped card cannot
+  // add anything: which farmer's lot would it be? Those keep their arrow into
+  // the comparison screen, where a seller is picked first.
+  const cartFor = (v: CardVM) => {
+    const l = v.listing;
+    if (!isConsumer || v.sellers > 1 || !l || !l.directSaleEnabled || l.retailPricePerUnit == null) {
+      return undefined;
+    }
+    const pack: CartPack | null = v.pack
+      ? { label: v.pack.label, kg: v.pack.kg, units: v.pack.units }
+      : null;
+    // The opening amount, matching the listing screen: one pack, or — for a
+    // bulk-only crop — one kilo, or the smallest sensible slice of a bigger
+    // denomination.
+    const first = Math.min(pack ? pack.units : l.unit === 'KG' ? 1 : 0.5, l.remainingQuantity);
+    return {
+      inCart: quantityOf(l.id),
+      pack,
+      unit: l.unit,
+      max: l.remainingQuantity,
+      canAdd: first > 0,
+      onAdd: () => add(l, first),
+      onChange: (q: number) => setQuantity(l.id, q),
+      onRemove: () => remove(l.id),
+    };
+  };
+
   const pickCategory = (target: RailId | null) => {
     glide();
     setCategory(target);
@@ -437,7 +471,7 @@ export default function StorefrontHomeScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 28 }}
+        contentContainerStyle={{ paddingBottom: cartCount > 0 ? 96 : 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
         {error ? <Text style={styles.errorLine}>{error}</Text> : null}
@@ -566,7 +600,7 @@ export default function StorefrontHomeScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
                     {railItems.map((v) => (
-                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
+                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
                     ))}
                   </ScrollView>
                 </View>
@@ -612,7 +646,7 @@ export default function StorefrontHomeScreen() {
             {results.length > 0 ? (
               <View style={styles.grid}>
                 {results.map((v) => (
-                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} onPress={() => openCard(v)} />
+                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
                 ))}
               </View>
             ) : (
@@ -624,6 +658,12 @@ export default function StorefrontHomeScreen() {
           </>
         )}
       </ScrollView>
+
+      {/* The running basket, riding the bottom of the shelf. This screen is a
+          tab, so bottom:0 lands it directly on top of the tab bar with nothing
+          to measure — hence overTabBar. It renders nothing for anyone but a
+          shopper with something in it. */}
+      <CartBar overTabBar />
     </View>
   );
 }
@@ -826,10 +866,26 @@ function CategoryTile({ label, emoji, onPress }: { label: string; emoji: string;
   );
 }
 
+// The basket wiring a card gets when the viewer can actually fill one. Built by
+// cartFor() in the screen above; undefined means the card keeps its plain
+// ADD / BID / VIEW label and just opens the lot.
+interface CardCart {
+  /** How much of this lot is already in the basket, in listing units. */
+  inCart: number;
+  pack: CartPack | null;
+  unit: Unit;
+  max: number;
+  canAdd: boolean;
+  onAdd: () => void;
+  onChange: (q: number) => void;
+  onRemove: () => void;
+}
+
 // Web .st-card: photo flush to the card top with the % OFF tag and grade chip
-// overlaid, live line, name, meta, stock, price + struck anchor + bordered BUY.
+// overlaid, live line, name, meta, stock, price + struck anchor + the ADD
+// control (or, once the lot is in the basket, the stepper that replaces it).
 function ProductCard({
-  vm, onPress, width, grid, action, liveWord, shopping,
+  vm, onPress, width, grid, action, liveWord, shopping, cart,
 }: {
   vm: CardVM;
   onPress: () => void;
@@ -838,6 +894,7 @@ function ProductCard({
   action: string;
   liveWord: string;
   shopping: boolean;
+  cart?: CardCart;
 }) {
   const pack = vm.pack;
   // Off the same pair of numbers the card prints below — a grouped card can
@@ -908,9 +965,37 @@ function ProductCard({
             </View>
             {pct > 0 ? <Text style={styles.strike}>{money(pack ? pack.anchor : vm.anchor)}</Text> : null}
           </View>
-          <View style={styles.buyBtn}>
-            <Text style={styles.buyBtnText}>{label}</Text>
-          </View>
+          {/* ADDING HAPPENS ON THE CARD. The shelf is where a basket gets
+              filled, so ADD puts the lot straight in and then turns into the
+              quantity control — the shopper never leaves the row they are
+              reading to change their mind about how much. Everyone else (a
+              guest, a farmer, a buyer, a grouped card) keeps a plain label
+              that opens the lot. */}
+          {cart && cart.inCart > 0 ? (
+            <QuantityStepper
+              value={cart.inCart}
+              onChange={cart.onChange}
+              unit={cart.unit}
+              pack={cart.pack}
+              max={cart.max}
+              size="sm"
+              showUnit={false}
+              onEmpty={cart.onRemove}
+            />
+          ) : cart ? (
+            <Pressable
+              onPress={cart.canAdd ? cart.onAdd : undefined}
+              hitSlop={6}
+              accessibilityLabel={`Add ${vm.name} to cart`}
+              style={[styles.buyBtn, !cart.canAdd && styles.buyBtnOff]}
+            >
+              <Text style={styles.buyBtnText}>ADD</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.buyBtn}>
+              <Text style={styles.buyBtnText}>{label}</Text>
+            </View>
+          )}
         </View>
         {/* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */}
         {pack ? (
@@ -1231,6 +1316,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 6,
   },
+  buyBtnOff: { opacity: 0.45 },
   buyBtnText: { fontFamily: font.sansBold, fontSize: 11.5, color: colors.forest, letterSpacing: 0.5 },
   bulkRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

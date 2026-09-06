@@ -1,9 +1,16 @@
-// Signup screen — create a farmer or buyer account. Mirrors the web SignupPage:
+// Signup screen — create an account. Mirrors the web signup flow:
 // role, name, country (which fixes the account currency), phone (the primary
 // contact and login identifier — required), email (required for buyers,
 // optional for farmers and consumers), and a password with
 // live-validated rules. On success AuthContext.signUp() sets the user; the root
-// navigator then routes to onboarding (no profile yet).
+// navigator then routes to the partner application (no profile yet).
+//
+// A SELLER OR BUYER ACCOUNT IS AN APPLICATION. Signing up as a farmer or a
+// business buyer does not open a dashboard — it opens a form that a reviewer
+// reads, and the account waits on PartnerStatusScreen until they approve it
+// (the server enforces the same gate). The role picker says so up front rather
+// than letting somebody discover the queue after typing in a GST number. A
+// consumer account has no such step: it shops immediately.
 //
 // BUYERS TAKE A SECOND STEP. signUp() resolves to 'verification-required' for
 // them: the server has parked their details and emailed a 6-digit code, and no
@@ -304,6 +311,21 @@ export default function SignupScreen() {
               </Pressable>
             ))}
           </View>
+          {/* Say it here, before any typing happens. Selling and bulk buying are
+              applied for and reviewed by a person; a shopper's account is live
+              on the spot. Finding that out after filling in a farm's acreage
+              and a GST number is the wrong moment for the news. */}
+          {role !== 'CONSUMER' ? (
+            <Text style={styles.roleNote}>
+              {role === 'FARMER' ? 'Sellers' : 'Business buyers'} are reviewed before going live. You'll
+              fill in a short application next, and our team usually decides within 24 to 48 hours.
+              Browsing the market works from the moment you sign up.
+            </Text>
+          ) : (
+            <Text style={styles.roleNote}>
+              A shopper's account is ready straight away — pick your city and the local shelf opens.
+            </Text>
+          )}
 
           <Text style={styles.label}>Full name</Text>
           <TextInput
@@ -455,6 +477,7 @@ const styles = StyleSheet.create({
   selectText: { fontSize: 16, color: colors.text },
   selectMeta: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
   rules: { flexDirection: 'row', flexWrap: 'wrap', marginTop: -spacing.sm, marginBottom: spacing.md },
+  roleNote: { fontSize: 12.5, lineHeight: 18, color: colors.textMuted, marginTop: spacing.sm, marginBottom: spacing.md },
   ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, width: '50%', paddingVertical: 3 },
   ruleMark: { fontSize: 12, color: colors.textMuted },
   ruleMarkOk: { color: colors.sage },
