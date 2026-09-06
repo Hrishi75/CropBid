@@ -21,6 +21,7 @@
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { sendNewOrderEmail } from './email.service';
+import { notifyAdminsDealClosed } from './notification.helpers';
 
 // How the order was struck — the platform reads these very differently, so the
 // email says which one it was rather than making them all look the same.
@@ -53,6 +54,26 @@ export async function alertNewOrder(bidId: string, channel: OrderChannel): Promi
 
     // No row — the sale rolled back after this was queued. Nothing was ordered.
     if (!order) return;
+
+    // Page ops in the app as well as by email. A closed deal is freight we have
+    // to arrange (CLAUDE.md §2a), so this is the trigger to book a carrier.
+    //
+    // It lives here rather than in createTransaction for the reason spelled out
+    // at the top of this file: createTransaction runs inside the caller's
+    // interactive transaction, so a notification fired there can outlive a
+    // rollback and point ops at a booking link for a row that never committed.
+    // By this line the order is confirmed committed.
+    //
+    // Not awaited, and never allowed to throw: the notification must not stop
+    // the email, and neither must stop an order that is already real.
+    void notifyAdminsDealClosed(
+      order.listing.cropName,
+      order.farmer.name,
+      order.buyer.name,
+      order.totalAmount,
+      order.currency,
+      order.id,
+    ).catch((err) => console.error(`Ops deal notification failed for bid ${bidId}:`, err));
 
     await sendNewOrderEmail(config.orderAlertEmail, {
       // Last 6 characters of the uuid, upper-cased — the same short form the

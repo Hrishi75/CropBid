@@ -1,10 +1,18 @@
 // =============================================================================
-// ShipmentTracking — Track (and update) a shipment
+// ShipmentTracking — Track a shipment
 // =============================================================================
 // Loads the shipment for a transaction and renders its progress along the fixed
-// status timeline (PENDING_PICKUP → ... → DELIVERED). The logistics provider /
-// farmer can push status updates, attach a location/note, and assign driver
-// details; the counterpart just watches the timeline.
+// status timeline (PENDING_PICKUP → ... → DELIVERED).
+//
+// WHO SEES WHAT
+//   ADMIN          drives it: status transitions, driver details, and the
+//                  Carrier panel naming the haulier we hired.
+//   FARMER/BUYER   read the timeline. No carrier, no driver phone, no controls.
+//
+// The hiding here is a courtesy, not the boundary. The API strips
+// logisticsPartner and driverPhone for non-admins in logistics.service's
+// forShipmentViewer(), so `shipment.logisticsPartner` is genuinely absent for a
+// trader rather than merely unrendered.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -79,7 +87,9 @@ export function ShipmentTracking() {
     fetch();
   }, [transactionId]);
 
-  const isFarmer = user?.id === shipment?.transaction?.farmerId;
+  // Ops drives the shipment now, not the seller. Was `user?.id === farmerId`,
+  // back when the farmer booked the truck and therefore knew the driver.
+  const isOps = user?.role === 'ADMIN';
 
   async function handleStatusUpdate() {
     if (!shipment || !newStatus || !updateLocation) return;
@@ -147,15 +157,26 @@ export function ShipmentTracking() {
         <div className="cb-page-eyebrow">
           <Link to={`/transactions/${transactionId}`} style={{ color: 'inherit', textDecoration: 'none' }}>← Transaction</Link>
         </div>
+        {/* Ops gets the booking form. A trader gets told what is happening,
+            because offering them a button the server answers with 403 is worse
+            than offering nothing. */}
         <div className="cb-card" style={{ marginTop: 20, textAlign: 'center', padding: 32 }}>
-          <h3 className="cb-h3" style={{ fontSize: 20 }}>No shipment booked</h3>
-          <p className="cb-small" style={{ marginTop: 8 }}>Book transport to start tracking your delivery.</p>
-          <div style={{ marginTop: 18 }}>
-            <Link to={`/logistics/book/${transactionId}`} className="cb-btn cb-btn-primary">
-              Book transport
-              <ArrowIcon />
-            </Link>
-          </div>
+          <h3 className="cb-h3" style={{ fontSize: 20 }}>
+            {isOps ? 'No shipment booked' : 'Transport not arranged yet'}
+          </h3>
+          <p className="cb-small" style={{ marginTop: 8 }}>
+            {isOps
+              ? 'Book a carrier to start tracking this delivery.'
+              : 'CropBid is arranging a carrier for this deal. Tracking appears here once it is booked.'}
+          </p>
+          {isOps && (
+            <div style={{ marginTop: 18 }}>
+              <Link to={`/admin/logistics/book/${transactionId}`} className="cb-btn cb-btn-primary">
+                Book transport
+                <ArrowIcon />
+              </Link>
+            </div>
+          )}
         </div>
       </DashboardLayout>
     );
@@ -215,7 +236,7 @@ export function ShipmentTracking() {
           </div>
         )}
 
-        {isFarmer && getNextStatuses().length > 0 && (
+        {isOps && getNextStatuses().length > 0 && (
           <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--cb-line)' }}>
             {!showUpdateForm ? (
               <Button size="sm" onClick={() => setShowUpdateForm(true)}>Update status</Button>
@@ -265,7 +286,7 @@ export function ShipmentTracking() {
           ) : (
             <div className="cb-tiny">No driver assigned yet.</div>
           )}
-          {isFarmer && (
+          {isOps && (
             <div style={{ marginTop: 12 }}>
               {!showDriverForm ? (
                 <Button size="sm" variant="ghost" onClick={() => setShowDriverForm(true)}>
@@ -286,16 +307,28 @@ export function ShipmentTracking() {
           )}
         </Section>
 
-        <Section title="Carrier">
-          {shipment.logisticsPartner && (
-            <>
-              <Row label="Name" value={shipment.logisticsPartner.name} />
-              <Row label="Type" value={shipment.logisticsPartner.type.replace('_', ' ').toLowerCase()} />
-              <Row label="Rating" value={`★ ${shipment.logisticsPartner.rating?.toFixed(1) || '—'}`} />
-              {shipment.logisticsPartner.contactPhone && <Row label="Contact" value={shipment.logisticsPartner.contactPhone} />}
-            </>
-          )}
-        </Section>
+        {/* Ops only. For a farmer or buyer the API does not send
+            logisticsPartner at all, so this would render an empty card headed
+            "Carrier" and invite the question it exists to avoid. */}
+        {isOps ? (
+          <Section title="Carrier">
+            {shipment.logisticsPartner && (
+              <>
+                <Row label="Name" value={shipment.logisticsPartner.name} />
+                <Row label="Type" value={shipment.logisticsPartner.type.replace('_', ' ').toLowerCase()} />
+                <Row label="Rating" value={`★ ${shipment.logisticsPartner.rating?.toFixed(1) || '—'}`} />
+                {shipment.logisticsPartner.contactPhone && <Row label="Contact" value={shipment.logisticsPartner.contactPhone} />}
+              </>
+            )}
+          </Section>
+        ) : (
+          <Section title="Transport">
+            <p className="cb-small" style={{ margin: 0 }}>
+              CropBid arranged this delivery and checked the goods before they
+              travelled. The freight charge is settled with the seller.
+            </p>
+          </Section>
+        )}
       </div>
 
       {shipment.trackingUpdates && Array.isArray(shipment.trackingUpdates) && shipment.trackingUpdates.length > 0 && (

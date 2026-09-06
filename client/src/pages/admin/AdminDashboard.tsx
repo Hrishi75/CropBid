@@ -2,9 +2,17 @@
 // AdminDashboard — Platform operations overview
 // =============================================================================
 // Admin home. Loads platform-wide stats (users, listings, bids, transactions,
-// GMV, revenue) from /admin/stats. The live event stream and "needs attention"
-// triage queue render from server data only — they stay empty (no fabricated
-// rows) until /admin/events and /admin/attention exist (see TODO below).
+// GMV, revenue) from /admin/stats and the triage queue from /admin/attention.
+//
+// "Needs attention" is the ops worklist, and today it holds one thing: deals
+// with no freight booked. CropBid arranges every delivery (CLAUDE.md §2a), so a
+// closed deal is work that has not been started, and each row links straight
+// into the booking form. The queue is derived from transaction state, not from
+// the notifications that announce a deal, so ops cannot lose a job by missing a
+// ping.
+//
+// The live event stream still renders from server data only and stays empty
+// (no fabricated rows) until /admin/events exists (see TODO below).
 //
 // Nothing on this page is invented. A system-health tile (hardcoded latencies
 // and socket counts) and a per-country GMV breakdown used to render from
@@ -28,32 +36,49 @@ interface PlatformStats {
   financial: { gmv: number; platformRevenue: number };
 }
 
-// Event stream + triage queue render from server data. No fallback fake
-// rows — admins should see "no events yet" instead of fabricated dispute
-// IDs that lead nowhere when clicked.
+// Event stream renders from server data. No fallback fake rows — admins should
+// see "no events yet" instead of fabricated dispute IDs that lead nowhere when
+// clicked.
 type EventRow = { t: string; evt: string; val: string; warn?: boolean };
 type AttentionRow = { type: string; id: string; desc: string; sla: string; cta: string; href?: string };
 
 export function AdminDashboard() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [events] = useState<EventRow[]>([]);
-  const [attention] = useState<AttentionRow[]>([]);
+  const [attention, setAttention] = useState<AttentionRow[]>([]);
   const [streamPaused, setStreamPaused] = useState(false);
+  // Zero items and "we could not ask" must not render identically: one says
+  // there is nothing to do, the other says we do not know.
+  const [attentionFailed, setAttentionFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetch() {
-      try {
-        const res = await api.get('/admin/stats');
-        setStats(res.data);
-        // TODO: wire /admin/events and /admin/attention endpoints when
-        // the backend exposes them; until then the lists render empty
-        // rather than ship fabricated triage items.
-      } catch (err) {
-        console.error('Failed to load stats:', err);
-      } finally {
-        setLoading(false);
+      // allSettled: the triage queue and the headline stats are independent
+      // feeds, and a failing /admin/stats must not blank a queue of deals
+      // waiting on freight. An empty "needs attention" reads as "all clear",
+      // which is the one thing it must never say by accident.
+      const [statsRes, attentionRes] = await Promise.allSettled([
+        api.get('/admin/stats'),
+        api.get('/admin/attention'),
+      ]);
+
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value.data);
+      } else {
+        console.error('Failed to load stats:', statsRes.reason);
       }
+
+      if (attentionRes.status === 'fulfilled') {
+        setAttention(attentionRes.value.data.items ?? []);
+      } else {
+        setAttentionFailed(true);
+        console.error('Failed to load triage queue:', attentionRes.reason);
+      }
+
+      // TODO: wire the /admin/events endpoint when the backend exposes it;
+      // until then the stream renders empty rather than fabricated rows.
+      setLoading(false);
     }
     fetch();
   }, []);
@@ -157,11 +182,19 @@ export function AdminDashboard() {
 
         <div className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--cb-line)' }}>
-            <div className="cb-eyebrow">Needs attention · {attention.length} items</div>
+            <div className="cb-eyebrow">
+              Needs attention · {attentionFailed ? 'unavailable' : `${attention.length} items`}
+            </div>
           </div>
-          {attention.length === 0 ? (
+          {/* "All clear" is a claim. Only say it when we actually asked and
+              got an empty answer back. */}
+          {attentionFailed ? (
             <div style={{ padding: '28px 18px', textAlign: 'center' }} className="cb-tiny">
-              All clear. No open disputes, stuck auctions, or KYC failures.
+              Couldn't load the queue, so we don't know what is waiting. Refresh to try again.
+            </div>
+          ) : attention.length === 0 ? (
+            <div style={{ padding: '28px 18px', textAlign: 'center' }} className="cb-tiny">
+              All clear. Every deal has transport booked.
             </div>
           ) : (
             attention.map((item, i) => (

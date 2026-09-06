@@ -28,6 +28,47 @@ import { redactTransactionContact, redactTransactionContacts } from './contactVi
 
 const PLATFORM_FEE_PERCENT = 2.0;
 
+// What a farmer or buyer may see of a shipment. CropBid hires the haulier, so
+// the carrier's identity, its phone number and our cut of the freight are ops
+// data: logisticsPartner, logisticsPartnerId, driverPhone and
+// platformCommission are all absent by construction here.
+//
+// Listed positively rather than omitted, so a new column on Shipment has to be
+// added here deliberately before a trader can see it. The mirror of this list
+// is forShipmentViewer() in logistics.service.ts; the two must agree.
+const TRADER_SHIPMENT_SELECT = {
+  id: true,
+  status: true,
+  transportCost: true,
+  currency: true,
+  paidBy: true,
+  pickupLocation: true,
+  deliveryLocation: true,
+  pickupDate: true,
+  estimatedDeliveryDate: true,
+  actualDeliveryDate: true,
+  // Enough to recognise the truck at your own gate, which is the one
+  // operational thing a seller genuinely needs at handover.
+  vehicleType: true,
+  vehicleNumber: true,
+  driverName: true,
+  trackingUpdates: true,
+  proofOfDelivery: true,
+} as const;
+
+// The seller carries the freight (CLAUDE.md §2a), so what they actually take
+// home is the deal minus our fee minus transport. One function, because the
+// settlement breakdown, the payment-released notification and anything else
+// quoting a payout must never disagree about it: two of them did, and the UI
+// was the honest one.
+export function sellerNetAmount(
+  totalAmount: number,
+  platformFeeAmount: number,
+  transportCost?: number | null,
+): number {
+  return totalAmount - platformFeeAmount - (transportCost ?? 0);
+}
+
 // =============================================================================
 // CREATE TRANSACTION — Called when a bid is accepted
 // =============================================================================
@@ -91,6 +132,13 @@ export async function createTransaction(bidId: string, client: Prisma.Transactio
     },
   });
 
+  // NO NOTIFICATION HERE. This runs inside the caller's prisma.$transaction, so
+  // `transaction` is not committed yet: firing from here would page ops about a
+  // deal that then rolled back, with a booking link to a row that never existed.
+  //
+  // The ops ping rides alertNewOrder() instead, which every call site already
+  // fires AFTER its transaction commits and which re-reads through the
+  // top-level client. Same trigger, same timing rule, one place to get right.
   return transaction;
 }
 
@@ -123,12 +171,21 @@ export async function getMyTransactions(userId: string, role: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
-      // The Deliveries page renders shipment state per deal in one request
-      shipment: {
-        include: {
-          logisticsPartner: { select: { id: true, name: true, type: true } },
-        },
-      },
+      // The Deliveries page renders shipment state per deal in one request.
+      //
+      // logisticsPartner is admin-only. CropBid hires the haulier, so the
+      // trader gets the route and the status, not the company we hired. This
+      // used to be included unconditionally and the seller's dispatch board
+      // printed the carrier's name on every row.
+      //
+      // The non-admin branch is an explicit SELECT, not `true`. `true` returns
+      // every scalar column, which quietly handed the trader logisticsPartnerId,
+      // driverPhone and platformCommission — dropping the relation alone left
+      // the carrier reachable by its own foreign key. Same visible set as
+      // forShipmentViewer() in logistics.service.ts; change both together.
+      shipment: role === 'ADMIN'
+        ? { include: { logisticsPartner: { select: { id: true, name: true, type: true } } } }
+        : { select: TRADER_SHIPMENT_SELECT },
     },
   });
 
@@ -164,6 +221,25 @@ export async function getTransaction(transactionId: string, userId: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
+      // Freight, for the settlement breakdown: the seller pays it, so they
+      // need to see the amount alongside the platform fee.
+      //
+      // An explicit select, not `true`. Only the two counterparties reach this
+      // endpoint, and they are exactly who the carrier's identity is withheld
+      // from, so listing the visible columns means a future column on Shipment
+      // cannot appear here by simply existing.
+      shipment: {
+        select: {
+          id: true,
+          status: true,
+          transportCost: true,
+          currency: true,
+          paidBy: true,
+          pickupDate: true,
+          estimatedDeliveryDate: true,
+          actualDeliveryDate: true,
+        },
+      },
     },
   });
 
@@ -244,8 +320,17 @@ export async function updateDeliveryStatus(
   // If buyer confirmed delivery, release payment and update trust scores
   if (status === 'CONFIRMED') {
     await releasePayment(transactionId);
+    // Freight comes out too. This used to quote total minus platform fee while
+    // the settlement breakdown on screen already subtracted transport as well,
+    // so the seller was told two different numbers for the same payout and the
+    // one they saw first was the smaller, correct one.
+    const freight = await prisma.shipment.findUnique({
+      where: { transactionId },
+      select: { transportCost: true },
+    });
     notifyPaymentReleased(
-      transaction.farmerId, transaction.totalAmount - transaction.platformFeeAmount,
+      transaction.farmerId,
+      sellerNetAmount(transaction.totalAmount, transaction.platformFeeAmount, freight?.transportCost),
       transaction.currency, transactionId
     ).catch(() => {});
   }

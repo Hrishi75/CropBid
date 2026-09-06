@@ -164,6 +164,9 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
             isDirectPurchase: true,
           },
         },
+        // Whether freight is already booked. Ops arranges every delivery now,
+        // so this row is the queue: no shipment means nobody has booked it yet.
+        shipment: { select: { id: true, status: true } },
       },
     }),
     prisma.transaction.count({ where }),
@@ -516,16 +519,48 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   // observed value also catches an applicant resubmitting mid-review — the row
   // moves to SUBMITTED, which rule.from would have waved through, approving
   // fields nobody looked at.
-  const claimed = await (table as typeof prisma.farmerProfile).updateMany({
-    where: { id: input.profileId, status: profile.status },
-    data: {
-      status: rule.to,
-      statusNote: rule.needsNote ? input.note!.trim() : null,
-      reviewedAt: new Date(),
-      reviewedById: input.adminId,
-      // Approval doubles as the legacy verified badge.
-      ...(rule.to === 'APPROVED' ? { verified: true } : {}),
-    },
+  // The decision and the role promotion commit TOGETHER or not at all.
+  //
+  // They were two separate writes, which left a hole: if the promotion failed
+  // after the profile went APPROVED, the applicant was approved without the
+  // role, and a retry could not repair it because APPROVE no longer accepts an
+  // already-APPROVED row. The reviewer's only remaining move was the database.
+  const claimed = await prisma.$transaction(async (tx) => {
+    const table = input.kind === 'SELLER' ? tx.farmerProfile : tx.buyerProfile;
+
+    const decided = await (table as typeof prisma.farmerProfile).updateMany({
+      where: { id: input.profileId, status: profile.status },
+      data: {
+        status: rule.to,
+        statusNote: rule.needsNote ? input.note!.trim() : null,
+        reviewedAt: new Date(),
+        reviewedById: input.adminId,
+        // Approval doubles as the legacy verified badge.
+        ...(rule.to === 'APPROVED' ? { verified: true } : {}),
+      },
+    });
+    if (decided.count === 0) return decided;
+
+    // APPROVAL IS WHAT GRANTS THE ROLE.
+    //
+    // An applicant fills the form from a signed-in CONSUMER account, so
+    // approving them has to promote them or they sit approved and still a
+    // shopper, holding a profile they cannot use. Admin-only by construction:
+    // the route above is requireRole('ADMIN').
+    //
+    // Scoped to a row still at CONSUMER so it can never demote an ADMIN or flip
+    // an approved seller into a buyer if someone files both applications. A
+    // zero count there is NOT a failure: it means the account already holds a
+    // partner role, which is the ordinary resubmission and second-application
+    // case, and the approval itself still stands.
+    if (rule.to === 'APPROVED') {
+      await tx.user.updateMany({
+        where: { id: profile.user.id, role: 'CONSUMER' },
+        data: { role: input.kind === 'SELLER' ? 'FARMER' : 'BUYER' },
+      });
+    }
+
+    return decided;
   });
   if (claimed.count === 0) {
     // Somebody moved the row between the read above and this write. Re-read so
@@ -575,4 +610,53 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   }
 
   return updated;
+}
+
+// =============================================================================
+// NEEDS ATTENTION — the ops triage queue
+// =============================================================================
+// What ops has to do something about, derived from state rather than from a
+// worklist table. Nothing here is a stored flag, so an item cannot get stuck
+// "open" after the underlying thing was handled, and it cannot be lost if the
+// notification that announced it failed to send.
+//
+// One source today: deals with no shipment. CropBid arranges the freight on
+// every deal (CLAUDE.md §2a), so an unbooked deal is unstarted work. Disputes
+// and KYC failures belong here too when those states exist; add them as more
+// queries into the same shape rather than inventing a triage table.
+export async function getAttentionItems(limit = 20) {
+  const awaitingTransport = await prisma.transaction.findMany({
+    where: {
+      shipment: null,
+      // A cancelled or refunded deal is not freight waiting to move.
+      paymentStatus: { notIn: ['REFUNDED'] },
+    },
+    orderBy: { createdAt: 'asc' }, // oldest first: that is the one aging
+    take: limit,
+    include: {
+      listing: { select: { cropName: true, unit: true } },
+      farmer: { select: { name: true } },
+      buyer: { select: { name: true } },
+      bid: { select: { quantity: true, deliveryAddress: true } },
+    },
+  });
+
+  const now = Date.now();
+
+  return awaitingTransport.map((tx) => {
+    const ageHours = Math.floor((now - tx.createdAt.getTime()) / 3_600_000);
+    return {
+      type: 'NEEDS TRANSPORT',
+      id: `#T-${tx.id.slice(-6).toUpperCase()}`,
+      desc: `${tx.listing.cropName} · ${tx.bid?.quantity ?? '—'} ${tx.listing.unit.toLowerCase()} · ${tx.farmer.name} → ${tx.buyer.name}`,
+      // Real elapsed time, not an invented SLA target. We have not committed to
+      // a booking window anywhere, so claiming one on an ops screen would be
+      // making up a promise the business has not made.
+      sla: ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`,
+      cta: 'Book transport',
+      href: `/admin/logistics/book/${tx.id}`,
+      transactionId: tx.id,
+      createdAt: tx.createdAt,
+    };
+  });
 }

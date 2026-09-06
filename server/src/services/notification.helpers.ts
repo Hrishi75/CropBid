@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { createNotification } from './notification.service';
+import { prisma } from '../lib/prisma';
 
 // --- Bid Events ---
 
@@ -185,12 +186,15 @@ export async function notifyPaymentReleased(farmerId: string, amount: number, cu
 
 // --- Shipment Events ---
 
-export async function notifyShipmentBooked(userId: string, cropName: string, partnerName: string, pickupDate: string, transactionId: string, shipmentId: string) {
+// No carrier name in the message. CropBid arranges the freight and the read
+// endpoints strip the haulier's identity for both sides of the deal, so naming
+// it here would leak it straight to a lock screen.
+export async function notifyShipmentBooked(userId: string, cropName: string, pickupDate: string, transactionId: string, shipmentId: string) {
   await createNotification({
     userId,
     type: 'SHIPMENT_BOOKED',
-    title: `Shipment booked for ${cropName}`,
-    message: `${partnerName} will pick up on ${new Date(pickupDate).toLocaleDateString('en-IN')}`,
+    title: `Transport arranged for ${cropName}`,
+    message: `Pickup is scheduled for ${new Date(pickupDate).toLocaleDateString('en-IN')}`,
     data: { transactionId, shipmentId },
   });
 }
@@ -211,4 +215,40 @@ export async function notifyShipmentUpdate(userId: string, cropName: string, sta
     message: `Shipment ${labels[status] || status} at ${location}`,
     data: { shipmentId, status },
   });
+}
+
+// --- Ops (admin) events ---
+// CropBid arranges the freight on every deal (CLAUDE.md §2a), so a closed deal
+// is work landing on our desk, not just news for the two sides. These fan out
+// to every ADMIN account rather than a shared inbox, because notifications hang
+// off User and there is no ops-team row to hang one off instead.
+//
+// Best-effort by design: the caller must not fail a settled deal because a
+// notification insert did. The durable queue is the deal itself, surfaced by
+// /admin/attention, which reads transactions with no shipment rather than
+// reading these rows. So a lost notification costs a ping, never the job.
+export async function notifyAdminsDealClosed(
+  cropName: string,
+  sellerName: string,
+  buyerName: string,
+  amount: number,
+  currency: string,
+  transactionId: string,
+) {
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true },
+  });
+
+  await Promise.all(
+    admins.map((admin) =>
+      createNotification({
+        userId: admin.id,
+        type: 'DEAL_NEEDS_TRANSPORT',
+        title: `Deal closed — ${cropName} needs transport`,
+        message: `${sellerName} → ${buyerName}, ${currency} ${amount.toLocaleString('en-IN')}. Book a carrier.`,
+        data: { transactionId },
+      }).catch(() => {}),
+    ),
+  );
 }

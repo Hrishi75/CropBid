@@ -24,6 +24,21 @@ import { AuthHandoffPanel } from '../../components/auth/AuthHandoffPanel';
 // not inherit today's choice.
 export const PARTNER_TYPE_KEY = 'cb-partner-type';
 
+/**
+ * Drop the parked subtype once the form has read it.
+ *
+ * A hint outranks the application already on file, so it has to be a record of
+ * a fresh click and nothing more. Left behind, it would keep deciding which
+ * form opens for the rest of the session.
+ */
+export function forgetPartnerType(): void {
+  try {
+    sessionStorage.removeItem(PARTNER_TYPE_KEY);
+  } catch {
+    // Same as below: storage disabled just means there was nothing parked.
+  }
+}
+
 /** Park the partner subtype for the application form to pick up. */
 export function rememberPartnerType(role: 'FARMER' | 'BUYER', type: string): void {
   try {

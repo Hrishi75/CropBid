@@ -5,6 +5,21 @@
 // transport quotes, booking shipments, and advancing shipment status along the
 // allowed state machine (VALID_TRANSITIONS below). Converts crop units to kg
 // for weight-based pricing and emits socket/notification events on changes.
+//
+// WHO DOES WHAT (changed: CropBid now arranges the freight itself)
+//   Choosing a carrier, booking it, and driving the status are ops functions,
+//   gated to ADMIN at the route. We book it because we inspect the goods on the
+//   way through, and an inspection we do not control is not an inspection.
+//   The farmer and buyer read the status and nothing else.
+//
+// THE SELLER PAYS. `paidBy` is no longer an input: bookShipment writes FARMER
+// unconditionally, so no request can shift freight onto the buyer. Callers that
+// used to send BUYER or SPLIT are ignored rather than rejected, because the
+// field is gone from the request schema entirely.
+//
+// CARRIER IDENTITY IS STRIPPED ON READ for anyone who is not an admin, by
+// forShipmentViewer() below. Hiding it in the client would not be enough: the
+// endpoint is the boundary, the UI is a courtesy.
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
@@ -15,6 +30,49 @@ import { notifyShipmentBooked, notifyShipmentUpdate } from './notification.helpe
 // =============================================================================
 // Helpers
 // =============================================================================
+
+// Who is asking. Every function below takes this instead of a bare userId,
+// because "is this my shipment" and "am I ops" are two different questions and
+// the old signature could only ask the first one.
+export interface Actor {
+  userId: string;
+  role: string;
+}
+
+function isAdmin(actor: Actor): boolean {
+  return actor.role === 'ADMIN';
+}
+
+// A role guard proves what KIND of user this is, never WHOSE data it is, so
+// ownership is still checked here even on the admin-only routes.
+function assertParty(tx: { farmerId: string; buyerId: string }, actor: Actor): void {
+  if (isAdmin(actor)) return;
+  if (tx.farmerId !== actor.userId && tx.buyerId !== actor.userId) {
+    throw new ApiError(403, 'Not authorized');
+  }
+}
+
+// What a trader is allowed to see about a shipment: where their goods are, and
+// enough to recognise the truck at their own gate. Not who we hired, not what
+// we are paying them, and not a phone number that routes around us.
+//
+// `logisticsPartner` is dropped whole rather than trimmed field by field: a
+// trimmed object grows a field back the next time someone adds one to the
+// include, and it would ship silently.
+function forShipmentViewer<T extends Record<string, any> | null>(shipment: T, actor: Actor): T {
+  if (!shipment || isAdmin(actor)) return shipment;
+  const {
+    logisticsPartner,
+    // The foreign key goes too. It is a carrier identity in the same way the
+    // name is, just one lookup away, and it would become a live leak the day
+    // any partner-read endpoint opens to non-admins.
+    logisticsPartnerId,
+    driverPhone,
+    platformCommission,
+    ...visible
+  } = shipment as any;
+  return visible as T;
+}
 
 function convertToKg(quantity: number, unit: string): number {
   switch (unit) {
@@ -51,7 +109,7 @@ function mapToDeliveryStatus(shipmentStatus: string): string | null {
 // Get matching logistics partners for a transaction
 // =============================================================================
 
-export async function getMatchingPartners(transactionId: string, userId: string) {
+export async function getMatchingPartners(transactionId: string, actor: Actor) {
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
     include: {
@@ -60,9 +118,7 @@ export async function getMatchingPartners(transactionId: string, userId: string)
   });
 
   if (!transaction) throw new ApiError(404, 'Transaction not found');
-  if (transaction.farmerId !== userId && transaction.buyerId !== userId) {
-    throw new ApiError(403, 'Not authorized');
-  }
+  assertParty(transaction, actor);
 
   const listing = transaction.listing;
   const weightKg = convertToKg(listing.quantity, listing.unit);
@@ -138,11 +194,9 @@ interface BookShipmentInput {
   distanceKm: number;
   totalWeightKg: number;
   vehicleType: string;
-  paidBy: 'BUYER' | 'FARMER' | 'SPLIT';
-  splitPercentBuyer?: number;
 }
 
-export async function bookShipment(input: BookShipmentInput, userId: string) {
+export async function bookShipment(input: BookShipmentInput, actor: Actor) {
   const transaction = await prisma.transaction.findUnique({
     where: { id: input.transactionId },
     include: {
@@ -152,9 +206,7 @@ export async function bookShipment(input: BookShipmentInput, userId: string) {
   });
 
   if (!transaction) throw new ApiError(404, 'Transaction not found');
-  if (transaction.farmerId !== userId && transaction.buyerId !== userId) {
-    throw new ApiError(403, 'Not authorized');
-  }
+  assertParty(transaction, actor);
   if (transaction.shipment) {
     throw new ApiError(409, 'Shipment already booked for this transaction');
   }
@@ -186,8 +238,11 @@ export async function bookShipment(input: BookShipmentInput, userId: string) {
       transportCost,
       platformCommission,
       currency: transaction.currency as any,
-      paidBy: input.paidBy,
-      splitPercentBuyer: input.paidBy === 'SPLIT' ? (input.splitPercentBuyer ?? 50) : null,
+      // Not from the request. The seller carries the freight cost, always, so
+      // there is no caller-supplied value here that could say otherwise.
+      // SPLIT stays in the enum for the rows booked before this rule existed.
+      paidBy: 'FARMER',
+      splitPercentBuyer: null,
       trackingUpdates: [
         {
           timestamp: new Date().toISOString(),
@@ -200,10 +255,12 @@ export async function bookShipment(input: BookShipmentInput, userId: string) {
     include: { logisticsPartner: true },
   });
 
-  // Notify both parties
+  // Notify both parties. Deliberately not by carrier name: the notification
+  // reaches the same two people the read endpoints strip the carrier for, and
+  // a push that names the haulier would undo that on the lock screen.
   const cropName = transaction.listing.cropName;
-  notifyShipmentBooked(transaction.farmerId, cropName, partner.name, input.pickupDate, transaction.id, shipment.id).catch(() => {});
-  notifyShipmentBooked(transaction.buyerId, cropName, partner.name, input.pickupDate, transaction.id, shipment.id).catch(() => {});
+  notifyShipmentBooked(transaction.farmerId, cropName, input.pickupDate, transaction.id, shipment.id).catch(() => {});
+  notifyShipmentBooked(transaction.buyerId, cropName, input.pickupDate, transaction.id, shipment.id).catch(() => {});
 
   return shipment;
 }
@@ -221,7 +278,7 @@ export async function updateShipmentStatus(
   shipmentId: string,
   newStatus: string,
   update: TrackingUpdate,
-  userId: string
+  actor: Actor
 ) {
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
@@ -231,9 +288,7 @@ export async function updateShipmentStatus(
   if (!shipment) throw new ApiError(404, 'Shipment not found');
 
   const tx = shipment.transaction;
-  if (tx.farmerId !== userId && tx.buyerId !== userId) {
-    throw new ApiError(403, 'Not authorized');
-  }
+  assertParty(tx, actor);
 
   const allowed = VALID_TRANSITIONS[shipment.status] || [];
   if (!allowed.includes(newStatus)) {
@@ -297,7 +352,7 @@ export async function updateShipmentStatus(
 export async function updateDriverInfo(
   shipmentId: string,
   data: { driverName?: string; driverPhone?: string; vehicleNumber?: string },
-  userId: string
+  actor: Actor
 ) {
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
@@ -305,9 +360,9 @@ export async function updateDriverInfo(
   });
 
   if (!shipment) throw new ApiError(404, 'Shipment not found');
-  if (shipment.transaction.farmerId !== userId) {
-    throw new ApiError(403, 'Only the farmer can update driver info');
-  }
+  // Was the farmer's to fill in, back when the farmer booked the truck. We
+  // hire the carrier now, so we are the only ones who know the driver.
+  assertParty(shipment.transaction, actor);
 
   const updated = await prisma.shipment.update({
     where: { id: shipmentId },
@@ -322,10 +377,12 @@ export async function updateDriverInfo(
   const io = getIO();
   if (io) {
     const tx = shipment.transaction;
+    // driverPhone is deliberately absent. This socket goes to the farmer and
+    // the buyer, the same two people forShipmentViewer() strips it from, and a
+    // push channel that carries what the REST read withholds is not a boundary.
     io.to(`user:${tx.farmerId}`).to(`user:${tx.buyerId}`).emit('shipment:driver_update', {
       shipmentId,
       driverName: updated.driverName,
-      driverPhone: updated.driverPhone,
       vehicleNumber: updated.vehicleNumber,
     });
   }
@@ -337,7 +394,7 @@ export async function updateDriverInfo(
 // Get shipment
 // =============================================================================
 
-export async function getShipment(shipmentId: string, userId: string) {
+export async function getShipment(shipmentId: string, actor: Actor) {
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
     include: {
@@ -347,45 +404,41 @@ export async function getShipment(shipmentId: string, userId: string) {
   });
 
   if (!shipment) throw new ApiError(404, 'Shipment not found');
-  const tx = shipment.transaction;
-  if (tx.farmerId !== userId && tx.buyerId !== userId) {
-    throw new ApiError(403, 'Not authorized');
-  }
+  assertParty(shipment.transaction, actor);
 
-  return shipment;
+  return forShipmentViewer(shipment, actor);
 }
 
-export async function getShipmentByTransaction(transactionId: string, userId: string) {
+export async function getShipmentByTransaction(transactionId: string, actor: Actor) {
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
   });
 
   if (!transaction) throw new ApiError(404, 'Transaction not found');
-  if (transaction.farmerId !== userId && transaction.buyerId !== userId) {
-    throw new ApiError(403, 'Not authorized');
-  }
+  assertParty(transaction, actor);
 
   const shipment = await prisma.shipment.findUnique({
     where: { transactionId },
     include: { logisticsPartner: true },
   });
 
-  return shipment; // null if no shipment yet
+  return forShipmentViewer(shipment, actor); // null if no shipment yet
 }
 
 // =============================================================================
 // Upload proof of delivery
 // =============================================================================
 
-export async function uploadProofOfDelivery(shipmentId: string, imageUrl: string, userId: string) {
+export async function uploadProofOfDelivery(shipmentId: string, imageUrl: string, actor: Actor) {
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
     include: { transaction: true },
   });
 
   if (!shipment) throw new ApiError(404, 'Shipment not found');
-  if (shipment.transaction.farmerId !== userId) {
-    throw new ApiError(403, 'Only the farmer can upload proof of delivery');
+  // Still the seller's, plus ops. They are the one standing at the loading bay.
+  if (!isAdmin(actor) && shipment.transaction.farmerId !== actor.userId) {
+    throw new ApiError(403, 'Only the seller can upload proof of delivery');
   }
   if (shipment.status !== 'DELIVERED') {
     throw new ApiError(400, 'Can only upload proof after delivery');
