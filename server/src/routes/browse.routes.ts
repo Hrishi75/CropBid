@@ -20,6 +20,11 @@ const router = Router();
 router.get('/', browseController.browseListings);
 router.get('/filters', browseController.getFilters);
 router.get('/cities', browseController.getRetailCities);
+// Shop-first retail: the city's shops, then one shop's whole shelf. Public —
+// a shopper browses before they ever sign in, and the signup gate is at the
+// cart, not the window.
+router.get('/shops', browseController.getRetailShops);
+router.get('/shops/:id', browseController.getRetailShop);
 router.get('/smart-match', browseController.smartMatch);
 
 export default router;

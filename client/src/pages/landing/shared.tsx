@@ -295,6 +295,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
       ['Buy direct',   '/how-it-works#consumers'],
       ['Pricing',      '/how-it-works#pricing'],
       ['Features',     '/how-it-works#features'],
+      ['FAQ',          '/faq'],
     ],
   },
   // The three doors into CropBid, repeated here because the footer is where
@@ -371,11 +372,18 @@ export function CBFooter() {
         </div>
 
         <div className="cb-footer-bottom">
-          <span>© {new Date().getFullYear()} CropBid, Inc.  ·  {t('All rights reserved')}</span>
-          {/* Terms and Disclosures lived here as href="#" — restore them when
-              those pages exist. /privacy is real and stays. */}
+          {/* No "Inc." — that reads as a US corporation, and CropBid is an
+              Indian business still being incorporated. The registered name
+              goes here once the certificate exists; see TermsPage's OPERATOR. */}
+          <span>© {new Date().getFullYear()} CropBid  ·  {t('All rights reserved')}</span>
+          {/* Disclosures lived here as href="#" — restore it when that page
+              exists. The other three are real. Terms and Privacy are the pair a
+              payment provider and an app store both look for, and FAQ is what a
+              person who scrolled this far is usually actually after. */}
           <span className="cb-footer-bottom-right">
             <span className="cb-footer-bottom-links">
+              <Link to="/faq">{t('FAQ')}</Link>
+              <Link to="/terms">{t('Terms')}</Link>
               <Link to="/privacy">{t('Privacy')}</Link>
             </span>
             {/*

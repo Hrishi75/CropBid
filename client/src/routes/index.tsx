@@ -56,6 +56,7 @@ import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
 // Consumer (retail) pages — deliberately a small set. A shopper gets a product
 // page, a cart, a checkout and their orders; everything else in the app is B2B.
 import { ProductDetail } from '../pages/consumer/ProductDetail';
+import { ShopDetail } from '../pages/consumer/ShopDetail';
 import { Cart } from '../pages/consumer/Cart';
 import { Checkout, BuyNowRedirect } from '../pages/consumer/Checkout';
 import { MyOrders } from '../pages/consumer/MyOrders';
@@ -79,6 +80,8 @@ import { ForecastPage } from '../pages/ForecastPage';
 import { SchemesPage } from '../pages/SchemesPage';
 import { PublicDemandPage } from '../pages/PublicDemandPage';
 import { EquipmentPage } from '../pages/EquipmentPage';
+import { FaqPage } from '../pages/FaqPage';
+import { TermsPage } from '../pages/TermsPage';
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
 import { AdminLogistics } from '../pages/admin/AdminLogistics';
 import { SettingsPage } from '../pages/shared/SettingsPage';
@@ -151,6 +154,8 @@ export function AppRoutes() {
       <Route path="/equipment" element={<EquipmentPage />} />
       {/* Linked from the footer, and the URL given to Google Play's Data Safety
           form — it must stay publicly reachable without a login. */}
+      <Route path="/faq" element={<FaqPage />} />
+      <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
       {/* Public auth routes */}
@@ -317,7 +322,17 @@ export function AppRoutes() {
 
       {/* Consumer (retail) routes. The storefront itself is "/" — the same
           LandingPage everyone lands on — so there is no /shop index here, only
-          the pages that hang off it. */}
+          the pages that hang off it.
+
+          "/store/:id" is one SELLER's whole counter; "/shop/:id" is one LOT.
+          Different words on purpose: a path pair differing by a single letter
+          is the kind of thing that gets mixed up at 2am.
+
+          The shop page is deliberately PUBLIC, unlike the lot page. It is the
+          window a stranger looks through, and ShelfCard already sends a guest
+          who tries to add something to signup — so the gate is the cart, not
+          the window. */}
+      <Route path="/store/:id" element={<ShopDetail />} />
       <Route
         path="/shop/:id"
         element={
@@ -452,10 +467,17 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/*
+        Booking is ops, not self-service. CropBid picks the carrier because
+        CropBid inspects the goods, so this page moved out of the farmer/buyer
+        routes and into admin. The server agrees: /logistics/book, /quote and
+        /partners/:transactionId are all requireRole('ADMIN') now, so a stale
+        bookmark gets a 403 rather than a broken form.
+      */}
       <Route
-        path="/logistics/book/:transactionId"
+        path="/admin/logistics/book/:transactionId"
         element={
-          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+          <ProtectedRoute allowedRoles={['ADMIN']}>
             <BookTransport />
           </ProtectedRoute>
         }
@@ -463,7 +485,7 @@ export function AppRoutes() {
       <Route
         path="/logistics/shipment/transaction/:transactionId"
         element={
-          <ProtectedRoute allowedRoles={['FARMER', 'BUYER']}>
+          <ProtectedRoute allowedRoles={['FARMER', 'BUYER', 'ADMIN']}>
             <ShipmentTracking />
           </ProtectedRoute>
         }

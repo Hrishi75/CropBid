@@ -17,6 +17,8 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
+import { formatWeight, toKg } from '../../utils/units';
+import { sellerDisplayName } from '../../utils/partner';
 import { ORDER_STAGE } from './orderStage';
 import api from '../../lib/axios';
 import type { Transaction } from '../../types';
@@ -63,8 +65,14 @@ export function MyOrders() {
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {orders.map((o) => {
             const stage = ORDER_STAGE(o);
-            const unit = o.listing?.unit?.toLowerCase() ?? '';
+            // The order comes back denominated in the lot's unit; a shopper
+            // reads it in the kilograms they bought it in.
+            const orderedKg = o.listing?.unit ? toKg(o.bid?.quantity ?? 0, o.listing.unit) : null;
             const image = o.listing?.images?.[0] || cropImageFor(o.listing?.cropName ?? '');
+            // Which shop it came from. The storefront is organised by shop, so
+            // an order that cannot name its own is the one place the thread
+            // breaks — and it is what a shopper reorders by.
+            const seller = sellerDisplayName(o.listing?.farmer);
 
             return (
               <Link
@@ -87,7 +95,9 @@ export function MyOrders() {
                     </span>
                   </div>
                   <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-                    {o.bid?.quantity} {unit} · {new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {orderedKg != null ? formatWeight(orderedKg) : ''}
+                    {seller ? ` · ${seller}` : ''}
+                    {' · '}{new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                   </div>
                   <div className="cb-tiny" style={{ color: stage.color, marginTop: 4 }}>
                     ● {stage.label}

@@ -33,10 +33,19 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import type { Listing, QualityGrade, Unit } from '../types';
+import type { Listing, QualityGrade, SellerType, Unit } from '../types';
+import { pricePerKg } from '../utils/units';
+import { sellerDisplayName } from '../utils/partner';
 
 export interface CartItem {
   listingId: string;
+  /**
+   * KILOGRAMS, not the lot's own unit. The retail surface is denominated in
+   * kg end to end, and the conversion into `unit` happens once, at checkout,
+   * on the way to the API. Storing the lot's unit here instead would put half
+   * a kilo of a quintal lot at 0.005, which the 2dp rounding below cannot even
+   * represent.
+   */
   quantity: number;
   // --- snapshot, for first paint only. Live values come from cartLines.ts ---
   cropName: string;
@@ -47,7 +56,22 @@ export interface CartItem {
   currency: string;
   /** listing.location — the city the produce ships from, and the city rule's input. */
   city: string;
+  /**
+   * Who the shopper is buying from, as THEY see it: a shop's trading name, or
+   * the person's own when there is none. Must be the same string the shelf and
+   * the shop page show — a cart row naming the owner while the shop page named
+   * the shop reads as two different sellers.
+   */
   farmerName: string | null;
+  /**
+   * Who is selling, which is what the delivery lane is derived from (see
+   * utils/delivery). Snapshotted so the cart bar and the first paint of the
+   * cart can promise a delivery day without waiting on the live re-fetch.
+   * Optional because a basket stored before this existed has none; laneFor()
+   * treats a missing value as the slower lane, which is the safe way to be
+   * wrong.
+   */
+  sellerType?: SellerType | null;
   qualityGrade: QualityGrade;
   organic: boolean;
   /**
@@ -95,7 +119,10 @@ function mintPurchaseKey(): string {
 }
 
 // Versioned so a shape change can be ignored rather than crash on old JSON.
-const KEY_PREFIX = 'cb_cart_v1';
+// v2: `quantity` switched from the lot's own unit to kilograms. A v1 basket
+// read as v2 would look like a hundredth of what the shopper picked, so the
+// bump drops those rows rather than quietly shrinking someone's order.
+const KEY_PREFIX = 'cb_cart_v2';
 const storageKey = (userId: string) => `${KEY_PREFIX}:${userId}`;
 
 function readStored(userId: string): CartItem[] {
@@ -136,9 +163,9 @@ function writeStored(userId: string, items: CartItem[]) {
 // and a new array each time would invalidate every memo hanging off it.
 const NO_ITEMS: CartItem[] = [];
 
-// Quantities are stepped in fractions (0.05 quintal, 0.005 tonne) and then
-// multiplied by a price, so every arithmetic result is rounded before it is
-// stored or sent. Same rule as QuantityStepper, for the same float dust.
+// Quantities are in kilograms, stepped in halves and then multiplied by a
+// price, so every arithmetic result is rounded before it is stored. 2dp is
+// 10 g of resolution. Same rule as QuantityStepper, for the same float dust.
 function round(n: number): number {
   return Math.round(n * 100) / 100;
 }
@@ -221,7 +248,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
         pricePerUnit: price,
         currency: listing.currency,
         city: listing.location,
-        farmerName: listing.farmer?.user?.name ?? null,
+        farmerName: sellerDisplayName(listing.farmer),
+        sellerType: listing.farmer?.sellerType ?? null,
         qualityGrade: listing.qualityGrade,
         organic: listing.organic,
         // The key tracks the INTENT, not the click. Setting the same lot to
@@ -275,7 +303,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CartContextType>(() => ({
     items,
     count: items.length,
-    snapshotTotal: items.reduce((sum, it) => sum + it.pricePerUnit * it.quantity, 0),
+    // pricePerUnit is per the LOT's unit and quantity is in kg, so the price
+    // is converted before they meet. Multiplying them raw would bill a quintal
+    // lot at a hundred times its real total.
+    snapshotTotal: items.reduce((sum, it) => sum + pricePerKg(it.pricePerUnit, it.unit) * it.quantity, 0),
     // Every listing on one shelf is priced in the same currency, so the first
     // row's is the basket's. INR is the fallback for an empty basket.
     currency: items[0]?.currency ?? 'INR',

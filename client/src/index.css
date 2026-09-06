@@ -203,6 +203,11 @@ body * {
 
   --cb-forest: #1f2d18;
   --cb-sage: #6b8e4e;
+  /* Kept in step with .cb-app, which has carried this token for longer. The
+     storefront renders delivery-lane colours inside .cb-landing, and a token
+     that exists in one scope but not the other silently collapses the two
+     lanes onto one colour. */
+  --cb-wheat: #c9b27a;
   --cb-ember: #c8602b;
   --cb-ember-2: #e07a3f;
 
@@ -2041,17 +2046,6 @@ body * {
 .st-add:active { transform: scale(0.96); }
 /* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */
 
-/* --- compact how-it-works strip --- */
-.st-how { margin-top: 48px; }
-.st-how-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-.st-how-step {
-  display: flex; flex-direction: column; gap: 6px;
-  background: var(--cb-paper); border: 1px solid var(--cb-line); border-radius: 14px; padding: 20px;
-}
-.st-how-n { font-size: 11px; color: var(--cb-ember); letter-spacing: 0.1em; }
-.st-how-t { font-size: 15px; font-weight: 600; color: var(--cb-ink); }
-.st-how-d { font-size: 13px; line-height: 1.5; color: var(--cb-ink-2); }
-
 /* --- storefront responsive --- */
 @media (max-width: 960px) {
   .st-source, .st-header-link { display: none; }
@@ -2059,7 +2053,6 @@ body * {
   .st-banner { grid-template-columns: 1fr; }
   .st-banner-media { display: none; }
   .st-banner-copy { padding: 34px 26px; }
-  .st-how-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
   .st-header-row { flex-wrap: wrap; gap: 10px; padding: 10px 16px 8px; }
@@ -2651,13 +2644,27 @@ body * {
   display: inline-flex; align-items: center; justify-content: center;
 }
 
-/* --- the sticky total bar --- */
+/* --- the sticky total bar ---
+   Rendered in App.tsx as a sibling of the routes, so its DOM parent is #root:
+   OUTSIDE .cb-landing and .cb-app. Every --cb-* token and every type atom
+   (.cb-mono and friends) is declared inside one of those two wrappers and
+   nowhere else, so none of them reach this bar. It has to style itself from
+   the --color-* set, which Tailwind's @theme emits at :root.
+
+   This block used to say `background: var(--cb-forest)`, which resolved to
+   nothing here: the declaration was dropped and the bar painted #f4f1ea text
+   on a transparent background, i.e. near-white on the cream page.
+
+   Adding `cb-app` to the element is NOT the fix, even though AuthModal does
+   exactly that. It works there because that backdrop is full-screen anyway;
+   .cb-app also carries `min-height: 100vh`, which would stretch this fixed bar
+   to the whole viewport. */
 .cn-cartbar {
   position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60;
   max-width: 720px; margin: 0 auto;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
   padding: 12px 18px; border-radius: 14px;
-  background: var(--cb-forest); color: #f4f1ea; text-decoration: none;
+  background: var(--color-forest); color: var(--color-text-inverse); text-decoration: none;
   box-shadow: 0 10px 30px rgba(20, 20, 15, 0.28);
   animation: cn-cartbar-in .22s ease;
 }
@@ -2674,7 +2681,14 @@ body * {
 }
 .cn-cartbar-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
 .cn-cartbar-items { font-size: 11.5px; opacity: 0.75; }
-.cn-cartbar-total { font-size: 15px; font-weight: 600; }
+/* The running total is a figure people compare against the cart page, so it is
+   set in mono like every other price on the site. It cannot borrow the .cb-mono
+   atom for the reason above, so it carries the stack itself. */
+.cn-cartbar-total {
+  font-size: 15px; font-weight: 600;
+  font-family: 'Geist Mono', ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
+  letter-spacing: 0;
+}
 .cn-cartbar-cta { font-size: 13.5px; font-weight: 600; white-space: nowrap; }
 /* Keeps the last thing on the page reachable above the fixed bar. */
 .cn-cartbar-spacer { height: 88px; }
@@ -2684,4 +2698,242 @@ body * {
   .cn-cart-img { width: 54px; height: 54px; }
   .cn-cartbar { left: 10px; right: 10px; bottom: 10px; padding: 11px 14px; }
   .cn-step-val { min-width: 46px; }
+}
+
+/* ===========================================================================
+   SHOP CARDS — the storefront's top level
+   ---------------------------------------------------------------------------
+   A shopper picks a counter before they pick produce, so these sit in the same
+   .cn-grid the product cards use and have to read as peers of them: same
+   radius, same border, same lift on hover. They are deliberately TEXT-first
+   and shorter than a product card — what decides between two shops is what is
+   on the shelf and what it starts at, not a photo of one vegetable.
+   =========================================================================== */
+
+.cn-shop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.cn-shop-card:hover { transform: translateY(-4px); box-shadow: 0 14px 28px rgba(20,20,15,0.09); }
+
+.cn-shop-head { display: flex; flex-direction: column; gap: 2px; }
+.cn-shop-name { font-size: 16px; font-weight: 600; line-height: 1.25; }
+.cn-shop-kind {
+  font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--cb-ink-3);
+}
+.cn-shop-tick { color: var(--cb-sage); }
+
+/* Two lines of stock, then ellipsis. A kirana holding forty lines must not
+   make its card four times the height of the greengrocer beside it. */
+.cn-shop-crops {
+  font-size: 13px; line-height: 1.45; color: var(--cb-ink-2);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.9em;
+}
+
+.cn-shop-foot {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; margin-top: auto;
+  padding-top: 10px; border-top: 1px solid var(--cb-line);
+  font-size: 13px; color: var(--cb-ink-3);
+}
+.cn-shop-organic { font-size: 12px; color: var(--cb-sage); }
+
+.cn-shop-header { padding-bottom: 20px; border-bottom: 1px solid var(--cb-line); margin-bottom: 8px; }
+
+/* ===========================================================================
+   DELIVERY LANES — quick from a shop, next morning from a farm
+   ---------------------------------------------------------------------------
+   Colour is passed in as --lane-color by whoever renders the element, so the
+   lane's identity is defined once in utils/delivery.ts and never re-decided in
+   CSS. A second palette here would drift from that one.
+   =========================================================================== */
+
+.cn-lane-stack { display: flex; flex-direction: column; gap: 36px; }
+.cn-lane-group { display: flex; flex-direction: column; gap: 14px; }
+.cn-lane-head { display: flex; flex-direction: column; gap: 4px; }
+
+.cn-lane-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 17px; font-weight: 600; margin: 0;
+}
+.cn-lane-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--lane-color, var(--cb-sage));
+  flex-shrink: 0;
+}
+.cn-lane-why {
+  font-size: 13px; line-height: 1.5; color: var(--cb-ink-3);
+  margin: 0; max-width: 60ch;
+}
+
+/* The badge on a card. Sized to sit inline without pushing the layout. */
+.cn-lane {
+  display: inline-flex; align-self: flex-start; align-items: center;
+  font-size: 11px; font-weight: 500; letter-spacing: .02em;
+  padding: 2px 8px; border-radius: 999px;
+  color: var(--lane-color, var(--cb-sage));
+  border: 1px solid color-mix(in srgb, var(--lane-color, var(--cb-sage)) 35%, transparent);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 10%, transparent);
+}
+
+/* The full-width statement on a shop page. */
+.cn-lane-banner {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 14px; padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--lane-color, var(--cb-sage)) 30%, transparent);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 8%, transparent);
+}
+.cn-lane-banner strong { font-size: 14px; color: var(--cb-ink); }
+.cn-lane-banner span { font-size: 12.5px; line-height: 1.5; color: var(--cb-ink-3); }
+
+/* The header strip on a grouped cart block. */
+.cn-lane-bar {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--cb-line);
+  background: color-mix(in srgb, var(--lane-color, var(--cb-sage)) 8%, transparent);
+}
+.cn-lane-bar strong { font-size: 13px; }
+.cn-lane-bar span { font-size: 12px; color: var(--cb-ink-3); }
+
+/* ===========================================================================
+   FAQ — /faq
+   ---------------------------------------------------------------------------
+   Answers are in the DOM whether open or closed (hidden with [hidden], not
+   unmounted) so a crawler and ctrl-F both find them — the FAQPage markup on
+   this page is only legitimate if the text is genuinely there.
+   =========================================================================== */
+
+.faq-list { border-top: 1px solid var(--cb-line); }
+.faq-item { border-bottom: 1px solid var(--cb-line); }
+
+/* The default disclosure triangle is replaced by the +/− drawn below, so it is
+   removed in both the standard and the WebKit-prefixed form. */
+.faq-q {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 16px 0; cursor: pointer; list-style: none;
+  font-size: 15.5px; font-weight: 500; color: var(--cb-ink);
+}
+.faq-q::-webkit-details-marker { display: none; }
+.faq-q:hover { color: var(--cb-sage); }
+.faq-q:focus-visible { outline: 2px solid var(--cb-sage); outline-offset: 3px; border-radius: 4px; }
+
+/* Drawn in CSS off the parent's open state, so React holds no open/closed
+   state at all and the browser stays the single source of truth — including
+   when IT opens one because a find-in-page landed inside. */
+.faq-mark { flex-shrink: 0; width: 14px; height: 18px; position: relative; }
+.faq-mark::before,
+.faq-mark::after {
+  content: ''; position: absolute; background: var(--cb-ink-3);
+  top: 50%; left: 0; width: 13px; height: 1.5px; margin-top: -0.75px;
+  transition: transform .18s ease;
+}
+.faq-mark::after { transform: rotate(90deg); }
+.faq-item[open] .faq-mark::after { transform: rotate(0deg); }
+.faq-a { padding: 0 0 18px; }
+.faq-a p {
+  margin: 0; max-width: 72ch;
+  font-size: 14.5px; line-height: 1.65; color: var(--cb-ink-2);
+}
+
+/* ===========================================================================
+   COOKIE NOTICE — what we keep on your device, said once
+   ---------------------------------------------------------------------------
+   Mounted at the app root, OUTSIDE .cb-landing and .cb-app, so it cannot reach
+   for --cb-* tokens: those are declared on those two wrappers and nowhere else.
+   Everything here uses the --color-* set, which Tailwind's @theme emits at
+   :root and is therefore actually in scope. (.cn-cartbar is the cautionary
+   tale: it sits at the same level and reaches for --cb-forest.)
+
+   Bottom-left, not a full-width band: this is a footnote about storage, not an
+   interruption, and a card that leaves most of the page uncovered says so. It
+   yields to the basket bar, which is the one other thing that lives down here.
+   =========================================================================== */
+.cb-cookie {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 70; /* above .cn-cartbar (60), below the mobile drawer (100) */
+  width: min(440px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 10px 30px rgba(20, 20, 15, 0.16);
+  animation: cb-cookie-in .22s ease;
+}
+@keyframes cb-cookie-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cb-cookie-body { min-width: 0; }
+.cb-cookie-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.cb-cookie-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+.cb-cookie-link {
+  color: var(--color-forest);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+.cb-cookie-link:hover { color: var(--color-sage); }
+
+.cb-cookie-btn {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-forest);
+  color: var(--color-text-inverse);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cb-cookie-btn:hover { background: var(--color-forest-2); }
+
+/* The basket bar is fixed to the same corner of the screen. Matching on the
+   body rather than on a sibling keeps the two components ignorant of each
+   other: neither has to be told the other is on screen. */
+body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
+
+@media (max-width: 640px) {
+  .cb-cookie {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .cb-cookie-btn { align-self: flex-end; }
+  body:has(.cn-cartbar) .cb-cookie { bottom: 82px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-cookie { animation: none; }
 }

@@ -30,7 +30,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
-import { toKg } from '../../utils/units';
+import { pricePerKg, toKg } from '../../utils/units';
+import { LANES } from '../../utils/delivery';
+import { sellerDisplayName } from '../../utils/partner';
+import type { DeliveryLane } from '../../utils/delivery';
 import { QuantityStepper } from './QuantityStepper';
 import { BillDetails } from './BillDetails';
 import { useCartLines, type CartLine } from './cartLines';
@@ -45,12 +48,15 @@ function CartRow({
   onRemove: () => void;
 }) {
   const { item, listing, price, problem, repriced } = line;
-  const unit = item.unit.toLowerCase();
   const image = item.image || cropImageFor(item.cropName);
+  // Live name wins over the snapshot, exactly as the live price does. A shop
+  // that renamed itself, or a row saved before shop names existed, would
+  // otherwise keep showing a name the shop page no longer uses.
+  const seller = sellerDisplayName(listing?.farmer) ?? item.farmerName;
   // Stock can only be trusted once the live listing has landed; until then the
   // stepper's ceiling is the quantity already chosen, so it never offers more
-  // than we know exists.
-  const max = listing?.remainingQuantity ?? item.quantity;
+  // than we know exists. In kilograms, like everything else the shopper sees.
+  const max = listing ? toKg(listing.remainingQuantity, listing.unit) : item.quantity;
 
   return (
     <div className="cn-cart-row" style={problem ? { opacity: 0.55 } : undefined}>
@@ -65,11 +71,10 @@ function CartRow({
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
           {item.cropVariety ? `${item.cropVariety} · ` : ''}
           {item.organic ? 'Organic' : `Grade ${item.qualityGrade}`}
-          {item.farmerName ? ` · ${item.farmerName}` : ''}
+          {seller ? ` · ${seller}` : ''}
         </div>
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-          {formatCurrency(price, item.currency)}/{unit}
-          {item.unit !== 'KG' && ` · ${toKg(item.quantity, item.unit)} kg total`}
+          {formatCurrency(pricePerKg(price, line.unit), item.currency)}/kg
         </div>
 
         {problem && (
@@ -77,7 +82,7 @@ function CartRow({
         )}
         {!problem && repriced && (
           <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 4 }}>
-            Price updated by the grower — was {formatCurrency(item.pricePerUnit, item.currency)}/{unit}.
+            Price updated by the grower — was {formatCurrency(pricePerKg(item.pricePerUnit, item.unit), item.currency)}/kg.
           </div>
         )}
       </div>
@@ -86,7 +91,6 @@ function CartRow({
         <QuantityStepper
           value={item.quantity}
           onChange={onQuantity}
-          unit={item.unit}
           max={Math.max(max, item.quantity)}
           size="sm"
           onEmpty={onRemove}
@@ -146,19 +150,35 @@ export function Cart() {
       </div>
 
       <div className="cn-split" style={{ marginTop: 16 }}>
-        <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
-          {bill.lines.map((line, i) => (
-            <div
-              key={line.item.listingId}
-              style={i > 0 ? { borderTop: '1px solid var(--cb-line)' } : undefined}
-            >
-              <CartRow
-                line={line}
-                onQuantity={(qty) => setQuantity(line.item.listingId, qty)}
-                onRemove={() => remove(line.item.listingId)}
-              />
-            </div>
-          ))}
+        {/* Grouped by when it arrives, not by when it was added. A basket
+            spanning both lanes turns up in two deliveries, and a shopper who
+            only finds that out at the door has been misled by the cart. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {(['QUICK', 'NEXT_MORNING'] as DeliveryLane[]).map((laneKey) => {
+            const meta = LANES[laneKey];
+            const rows = bill.lines.filter((l) => l.lane === laneKey);
+            if (rows.length === 0) return null;
+            return (
+              <div key={laneKey} className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div className="cn-lane-bar" style={{ ['--lane-color' as string]: meta.color }}>
+                  <strong>{meta.promise}</strong>
+                  <span>{rows.length} {rows.length === 1 ? 'lot' : 'lots'}</span>
+                </div>
+                {rows.map((line, i) => (
+                  <div
+                    key={line.item.listingId}
+                    style={i > 0 ? { borderTop: '1px solid var(--cb-line)' } : undefined}
+                  >
+                    <CartRow
+                      line={line}
+                      onQuantity={(qty) => setQuantity(line.item.listingId, qty)}
+                      onRemove={() => remove(line.item.listingId)}
+                    />
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         <aside className="cn-aside" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

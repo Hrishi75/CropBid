@@ -13,8 +13,9 @@
 // =============================================================================
 
 import { useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
+import { useAuth } from '../../context/AuthContext';
 import { useAuthModal } from '../../context/AuthModalContext';
 import { SignInLink } from '../../components/auth/SignInLink';
 import { rememberPartnerType } from '../auth/SignupPage';
@@ -124,6 +125,8 @@ const STEPS: { n: string; title: string; body: string }[] = [
 
 export function PartnerPage() {
   const { openAuth } = useAuthModal();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const { hash } = useLocation();
 
   // #sell / #buy are linked from the footer and from the sign-in window's
@@ -137,11 +140,25 @@ export function PartnerPage() {
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [hash]);
 
-  // Park the subtype for the application form, then ask for the number. The
-  // account this creates is a seller/buyer rather than a shopper, which is
-  // what intendedRole carries.
+  // Park the subtype for the application form, then get the applicant to it.
+  //
+  // Two doors, because this page is reachable both ways. It used to open the
+  // sign-in window unconditionally, which asked an already-signed-in shopper
+  // for a phone number they had just proved — the page was written for a
+  // logged-out visitor, and signing up was what set the role. A consumer who
+  // wanted to sell had no way through at all.
+  //
+  // Signed in  → straight to the form. Their account already exists; applying
+  //              is a form to fill, not an account to make.
+  // Signed out → the sign-in window, carrying intendedRole as before.
   function onApply(p: PathCard) {
     rememberPartnerType(p.role, p.type);
+
+    if (user) {
+      navigate('/onboarding');
+      return;
+    }
+
     openAuth({
       intendedRole: p.role,
       title: <>Applying as<br /><span className="cb-italic">{p.title.toLowerCase()}.</span></>,
@@ -166,8 +183,8 @@ export function PartnerPage() {
         <div style={{ maxWidth: 680 }}>
           <div className="cb-eyebrow">Partner with CropBid</div>
           <h1 className="cb-page-title" style={{ marginTop: 14 }}>
-            Your trade, minus<br />
-            <span className="cb-italic">the middlemen.</span>
+            Your trade,<br />
+            <span className="cb-italic">direct.</span>
           </h1>
           <p className="cb-body" style={{ marginTop: 18, maxWidth: 560 }}>
             One marketplace connecting the people who grow food, the shops that

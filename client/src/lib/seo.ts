@@ -18,6 +18,8 @@
 // head tags, and lands in the sitemap. Nothing else to wire up.
 // =============================================================================
 
+import { FAQ_ITEMS } from '../content/faq';
+
 export interface RouteMeta {
   path: string;
   title: string;
@@ -123,53 +125,38 @@ export const ROUTES: RouteMeta[] = [
       'Farmers, local shops and wholesalers are reviewed before they can sell. Then they list at their own price, buyers bid or buy outright, and escrow pays out on delivery. The whole CropBid flow, step by step.',
     priority: '0.7',
     changefreq: 'monthly',
-    // An FAQPage block is the single highest-leverage bit of structured data for
-    // GEO: answer engines lift these question/answer pairs almost verbatim.
+  },
+  {
+    path: '/faq',
+    title: 'CropBid FAQ — Buying, Selling, Delivery and Payment',
+    description:
+      'Answers on household delivery in Pune and Nagpur, buying by the kilo, how seller approval works, escrow payment, the 2% fee, and where the live mandi rates come from.',
+    priority: '0.7',
+    changefreq: 'monthly',
+    // The FAQPage block lives HERE, on the page that actually renders these
+    // questions, and is built from the same FAQ_ITEMS the page maps over.
+    //
+    // It used to sit on /how-it-works with no matching visible content
+    // anywhere on that page. Google requires FAQ markup to be visible to the
+    // user on the page carrying it, so the block earned nothing and put the
+    // site at risk of a manual action. Generating it from the rendered content
+    // is what keeps the two from drifting apart again.
     jsonLd: {
       '@type': 'FAQPage',
-      mainEntity: [
-        {
-          '@type': 'Question',
-          name: 'How do farmers sell crops on CropBid?',
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: 'Sellers apply first: farmers, local shops and wholesalers submit an application with their location, licence numbers and payout details, and CropBid reviews it before the account can trade. Once approved, a seller lists the crop with quantity, quality grade and an asking price. Buyers place bids; the farmer accepts, rejects or counters. The listing can also be run as a live timed auction, or handed to an AI agent that negotiates within price limits the farmer sets. Live government mandi rates sit alongside every listing so both sides negotiate against the same reference price.',
-          },
-        },
-        {
-          '@type': 'Question',
-          name: 'How does payment work on CropBid?',
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: 'Once a price is agreed the buyer pays into escrow via Razorpay. The money is held, not released. The crop then ships through a logistics partner, and the payment releases to the farmer once delivery is confirmed. The buyer is protected against non-delivery and the farmer against non-payment.',
-          },
-        },
-        {
-          '@type': 'Question',
-          name: 'What are live mandi rates and where do they come from?',
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: 'Mandi rates are the daily wholesale prices set at India’s regulated APMC markets. CropBid pulls them from government data covering more than 4,600 mandis and shows them free, so a farmer can see what a crop is actually fetching nearby before agreeing to any price.',
-          },
-        },
-        {
-          '@type': 'Question',
-          name: 'Does it cost anything to join CropBid?',
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Signing in needs nothing but a phone number and a 6-digit code — there is no password. CropBid is available in English, Hindi and Marathi.',
-          },
-        },
-        {
-          '@type': 'Question',
-          name: 'Who buys on CropBid?',
-          acceptedAnswer: {
-            '@type': 'Answer',
-            text: 'Buyers of every size use the same exchange — restaurants and cafés, small food businesses, wholesalers, food processors, FMCG companies, exporters and retailers buying in bulk, alongside individual consumers buying household quantities direct from the seller. Business buyers apply and are reviewed the same way sellers are.',
-          },
-        },
-      ],
+      mainEntity: FAQ_ITEMS.map((item) => ({
+        '@type': 'Question',
+        name: item.q,
+        acceptedAnswer: { '@type': 'Answer', text: item.a },
+      })),
     },
+  },
+  {
+    path: '/terms',
+    title: 'Terms and Conditions',
+    description:
+      'The agreement between you and CropBid: who can trade, how prices and the 2% fee work, escrow and settlement, delivery, cancellations and refunds.',
+    priority: '0.3',
+    changefreq: 'yearly',
   },
   {
     path: '/privacy',

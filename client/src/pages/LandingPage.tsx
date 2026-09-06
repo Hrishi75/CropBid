@@ -86,12 +86,18 @@ const REFERENCE_TICKS: ReferenceTick[] = [
 
 // The header's section links. Rendered inline on desktop and inside the
 // collapsed menu below 960px, from one list so the two never drift apart.
+//
+// These are PLACES TO GO AND DO SOMETHING: check a rate, look at machinery,
+// see what the forecast says. "How it works" is not one of those — it is
+// something you read once, and it earns its place in the footer's Learn
+// column next to Pricing and the FAQ rather than in a header competing with
+// the search box and the shop. It is still reachable from the footer, from the
+// hero's promo cards, and from the FAQ page.
 const SECTION_LINKS: Array<[label: string, to: string]> = [
   ['Live rates', '/rates'],
   ['Forecast', '/forecast'],
   ['Yojana', '/schemes'],
   ['Equipment', '/equipment'],
-  ['How it works', '/how-it-works'],
 ];
 
 const SEARCH_WORDS = ['tomatoes', 'fresh cow milk', 'kesar mangoes', 'sharbati wheat', 'turmeric', 'basmati paddy', 'onions', 'chana dal', 'fresh okra'];
@@ -498,11 +504,25 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
           </button>
           <Link to={secondary.to} className="cb-btn st-btn-outline">{t(secondary.label)}</Link>
         </div>
+        {/* The proof points follow the viewer. A household has no use for
+            "open bidding" — they cannot bid, the API refuses it — so the slot
+            goes to the thing they actually choose between: how fast it comes. */}
         <div className="st-banner-ticks">
-          <span>✓ {t('Live govt mandi rates')}</span>
-          <span>✓ {t('Open bidding & auctions')}</span>
-          <span>✓ {t('Escrow settlement')}</span>
-          <span>✓ {t('Farm-to-door logistics')}</span>
+          {user?.role === 'CONSUMER' ? (
+            <>
+              <span>✓ {t('Same-day from local shops')}</span>
+              <span>✓ {t('Next morning from the farm')}</span>
+              <span>✓ {t('Escrow settlement')}</span>
+              <span>✓ {t('Live govt mandi rates')}</span>
+            </>
+          ) : (
+            <>
+              <span>✓ {t('Live govt mandi rates')}</span>
+              <span>✓ {t('Open bidding & auctions')}</span>
+              <span>✓ {t('Escrow settlement')}</span>
+              <span>✓ {t('Farm-to-door logistics')}</span>
+            </>
+          )}
         </div>
       </div>
       <div className="st-banner-media">
@@ -683,18 +703,32 @@ function ForecastStrip() {
   );
 }
 
-const PROMOS: Array<{ tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string }> = [
+type Promo = { tone: 'sage' | 'paper' | 'ember'; emoji: string; title: string; desc: string; ctaLabel: string; to: string };
+
+// The guest funnel: what CropBid is, aimed at someone who has not joined.
+const PROMOS: Promo[] = [
   { tone: 'sage',  emoji: '🔨', title: 'Live auctions',        desc: 'Verified buyers bid in open rounds — watch prices climb in real time.', ctaLabel: 'Start bidding',  to: '/signup' },
   { tone: 'paper', emoji: '🧺', title: 'Buy direct, no bidding', desc: 'Household packs at the farmer’s own price — a kilo of tomatoes, a litre of milk, no lot to take on.', ctaLabel: 'Shop direct', to: '/signup' },
   { tone: 'ember', emoji: '🛡️', title: 'Escrow protected',  desc: 'Money stays held on-platform and releases only when you confirm delivery.', ctaLabel: 'How it works', to: '/how-it-works' },
 ];
 
-function PromoTrio({ shopHref }: { shopHref: string }) {
+// A signed-in shopper gets a different three. The guest set is a sales pitch
+// with two dead ends for them: "Start bidding" is a door the API closes on a
+// CONSUMER with a 403, and "Shop direct" invites them to the page they are
+// already standing on. These are the three things a household actually acts on.
+const SHOPPER_PROMOS: Promo[] = [
+  { tone: 'sage',  emoji: '⚡', title: 'Need it today',      desc: 'Local shops near you already holding stock — someone brings it round the same day.', ctaLabel: 'See today\u2019s shops', to: '/#shelf' },
+  { tone: 'paper', emoji: '🌾', title: 'Straight from the farm', desc: 'Picked for your order and sent in overnight, at your door tomorrow morning.', ctaLabel: 'Browse farms', to: '/#shelf' },
+  { tone: 'ember', emoji: '📦', title: 'Your orders',        desc: 'Track what is on its way, confirm a delivery, and reorder what you bought last week.', ctaLabel: 'Go to orders', to: '/orders' },
+];
+
+function PromoTrio({ shopHref, user }: { shopHref: string; user: User | null }) {
   const { t } = useTranslation();
   const ref = useReveal<HTMLDivElement>();
+  const promos = user?.role === 'CONSUMER' ? SHOPPER_PROMOS : PROMOS;
   return (
     <div className="st-promos st-reveal" ref={ref}>
-      {PROMOS.map((p) => (
+      {promos.map((p) => (
         <Link key={p.title} to={p.to === '/signup' ? shopHref : p.to} className={`st-promo ${p.tone}`}>
           <span className="st-promo-emoji" aria-hidden="true">{p.emoji}</span>
           <span className="st-promo-t">{t(p.title)}</span>
@@ -706,42 +740,13 @@ function PromoTrio({ shopHref }: { shopHref: string }) {
   );
 }
 
-const HOW_STEPS: Array<[n: string, title: string, desc: string]> = [
-  ['01', 'Farmers list from the field', 'Crop, grade, quantity, floor price — in any language, without leaving the farm.'],
-  ['02', 'You buy or bid', 'Households add a pack at the listed price. Bulk buyers bid on the whole lot.'],
-  ['03', 'Escrow keeps it safe', 'Money held on-platform, tracked paid → shipped → delivered, released when you confirm.'],
-];
-
-function HowStrip() {
-  const { t } = useTranslation();
-  const ref = useReveal<HTMLElement>();
-  return (
-    <section className="st-how st-reveal" ref={ref}>
-      <div className="st-rail-head">
-        <div>
-          <span className="cb-eyebrow">{t('Simple by design')}</span>
-          <h2 className="st-rail-title">{t('How CropBid works')}</h2>
-        </div>
-        <Link to="/how-it-works" className="st-seeall">{t('the full story')} <ArrowIcon size={12} /></Link>
-      </div>
-      <div className="st-how-grid">
-        {HOW_STEPS.map(([n, title, desc]) => (
-          <div key={n} className="st-how-step">
-            <span className="cb-mono st-how-n">{n}</span>
-            <span className="st-how-t">{t(title)}</span>
-            <span className="st-how-d">{t(desc)}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SellCTA({ user }: { user: User | null }) {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
-  // Marketing noise for a signed-in buyer — the block is farmer-targeted.
-  if (user?.role === 'BUYER') return null;
+  // Marketing noise for anyone who has already signed in to buy — the block is
+  // farmer-targeted. A household shopper is the last person to pitch "list your
+  // harvest" at, and they were falling through to the guest version of it.
+  if (user?.role === 'BUYER' || user?.role === 'CONSUMER') return null;
   const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/signup';
   const sellLabel = user?.role === 'FARMER' ? 'List your harvest' : 'Start selling free';
   return (
@@ -883,12 +888,36 @@ export function LandingPage() {
         <LiveShelf query={query} />
         {!searching && (
           <>
-            <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
-            <ForecastStrip />
-            <PromoTrio shopHref={shopHref} />
-            <HowStrip />
-            <SellCTA user={user} />
-            <IncubatedBy />
+            {/* "How CropBid works" is deliberately NOT here. It was a
+                three-step explainer sitting between the shelf and the footer on
+                a page whose job is to sell produce, and it now lives in one
+                place — /how-it-works, reached from the footer's Learn column
+                and from the FAQ — rather than being half-told on the home page
+                and fully told there.
+
+                Order follows what the viewer came for. A shopper gets the
+                three things they act on right under the shelf; the rates board
+                stays, because "today's real mandi price behind every pack" is
+                the hero's promise and this is where it is kept.
+
+                The forecast strip is dropped for them: "where prices go next"
+                is a tool for someone deciding when to buy a tonne, and a
+                household buying dinner cannot act on it. */}
+            {user?.role === 'CONSUMER' ? (
+              <>
+                <PromoTrio shopHref={shopHref} user={user} />
+                <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
+                <IncubatedBy />
+              </>
+            ) : (
+              <>
+                <LiveRatesBoard board={board} pending={ratesPending} currency={currency} />
+                <ForecastStrip />
+                <PromoTrio shopHref={shopHref} user={user} />
+                <SellCTA user={user} />
+                <IncubatedBy />
+              </>
+            )}
           </>
         )}
       </main>
