@@ -51,6 +51,9 @@ export default function ProfileScreen() {
   if (!user) return null;
 
   const isFarmer = user.role === 'FARMER';
+  // A shopper has no demand board: the routes are not in the consumer stack and
+  // the server refuses the feed to anyone but a farmer or a buyer.
+  const trades = isFarmer || user.role === 'BUYER';
   const farm = user.farmerProfile;
   const photo = mediaUrl(user.avatar);
   const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
@@ -321,6 +324,27 @@ export default function ProfileScreen() {
           />
           {isFarmer ? (
             <Row label={t('Your sales')} hint={t('Deals and payments so far')} onPress={() => nav.navigate('Contracts')} />
+          ) : null}
+          {/* The demand board is reachable from both dashboards; it is here too
+              because Profile is where someone who has not found the dashboard
+              strip goes looking for "everything else I can do". */}
+          {trades ? (
+            <>
+              <Row
+                label={isFarmer ? t('What buyers need') : t('Demand board')}
+                hint={isFarmer
+                  ? t('Fill an order at their price, or counter')
+                  : t('What the market is asking for, and at what price')}
+                onPress={() => nav.navigate('Demand')}
+              />
+              <Row
+                label={isFarmer ? t('Your offers') : t('Your requirements')}
+                hint={isFarmer
+                  ? t('What you have offered against buyer demand')
+                  : t('The demand you have posted, and the offers on it')}
+                onPress={() => nav.navigate(isFarmer ? 'MyOffers' : 'MyRequirements')}
+              />
+            </>
           ) : null}
           {isFarmer ? (
             <Row label={t('Your AI helper')} hint={t('Answers offers for you')} onPress={() => nav.navigate('Helper')} />
