@@ -102,6 +102,15 @@ export default function CheckoutScreen() {
         await directPurchase({
           listingId: line.item.listingId,
           quantity: line.quantity,
+          // The LIVE denomination, not the snapshot on line.item taken when the
+          // row went into the basket. A seller can re-denominate an active
+          // listing while it sits there, and sending the unit is what lets the
+          // server refuse the mismatch rather than reading the same number in a
+          // different unit. Same reasoning as the web checkout.
+          //
+          // Non-null on every orderable line: a lot that could not be fetched
+          // fails problemWith() and never reaches this loop.
+          unit: line.listing!.unit,
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           // The line's own key, minted when it was added and re-minted whenever

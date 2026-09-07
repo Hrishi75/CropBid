@@ -266,6 +266,15 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
 export async function directPurchase(input: {
   listingId: string;
   quantity: number;
+  /**
+   * The unit `quantity` is denominated in. Optional on the wire, but the server
+   * only runs its unit-agreement guard when it is present, so omitting it means
+   * a seller who re-denominates an active listing mid-basket has the order
+   * silently rescaled instead of refused: a number measured in kilograms read
+   * as quintals is a hundredfold order, charged and decremented as such.
+   * Always send it, and send the LIVE unit rather than the cart's snapshot.
+   */
+  unit?: Unit;
   deliveryAddress?: string;
   contactPhone?: string;
   idempotencyKey?: string;
