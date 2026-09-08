@@ -79,7 +79,7 @@ export function AuctionRoom() {
 
   useEffect(() => {
     if (!listingId || !user) return;
-    const socket = getSocket(user.name);
+    const socket = getSocket();
 
     socket.emit('auction:join', listingId);
 
@@ -168,7 +168,7 @@ export function AuctionRoom() {
       setError(`Bid must be higher than ${formatCurrency(auction.currentPrice, auction.currency)}`);
       return;
     }
-    const socket = getSocket(user?.name);
+    const socket = getSocket();
     socket.emit('auction:bid', { listingId, price });
     setBidPrice(String(Math.ceil(price * 1.05)));
   }

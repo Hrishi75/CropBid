@@ -121,3 +121,38 @@ export function redactTransactionContacts<T extends TransactionBuyerShape>(
 ) {
   return transactions.map((t) => redactTransactionContact(t, viewer));
 }
+
+// ---------------------------------------------------------------------------
+// The counterparty-safe shape of a Bid
+// ---------------------------------------------------------------------------
+// redactBidContact() nulls the two contact columns AFTER Prisma has already
+// read them. That is the right tool when the query shape is fixed (an update's
+// return row, say), but on a read we can do better and never select them at
+// all.
+//
+// Listed positively, like TRADER_SHIPMENT_SELECT in transaction.service: a new
+// column on Bid has to be added here deliberately before the other side of a
+// deal can see it. The reason is the history of this file: `include: { buyer:
+// ... }` returns every scalar on Bid, so `deliveryAddress` and `contactPhone`
+// rode along on four separate endpoints that had never thought about them.
+//
+// idempotencyKey is absent because nobody but the client that minted it has any
+// use for it, not because it is dangerous.
+export const COUNTERPARTY_BID_SELECT = {
+  id: true,
+  listingId: true,
+  buyerId: true,
+  bidPricePerUnit: true,
+  totalAmount: true,
+  quantity: true,
+  currency: true,
+  message: true,
+  paymentTerms: true,
+  deliveryTerms: true,
+  isAgentBid: true,
+  isDirectPurchase: true,
+  status: true,
+  counterPrice: true,
+  createdAt: true,
+  expiresAt: true,
+} as const;

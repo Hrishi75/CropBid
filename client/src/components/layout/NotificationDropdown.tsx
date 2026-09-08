@@ -67,7 +67,7 @@ export function NotificationDropdown() {
   useEffect(() => {
     if (!user) return;
 
-    const socket = getSocket(user.name);
+    const socket = getSocket();
 
     socket.on('notification:new', (notification: Notification) => {
       setUnreadCount((prev) => prev + 1);

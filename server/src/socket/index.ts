@@ -132,20 +132,47 @@ export function initializeSocket(httpServer: HttpServer) {
   // =========================================================================
   // Socket.io has its own middleware system. We extract the JWT from
   // the `auth` object that the client sends during the handshake.
-  io.use((socket: Socket, next) => {
+  //
+  // The display name is read from the DATABASE, not from the handshake. It used
+  // to be `socket.handshake.auth?.userName`, i.e. a string the client chose,
+  // and that string is what the auction room renders as the bidder and as
+  // `currentWinner`. Anyone could join a live auction bidding as "Reliance
+  // Retail" and move the price with a name they do not own. The token proves
+  // who you are; nothing else in the handshake gets to claim it.
+  io.use(async (socket: Socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) {
       return next(new Error('Authentication required'));
     }
 
+    let payload;
     try {
-      const payload = verifyAccessToken(token);
-      (socket as any).userId = payload.userId;
-      (socket as any).role = payload.role;
-      (socket as any).userName = socket.handshake.auth?.userName || 'Anonymous';
-      next();
+      payload = verifyAccessToken(token);
     } catch {
-      next(new Error('Invalid token'));
+      return next(new Error('Invalid token'));
+    }
+
+    try {
+      // Also the moment a suspended or deleted account loses its socket: the
+      // access token stays valid for its full lifetime, and an auction is
+      // exactly where a banned buyer would want to spend it.
+      const user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: { name: true, role: true, suspended: true },
+      });
+      if (!user || user.suspended) {
+        return next(new Error('Account is not active'));
+      }
+
+      (socket as any).userId = payload.userId;
+      // The role comes from the row too, so a demotion takes effect at the next
+      // connection instead of waiting out the token.
+      (socket as any).role = user.role;
+      (socket as any).userName = user.name;
+      next();
+    } catch (err) {
+      console.error('Socket authentication lookup failed:', err);
+      next(new Error('Unable to verify your account right now'));
     }
   });
 

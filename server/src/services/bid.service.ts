@@ -24,7 +24,7 @@ import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered, notifyDirectPurchase } from './notification.helpers';
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
-import { PUBLIC_BUYER_USER_SELECT, redactBidContacts } from './contactVisibility';
+import { PUBLIC_BUYER_USER_SELECT, redactBidContact, redactBidContacts } from './contactVisibility';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -534,7 +534,12 @@ export async function acceptBid(bidId: string, farmerId: string) {
       where: { id: bidId },
       include: {
         listing: true,
-        buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+        buyer: { select: PUBLIC_BUYER_USER_SELECT },
+        // Selected only so redactBidContact below can read the gate. The
+        // transaction was created a few lines up at AWAITING_PAYMENT, so in
+        // practice this always redacts, which is the point. Accepting a bid
+        // is not paying for it.
+        transaction: { select: { paymentStatus: true } },
       },
     });
   });
@@ -546,7 +551,10 @@ export async function acceptBid(bidId: string, farmerId: string) {
   ).catch(() => {});
   void alertNewOrder(bidId, 'BID_ACCEPTED');
 
-  return accepted;
+  // The row Prisma hands back carries every scalar on Bid, and two of those are
+  // the buyer's phone and delivery address (see contactVisibility.ts). Accepting
+  // is not paying, so they stay shut until the money is captured.
+  return redactBidContact(accepted);
 }
 
 // =============================================================================
@@ -576,7 +584,11 @@ export async function rejectBid(bidId: string, farmerId: string) {
 
   notifyBidRejected(bid.buyerId, bid.listing.cropName, bid.listingId, bidId).catch(() => {});
 
-  return rejected;
+  // A rejected bid can never have been paid, so this is an unconditional strip.
+  // It is routed through the same helper anyway so the rule keeps living in one
+  // file: rejecting a bid was the cheapest way on the platform to read a
+  // buyer's phone number, precisely because it costs the farmer nothing.
+  return redactBidContact(rejected);
 }
 
 // =============================================================================
@@ -607,7 +619,7 @@ export async function counterBid(bidId: string, farmerId: string, counterPrice: 
       counterPrice,
     },
     include: {
-      buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+      buyer: { select: PUBLIC_BUYER_USER_SELECT },
       listing: true,
     },
   });
@@ -617,7 +629,10 @@ export async function counterBid(bidId: string, farmerId: string, counterPrice: 
     bid.listing.currency, bid.listing.unit, bid.listingId, bidId
   ).catch(() => {});
 
-  return countered;
+  // Same as reject, and worse: a counter leaves the bid alive, so a farmer
+  // could counter every bid on every listing and quietly collect the phone
+  // number and delivery address behind each one.
+  return redactBidContact(countered);
 }
 
 // =============================================================================
