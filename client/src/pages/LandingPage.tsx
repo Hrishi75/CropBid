@@ -776,12 +776,17 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
-// Incubation credit — last thing on the page before the footer. Two backers
+// Incubation credit — last thing on the page before the footer. Three backers
 // share the row: India 2047 Ventures tries the real logo at
 // /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
 // recreation until that file exists; Founder Startup House ships as a real
 // wordmark PNG, so it is a plain <img> with the name as alt text.
-// -----------------------------------------------------------------------------
+//
+// The Sarvam Startup Program is the same shape as India 2047: a square mark
+// beside its name. It follows the same try-the-file pattern at
+// /sarvam-startup-program.png, but with no drawn fallback behind it, so a
+// missing file leaves the name standing on its own rather than a broken image.
+// Recreating someone else's mark in SVG is a worse failure than showing none.
 
 function India2047Logo() {
   const [failed, setFailed] = useState(false);
@@ -798,6 +803,21 @@ function India2047Logo() {
   );
 }
 
+function SarvamLogo() {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img
+      src="/sarvam-startup-program.png"
+      alt=""
+      width={46}
+      height={46}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function IncubatedBy() {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
@@ -805,7 +825,7 @@ function IncubatedBy() {
     <section
       className="st-incub st-reveal"
       ref={ref}
-      aria-label="Incubated by India 2047 Ventures and Founder Startup House"
+      aria-label="Incubated by India 2047 Ventures, Founder Startup House and the Sarvam Startup Program"
     >
       <span className="cb-eyebrow">{t('Incubated by')}</span>
       <div className="st-incub-row">
@@ -822,9 +842,14 @@ function IncubatedBy() {
           height={42}
           loading="lazy"
         />
+        <span className="st-incub-sep" aria-hidden="true" />
+        <div className="st-incub-brand">
+          <SarvamLogo />
+          <span className="st-incub-name">Sarvam <span>Startup Program</span></span>
+        </div>
       </div>
       <p className="cb-small st-incub-line">
-        {t('CropBid is built with the backing of India 2047 Ventures and Founder Startup House.')}
+        {t('CropBid is built with the backing of India 2047 Ventures, Founder Startup House and the Sarvam Startup Program.')}
       </p>
     </section>
   );

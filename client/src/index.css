@@ -1913,17 +1913,19 @@ body * {
 @media (max-width: 980px) {
   .cb-landing .feat-grid { grid-template-columns: 1fr 1fr; }
 }
+/* Three backers and two dividers need about 860px of row, and a row that wraps
+   strands a vertical divider at the start of the next line. So below that the
+   credits stack and the dividers lie flat, rather than wrapping. */
+@media (max-width: 960px) {
+  .st-incub-row { flex-direction: column; gap: 18px; }
+  .st-incub-sep { width: 44px; height: 1px; min-height: 0; align-self: center; }
+}
 @media (max-width: 720px) {
   .fc-tally { gap: 16px; }
   .fc-tally-item .n { font-size: 24px; }
   .cb-landing .feat-grid { grid-template-columns: 1fr; }
   .st-incub-name { font-size: 17px; }
   .st-incub-wordmark { height: 34px; }
-}
-
-@media (max-width: 520px) {
-  .st-incub-row { flex-direction: column; gap: 18px; }
-  .st-incub-sep { width: 44px; height: 1px; min-height: 0; align-self: center; }
 }
 
 /* =============================================================================
