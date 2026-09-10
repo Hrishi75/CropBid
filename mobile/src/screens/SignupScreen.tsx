@@ -299,33 +299,31 @@ export default function SignupScreen() {
         <View style={styles.form}>
           <Text style={styles.label}>I'm a</Text>
           <View style={styles.pillRow}>
-            {(['FARMER', 'BUYER', 'CONSUMER'] as const).map((r) => (
+            {(['FARMER', 'BUYER'] as const).map((r) => (
               <Pressable
                 key={r}
                 onPress={() => setRole(r)}
                 style={[styles.pill, role === r && styles.pillActive]}
               >
                 <Text style={[styles.pillText, role === r && styles.pillTextActive]}>
-                  {r === 'FARMER' ? 'Farmer' : r === 'BUYER' ? 'Buyer' : 'Consumer'}
+                  {r === 'FARMER' ? 'Farmer or shop' : 'Business buyer'}
                 </Text>
               </Pressable>
             ))}
           </View>
           {/* Say it here, before any typing happens. Selling and bulk buying are
-              applied for and reviewed by a person; a shopper's account is live
-              on the spot. Finding that out after filling in a farm's acreage
-              and a GST number is the wrong moment for the news. */}
-          {role !== 'CONSUMER' ? (
-            <Text style={styles.roleNote}>
-              {role === 'FARMER' ? 'Sellers' : 'Business buyers'} are reviewed before going live. You'll
-              fill in a short application next, and our team usually decides within 24 to 48 hours.
-              Browsing the market works from the moment you sign up.
-            </Text>
-          ) : (
-            <Text style={styles.roleNote}>
-              A shopper's account is ready straight away — pick your city and the local shelf opens.
-            </Text>
-          )}
+              applied for and reviewed by a person, and finding that out after
+              filling in a farm's acreage and a GST number is the wrong moment
+              for the news.
+
+              CONSUMER is no longer offered. Households have their own app
+              (cropbid-daily/), and an account made here is somebody who intends
+              to trade. */}
+          <Text style={styles.roleNote}>
+            {role === 'FARMER' ? 'Sellers' : 'Business buyers'} are reviewed before going live. You'll
+            fill in a short application next, and our team usually decides within 24 to 48 hours.
+            Browsing the market works from the moment you sign up.
+          </Text>
 
           <Text style={styles.label}>Full name</Text>
           <TextInput

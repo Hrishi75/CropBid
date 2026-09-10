@@ -1,19 +1,12 @@
-// Listing detail screen — full crop listing (photos, specs, price) loaded by id,
-// with an inline form for buyers to place a bid (placeBid). Guests can view
-// everything; the sticky bottom bar becomes the login gate ("Log in to buy") —
-// browsing is free, acting needs an account.
+// Listing detail screen — one crop lot (photos, specs, price) loaded by id,
+// with an inline form for approved buyers to place a bid. Guests see
+// everything; the sticky bottom bar becomes the sign-in gate, because browsing
+// is free and acting needs an account.
 //
-// A SHOPPER'S BAR ADDS TO THE BASKET, IT DOES NOT BUY.
-// It used to place the order on the spot. That made every extra item its own
-// errand — its own address fallback, its own escrow settlement, no running
-// total anywhere — and a household shop is three or four lots, not one. So the
-// bar now sets a quantity and puts the lot in the cart, exactly as the web
-// product page does (client/src/pages/consumer/ProductDetail.tsx), and the one
-// place money is committed is the checkout, where the delivery address is
-// actually confirmed. The idempotency key that used to live in this bar now
-// lives on the cart line (context/CartContext.tsx), which is a better home for
-// it: it survives the app being killed between the failed attempt and the
-// retry.
+// This screen used to carry a second, retail half: a household price, a pack
+// stepper, and a bar that put the lot in a basket. That belonged to a shopper,
+// and shoppers have their own app now (cropbid-daily/). A lot here is priced
+// per the seller's own unit and the only action is a bid.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -34,13 +27,11 @@ import { fetchListing, placeBid } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
-import { useCart } from '../context/CartContext';
 import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
 import { Badge, Button, Card } from '../components/ui';
 import { FadeInImage, PressScale } from '../components/motion';
 import { money, unitLabel } from '../lib/format';
-import { orderQuantity, railFor, shopPack, type ShopPack } from '../lib/catalog';
 import { mspForCrop } from '../lib/msp';
 import { colors, design, font, radius, spacing } from '../theme';
 
@@ -73,24 +64,8 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }
   const isGuest = !user;
   const isBuyer = user?.role === 'BUYER';
-  const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
-  const canDirectBuy =
-    isConsumer && !isOwner && listing.directSaleEnabled && listing.retailPricePerUnit != null;
 
-  // The household pack the storefront card advertised — same crop, same unit,
-  // same maths, so "₹34 · 500 g" on the card is what the buy bar opens at.
-  // null for a bulk-only crop (cotton, maize), which stays priced by the unit.
-  const pack = canDirectBuy
-    ? shopPack({
-        crop: listing.cropName,
-        cat: railFor(listing.cropName),
-        unit: listing.unit,
-        floor: listing.pricePerUnitMin,
-        ceiling: listing.pricePerUnitMax,
-        retail: listing.retailPricePerUnit,
-      })
-    : null;
 
   return (
     <KeyboardAvoidingView
@@ -99,7 +74,7 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       keyboardVerticalOffset={90}
     >
       <ScrollView
-        contentContainerStyle={[styles.container, (canDirectBuy || isGuest) && { paddingBottom: 130 }]}
+        contentContainerStyle={[styles.container, isGuest && { paddingBottom: 130 }]}
         keyboardShouldPersistTaps="handled"
       >
         {imgs.length > 0 ? <ImagePager images={imgs} /> : null}
@@ -112,15 +87,11 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           {listing.organic ? <Badge status="ORGANIC" /> : null}
         </View>
 
-        {isConsumer && listing.directSaleEnabled && listing.retailPricePerUnit != null ? (
-          <ConsumerPrice listing={listing} pack={pack} />
-        ) : (
-          <Text style={styles.price}>
-            {money(listing.pricePerUnitMin, listing.currency)}–
-            {money(listing.pricePerUnitMax, listing.currency)}
-            <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
-          </Text>
-        )}
+        <Text style={styles.price}>
+          {money(listing.pricePerUnitMin, listing.currency)}–
+          {money(listing.pricePerUnitMax, listing.currency)}
+          <Text style={styles.priceUnit}> /{unitLabel(listing.unit)}</Text>
+        </Text>
 
         <Card style={styles.specs}>
           <Spec
@@ -144,23 +115,19 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {isGuest ? (
-          <Text style={styles.note}>You're browsing as a guest — log in to buy this lot or place a bid.</Text>
+          <Text style={styles.note}>You're browsing as a guest. Log in to place a bid on this lot.</Text>
         ) : isOwner ? (
           <Text style={styles.note}>This is your listing.</Text>
         ) : isBuyer ? (
           <BidForm listing={listing} onDone={() => navigation.goBack()} />
-        ) : isConsumer && !canDirectBuy ? (
-          <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
-        ) : !isConsumer ? (
-          <Text style={styles.note}>Only buyers can place bids.</Text>
-        ) : null}
+        ) : (
+          <Text style={styles.note}>Only approved buyers can place bids.</Text>
+        )}
       </ScrollView>
 
-      {/* Blinkit-style sticky bar — quantity stepper + total + Add to cart.
-          Guests get the login gate here instead: price + "Log in to buy". */}
-      {canDirectBuy ? (
-        <BuyBar listing={listing} pack={pack} />
-      ) : isGuest ? (
+      {/* A guest gets the price and a way in. Everyone else is already served
+          by the bid form above. */}
+      {isGuest ? (
         <GuestBar listing={listing} onLogin={() => (navigation as any).navigate('Login')} />
       ) : null}
     </KeyboardAvoidingView>
@@ -197,39 +164,6 @@ function ImagePager({ images }: { images: string[] }) {
   );
 }
 
-// Blinkit-style price block for the direct-buy flow: green selling price with
-// the wholesale ceiling as a struck-through anchor and a "% OFF" tag when the
-// farmer's retail price sits meaningfully below it. Priced by the pack when
-// there is one, so the headline matches the card that was tapped.
-function ConsumerPrice({ listing, pack }: { listing: Listing; pack: ShopPack | null }) {
-  const retail = listing.retailPricePerUnit ?? 0;
-  const pct = retail < listing.pricePerUnitMax ? Math.round((1 - retail / listing.pricePerUnitMax) * 100) : 0;
-  return (
-    <View style={styles.consumerPriceWrap}>
-      <View style={styles.consumerPriceRow}>
-        <Text style={styles.consumerPrice}>
-          {money(pack ? pack.price : retail, listing.currency)}
-          <Text style={styles.priceUnit}> /{pack ? pack.suffix : unitLabel(listing.unit)}</Text>
-        </Text>
-        {pct >= 5 ? (
-          <>
-            <Text style={styles.mrp}>
-              {money(pack ? pack.anchor : listing.pricePerUnitMax, listing.currency)}
-            </Text>
-            <View style={styles.offTag}>
-              <Text style={styles.offTagText}>{pct}% OFF</Text>
-            </View>
-          </>
-        ) : null}
-      </View>
-      {pack ? (
-        <Text style={styles.packNote}>
-          {pack.label} pack · {money(pack.perKg, listing.currency)}/{pack.perKgLabel}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
 
 function Spec({ label, value }: { label: string; value: string }) {
   return (
@@ -386,115 +320,6 @@ function GuestBar({ listing, onLogin }: { listing: Listing; onLogin: () => void 
         </View>
         <PressScale onPress={onLogin} cardStyle={styles.buyBtn}>
           <Text style={styles.buyBtnText}>Log in to buy</Text>
-        </PressScale>
-      </View>
-    </View>
-  );
-}
-
-// Sticky bottom bar for a shopper: − / + quantity stepper, live total, and the
-// button that puts the lot in the basket. The stepper counts PACKS when the
-// crop has one ("2 × 500 g"), so a shopper picks exactly what the storefront
-// card offered; the amount stored on the cart line is still the listing's own
-// unit, which is what the order eventually carries. Crops without a pack step
-// by the unit.
-//
-// Once the lot is in the basket the button becomes "Update cart" and a second
-// row appears with the way to the cart — the shopper has somewhere to go next,
-// and the number they are looking at is the one that is already saved.
-function BuyBar({ listing, pack }: { listing: Listing; pack: ShopPack | null }) {
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation<any>();
-  const { add, quantityOf, count: cartCount } = useCart();
-
-  const step = pack ? pack.units : 1; // listing units per tap of the stepper
-  const inStock = listing.remainingQuantity;
-  const unit = unitLabel(listing.unit);
-  const maxCount = Math.floor(inStock / step);
-
-  // Opening on what the basket already holds, not on a fresh 1 — this bar has
-  // to agree with the cart it is editing, or "Update cart" would quietly move
-  // the amount to a number the shopper never chose.
-  const inCart = quantityOf(listing.id);
-  const [picked, setPicked] = useState(() =>
-    String(inCart > 0 ? Math.max(1, Math.round(inCart / step)) : 1));
-  const [error, setError] = useState<string | null>(null);
-
-  const n = Number(picked);
-  const price = listing.retailPricePerUnit ?? 0;
-  // Rounded because 3 × 0.05 quintal is 0.15000000000000002 in binary floating
-  // point, and that goes on an order. Packs round in kg then convert, so a
-  // small pack off a TONNE lot survives the trip.
-  const qtyNum = n > 0 ? (pack ? orderQuantity(pack, n) : Number(n.toFixed(3))) : 0;
-  const total = qtyNum > 0 ? qtyNum * price : 0;
-  const valid = n > 0 && qtyNum > 0 && qtyNum <= inStock;
-  // Six decimals: a gram of a TONNE lot is 0.000001, and rounding the display
-  // to the usual three would show a 500 g pack as "0 t".
-  const qtyText = `${qtyNum.toLocaleString('en-IN', { maximumFractionDigits: 6 })} ${unit}`;
-
-  const bump = (d: number) => {
-    const next = Math.min(Math.max((Number(picked) || 0) + d, 1), Math.max(maxCount, 1));
-    setError(null);
-    setPicked(String(next));
-  };
-
-  function addToCart() {
-    if (!(n > 0)) {
-      setError(pack ? 'Choose how many packs you want' : 'Enter how much you want to buy');
-      return;
-    }
-    if (qtyNum > inStock) {
-      setError(`Only ${inStock.toLocaleString('en-IN')} ${unit} left in stock`);
-      return;
-    }
-    setError(null);
-    add(listing, qtyNum);
-  }
-
-  return (
-    <View style={[styles.buyBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-      {error ? <Text style={styles.buyBarError}>{error}</Text> : null}
-
-      {inCart > 0 ? (
-        <Pressable onPress={() => navigation.navigate('ConsumerTabs', { screen: 'Cart' })} hitSlop={6} style={styles.cartStrip}>
-          <Text style={styles.cartStripText}>
-            In your cart · {cartCount === 1 ? '1 lot' : `${cartCount} lots`}
-          </Text>
-          <Text style={styles.cartStripLink}>View cart →</Text>
-        </Pressable>
-      ) : null}
-
-      <View style={styles.buyBarRow}>
-        <View style={styles.stepper}>
-          <Pressable onPress={() => bump(-1)} hitSlop={8} style={styles.stepBtn}>
-            <Text style={styles.stepBtnText}>−</Text>
-          </Pressable>
-          <TextInput
-            style={styles.stepInput}
-            value={picked}
-            onChangeText={(t) => { setError(null); setPicked(t.replace(/[^0-9]/g, '')); }}
-            keyboardType="numeric"
-            maxLength={6}
-          />
-          <Pressable onPress={() => bump(1)} hitSlop={8} style={styles.stepBtn}>
-            <Text style={styles.stepBtnText}>+</Text>
-          </Pressable>
-        </View>
-        <View style={styles.buyTotals}>
-          <Text style={styles.buyTotal}>{money(total, listing.currency)}</Text>
-          <Text style={styles.buyTotalSub} numberOfLines={1}>
-            {qtyNum <= 0
-              ? `${money(pack ? pack.price : price, listing.currency)}/${pack ? pack.suffix : unit}`
-              : pack
-                ? `${n} × ${pack.label} · ${qtyText}`
-                : `${qtyText} · farmer's price`}
-          </Text>
-        </View>
-        {/* Dim but still pressable when the amount doesn't work — a tap then
-            says why (out of stock, less than one pack left) instead of the
-            button silently doing nothing. */}
-        <PressScale onPress={addToCart} cardStyle={[styles.buyBtn, !valid && styles.buyBtnDim]}>
-          <Text style={styles.buyBtnText}>{inCart > 0 ? 'Update cart' : 'Add to cart'}</Text>
         </PressScale>
       </View>
     </View>

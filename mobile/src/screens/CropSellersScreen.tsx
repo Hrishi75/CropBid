@@ -1,5 +1,5 @@
 // Crop sellers — the "product page" for one crop: every farmer currently
-// selling it, side by side, so a shopper compares farms on name, trust score,
+// selling it, side by side, so a buyer compares farms on name, trust score,
 // quality grade, and price before opening a lot. Pushed from the storefront
 // when a crop card has more than one live seller (params carry the already-
 // fetched lots as a preview; a fresh /browse keeps the list current).
@@ -23,14 +23,12 @@ import type { Listing } from '../api/types';
 import type { GuestStackParamList } from '../navigation/types';
 import { Mono } from '../components/buyerKit';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
-import { CartBar } from '../components/CartBar';
-import { useCart } from '../context/CartContext';
 import { colors, design, font } from '../theme';
 import { money, timeAgo, unitLabel } from '../lib/format';
 
 type Props = NativeStackScreenProps<GuestStackParamList, 'CropSellers'>;
 
-// What a shopper actually pays per unit — retail price when the farmer opened
+// What the lot costs per unit — retail price when the farmer opened
 // the lot for direct sale, else the floor of the bid band (same rule as the
 // storefront cards).
 function effectivePrice(l: Listing): number {
@@ -50,7 +48,7 @@ function sortCheapestFirst(lots: Listing[]): Listing[] {
 }
 
 export default function CropSellersScreen({ route, navigation }: Props) {
-  const { crop, preview, retailIn } = route.params;
+  const { crop, preview } = route.params;
   const { t } = useTranslation();
   const { user } = useAuth();
   const [lots, setLots] = useState<Listing[]>(() => sortCheapestFirst(preview ?? []));
@@ -68,14 +66,12 @@ export default function CropSellersScreen({ route, navigation }: Props) {
   const load = useCallback(async () => {
     try {
       // Exact crop match server-side, under the SAME gate the shelf was built
-      // with. `retailIn` is set whenever Home was shopping, which covers guests
       // as well as signed-in consumers — keying off role alone let a guest
       // through, and dropping the city let everyone see lots that cannot be
       // delivered to them. The preview shown a moment earlier was city-scoped;
       // this refresh has to agree with it or the list silently grows.
       const res = await browse({
         crop,
-        ...(retailIn ? { directSale: true, location: retailIn } : {}),
       });
       glide();
       setLots(sortCheapestFirst(res.listings ?? []));
@@ -85,7 +81,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [crop, retailIn]);
+  }, [crop]);
 
   useEffect(() => {
     load();
@@ -98,9 +94,6 @@ export default function CropSellersScreen({ route, navigation }: Props) {
   }, [load]);
 
   const cheapest = lots.length > 0 ? effectivePrice(lots[0]) : null;
-  // Room at the foot of the list for the cart bar, when there is one to make
-  // room for.
-  const { count: cartCount } = useCart();
   const heroImg = lots.find((l) => l.images?.length)?.images?.[0] ?? null;
   const heroUri = heroImg ? mediaUrl(heroImg) : cropImageFor(crop);
 
@@ -109,7 +102,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
       <FlatList
         data={lots}
         keyExtractor={(l) => l.id}
-        contentContainerStyle={{ paddingBottom: cartCount > 0 ? 104 : 28 }}
+        contentContainerStyle={{ paddingBottom: 28 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
         ListHeaderComponent={
@@ -171,11 +164,6 @@ export default function CropSellersScreen({ route, navigation }: Props) {
           />
         )}
       />
-
-      {/* A shopper comparing farmers may already have a basket going. This is a
-          pushed screen, not a tab, so the bar takes the home-indicator inset
-          itself. */}
-      <CartBar />
     </View>
   );
 }

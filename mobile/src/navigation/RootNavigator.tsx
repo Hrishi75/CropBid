@@ -1,8 +1,13 @@
 // Root navigation. Gates on auth state from AuthContext: shows a loader while
 // restoring the session, then — signed out — the GUEST storefront, not a login
 // wall: guests land straight on StorefrontHomeScreen, browse the market and
-// open listings, and only hit Login/Signup when they try to act (buy, bid,
-// sell, profile). Once signed in, the tab navigator for the user's role.
+// open listings, and only hit Login/Signup when they try to act (bid, sell,
+// profile). Once signed in, the tab navigator for the user's role.
+//
+// THIS APP IS FOR TRADE ONLY. Households have their own app (cropbid-daily/),
+// so there is no cart, no checkout and no retail shelf here. A signed-in
+// CONSUMER is not a shopper to be served but a prospective partner, and gets
+// JoinScreen: pick selling or bulk buying, then the application.
 // A signed-in seller or buyer whose partner application is still in review gets
 // PartnerNavigator instead of their dashboard — the server refuses every gated
 // route until it is approved, so offering the dashboard would only produce
@@ -10,8 +15,7 @@
 // mirrored on mobile); the old farmer and buyer dashboards live on their own
 // tabs (My Farm / Dashboard). Farmers get Home/My Crops/Offers/Farm/You (their
 // AI helper is pushed from Profile), buyers get Home/Dashboard/Agents/
-// Contracts/You + Auction in the stack, consumers (instant-buy any quantity,
-// no bidding) get Home/Cart/Orders/You, with Checkout pushed over the tabs.
+// Contracts/You + Auction in the stack.
 // The demand board (buyers post what they need, farmers answer) is pushed in
 // both the farmer and the buyer stack rather than taking a tab in either — both
 // bars are already full, and it is a place you go to, not a place you live.
@@ -27,10 +31,11 @@ import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
+import JoinScreen from '../screens/partner/JoinScreen';
+import SettleScreen from '../screens/buyer/SettleScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import BuyerDashboardScreen from '../screens/buyer/HomeScreen';
 import BriefScreen from '../screens/buyer/BriefScreen';
-import SettleScreen from '../screens/buyer/SettleScreen';
 import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -40,8 +45,6 @@ import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
-import CartScreen from '../screens/consumer/CartScreen';
-import CheckoutScreen from '../screens/consumer/CheckoutScreen';
 import PartnerStatusScreen from '../screens/partner/PartnerStatusScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
@@ -54,8 +57,7 @@ import SchemesScreen from '../screens/SchemesScreen';
 import EquipmentScreen from '../screens/EquipmentScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
-import ConsumerTabBar from './ConsumerTabBar';
-import type { BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, GuestStackParamList, PartnerStackParamList, RootStackParamList } from './types';
+import type { BuyerTabParamList, FarmerStackParamList, FarmerTabParamList, GuestStackParamList, PartnerStackParamList, RootStackParamList } from './types';
 import type { User } from '../api/types';
 import { isPendingPartner } from '../lib/partner';
 
@@ -208,71 +210,6 @@ function FarmerNavigator() {
   );
 }
 
-// --- Consumer ---
-const ConsumerTab = createBottomTabNavigator<ConsumerTabParamList>();
-function ConsumerTabs() {
-  const { t } = useTranslation();
-  return (
-    <ConsumerTab.Navigator
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <ConsumerTabBar {...props} />}
-    >
-      <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
-      <ConsumerTab.Screen name="Cart" component={CartScreen} options={{ title: t('Cart') }} />
-      <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: t('Orders') }} />
-      <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
-    </ConsumerTab.Navigator>
-  );
-}
-
-const ConsumerStack = createNativeStackNavigator<ConsumerStackParamList>();
-function ConsumerNavigator() {
-  const { t } = useTranslation();
-  return (
-    <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
-      <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
-      {/* Pushed over the tabs, not a tab of its own: checkout is a one-way
-          errand the shopper finishes or backs out of, and leaving the tab bar
-          under it would invite them to wander off mid-address. */}
-      <ConsumerStack.Screen
-        name="Checkout"
-        component={CheckoutScreen}
-        options={{ headerShown: true, title: t('Checkout'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="CropSellers"
-        component={CropSellersScreen as React.ComponentType<any>}
-        options={{ headerShown: true, presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="ListingDetail"
-        component={ListingDetailScreen as React.ComponentType<any>}
-        options={{ headerShown: true, title: t('Listing'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Rates"
-        component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Schemes"
-        component={SchemesScreen}
-        options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Notifications"
-        component={ActivityScreen}
-        options={{ headerShown: true, title: t('Activity'), animation: 'slide_from_right' }}
-      />
-    </ConsumerStack.Navigator>
-  );
-}
-
 // --- Partner under review (applied, not yet approved) ---
 // Selling and bulk buying are applied for, and the server refuses every gated
 // route until an admin approves the application. So an unapproved partner does
@@ -362,8 +299,8 @@ function GuestNavigator() {
 }
 
 // A signed-in seller or buyer with no application on file has to write one
-// before anything else. Consumers and admins never apply — they shop and
-// administer from the moment they sign in.
+// before anything else. Admins never apply; a CONSUMER has not chosen which
+// application to write yet, which is what JoinScreen is for.
 function needsApplication(user: User): boolean {
   if (user.role === 'FARMER') return !user.farmerProfile;
   if (user.role === 'BUYER') return !user.buyerProfile;
@@ -386,7 +323,10 @@ export default function RootNavigator() {
       ) : user.role === 'FARMER' ? (
         <FarmerNavigator />
       ) : user.role === 'CONSUMER' ? (
-        <ConsumerNavigator />
+        /* Not a shopper here. This app sells nothing by the kilo, so a CONSUMER
+           account is somebody who has signed in and not yet said whether they
+           grow or they buy. Approval is what grants the role. */
+        <JoinScreen />
       ) : (
         <BuyerNavigator />
       )}

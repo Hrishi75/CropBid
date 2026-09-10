@@ -1,5 +1,5 @@
-// Storefront Home — the Home tab for ALL THREE roles (farmer, buyer,
-// consumer) AND the signed-out guest landing: an exact mobile mirror of the WEB
+// Storefront Home — the Home tab for both trading roles (farmer, buyer) AND
+// the signed-out guest landing: a mobile mirror of the WEB
 // homepage (client/src/pages/LandingPage.tsx): forest price ticker, cream
 // header with wordmark + rotating-hint search + category chips, the mandi-photo
 // hero banner, promo trio, category tiles, then EVERY live listing below in the
@@ -9,21 +9,22 @@
 // catalog filled each rail with invented lots so the market "always rendered
 // with prices", and a live listing merely replaced the demo card for its crop.
 // The demo cards carried a village, a grade and a quantity in the same card
-// shape as a real listing, and shoppers read them as farmers' listings —
-// because that is exactly what they looked like. They are gone. What the rails
-// hold now is what the API returned, and nothing else.
+// shape as a real listing, and readers took them for farmers' listings, because
+// that is exactly what they looked like. They are gone. What the rails hold now
+// is what the API returned, and nothing else.
 //
-// AND THE SHELF IS LOCAL FOR SHOPPERS. A household pack cannot be trucked
-// across a state, so a consumer or guest sees direct-sale lots in ONE city and
-// picks that city first — same rule as the web shelf. Farmers and buyers deal
-// in lots that move by the tonne, so their market stays national.
+// ONE MARKET, NATIONAL. There used to be a second mode here: a city-gated
+// retail shelf, priced by the household pack, with a basket riding the bottom
+// of the screen. Households have their own app now (cropbid-daily/), so this
+// screen has one audience and one framing. A lot moves by the tonne and can be
+// freighted, so there is no locality to gate on and no city to ask for.
 //
 // Each crop gets ONE card: when several farmers sell the same crop, their lots
 // collapse into a grouped card ("N FARMERS", cheapest price first) that opens
 // the CropSellers comparison screen — farmer names, trust, grade, and price
 // side by side.
-// Home is market-only — tapping a live lot opens ListingDetail, whose action
-// is role-gated there (consumer buy bar / buyer bid form / farmer read-only);
+// Home is market-only: tapping a live lot opens ListingDetail, whose action is
+// role-gated there (buyer bid form, farmer read-only, guest sign-in bar);
 // bidding never happens on this page. Selling is farmer-only: farmers get a
 // "List your harvest" CTA, everyone else is told to register as a farmer.
 // Guests (no session) browse everything freely — the avatar becomes a "Log in"
@@ -52,18 +53,15 @@ import { LanguagePill } from '../components/LanguagePicker';
 import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
-import { browse, retailCities, updateLocation } from '../api/endpoints';
+import { browse } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
-import { useCart, type CartPack } from '../context/CartContext';
-import { CartBar } from '../components/CartBar';
-import { QuantityStepper } from '../components/QuantityStepper';
 import type { Listing, Unit } from '../api/types';
 import { money, unitLabel } from '../lib/format';
 import {
   CATEGORY_TILES, CHIPS, RAILS, TICKER,
-  railFor, shopPack, type RailId, type ShopPack,
+  railFor, type RailId,
 } from '../lib/catalog';
 
 const SEARCH_HINTS = ['tomato', 'fresh mango', 'wheat', 'onion', 'dal', 'turmeric'];
@@ -101,18 +99,8 @@ function useLiveRates(): RatesBoardData | null {
   return board;
 }
 
-// One card on the storefront — a live API listing, a whole crop when several
-// farmers sell it (one card, "N FARMERS", cheapest price), or a static demo
-// lot from the shared catalog, normalised to what the card renders.
-// What a household pack is priced from. Held separately from the card's own
-// headline numbers because the two can come from different lots: the bulk lane
-// quotes the cheapest lot of all, the pack quotes the cheapest buyable one.
-interface ShopBasis {
-  unit: string;
-  floor: number;
-  ceiling: number;
-  retail: number | null;
-}
+// One card on the storefront: a live API listing, or a whole crop when several
+// farmers sell it (one card, "N FARMERS", cheapest price first).
 
 interface CardVM {
   key: string;
@@ -132,13 +120,6 @@ interface CardVM {
   anchor: number;
   floor: number;          // ₹/unit farmgate floor — the bulk lane's headline
   retail: number | null;  // ₹/unit the farmer set for direct sale, if they did
-  // The lot the household pack is priced off — the cheapest one a shopper can
-  // actually buy, which on a grouped card need not be the cheapest lot overall.
-  // null when nothing here is open for direct sale, so the card keeps its
-  // wholesale framing instead of offering an ADD that dead-ends on the next
-  // screen.
-  shop: ShopBasis | null;
-  pack: ShopPack | null;  // household pack — set only when the viewer is shopping
   qty: number;
   location: string;
   state: string;
@@ -147,13 +128,6 @@ interface CardVM {
   trust: number | null;
   low: boolean;
 }
-
-// A lot is on the shelf only if the farmer opened it for direct sale AND put a
-// price on it; anything else is a bidding lot.
-const shopBasis = (l: Listing): ShopBasis | null =>
-  l.directSaleEnabled && l.retailPricePerUnit != null
-    ? { unit: l.unit, floor: l.pricePerUnitMin, ceiling: l.pricePerUnitMax, retail: l.retailPricePerUnit }
-    : null;
 
 function fromListing(l: Listing): CardVM {
   return {
@@ -170,8 +144,6 @@ function fromListing(l: Listing): CardVM {
     anchor: l.pricePerUnitMax,
     floor: l.pricePerUnitMin,
     retail: l.retailPricePerUnit ?? null,
-    shop: shopBasis(l),
-    pack: null,
     qty: l.remainingQuantity,
     location: l.location,
     state: l.state,
@@ -201,17 +173,10 @@ function fromGroup(group: Listing[]): CardVM {
   const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0));
   const total = sorted.reduce((s, l) => s + inStockUnit(l, l.quantity), 0);
   const states = [...new Set(sorted.map((l) => l.state))];
-  // The cheapest lot need not be the cheapest one on the shelf — a farmer can
-  // undercut the group and still keep their lot for bidders only. The card
-  // opens CropSellers, where the shopper picks a seller, so price the pack off
-  // the cheapest lot that is genuinely for sale rather than hiding the whole
-  // group behind BID. `sorted` is already cheapest-first.
-  const shop = sorted.map(shopBasis).find((b) => b != null) ?? null;
   return {
     ...base,
     key: `crop-${base.name.trim().toLowerCase()}`,
     group: sorted,
-    shop,
     sellers: sorted.length,
     sellersMeta: states.length === 1
       ? `${sorted.length} farms · ${states[0]}`
@@ -236,54 +201,34 @@ export default function StorefrontHomeScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
   const { user, applyUser } = useAuth();
-  const { add, quantityOf, setQuantity, remove, count: cartCount } = useCart();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<RailId | null>(null);
-  const [cities, setCities] = useState<Array<{ city: string; state: string }>>([]);
   // A guest has no account to hold a city on, so theirs lives here for the
   // session. A signed-in shopper's comes off User.location, which the checkout
   // reads as the delivery default.
-  const [guestCity, setGuestCity] = useState('');
-  const [savingCity, setSavingCity] = useState('');
-  const [changingCity, setChangingCity] = useState(false);
   const board = useLiveRates();
 
   const role = user?.role;
   const isFarmer = role === 'FARMER';
-  const isConsumer = role === 'CONSUMER';
-  // Consumers and guests shop by the pack; buyers and farmers work in lots, so
-  // they keep the wholesale ₹/quintal framing.
-  const shopping = role !== 'BUYER' && !isFarmer && role !== 'ADMIN';
-  // Card action mirrors what ListingDetail offers each role.
-  const actionLabel = role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'ADD';
-  const liveWord = role === 'CONSUMER' ? 'FARM DIRECT' : 'LIVE LOT';
-  // Whoever is being sold a pack is also being promised a delivery, so the
-  // shelf they see has to be one they can actually be delivered from.
-  const city = shopping ? (user ? (user.location?.trim() ?? '') : guestCity) : '';
-  const needsCity = shopping && (city === '' || changingCity);
 
-  // Which cities can be served at all — needed before any produce is fetched
-  // for a shopper, and again whenever they want to change city.
-  useEffect(() => {
-    if (!shopping) return;
-    let on = true;
-    retailCities()
-      .then((rows) => { if (on) setCities(rows); })
-      .catch(() => { if (on) setCities([]); });
-    return () => { on = false; };
-  }, [shopping]);
+  // ONE FRAMING, THE WHOLESALE ONE. This app trades in lots, so everything here
+  // is priced per quintal and nothing is sold by the pack. The retail shelf,
+  // the delivery-city gate and the basket that went with them have moved to
+  // cropbid-daily/, which is where a household belongs.
+  //
+  // Guests see the same market as a signed-in trader: the wall is at the point
+  // of action, not the door.
+  const actionLabel = isFarmer ? 'VIEW' : 'BID';
 
   const load = useCallback(async () => {
-    // No city means no shelf to fetch — the picker is showing instead.
-    if (needsCity) { setLoaded(true); return; }
     try {
-      // Shoppers only see lots opened for direct retail, in their own city;
-      // farmers and buyers see the whole open market, nationwide.
-      const data = await browse(shopping ? { directSale: true, location: city } : {});
+      // The whole open market, nationwide. A lot moves by the tonne and can be
+      // freighted, so there is no locality to filter on.
+      const data = await browse({});
       glide();
       setListings(data.listings ?? []);
       setError(null);
@@ -293,24 +238,12 @@ export default function StorefrontHomeScreen() {
     } finally {
       setLoaded(true);
     }
-  }, [shopping, city, needsCity]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const chooseCity = useCallback(async (next: string) => {
-    setChangingCity(false);
-    if (!user) { setGuestCity(next); return; }
-    setSavingCity(next);
-    try {
-      applyUser(await updateLocation(next));
-    } catch (e) {
-      Alert.alert('Could not save your city', errorMessage(e, 'Please try again.'));
-    } finally {
-      setSavingCity('');
-    }
-  }, [user, applyUser]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -330,17 +263,8 @@ export default function StorefrontHomeScreen() {
       if (group) group.push(l);
       else byCrop.set(key, [l]);
     }
-    const all = [...byCrop.values()].map(fromGroup);
-    if (!shopping) return all;
-    // Price the household pack off whichever number the lot actually carries —
-    // the farmer's own retail price, or the floor plus the shelf margin. A lot
-    // that isn't open for direct sale gets no pack: ListingDetail would only
-    // offer it by the quintal, so the card says so too.
-    return all.map((vm) => ({
-      ...vm,
-      pack: vm.shop ? shopPack({ crop: vm.name, cat: vm.cat, ...vm.shop }) : null,
-    }));
-  }, [listings, shopping]);
+    return [...byCrop.values()].map(fromGroup);
+  }, [listings]);
 
   const q = search.trim().toLowerCase();
   const browsing = q === '' && category === null;
@@ -354,42 +278,12 @@ export default function StorefrontHomeScreen() {
     if (v.sellers > 1 && v.group) {
       // Several farmers sell this crop — open the comparison screen instead
       // of jumping into one farmer's lot.
-      // `retailIn` carries this shelf's scope across, so the comparison screen
-      // re-fetches the same shelf rather than the whole country. Empty for a
-      // farmer or a buyer, who are looking at the open market on purpose.
-      nav.navigate('CropSellers', { crop: v.name, preview: v.group, retailIn: shopping ? city : undefined });
+      nav.navigate('CropSellers', { crop: v.name, preview: v.group });
     } else if (v.listing) {
       nav.navigate('ListingDetail', { id: v.listing.id, preview: v.listing });
     }
   };
 
-  // The basket wiring one card gets — null for anyone who is not a signed-in
-  // shopper, and for a card that fronts several farmers. A grouped card cannot
-  // add anything: which farmer's lot would it be? Those keep their arrow into
-  // the comparison screen, where a seller is picked first.
-  const cartFor = (v: CardVM) => {
-    const l = v.listing;
-    if (!isConsumer || v.sellers > 1 || !l || !l.directSaleEnabled || l.retailPricePerUnit == null) {
-      return undefined;
-    }
-    const pack: CartPack | null = v.pack
-      ? { label: v.pack.label, kg: v.pack.kg, units: v.pack.units }
-      : null;
-    // The opening amount, matching the listing screen: one pack, or — for a
-    // bulk-only crop — one kilo, or the smallest sensible slice of a bigger
-    // denomination.
-    const first = Math.min(pack ? pack.units : l.unit === 'KG' ? 1 : 0.5, l.remainingQuantity);
-    return {
-      inCart: quantityOf(l.id),
-      pack,
-      unit: l.unit,
-      max: l.remainingQuantity,
-      canAdd: first > 0,
-      onAdd: () => add(l, first),
-      onChange: (q: number) => setQuantity(l.id, q),
-      onRemove: () => remove(l.id),
-    };
-  };
 
   const pickCategory = (target: RailId | null) => {
     glide();
@@ -471,45 +365,12 @@ export default function StorefrontHomeScreen() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: cartCount > 0 ? 96 : 28 }}
+        contentContainerStyle={{ paddingBottom: 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
         {error ? <Text style={styles.errorLine}>{error}</Text> : null}
 
-        {shopping && !needsCity ? (
-          <View style={styles.cityBar}>
-            <Text style={styles.cityBarText}>Delivering to {city}</Text>
-            <PressScale onPress={() => setChangingCity(true)} scaleTo={0.94}>
-              <Text style={styles.cityBarChange}>change</Text>
-            </PressScale>
-          </View>
-        ) : null}
-
-        {needsCity ? (
-          /* Asked before any produce is shown. An order that cannot be
-             delivered is worse than an empty shop, so the city comes first. */
-          <View style={styles.cityGate}>
-            <Mono style={styles.cityGateEyebrow}>DELIVERY</Mono>
-            <Text style={styles.cityGateTitle}>Where should we deliver?</Text>
-            <Text style={styles.cityGateBody}>
-              Fresh produce travels short distances. Pick your city and we'll show
-              you the farms that can actually reach you.
-            </Text>
-            {cities.length === 0 ? (
-              <Text style={styles.cityGateNote}>
-                No farm is selling direct anywhere yet. Check back shortly — growers
-                open lots for retail as they harvest.
-              </Text>
-            ) : (
-              <CityRow cities={cities} current={city} saving={savingCity} onPick={chooseCity} />
-            )}
-            {city ? (
-              <PressScale onPress={() => setChangingCity(false)} scaleTo={0.94}>
-                <Text style={styles.cityGateCancel}>Cancel</Text>
-              </PressScale>
-            ) : null}
-          </View>
-        ) : browsing ? (
+        {browsing ? (
           <>
             {/* hero banner — the web banner with the mandi photo */}
             <View style={styles.banner}>
@@ -520,7 +381,7 @@ export default function StorefrontHomeScreen() {
                   <Pulse style={styles.liveDot} />
                   <Mono style={styles.bannerChipText}>
                     {listings.length > 0
-                      ? `LIVE · ${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                      ? `LIVE · ${listings.length} OPEN ${listings.length === 1 ? 'LOT' : 'LOTS'}`
                       : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                   </Mono>
                 </View>
@@ -544,13 +405,13 @@ export default function StorefrontHomeScreen() {
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
               <PromoCard tone="paper" emoji="🚜" title={t('Machines & equipment')} desc={t('Tractors, pumps and pipes — buy outright or hire by the day.')} onPress={() => nav.navigate('Equipment')} />
-              <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t('Household packs at the farmer’s own price.')} />
-              <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for you.')} />
+              <PromoCard tone="paper" emoji="📋" title={t('Demand board')} desc={t('See what buyers are asking for, and fill it at their posted price.')} />
+              <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for the buyer.')} />
               <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
             </ScrollView>
 
             {/* shop by category — web's tile row */}
-            <Text style={styles.sectionTitle}>{t('Shop by category')}</Text>
+            <Text style={styles.sectionTitle}>{t('Browse by category')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
               {CATEGORY_TILES.map((c) => (
                 <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
@@ -563,24 +424,10 @@ export default function StorefrontHomeScreen() {
             {loaded && items.length === 0 ? (
               <View style={styles.emptyMarket}>
                 <Text style={styles.emptyEmoji}>🌾</Text>
-                <Text style={styles.emptyMarketTitle}>
-                  {shopping
-                    ? `No farm near ${city} is selling direct yet.`
-                    : 'No lots are open right now.'}
-                </Text>
+                <Text style={styles.emptyMarketTitle}>No lots are open right now.</Text>
                 <Text style={styles.emptyMarketBody}>
-                  {shopping
-                    ? 'We only show produce that can actually reach you. Pull down to refresh, or pick another city.'
-                    : 'Pull down to refresh — new lots appear here the moment a farmer lists one.'}
+                  Pull down to refresh. New lots appear here the moment a farmer lists one.
                 </Text>
-                {shopping && cities.length > 0 ? (
-                  <CityRow
-                    cities={cities}
-                    current={city}
-                    saving={savingCity}
-                    onPick={chooseCity}
-                  />
-                ) : null}
               </View>
             ) : null}
 
@@ -600,7 +447,7 @@ export default function StorefrontHomeScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
                     {railItems.map((v) => (
-                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
+                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} onPress={() => openCard(v)} />
                     ))}
                   </ScrollView>
                 </View>
@@ -612,7 +459,7 @@ export default function StorefrontHomeScreen() {
             <View style={styles.howWrap}>
               {[
                 ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
-                ['02', 'You buy at their price', 'A pack for the week or a whole lot — the price you see is the farmer\'s own.'],
+                ['02', 'You buy at their price', 'Bid on a lot, or fill what a buyer has posted. The price you see is the farmer\'s own.'],
                 ['03', 'Escrow keeps it safe', 'Money held on-platform; released when you confirm delivery.'],
               ].map(([n, t, d]) => (
                 <View key={n} style={styles.howStep}>
@@ -646,7 +493,7 @@ export default function StorefrontHomeScreen() {
             {results.length > 0 ? (
               <View style={styles.grid}>
                 {results.map((v) => (
-                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
+                  <ProductCard key={v.key} vm={v} grid action={actionLabel} onPress={() => openCard(v)} />
                 ))}
               </View>
             ) : (
@@ -659,11 +506,6 @@ export default function StorefrontHomeScreen() {
         )}
       </ScrollView>
 
-      {/* The running basket, riding the bottom of the shelf. This screen is a
-          tab, so bottom:0 lands it directly on top of the tab bar with nothing
-          to measure — hence overTabBar. It renders nothing for anyone but a
-          shopper with something in it. */}
-      <CartBar overTabBar />
     </View>
   );
 }
@@ -797,39 +639,6 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
   );
 }
 
-// The cities that actually have direct-sale stock, as pills. Not a free-text
-// field: a typo would silently return an empty shelf, and only these cities
-// can be served at all.
-function CityRow({
-  cities, current, saving, onPick,
-}: {
-  cities: Array<{ city: string; state: string }>;
-  current: string;
-  saving: string;
-  onPick: (city: string) => void;
-}) {
-  return (
-    <View style={styles.cityWrap}>
-      {cities.map((c) => {
-        const on = current.toLowerCase() === c.city.toLowerCase();
-        return (
-          <PressScale
-            key={`${c.city}-${c.state}`}
-            onPress={() => onPick(c.city)}
-            scaleTo={0.94}
-            cardStyle={[styles.cityPill, on && styles.cityPillOn]}
-          >
-            <Text style={[styles.cityPillText, on && styles.cityPillTextOn]}>
-              {saving === c.city ? 'Saving…' : c.city}
-            </Text>
-            <Mono style={[styles.cityPillState, on && styles.cityPillTextOn]}>{c.state}</Mono>
-          </PressScale>
-        );
-      })}
-    </View>
-  );
-}
-
 function PromoCard({
   tone, emoji, title, desc, onPress,
 }: {
@@ -866,47 +675,21 @@ function CategoryTile({ label, emoji, onPress }: { label: string; emoji: string;
   );
 }
 
-// The basket wiring a card gets when the viewer can actually fill one. Built by
-// cartFor() in the screen above; undefined means the card keeps its plain
-// ADD / BID / VIEW label and just opens the lot.
-interface CardCart {
-  /** How much of this lot is already in the basket, in listing units. */
-  inCart: number;
-  pack: CartPack | null;
-  unit: Unit;
-  max: number;
-  canAdd: boolean;
-  onAdd: () => void;
-  onChange: (q: number) => void;
-  onRemove: () => void;
-}
-
 // Web .st-card: photo flush to the card top with the % OFF tag and grade chip
-// overlaid, live line, name, meta, stock, price + struck anchor + the ADD
-// control (or, once the lot is in the basket, the stepper that replaces it).
+// overlaid, live line, name, meta, stock, price + struck anchor, and a label
+// that opens the lot (BID for a buyer or guest, VIEW for a farmer).
 function ProductCard({
-  vm, onPress, width, grid, action, liveWord, shopping, cart,
+  vm, onPress, width, grid, action,
 }: {
   vm: CardVM;
   onPress: () => void;
   width?: number;
   grid?: boolean;
   action: string;
-  liveWord: string;
-  shopping: boolean;
-  cart?: CardCart;
 }) {
-  const pack = vm.pack;
-  // Off the same pair of numbers the card prints below — a grouped card can
-  // price its pack off one farmer's lot and its bulk line off another's, and a
-  // badge computed from the other lot would advertise a discount nobody gets.
-  const pct = pack ? pctOff(pack.price, pack.anchor) : pctOff(vm.price, vm.anchor);
+  const pct = pctOff(vm.price, vm.anchor);
   const img = vm.image ? mediaUrl(vm.image) : null;
-  // Whatever the next screen will actually offer: the pack goes in the basket,
-  // a direct-sale lot with no household pack (cotton, maize) is bought whole by
-  // the quintal, and everything else is a bidding lot. Farmers and buyers keep
-  // their own verb — they never see packs.
-  const label = !shopping || pack ? action : vm.shop ? 'BUY' : 'BID';
+  const label = action;
   return (
     <PressScale
       onPress={onPress}
@@ -935,10 +718,11 @@ function ProductCard({
           <Pulse style={styles.liveDotSm} />
           <Mono style={styles.liveText}>
             {vm.sellers > 1
-              ? `${vm.sellers} FARMERS · ${liveWord}`
+              ? `${vm.sellers} FARMERS · LIVE LOT`
+              // Rounded. Left raw this prints "★ 84.2601595017465" on a card.
               : vm.trust != null
-                ? `★ ${vm.trust} · ${liveWord}`
-                : liveWord}
+                ? `★ ${Math.round(vm.trust)} · LIVE LOT`
+                : 'LIVE LOT'}
           </Mono>
         </View>
         <Text style={styles.cardName} numberOfLines={1}>
@@ -948,64 +732,24 @@ function ProductCard({
         <Text style={styles.cardMeta} numberOfLines={1}>
           {vm.sellersMeta ?? `${vm.location}, ${vm.state}`}
         </Text>
-        {/* running low beats pack framing — urgency is the more useful line */}
         <Text style={[styles.stock, vm.low && styles.stockLow]} numberOfLines={1}>
           {vm.low
             ? `Only ${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} left`
-            : pack
-              ? `${pack.label} pack · ${money(pack.perKg)}/${pack.perKgLabel}`
-              : `${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} available`}
+            : `${vm.qty.toLocaleString('en-IN')} ${unitLabel(vm.unit)} available`}
         </Text>
         <View style={styles.priceFoot}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={styles.priceRow}>
               {vm.sellers > 1 ? <Text style={styles.fromWord}>from</Text> : null}
-              <Text style={styles.price}>{money(pack ? pack.price : vm.price)}</Text>
-              <Text style={styles.perUnit}>/{pack ? pack.suffix : unitLabel(vm.unit)}</Text>
+              <Text style={styles.price}>{money(vm.price)}</Text>
+              <Text style={styles.perUnit}>/{unitLabel(vm.unit)}</Text>
             </View>
-            {pct > 0 ? <Text style={styles.strike}>{money(pack ? pack.anchor : vm.anchor)}</Text> : null}
+            {pct > 0 ? <Text style={styles.strike}>{money(vm.anchor)}</Text> : null}
           </View>
-          {/* ADDING HAPPENS ON THE CARD. The shelf is where a basket gets
-              filled, so ADD puts the lot straight in and then turns into the
-              quantity control — the shopper never leaves the row they are
-              reading to change their mind about how much. Everyone else (a
-              guest, a farmer, a buyer, a grouped card) keeps a plain label
-              that opens the lot. */}
-          {cart && cart.inCart > 0 ? (
-            <QuantityStepper
-              value={cart.inCart}
-              onChange={cart.onChange}
-              unit={cart.unit}
-              pack={cart.pack}
-              max={cart.max}
-              size="sm"
-              showUnit={false}
-              onEmpty={cart.onRemove}
-            />
-          ) : cart ? (
-            <Pressable
-              onPress={cart.canAdd ? cart.onAdd : undefined}
-              hitSlop={6}
-              accessibilityLabel={`Add ${vm.name} to cart`}
-              style={[styles.buyBtn, !cart.canAdd && styles.buyBtnOff]}
-            >
-              <Text style={styles.buyBtnText}>ADD</Text>
-            </Pressable>
-          ) : (
-            <View style={styles.buyBtn}>
-              <Text style={styles.buyBtnText}>{label}</Text>
-            </View>
-          )}
+          <View style={styles.buyBtn}>
+            <Text style={styles.buyBtnText}>{label}</Text>
+          </View>
         </View>
-        {/* the bulk lane — same lot, wholesale terms, for buyers who bid by the quintal */}
-        {pack ? (
-          <View style={styles.bulkRow}>
-            <Mono style={styles.bulkTag}>BULK</Mono>
-            <Text style={styles.bulkText} numberOfLines={1}>
-              {money(vm.floor)}/{unitLabel(vm.unit)} · {vm.qty.toLocaleString('en-IN')} {unitLabel(vm.unit)}
-            </Text>
-          </View>
-        ) : null}
       </View>
     </PressScale>
   );

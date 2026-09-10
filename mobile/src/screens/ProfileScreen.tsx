@@ -51,8 +51,8 @@ export default function ProfileScreen() {
   if (!user) return null;
 
   const isFarmer = user.role === 'FARMER';
-  // A shopper has no demand board: the routes are not in the consumer stack and
-  // the server refuses the feed to anyone but a farmer or a buyer.
+  // The demand board is for the two trading roles. A CONSUMER never reaches
+  // this screen, since they get JoinScreen until an application is approved.
   const trades = isFarmer || user.role === 'BUYER';
   const farm = user.farmerProfile;
   const photo = mediaUrl(user.avatar);

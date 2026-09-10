@@ -15,7 +15,7 @@ export type AuthStackParamList = {
 // they try to act (buy, bid, sell, open the profile).
 export type GuestStackParamList = {
   GuestHome: undefined;
-  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
+  CropSellers: { crop: string; preview?: Listing[] };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -53,7 +53,7 @@ export type RootStackParamList = {
   MyRequirements: undefined;
   CreateRequirement: undefined;
   Auction: { listingId?: string } | undefined;
-  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
+  CropSellers: { crop: string; preview?: Listing[] };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -81,29 +81,7 @@ export type FarmerStackParamList = {
   EditProfile: undefined;
   Contracts: undefined;
   Helper: undefined;
-  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
-  ListingDetail: { id: string; preview?: Listing };
-  Rates: { tab?: 'rates' | 'forecast' } | undefined;
-  Schemes: undefined;
-  Equipment: undefined;
-  Notifications: undefined;
-};
-
-// Consumer app — buy any quantity directly from a farmer, no bidding. Cart is
-// a tab rather than a floating button: it is the one surface a shopper returns
-// to over and over, and a tab with a count badge is where a phone user looks
-// for it. The sticky CartBar on the shelf is the shortcut, not the only door.
-export type ConsumerTabParamList = {
-  Home: undefined;
-  Cart: undefined;
-  Orders: undefined;
-  You: undefined;
-};
-
-export type ConsumerStackParamList = {
-  ConsumerTabs: undefined;
-  Checkout: undefined;
-  CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
+  CropSellers: { crop: string; preview?: Listing[] };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Schemes: undefined;
@@ -138,9 +116,7 @@ export type PartnerStackParamList = {
   Equipment: undefined;
 };
 
-// ProfileScreen (the "You" tab) is mounted in the buyer, farmer, and consumer
-// stacks, so its navigation targets span all three param lists. Role gates in
-// the screen decide which rows — and therefore which routes — are reachable.
-export type ProfileParamList = RootStackParamList &
-  FarmerStackParamList &
-  ConsumerStackParamList;
+// ProfileScreen (the "You" tab) is mounted in both the buyer and farmer stacks,
+// so its navigation targets span both param lists. Role gates in the screen
+// decide which rows, and therefore which routes, are reachable.
+export type ProfileParamList = RootStackParamList & FarmerStackParamList;
