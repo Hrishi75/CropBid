@@ -257,33 +257,6 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
   return data;
 }
 
-// --- Consumer direct purchase (instant-buy, no negotiation) ---
-// deliveryAddress/contactPhone are optional: when omitted the server snapshots
-// the consumer's profile phone/location onto the order for the seller.
-//
-// idempotencyKey identifies the ORDER being intended, not the request. Send the
-// same one on every retry and a purchase that already went through comes back
-// instead of happening twice; see lib/idempotency.ts.
-export async function directPurchase(input: {
-  listingId: string;
-  quantity: number;
-  /**
-   * The unit `quantity` is denominated in. Optional on the wire, but the server
-   * only runs its unit-agreement guard when it is present, so omitting it means
-   * a seller who re-denominates an active listing mid-basket has the order
-   * silently rescaled instead of refused: a number measured in kilograms read
-   * as quintals is a hundredfold order, charged and decremented as such.
-   * Always send it, and send the LIVE unit rather than the cart's snapshot.
-   */
-  unit?: Unit;
-  deliveryAddress?: string;
-  contactPhone?: string;
-  idempotencyKey?: string;
-}): Promise<Bid> {
-  const { data } = await api.post<Bid>('/bids/direct-purchase', input);
-  return data;
-}
-
 // --- Demand board (the reverse marketplace) ---------------------------------
 // Buyers post what they need; farmers fill it at the posted price or counter
 // with their own. The board is READ-ONLY for buyers — the fill and counter
