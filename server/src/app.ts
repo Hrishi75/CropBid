@@ -64,8 +64,22 @@ app.use(helmet({
 }));
 
 // CORS — Cross-Origin Resource Sharing
+//
+// An allowlist rather than a single origin, because two front ends now share
+// this API: CropBid (client/) and CropBid Daily (cropbid-daily/). config.
+// clientUrl stays the primary and is always allowed; CORS_ORIGINS adds the
+// rest. See config.corsOrigins for why the two cannot be the same setting.
+const allowedOrigins = [config.clientUrl, ...config.corsOrigins];
+
 app.use(cors({
-  origin: config.clientUrl,
+  origin(origin, callback) {
+    // No Origin header means the caller is not a browser: curl, a health
+    // check, a server-to-server call, or a native app. Native is a
+    // first-class client here, so refusing these would break the phone apps
+    // while protecting nothing — CORS only ever constrains browsers.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  },
   credentials: true,
 }));
 

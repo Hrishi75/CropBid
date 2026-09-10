@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "CropBid Daily",
+    "slug": "cropbid-daily",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "cropbiddaily",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "in.cropbid.daily"
+    },
+    "android": {
+      "package": "in.cropbid.daily",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-secure-store", "expo-font"]
+  }
+}

@@ -25,6 +25,14 @@ router.get('/cities', browseController.getRetailCities);
 // cart, not the window.
 router.get('/shops', browseController.getRetailShops);
 router.get('/shops/:id', browseController.getRetailShop);
+
+// Can we reach a point at all, and on which lane. Public: this is what a
+// stranger asks before they have any reason to make an account.
+router.get('/serviceability', browseController.getServiceability);
+
+// "Come to my area." Public for the same reason, and the signal is worth more
+// than the sign-up it would cost to collect it.
+router.post('/coverage-request', browseController.postCoverageRequest);
 router.get('/smart-match', browseController.smartMatch);
 
 export default router;

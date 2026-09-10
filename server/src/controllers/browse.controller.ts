@@ -91,7 +91,31 @@ export async function getRetailShops(req: Request, res: Response, next: NextFunc
       res.status(400).json({ error: true, message: 'Pick a city first', statusCode: 400 });
       return;
     }
-    res.json({ shops: await browseService.listRetailShops({ city }) });
+    // Where the shopper is, when they have shared it. Both or neither: half a
+    // coordinate is not a position, and treating a lone latitude as one would
+    // put every shop on the same meridian as the shopper.
+    //
+    // Silently ignored when malformed rather than rejected. A bad reading from
+    // a phone's GPS should widen the results to the whole city, not refuse to
+    // show a storefront.
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    const hasPosition =
+      Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+    res.json({
+      shops: await browseService.listRetailShops({
+        city,
+        ...(hasPosition ? { latitude: lat, longitude: lng } : {}),
+      }),
+      /**
+       * Whether the list was narrowed to shops that can actually reach them.
+       * The app needs to tell "no shop delivers to you" apart from "no shop has
+       * stock in this city", and those are different sentences.
+       */
+      locatedBy: hasPosition ? 'coordinates' : 'city',
+    });
   } catch (error) {
     next(error);
   }
@@ -110,6 +134,69 @@ export async function getRetailShop(req: Request, res: Response, next: NextFunct
       return;
     }
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+// GET /api/browse/serviceability?lat=&lng= — can we reach this point, and how
+//
+// Public and unauthenticated: this is the question a stranger asks before they
+// have any reason to make an account.
+export async function getServiceability(req: Request, res: Response, next: NextFunction) {
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+
+    // Rejected rather than ignored here, unlike on the shop list. There the
+    // fallback is a wider search; here the coordinates ARE the question, and
+    // answering "not serviceable" to a malformed one would be a lie.
+    if (
+      !Number.isFinite(lat) || !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 || Math.abs(lng) > 180
+    ) {
+      res.status(400).json({ error: true, message: 'Send a valid lat and lng', statusCode: 400 });
+      return;
+    }
+
+    res.json(await browseService.checkServiceability({ latitude: lat, longitude: lng }));
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/browse/coverage-request — "come to my area"
+//
+// Public: a shopper outside the delivery area has no account and no reason to
+// make one, and putting a sign-up in front of this would lose the signal it
+// exists to capture.
+export async function postCoverageRequest(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { latitude, longitude, areaLabel, phone } = req.body ?? {};
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (
+      !Number.isFinite(lat) || !Number.isFinite(lng) ||
+      Math.abs(lat) > 90 || Math.abs(lng) > 180
+    ) {
+      res.status(400).json({ error: true, message: 'Send a valid latitude and longitude', statusCode: 400 });
+      return;
+    }
+
+    const request = await browseService.recordCoverageRequest({
+      latitude: lat,
+      longitude: lng,
+      areaLabel: typeof areaLabel === 'string' ? areaLabel.slice(0, 200) : null,
+      phone: typeof phone === 'string' ? phone.slice(0, 20) : null,
+      // Attached when a signed-in shopper asks, absent otherwise. This route is
+      // not behind `authenticate`, so req.user is only set when an upstream
+      // optional-auth middleware has run; either way the row is valid.
+      userId: req.user?.userId ?? null,
+    });
+
+    res.status(201).json({ id: request.id });
   } catch (error) {
     next(error);
   }

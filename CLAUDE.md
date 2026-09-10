@@ -51,6 +51,8 @@ The reason for all three is quality: we inspect the goods on the way through, an
 - **`paidBy` is not an input.** `bookShipment` writes `FARMER` unconditionally and the request schema has no field for it, so there is no request that can bill the buyer for freight. `SPLIT` stays in the enum only for rows booked before this rule.
 - **The seller is told twice, before the money moves**: a lede on Deliveries, and a `Delivery (paid by seller)` line in the settlement breakdown on `TransactionDetail`. The breakdown shows an amount only once a shipment exists, and says "on booking" before that, because a placeholder on a settlement screen reads as a real figure.
 
+**The Fresh lane's source is not in the data.** The schema has no mandi: the only mention is a comment on the `QUINTAL` unit, and AGMARKNET supplies reference *prices*, not stock. So `laneFor()` resolves Fresh to whoever is not a `LOCAL_SHOP`, which today means individual farm sellers, and a card in the Fresh tab can read "Farm" under a promise that says mandi. Making the promise true needs a real source on the listing, not a rewording.
+
 **Unresolved, and worth resolving before this scales:** flat 2% now has to cover software, escrow, freight booking *and* a person driving out to look at the goods. That may want a wholesale-tier fee. It is a decision nobody has taken, not a detail.
 
 ## 3. The consumer model (shipped 2026-09-02, #127)
@@ -76,6 +78,33 @@ Derived from `SellerType`, **never stored**, because it is a function of who is 
 
 Shown on the storefront, shop page, cards, cart (grouped, so a two-delivery basket says so) and checkout.
 
+### 3b. Quick is bounded by kilometres, not by city (shipped 2026-09-10)
+
+**A city is far too coarse to promise same-day delivery on.** Nagpur is roughly 220 km2: a shop in Narendra Nagar cannot serve Hingna, 14.3 km west, however enthusiastically it says yes. Filtering retail by `Listing.location` alone was doing exactly that.
+
+`FarmerProfile` now carries `latitude`, `longitude` and `deliveryRadiusKm` (default 5, per shop because a bicycle covers 2 km and a tempo covers 8). `GET /browse/shops` takes optional `lat`/`lng` and returns `distanceKm` per shop plus a `locatedBy` of `coordinates` or `city`.
+
+- **Plain columns and Haversine, not PostGIS.** At a few hundred shops the extension buys nothing `server/src/lib/geo.ts` does not already do. The query narrows on an indexed lat/lng bounding box first, because Haversine cannot use an index; the box is deliberately a **superset** of the circle, since one that clipped it would silently drop shops genuinely in range, and that is the one failure nobody would notice. There is a test asserting exactly that.
+- **The radius applies to `LOCAL_SHOP` only.** Fresh is a van route out of the mandi, not a boy on a bicycle, so a shop-sized radius is meaningless for it and farms bypass the filter.
+- **A shop with no coordinates is excluded from Quick**, not shown anyway. Showing it would promise a delivery nobody verified, and the exclusion is what makes capturing coordinates at onboarding matter. **Nothing captures them yet**: onboarding has no map pin, so every real shop is invisible in Quick until it does. Only the seeded five have coordinates.
+- **Location is an accelerator, never a gate.** Permission denied or no fix falls back to the whole city and says so. The position is remembered for a day (`lib/position.ts`) so the prompt is once-per-install, not a launch ritual.
+- **The two empty states are different sentences**, which is the point of `locatedBy`: "there are shops in Nagpur, but none close enough to deliver to you" is true and useful, where "no shops in Nagpur" would be false.
+
+**Serviceability has three answers, not two** (`checkServiceability`, `GET /browse/serviceability?lat=&lng=`). Quick and Fresh have different geometry, so a single covered/not-covered flag is wrong: somebody in Hingna has no shop within reach but the morning van does get to them, and telling them "we do not deliver here" would be false.
+
+| Reach | Shopper sees |
+|---|---|
+| Quick + Fresh | The normal storefront |
+| Fresh only | Shelf, with "no shop reaches you, Fresh arrives tomorrow morning" |
+| Neither | `NotHereYet`: "We're not in your area yet", plus a coverage request |
+
+- **Quick is measured per shop** (its own `deliveryRadiusKm`), because it is one person riding out from that counter. **Fresh is measured against the CITY**, from the mean of the pinned sellers in it, because a van leaving the mandi is defined by where it delivers, not where the produce grew. Measuring Fresh against a farm's coordinates asks the wrong question: a farm 200 km out supplying the Nagpur mandi still serves Nagpur. `FRESH_RANGE_KM` is 25, one constant in one place, standing in for routes that do not exist.
+- **Derived from live stock, never a coverage table.** A table is a second thing to keep true and it goes stale in the worst direction, still claiming an area after the last shop there stopped selling.
+- **`CoverageRequest` captures the misses**, and is deliberately NOT the existing `Waitlist` model (an email address for the marketing site). Coordinates rather than a pincode: it is what the phone already knows, and a cluster of points shows the shape of demand in a way a list of area names cannot. Phone optional, asked last, because it is a second decision at a moment the shopper is already disappointed. Never deduplicated: two people on one street is twice the reason to go there. `onDelete: SetNull` on the user, so a closed account does not erase the fact that somebody there wanted us.
+- **The reach check follows the position**, including one restored on launch, not only one freshly requested. Somebody who saved a position in Pune and has since moved to Mumbai has to be told, and will never tap the button again to find out.
+
+**Address geocoding is not the plan.** Indian addresses geocode badly ("near Shivaji Chowk, behind the temple"), so the shop should drop a pin at onboarding. That is a UI nobody has built.
+
 ### Kilograms
 
 The retail surface is kg end to end, showing grams below 1 kg. A picker opens at **1 kg** (`Math.min(1, stock)`), steps by 500 g, and **500 g is the floor** (`STEP_KG`), where the minus button becomes a remove.
@@ -88,6 +117,22 @@ The retail surface is kg end to end, showing grams below 1 kg. A picker opens at
 - `/shop/:id` is one lot (consumer-only)
 
 Different words on purpose: a path pair differing by one letter gets mixed up at 2am.
+
+### 3a. Two apps, one server (started 2026-09-09)
+
+**`mobile/` is CropBid, for farmers and buyers. `cropbid-daily/` is CropBid Daily, for households.** Both talk to `server/`. There is no second backend and there will not be one.
+
+The split is about who is holding the phone. A farmer opens the app to a national market priced in quintals; a household opens it to four shops in delivery range priced in grams. One app serving both either interrogates you at launch or shows a wholesale surface to somebody buying 500 g of coriander. Roles are exclusive on the server anyway (see §4), so a single binary would gate half its screens on a role check regardless.
+
+- **Daily is shop-first, and that is the whole point.** It reads `GET /browse/cities`, `/browse/shops?city=`, `/browse/shops/:id?city=`. All three already existed. **The business app never called any of them.**
+- **Bundle ids are separate** (`in.cropbid.daily` vs `in.cropbid.app`) and so is the stored refresh token (`cropbid.daily.refreshToken`). Both apps can sit on one phone, and a shared key would let one app's sign-out revoke the other's session.
+- **CORS is now an allowlist**, not a single origin. `config.clientUrl` stays singular because it is also the base for links inside transactional emails; `CORS_ORIGINS` carries the rest. A request with no `Origin` header is allowed, because that is every native build: CORS only ever constrains browsers.
+
+**The business app's storefront is still built on the model §3 rejected**, and it is the reason Daily exists as its own app rather than a refactor. `StorefrontHomeScreen` renders category rails ("Fresh Vegetables", "Milk & Dairy", "Cotton & Fibre") and aggregates sellers into cards reading `Tomato · 2 FARMERS · from ₹24/kg`. It also counts "14 FARMER LOTS IN PUNE" when 13 of those 14 are `LOCAL_SHOP`, and interpolates `trustScore` unrounded, so a card shows `★ 84.2601595017465`. Daily rounds it.
+
+**The plan is to strip consumer surfaces out of `mobile/` once Daily carries them**, not before: `CartContext`, `QuantityStepper`, `BillDetails`, `CartBar` and `RazorpayCheckout` are the pieces Daily still has to lift, and deleting them first means recovering them from git history.
+
+**Daily is now a working shopper app**: three tabs (Shop, Basket, You), with **order history inside You rather than on the bar** (a tab is for what you switch to many times a session, and orders is not that; it also frees the slot that puts Basket under a thumb). A floating basket bar sits over the shop screens, showing the cart snapshot rather than the re-priced bill because it must paint while the shopper browses. A kilogram cart that re-prices every line against the live listing before billing, phone-code sign-in pinned to `CONSUMER`, and order history. Two lanes are a visible choice rather than a per-card badge: **Quick** (local shops, same day) and **Fresh** (the morning mandi, order before midnight for next-morning delivery, `lib/freshWindow.ts`). A guest's device city is adopted onto their account at sign-in, because the server refuses a purchase from an account with no city and a guest would otherwise hit that wall at checkout. **Knowingly unbuilt:** Razorpay in this app, order cancellation, and cross-shop search. **Shop hours are the first thing that will make it lie:** `FarmerProfile` has no open/close time, so "Arrives today" keeps promising after the shop has shut. Per-shop minimum order and delivery fee do not exist either, and a ₹40 order of coriander cannot pay for a delivery run.
 
 ## 4. Selling is gated
 
@@ -153,6 +198,21 @@ Ports matter: **API on 5001** (the Vite proxy target; 5000 is macOS ControlCente
 ```bash
 # API: pass an explicit local DATABASE_URL; server/.env points at production
 DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run dev
+```
+
+Running either phone app against it needs its origin allowed, because CORS is an
+allowlist (§3a). Web preview only; a native build sends no `Origin` at all:
+
+```bash
+DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 CLIENT_URL=http://localhost:5173 CORS_ORIGINS=http://localhost:8081,http://localhost:8082 npm run dev
+```
+
+Then the app itself. **`EXPO_PUBLIC_API_URL` defaults to production**, so leaving
+it unset means quietly reading live data:
+
+```bash
+# CropBid Daily, from cropbid-daily/
+EXPO_PUBLIC_API_URL=http://localhost:5001/api npx expo start --web --port 8082
 ```
 
 - Postgres runs natively (pg@18 on :5432). `docker compose` does **not** work on this machine.

@@ -14,6 +14,7 @@
 import { prisma } from '../lib/prisma';
 import { KG_PER_UNIT } from '../utils/units';
 import { PUBLIC_SELLER_SELECT } from './publicSeller';
+import { distanceKm, roundKm } from '../lib/geo';
 
 
 interface BrowseQuery {
@@ -336,6 +337,18 @@ function displayName(seller: { businessName: string | null; user: { name: string
 export interface RetailShopQuery {
   /** City the shopper is buying in. Required: retail never crosses cities. */
   city: string;
+  /**
+   * Where the shopper actually is. Optional, because a shopper who has denied
+   * location permission must still be able to shop.
+   *
+   * WHEN GIVEN, IT NARROWS THE QUICK LANE TO SHOPS THAT CAN REACH THEM. A city
+   * is far too coarse for a same-day promise: Nagpur is roughly 220 km2, so a
+   * shop in Narendra Nagar cannot serve Hingna 14 km west. Without coordinates
+   * the city filter is all there is, and the shopper is told so rather than
+   * shown a shop that will not come.
+   */
+  latitude?: number;
+  longitude?: number;
 }
 
 /**
@@ -364,10 +377,25 @@ export async function listRetailShops(query: RetailShopQuery) {
       location: true,
       state: true,
       updatedAt: true,
-      farmer: { select: PUBLIC_SELLER_SELECT },
+      // Extends the shared select rather than widening it: the geo columns are
+      // needed here to work out reach, and nothing else that renders a seller
+      // has any use for them.
+      farmer: {
+        select: {
+          ...PUBLIC_SELLER_SELECT,
+          latitude: true,
+          longitude: true,
+          deliveryRadiusKm: true,
+        },
+      },
     },
     orderBy: { updatedAt: 'desc' },
   });
+
+  const shopper =
+    query.latitude != null && query.longitude != null
+      ? { latitude: query.latitude, longitude: query.longitude }
+      : null;
 
   const byShop = new Map<string, {
     id: string;
@@ -387,6 +415,13 @@ export async function listRetailShops(query: RetailShopQuery) {
     /** First image found, for the card. */
     image: string | null;
     lastRestockedAt: Date;
+    /**
+     * How far the shop is, in kilometres. Null when the shopper's position is
+     * unknown, or the shop has no coordinates on file.
+     */
+    distanceKm: number | null;
+    /** How far this shop will go. Shown as "delivers within 5 km". */
+    radiusKm: number;
   }>();
 
   for (const l of listings) {
@@ -420,6 +455,11 @@ export async function listRetailShops(query: RetailShopQuery) {
         fromPricePerKg: perKg,
         image: l.images[0] ?? null,
         lastRestockedAt: l.updatedAt,
+        distanceKm:
+          shopper && seller.latitude != null && seller.longitude != null
+            ? roundKm(distanceKm(shopper, { latitude: seller.latitude, longitude: seller.longitude }))
+            : null,
+        radiusKm: seller.deliveryRadiusKm,
       });
       continue;
     }
@@ -433,9 +473,37 @@ export async function listRetailShops(query: RetailShopQuery) {
     if (existing.image == null && l.images[0]) existing.image = l.images[0];
   }
 
+  let shops = [...byShop.values()];
+
+  // ---- Reach ----------------------------------------------------------------
+  // Only once the shopper's position is known. Without it there is nothing to
+  // measure against, and hiding every shop would be a worse answer than showing
+  // the city's and saying the distance is unknown.
+  if (shopper) {
+    shops = shops.filter((shop) => {
+      // A FARM or wholesaler is the Fresh lane: a van route out of the mandi,
+      // not a boy on a bicycle, so a shop-sized radius does not apply to it.
+      if (shop.sellerType !== 'LOCAL_SHOP') return true;
+
+      // A shop with no coordinates cannot be checked, so it is left out rather
+      // than shown on a promise nobody has verified. That is also what makes
+      // capturing coordinates at onboarding matter.
+      if (shop.distanceKm == null) return false;
+
+      return shop.distanceKm <= shop.radiusKm;
+    });
+
+    // Nearest first once distance is known. It is the thing a shopper is
+    // actually choosing on for same-day, ahead of how much is on the shelf.
+    return shops.sort((a, b) =>
+      (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) ||
+      b.itemCount - a.itemCount ||
+      a.name.localeCompare(b.name));
+  }
+
   // Shops holding more get shown first: a counter with one sad lot of okra is
   // a worse first impression than one with twelve things on it.
-  return [...byShop.values()].sort((a, b) =>
+  return shops.sort((a, b) =>
     b.itemCount - a.itemCount || a.name.localeCompare(b.name));
 }
 
@@ -496,4 +564,154 @@ export async function getRetailShop(sellerId: string, city: string) {
     },
     listings,
   };
+}
+
+
+// =============================================================================
+// Serviceability — can we reach this point at all, and on which lane
+// =============================================================================
+// The answer is almost never a plain yes or no, because the two lanes have
+// different geometry. Quick is bounded by how far a shop will ride; Fresh is
+// the morning mandi van, which covers a whole city and its edges on one run.
+//
+// So the useful answer is WHICH LANE, not whether. Somebody in Hingna has no
+// shop within reach and would be told "we do not deliver here" by a single
+// flag, which is false: the van reaches them by tomorrow morning.
+// =============================================================================
+
+/**
+ * How far the morning van is taken to reach from where stock actually sits.
+ *
+ * A placeholder for a real route, which does not exist: there is no van, no
+ * route table and no mandi in the schema (see CLAUDE.md §3b). 25 km is roughly
+ * a city and its outskirts, which is the shape of the promise being made, and
+ * it is deliberately one constant in one place so that replacing it with real
+ * routes is a single edit rather than a hunt.
+ */
+export const FRESH_RANGE_KM = 25;
+
+export interface ServiceabilityResult {
+  /** A neighbourhood shop can reach this point today. */
+  quick: boolean;
+  /** The morning mandi run reaches it. */
+  fresh: boolean;
+  /** The city whose stock is closest, so the app can offer to switch to it. */
+  nearestCity: string | null;
+  /** How far that city's nearest stock is, in km. Null when nothing has coordinates. */
+  nearestKm: number | null;
+}
+
+/**
+ * Whether anything can reach `point`, and on which lane.
+ *
+ * Reads live retail stock rather than a coverage table on purpose. A coverage
+ * table is a second thing to keep true, and it goes stale in the worst
+ * direction: it keeps claiming an area after the last shop there has stopped
+ * selling. Deriving it from stock cannot make that mistake.
+ */
+export async function checkServiceability(point: {
+  latitude: number;
+  longitude: number;
+}): Promise<ServiceabilityResult> {
+  const listings = await prisma.listing.findMany({
+    where: RETAIL_STOCK,
+    select: {
+      location: true,
+      farmer: {
+        select: {
+          sellerType: true,
+          latitude: true,
+          longitude: true,
+          deliveryRadiusKm: true,
+        },
+      },
+    },
+  });
+
+  // A city's position, taken as the mean of the sellers in it that have
+  // coordinates.
+  //
+  // WHY A CITY AND NOT THE FARM. Fresh is a van leaving the mandi, so what
+  // decides whether it reaches a shopper is where it DELIVERS, not where the
+  // produce was grown. Measuring against the farm's own coordinates asks the
+  // wrong question entirely: a farm 200 km out supplying the Nagpur mandi
+  // serves Nagpur, and a shopper in Nagpur is 200 km from that farm.
+  //
+  // Shops cluster in the city they serve, so their mean is a fair stand-in for
+  // it until there are real routes to measure against.
+  const cityPoints = new Map<string, { latSum: number; lngSum: number; n: number; fresh: boolean }>();
+
+  let quick = false;
+  let nearestCity: string | null = null;
+  let nearestKm: number | null = null;
+
+  for (const l of listings) {
+    const f = l.farmer;
+    const city = cityPoints.get(l.location) ?? { latSum: 0, lngSum: 0, n: 0, fresh: false };
+
+    // Any non-shop stock in this city means the Fresh lane runs to it.
+    if (f.sellerType !== 'LOCAL_SHOP') city.fresh = true;
+
+    if (f.latitude != null && f.longitude != null) {
+      city.latSum += f.latitude;
+      city.lngSum += f.longitude;
+      city.n += 1;
+
+      const km = distanceKm(point, { latitude: f.latitude, longitude: f.longitude });
+      if (nearestKm == null || km < nearestKm) {
+        nearestKm = km;
+        nearestCity = l.location;
+      }
+
+      // Quick IS per shop: it is one person riding out from that specific
+      // counter, so the shop's own radius is exactly the right measure.
+      if (f.sellerType === 'LOCAL_SHOP' && km <= f.deliveryRadiusKm) quick = true;
+    }
+
+    cityPoints.set(l.location, city);
+  }
+
+  let fresh = false;
+  for (const city of cityPoints.values()) {
+    // A city nobody has pinned yet cannot be measured against.
+    if (!city.fresh || city.n === 0) continue;
+    const centre = { latitude: city.latSum / city.n, longitude: city.lngSum / city.n };
+    if (distanceKm(point, centre) <= FRESH_RANGE_KM) {
+      fresh = true;
+      break;
+    }
+  }
+
+  return {
+    quick,
+    fresh,
+    nearestCity,
+    nearestKm: nearestKm == null ? null : roundKm(nearestKm),
+  };
+}
+
+/**
+ * Record that somebody wanted us where we are not.
+ *
+ * Never deduplicated. Two people asking from the same street is twice the
+ * reason to go there, and collapsing them would hide exactly the density that
+ * makes the decision.
+ */
+export async function recordCoverageRequest(input: {
+  latitude: number;
+  longitude: number;
+  areaLabel?: string | null;
+  phone?: string | null;
+  userId?: string | null;
+}) {
+  return prisma.coverageRequest.create({
+    data: {
+      latitude: input.latitude,
+      longitude: input.longitude,
+      areaLabel: input.areaLabel?.trim() || null,
+      phone: input.phone?.trim() || null,
+      userId: input.userId ?? null,
+    },
+    select: { id: true, createdAt: true },
+  });
 }

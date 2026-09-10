@@ -100,6 +100,20 @@ export const config = {
   // Client URL (for CORS + links inside transactional emails)
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
+  // Extra browser origins allowed to call this API, comma-separated.
+  //
+  // clientUrl cannot carry these: it is also the base for links inside
+  // transactional emails, and an email needs exactly one URL. CropBid and
+  // CropBid Daily are two front ends against this one server, so the allowed
+  // set is genuinely a list while the link base stays singular.
+  //
+  // Native builds are unaffected either way. CORS is a browser rule, and a
+  // React Native app sends no Origin header at all.
+  corsOrigins: (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
+
   // SMS (phone sign-in codes). Provider-agnostic: set SMS_PROVIDER to
   // "msg91" or "twilio" and fill that provider's keys. Leave it unset in
   // development — codes are printed to the server console instead of sent, so

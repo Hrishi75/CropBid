@@ -206,6 +206,10 @@ model User {
   // any live session dies at its next refresh. Reversible via the admin panel.
   suspended   Boolean  @default(false)
 
+  /// Areas this shopper asked us to cover. Optional on both sides: most are
+  /// left by guests, before anyone has a reason to make an account.
+  coverageRequests CoverageRequest[]
+
   // Refresh token for JWT auth — stored hashed, null when logged out
   // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
   refreshToken String?
@@ -364,6 +368,35 @@ model FarmerProfile {
   // Location
   country        String   @default("India")
   state          String   // e.g., "Maharashtra", "Punjab", "California"
+
+  // --- Where the shop physically is, and how far it will actually go ---
+  //
+  // A city is far too coarse to promise same-day delivery on. Nagpur is ~220
+  // km2: a shop in Narendra Nagar cannot serve Hingna, 14 km west, however
+  // enthusiastically it says yes. So the Quick lane is filtered by real
+  // distance, and these are what make that possible.
+  //
+  // NULLABLE ON PURPOSE. Every seller onboarded before this existed has no
+  // coordinates, and a shop whose location is unknown cannot be distance
+  // checked. Such a shop is EXCLUDED from the Quick lane rather than shown
+  // anyway: showing it would promise a delivery nobody has verified. That is
+  // also the pressure that gets coordinates captured at onboarding.
+  //
+  // Plain columns, not PostGIS. At a few hundred shops a bounding-box prefilter
+  // plus exact Haversine is quicker to read and needs no extension; PostGIS
+  // earns its place at a scale this is nowhere near.
+  latitude       Float?
+  longitude      Float?
+
+  // How far this shop delivers, in kilometres. Per shop because it is a real
+  // difference: a boy on a bicycle covers 2 km, a shop with a tempo covers 8,
+  // and one number for all of them is wrong for most of them.
+  deliveryRadiusKm Float  @default(5)
+
+  /// Serves the bounding-box prefilter on the shop search. Haversine itself
+  /// cannot use an index, so the query narrows on lat/lng ranges first and does
+  /// the exact distance only on what survives.
+  @@index([latitude, longitude])
 
   // India-specific fields (shown conditionally when country is India)
   fpoName        String?  // Farmer Producer Organization name
@@ -851,6 +884,54 @@ model Waitlist {
   id        String   @id @default(uuid())
   email     String   @unique
   createdAt DateTime @default(now())
+}
+
+// =============================================================================
+// Model: CoverageRequest — somebody wanted us somewhere we are not
+// =============================================================================
+// A shopper who opens Daily outside the delivery area is the most useful signal
+// the product gets: they wanted to buy and could not. Losing that to an
+// apologetic empty screen throws away the only map of where to open next.
+//
+// DELIBERATELY NOT the Waitlist model above. That one is an email address for
+// the marketing site and nothing else. This is a place on a map, and the two
+// answer different questions: Waitlist says "tell me when you launch",
+// this says "come to Hingna".
+//
+// Coordinates rather than a pincode or a typed area name. It is what the phone
+// already knows, it needs no lookup table to be useful, and a cluster of points
+// shows the shape of the demand in a way a list of area names cannot.
+//
+// A phone number is optional, because asking for one is a second decision at a
+// moment the shopper is already disappointed. Without it the row still counts
+// toward where to expand; with it they can be told when it happens.
+model CoverageRequest {
+  id        String   @id @default(uuid())
+
+  latitude  Float
+  longitude Float
+
+  /// What the shopper called the place, when they said. Free text and only ever
+  /// for a human reading the queue: the coordinates are the data.
+  areaLabel String?
+
+  /// Optional, for telling them when we arrive. See the note above.
+  phone     String?
+
+  /// Set when a signed-in shopper asks. Null for a guest, which is most of them,
+  /// since this happens before anyone has a reason to make an account.
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Flipped by hand once the area is live, so the same person is not counted
+  /// forever and can be told.
+  notified  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  /// The queue is read as "where are people asking from", newest first.
+  @@index([createdAt])
+  @@index([latitude, longitude])
 }
 
 // =============================================================================
