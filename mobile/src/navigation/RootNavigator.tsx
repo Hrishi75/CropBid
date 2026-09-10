@@ -32,6 +32,7 @@ import SignupScreen from '../screens/SignupScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import JoinScreen from '../screens/partner/JoinScreen';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
 import SettleScreen from '../screens/buyer/SettleScreen';
 import ActivityScreen from '../screens/ActivityScreen';
 import BuyerDashboardScreen from '../screens/buyer/HomeScreen';
@@ -96,6 +97,14 @@ function BuyerNavigator() {
         options={{ headerShown: true, title: t('Requirement'), animation: 'slide_from_right' }}
       />
       <RootStack.Screen name="MyRequirements" component={MyRequirementsScreen} options={{ animation: 'slide_from_right' }} />
+      {/* The web has had /buyer/analytics for a while and the phone had nothing.
+          Pushed rather than given a tab: it is a place you go to check on
+          yourself, not one you work in, and the bar is already full. */}
+      <RootStack.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{ headerShown: true, title: t('Your numbers'), animation: 'slide_from_right' }}
+      />
       <RootStack.Screen
         name="CreateRequirement"
         component={CreateRequirementScreen}
@@ -175,6 +184,12 @@ function FarmerNavigator() {
         options={{ headerShown: true, title: t('Requirement'), animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen name="MyOffers" component={MyOffersScreen} options={{ animation: 'slide_from_right' }} />
+      {/* Mirrors /farmer/analytics on the web. Same reasoning as the buyer's. */}
+      <FarmerStack.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{ headerShown: true, title: t('Your numbers'), animation: 'slide_from_right' }}
+      />
       <FarmerStack.Screen name="Helper" component={BriefScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen
         name="CropSellers"

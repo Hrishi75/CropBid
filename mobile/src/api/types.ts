@@ -292,3 +292,59 @@ export interface Auction {
   endsAt: string;
   farmerId: string;
 }
+
+// -----------------------------------------------------------------------------
+// Analytics
+// -----------------------------------------------------------------------------
+// GET /analytics dispatches on the caller's role, so one endpoint answers with
+// two different shapes. Modelled as a union rather than one optional-everything
+// type, so a screen has to say which role it is reading before touching a
+// field, and cannot quietly render a farmer's revenue on a buyer's dashboard.
+
+/** One labelled point. Every chart the endpoint returns is a list of these. */
+export interface ChartPoint {
+  name: string;
+  value: number;
+}
+
+export interface FarmerAnalytics {
+  summary: {
+    totalRevenue: number;
+    totalListings: number;
+    activeListings: number;
+    totalBids: number;
+    acceptedBids: number;
+    /** Server sends these as preformatted strings, not numbers. */
+    conversionRate: string;
+    avgBidsPerListing: string;
+  };
+  charts: {
+    monthlyRevenue: ChartPoint[];
+    cropDistribution: ChartPoint[];
+    listingStatuses: ChartPoint[];
+    monthlyBids: ChartPoint[];
+  };
+}
+
+export interface BuyerAnalytics {
+  summary: {
+    totalSpent: number;
+    totalBids: number;
+    acceptedBids: number;
+    totalDeals: number;
+    successRate: string;
+  };
+  charts: {
+    monthlySpending: ChartPoint[];
+    procurementMix: ChartPoint[];
+    bidStatuses: ChartPoint[];
+    monthlyBids: ChartPoint[];
+  };
+}
+
+export type Analytics = FarmerAnalytics | BuyerAnalytics;
+
+/** Narrows the union. The farmer shape is the one carrying listings. */
+export function isFarmerAnalytics(a: Analytics): a is FarmerAnalytics {
+  return 'totalListings' in a.summary;
+}

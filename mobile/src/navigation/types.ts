@@ -47,6 +47,7 @@ export type BuyerTabParamList = {
 };
 
 export type RootStackParamList = {
+  Analytics: undefined;
   Tabs: undefined;
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };
@@ -73,6 +74,7 @@ export type FarmerTabParamList = {
 };
 
 export type FarmerStackParamList = {
+  Analytics: undefined;
   FarmerTabs: undefined;
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };

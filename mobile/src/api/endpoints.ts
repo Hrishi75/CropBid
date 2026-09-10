@@ -17,6 +17,7 @@ import type {
   TransactionStats,
   Unit,
   User,
+  Analytics,
 } from './types';
 
 // --- Auth ---
@@ -534,5 +535,17 @@ export async function listAuctions(): Promise<Auction[]> {
 
 export async function getAuctionState(listingId: string): Promise<Auction> {
   const { data } = await api.get<Auction>(`/auctions/${listingId}`);
+  return data;
+}
+
+/**
+ * The signed-in user's own analytics.
+ *
+ * One endpoint, two shapes: the server dispatches on role and refuses anyone
+ * who is neither a farmer nor a buyer with a 403, so the screen that calls this
+ * must already be behind a role gate.
+ */
+export async function fetchAnalytics(): Promise<Analytics> {
+  const { data } = await api.get<Analytics>('/analytics');
   return data;
 }

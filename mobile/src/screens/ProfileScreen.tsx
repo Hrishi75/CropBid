@@ -344,6 +344,13 @@ export default function ProfileScreen() {
                   : t('The demand you have posted, and the offers on it')}
                 onPress={() => nav.navigate(isFarmer ? 'MyOffers' : 'MyRequirements')}
               />
+              <Row
+                label={t('Your numbers')}
+                hint={isFarmer
+                  ? t('Earnings, bids and what sells')
+                  : t('Spend, bids won and what you buy')}
+                onPress={() => nav.navigate('Analytics')}
+              />
             </>
           ) : null}
           {isFarmer ? (
