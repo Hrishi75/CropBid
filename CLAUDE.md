@@ -35,7 +35,7 @@ Languages: English, Hindi, Marathi. Sign-in is phone + 6-digit code; passwords e
 - **Not yet incorporated.** Incorporation in progress. `/terms` and `/privacy` say so outright rather than naming a company that does not exist. Wired to an `OPERATOR` constant in `client/src/pages/TermsPage.tsx`. **Fill it the day the certificate arrives** and the interim wording disappears on its own.
 - The footer must not say "CropBid, **Inc.**", a US suffix on an unincorporated Indian business. It did for a long time.
 - **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a.
-- **Minimum retail order: ₹150** (`MIN_RETAIL_ORDER`, `bid.service.ts`). Below it a delivery run costs more than the order is worth, and 2% of a ₹40 basket is 80 paise. Enforced on the server, and served to clients at `GET /browse/retail-rules` so the app reads the number rather than keeping a second copy that drifts. **It is per ORDER, not per basket**, and retail checkout places one order per lot, so a ₹200 basket split across two farms is two ₹100 orders and both are refused. Making it a basket rule means telling the server about the basket, which it is never told.
+- **Minimum retail order: ₹150** (`MIN_RETAIL_ORDER`, `bid.service.ts`). Below it a delivery run costs more than the order is worth, and 2% of a ₹40 basket is 80 paise. Enforced on the server, and served to clients at `GET /browse/retail-rules` so the app reads the number rather than keeping a second copy that drifts. **It is per ORDER, not per basket**, and retail checkout places one order per lot. The cart therefore checks each line against the floor and names the ones that are short: comparing the basket TOTAL was worse than no gate at all, because two ₹100 lots passed as a ₹200 basket and were then both refused at the till. Making it genuinely a basket rule means telling the server about the basket, which it is never told.
 - **Retail footprint: Pune and Nagpur.** Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
 
 ### 2a. Freight is ours (shipped 2026-09-06)
@@ -252,7 +252,14 @@ Web has none of these. They are `mobile/` only.
 
 **1 credit is 1 rupee.** No exchange rate, no bonus multiplier, no expiry, because each of those is a pricing decision nobody has taken. A pill in the storefront header shows the balance; `screens/WalletScreen` holds the statement and the top-up.
 
-`WalletEntry` is the record and `Wallet.balance` is a cache of it, both moved inside one transaction by the single function that writes either. **What makes a double credit impossible is a UNIQUE index on `razorpayPaymentId`**, not a check-then-act: verify can be called twice by a retrying client or a webhook racing the callback, and the second insert loses to the constraint. **The credited amount is read from Razorpay, never from the request**, or a client could mint credits for free; the order carries the wallet id, so a signature lifted from somebody else's successful top-up is refused. Floor ₹100, ceiling ₹50,000. 17 tests.
+`WalletEntry` is the record and `Wallet.balance` is a cache of it, both moved inside one transaction by the single function that writes either.
+
+**Two different races, two different guards**, and conflating them is what review caught:
+
+- **The same payment twice** (a retrying client, a webhook racing the callback) loses to the UNIQUE index on `razorpayPaymentId`. A database guarantee, not a check-then-act.
+- **Two different payments together** is not covered by that index at all. Under READ COMMITTED both read the same balance and the second `set` erases the first. `applyEntry` takes `SELECT ... FOR UPDATE` on the wallet row.
+
+**The credited amount is read from Razorpay, never from the request**, or a client could mint credits for free. **Ownership is proved from the ORDER's notes, not the payment's**: Razorpay does not copy order notes onto the payment entity, so the original check found nothing and passed by default, which would have let a signed payment from any other flow be replayed as a top-up. **Captured only**: `authorized` reserves funds that the capture can still fail to take. Floor ₹100, ceiling ₹50,000. 20 tests.
 
 ### The address book
 
@@ -262,7 +269,9 @@ Web has none of these. They are `mobile/` only.
 
 **The city is `User.location`, shown rather than asked.** That column decides which shelf a shopper sees and the server refuses purchases crossing it, so an address in another city could never be used. It is copied onto the row at save time, so switching delivery city does not silently relabel a saved Pune address.
 
-**Exactly one default, held in a transaction rather than a constraint.** A partial unique index cannot express it: promoting a new default UPDATEs the old row, so the constraint fires mid-transaction on a state one statement from correct. The first address is always default whatever the request says; deleting the default promotes another. 17 tests against a real Postgres, including that another account gets 404 on read, edit, delete and promote.
+**Exactly one default, held in a transaction rather than a constraint.** A partial unique index cannot express it: promoting a new default UPDATEs the old row, so the constraint fires mid-transaction on a state one statement from correct. The first address is always default whatever the request says; deleting the default promotes another.
+
+**A transaction alone is not enough**, which review caught. Under READ COMMITTED two simultaneous first-address requests both count zero rows and both mark their own row default, and neither did anything wrong on its own. Every write takes `pg_advisory_xact_lock` on the user's book first. Advisory rather than row locks because on the create path the rows do not exist yet, so there is nothing to `SELECT FOR UPDATE`. Call it through `$executeRaw`: the function returns void and `$queryRaw` cannot deserialise that, which throws on every write. 20 tests against a real Postgres, including the races and that another account gets 404 on read, edit, delete and promote.
 
 ### Profile
 

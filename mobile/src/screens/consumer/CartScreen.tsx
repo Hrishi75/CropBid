@@ -20,7 +20,7 @@
 // arithmetic moves.
 // =============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -133,13 +133,25 @@ export default function CartScreen() {
     return () => { on = false; };
   }, []);
 
-  // How much short the basket is. Measured on what is actually orderable, not
-  // the whole basket: an out-of-stock row is not going to be paid for and
-  // counting it would let a basket through that the server then refuses.
-  const shortBy = minOrder != null && bill.orderable.length > 0 && bill.itemsTotal < minOrder
-    ? Math.ceil(minOrder - bill.itemsTotal)
-    : 0;
-  const blockCheckout = bill.loading || bill.orderable.length === 0 || shortBy > 0;
+  // THE FLOOR IS PER ORDER, AND CHECKOUT PLACES ONE ORDER PER LOT.
+  //
+  // Comparing ₹150 against the basket TOTAL was worse than having no gate at
+  // all: two ₹100 lots passed as a ₹200 basket, and then both orders were
+  // refused at the till and stayed in the cart. The shopper was told they were
+  // fine and then contradicted, which is exactly what the gate exists to
+  // prevent.
+  //
+  // So each orderable line is checked against the floor on its own, the way the
+  // server will. Named rather than counted, because "add ₹50 more" is useless
+  // when the shopper cannot tell which of four rows is short.
+  const shortLines = useMemo(() => {
+    if (minOrder == null) return [];
+    return bill.orderable
+      .filter((l) => l.lineTotal < minOrder)
+      .map((l) => ({ name: l.item.cropName, shortBy: Math.ceil(minOrder - l.lineTotal) }));
+  }, [bill.orderable, minOrder]);
+
+  const blockCheckout = bill.loading || bill.orderable.length === 0 || shortLines.length > 0;
 
   if (items.length === 0) {
     return (
@@ -208,12 +220,17 @@ export default function CartScreen() {
             after tapping Checkout has been told their basket was fine and then
             contradicted. The number comes from the API rather than a constant
             here, so the two can never disagree. */}
-        {shortBy > 0 && minOrder != null ? (
+        {shortLines.length > 0 && minOrder != null ? (
           <View style={styles.minNote}>
             <Text style={styles.minNoteText}>
-              Add {money(shortBy, bill.currency)} more to check out. Orders start at{' '}
+              Each seller's items are ordered separately, and an order starts at{' '}
               {money(minOrder, bill.currency)}.
             </Text>
+            {shortLines.map((l) => (
+              <Text key={l.name} style={styles.minNoteLine}>
+                · {l.name}: add {money(l.shortBy, bill.currency)} more
+              </Text>
+            ))}
           </View>
         ) : null}
 
@@ -239,8 +256,10 @@ export default function CartScreen() {
               ? 'Checking stock…'
               : bill.orderable.length === 0
                 ? 'Nothing to check out'
-                : shortBy > 0
-                  ? `Add ${money(shortBy, bill.currency)} to check out`
+                : shortLines.length > 0
+                  ? shortLines.length === 1
+                    ? `Add ${money(shortLines[0].shortBy, bill.currency)} of ${shortLines[0].name}`
+                    : `${shortLines.length} sellers are under the minimum`
                   : `Checkout · ${money(bill.toPay, bill.currency)}`}
           </Text>
         </PressScale>
@@ -260,6 +279,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   minNoteText: { fontFamily: font.sansMed, fontSize: 13, lineHeight: 19, color: colors.ember },
+  minNoteLine: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: colors.ember, marginTop: 3 },
   head: {
     flexDirection: 'row',
     alignItems: 'flex-end',

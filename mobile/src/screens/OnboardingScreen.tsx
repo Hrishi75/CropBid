@@ -33,7 +33,7 @@ import { Button } from '../components/ui';
 import { IconArrowLeft } from '../components/icons';
 import { partnerApplication } from '../lib/partner';
 import type { SellerType } from '../api/types';
-import { wordsFor } from '../lib/sellerType';
+import { COMPANY_LABEL, COMPANY_TYPES as COMPANY_TYPE_ORDER, wordsFor } from '../lib/sellerType';
 import { colors, radius, spacing } from '../theme';
 
 // Compact crop set for the farmer picker (server accepts any string[]).
@@ -145,7 +145,18 @@ export default function OnboardingScreen({
 
   // Buyer fields
   const [companyName, setCompanyName] = useState('');
-  const [companyType] = useState<BuyerOnboardingInput['companyType']>(companyTypeProp ?? 'RESTAURANT');
+  // NO SILENT DEFAULT. JoinScreen asks which kind before this screen, but this
+  // screen is ALSO reached directly: RootNavigator sends a BUYER account with
+  // no profile straight here (`needsApplication`), bypassing that picker. With
+  // a hardcoded fallback every one of those accounts was filed as a restaurant
+  // whatever it actually was, and nothing on screen said so, because the chip
+  // row that used to ask had been removed.
+  //
+  // Null means "not asked yet", and the form renders the picker itself rather
+  // than guessing.
+  const [companyType, setCompanyType] = useState<BuyerOnboardingInput['companyType'] | null>(
+    companyTypeProp ?? null,
+  );
   const [taxId, setTaxId] = useState('');
   const [volume, setVolume] = useState('');
 
@@ -177,6 +188,7 @@ export default function OnboardingScreen({
       }
     } else {
       if (!companyName.trim()) return 'Enter your company name';
+      if (!companyType) return 'Pick what kind of business you are';
     }
     return null;
   }
@@ -215,7 +227,8 @@ export default function OnboardingScreen({
       } else {
         await buyerOnboarding({
           companyName: companyName.trim(),
-          companyType,
+          // Non-null by here: validate() refuses without it.
+          companyType: companyType!,
           taxId: taxId.trim() || undefined,
           annualProcurementVolume: volume.trim() || undefined,
         });
@@ -420,9 +433,33 @@ export default function OnboardingScreen({
                 autoCapitalize="words"
               />
 
-              {/* No company-type picker here: it is the step before this one,
-                  the same way a seller picks their kind first. Asking twice
-                  invites the two answers to disagree. */}
+              {/* Normally the step BEFORE this one asked, the same way a seller
+                  picks their kind first, and then this is skipped: asking twice
+                  invites the two answers to disagree.
+
+                  It is here for the path that does not come through JoinScreen,
+                  where a BUYER with no profile is sent straight to this form. */}
+              {companyTypeProp ? null : (
+                <>
+                  <Text style={styles.label}>What kind of business</Text>
+                  <View style={styles.chips}>
+                    {COMPANY_TYPE_ORDER.map((c) => {
+                      const sel = companyType === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          onPress={() => setCompanyType(c as BuyerOnboardingInput['companyType'])}
+                          style={[styles.chip, sel && styles.chipActive]}
+                        >
+                          <Text style={[styles.chipText, sel && styles.chipTextActive]}>
+                            {sel ? '✓ ' : ''}{COMPANY_LABEL[c]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               <Text style={[styles.label, styles.optional]}>{taxLabel(country)} (optional)</Text>
               <TextInput

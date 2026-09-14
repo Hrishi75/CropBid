@@ -115,9 +115,21 @@ async function applyEntry(
 ) {
   const delta = credits(input.delta);
 
-  // Re-read INSIDE the transaction. The balance read before it opened is a
-  // number from the past, and adding to a stale one is how two concurrent
-  // top-ups both land on the same starting figure and one of them vanishes.
+  // LOCK THE ROW FIRST. Re-reading inside the transaction is not enough:
+  // Postgres defaults to READ COMMITTED, so two concurrent top-ups both read
+  // the same balance, both compute from it, and the second `set` overwrites the
+  // first. Both ledger entries commit and the cached balance reflects only one
+  // of them, so paid-for credits vanish.
+  //
+  // The unique index on razorpayPaymentId does NOT cover this: it deduplicates
+  // one payment, and this is two different payments arriving together.
+  //
+  // FOR UPDATE makes the second transaction wait for the first to commit and
+  // then read the balance it actually left behind. A wallet is written a
+  // handful of times in its life, so the contention this serialises is
+  // vanishingly rare and the cost of holding the lock is nothing.
+  await tx.$queryRaw`SELECT id FROM "Wallet" WHERE id = ${input.walletId} FOR UPDATE`;
+
   const wallet = await tx.wallet.findUniqueOrThrow({
     where: { id: input.walletId },
     select: { balance: true },
@@ -228,17 +240,36 @@ export async function verifyTopup(
   if (payment.order_id !== orderId) {
     throw new ApiError(400, 'This payment belongs to a different order');
   }
-  if (payment.status !== 'captured' && payment.status !== 'authorized') {
+
+  // CAPTURED ONLY. `authorized` means the funds are reserved, not taken: the
+  // capture can still fail or simply never happen, and crediting on it hands
+  // out spendable balance for money that never arrived.
+  if (payment.status !== 'captured') {
     throw new ApiError(400, `Payment is ${payment.status}, not captured`);
   }
 
   const wallet = await getWallet(userId);
 
-  // The order carries who started it. Without this check a signature and
-  // payment id lifted from someone else's successful top-up would credit the
-  // thief's wallet: both values reach the client, so neither is a secret.
-  if (payment.notes?.walletId && payment.notes.walletId !== wallet.id) {
+  // OWNERSHIP IS PROVED FROM THE ORDER, NOT THE PAYMENT.
+  //
+  // `createTopupOrder` stamps the wallet id onto the ORDER's notes. Razorpay
+  // does not copy those onto the payment entity, so reading `payment.notes`
+  // found nothing and the check passed by default. That let a signed payment
+  // from any other flow on this account be replayed here and credited as
+  // wallet funds, on top of paying for whatever it was actually for.
+  //
+  // Fetching the order is one extra call on a path that already makes two, and
+  // it is the only place the binding actually lives.
+  const order = await client.orders.fetch(orderId);
+  const orderWalletId = order.notes?.walletId;
+
+  if (orderWalletId !== wallet.id) {
     throw new ApiError(403, 'This payment was not for your wallet');
+  }
+  // An order with no wallet stamp is not a top-up order at all. Refused rather
+  // than trusted, which is the whole point of the check above.
+  if (order.notes?.kind !== 'wallet_topup') {
+    throw new ApiError(400, 'This payment was not a wallet top-up');
   }
 
   const amount = credits(Number(payment.amount) / 100);

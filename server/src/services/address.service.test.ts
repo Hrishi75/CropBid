@@ -171,6 +171,50 @@ describe("another account's addresses", () => {
   });
 });
 
+describe('two requests at once', () => {
+  // The race review caught: under READ COMMITTED both first-address creates
+  // count zero rows and both mark their own row default. A transaction alone
+  // does not stop it; the advisory lock in the service does. These run against
+  // a real Postgres, which is the only place the guarantee actually exists.
+
+  it('still leaves exactly one default when two first addresses race', async () => {
+    await Promise.all([
+      createAddress(USER, input('Home')),
+      createAddress(USER, input('Work')),
+    ]);
+
+    expect(await defaults(USER)).toBe(1);
+    expect(await prisma.address.count({ where: { userId: USER } })).toBe(2);
+  });
+
+  it('still leaves exactly one default when two promotions race', async () => {
+    const home = await createAddress(USER, input('Home'));
+    const work = await createAddress(USER, input('Work'));
+
+    await Promise.all([
+      setDefaultAddress(USER, home.id),
+      setDefaultAddress(USER, work.id),
+    ]);
+
+    expect(await defaults(USER)).toBe(1);
+  });
+
+  it('does not make two users wait on each other', async () => {
+    // The lock is per book, so unrelated accounts must not serialise. This
+    // would pass even if the lock were global, but it documents the intent and
+    // fails loudly if the key is ever changed to something shared.
+    const [a, b] = await Promise.all([
+      createAddress(USER, input('Mine')),
+      createAddress(OTHER, input('Theirs')),
+    ]);
+
+    expect(a.isDefault).toBe(true);
+    expect(b.isDefault).toBe(true);
+    expect(await defaults(USER)).toBe(1);
+    expect(await defaults(OTHER)).toBe(1);
+  });
+});
+
 describe('validation', () => {
   it('refuses a blank label', async () => {
     await expect(createAddress(USER, input('   '))).rejects.toMatchObject({ statusCode: 400 });

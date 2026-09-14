@@ -11,6 +11,11 @@
 // fires mid-transaction on a state that is about to be corrected one statement
 // later. So the invariant is held by doing both writes inside one transaction,
 // clear-then-set, and never one without the other.
+//
+// A TRANSACTION ALONE IS NOT ENOUGH, which review caught. Under READ COMMITTED
+// two simultaneous first-address requests both count zero rows and both mark
+// their own row default. Every write here therefore takes an advisory lock on
+// the user's book first: see `lockAddressBook`.
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
@@ -57,10 +62,34 @@ function clean(input: AddressInput) {
 }
 
 /**
+ * Serialise every write to one user's address book.
+ *
+ * `createAddress` counts existing rows and marks the first as default. Under
+ * READ COMMITTED two simultaneous first-address requests both see zero, both
+ * insert, and both set their own row default: the exactly-one invariant breaks
+ * and neither transaction did anything wrong on its own.
+ *
+ * An ADVISORY lock rather than row locks, because the thing being protected is
+ * "this user's set of addresses" and on the create path the rows do not exist
+ * yet, so there is nothing to SELECT FOR UPDATE. It is transaction-scoped, so
+ * it releases on commit or rollback with no unlock to forget.
+ *
+ * `hashtext` collides in principle; a collision costs two unrelated users a
+ * few milliseconds of waiting on each other and nothing else.
+ */
+async function lockAddressBook(tx: Prisma.TransactionClient, userId: string) {
+  // $executeRaw, not $queryRaw: the function returns void and Prisma cannot
+  // deserialise a void column, so $queryRaw throws on every call. That would
+  // have taken out every address write, which is what the concurrency tests
+  // caught.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`addressbook:${userId}`}))`;
+}
+
+/**
  * Make one address the default, clearing whichever held it.
  *
- * Always called inside a transaction with whatever created or updated the row,
- * so there is never a committed moment with two defaults or none.
+ * Always called inside a transaction that already holds the book's lock, so
+ * there is never a committed moment with two defaults or none.
  */
 async function makeDefault(tx: Prisma.TransactionClient, userId: string, addressId: string) {
   await tx.address.updateMany({
@@ -74,6 +103,8 @@ export async function createAddress(userId: string, input: AddressInput) {
   const data = clean(input);
 
   return prisma.$transaction(async (tx) => {
+    await lockAddressBook(tx, userId);
+
     // THE FIRST ADDRESS IS ALWAYS THE DEFAULT, whatever the request said. An
     // address book whose only entry is not the default gives checkout nothing
     // to start on, and the shopper has to go and pick the one thing there is.
@@ -94,6 +125,7 @@ export async function updateAddress(userId: string, addressId: string, input: Ad
   const data = clean(input);
 
   return prisma.$transaction(async (tx) => {
+    await lockAddressBook(tx, userId);
     // Ownership checked inside the transaction and by userId, not just by id.
     // `update` on an id alone would happily edit a row belonging to somebody
     // else, and the id is the only thing a client supplies.
@@ -110,6 +142,7 @@ export async function updateAddress(userId: string, addressId: string, input: Ad
 
 export async function setDefaultAddress(userId: string, addressId: string) {
   return prisma.$transaction(async (tx) => {
+    await lockAddressBook(tx, userId);
     const owned = await tx.address.findFirst({ where: { id: addressId, userId } });
     if (!owned) throw new ApiError(404, 'Address not found');
     await makeDefault(tx, userId, addressId);

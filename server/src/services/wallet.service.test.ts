@@ -25,7 +25,7 @@ vi.mock('../config', () => ({
 
 // hoisted, because vi.mock is lifted above every const in this file.
 const { orders, payments } = vi.hoisted(() => ({
-  orders: { create: vi.fn() },
+  orders: { create: vi.fn(), fetch: vi.fn() },
   payments: { fetch: vi.fn() },
 }));
 vi.mock('razorpay', () => ({
@@ -36,12 +36,15 @@ vi.mock('../lib/prisma', () => {
   const wallet = { upsert: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn(), findUnique: vi.fn() };
   const walletEntry = { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() };
   const user = { findUnique: vi.fn() };
+  // The row lock. Asserted on below: without it two concurrent top-ups read the
+  // same balance and one is lost.
+  const $queryRaw = vi.fn(() => Promise.resolve([]));
   return {
     prisma: {
-      wallet, walletEntry, user,
+      wallet, walletEntry, user, $queryRaw,
       // Runs the callback against the same mocks, so an "interactive
       // transaction" behaves like the real one for the purposes of these tests.
-      $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn({ wallet, walletEntry })),
+      $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn({ wallet, walletEntry, $queryRaw })),
     },
   };
 });
@@ -73,6 +76,31 @@ function walletAt(balance: number) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Ownership is proved from the ORDER's notes now, not the payment's:
+  // Razorpay does not copy order notes onto the payment entity, so the old
+  // check passed by default whenever they were absent.
+  orders.fetch.mockResolvedValue({ id: 'order_1', notes: { kind: 'wallet_topup', walletId: 'w1' } });
+});
+
+describe('the wallet row is locked before it is read', () => {
+  // Re-reading inside the transaction is not enough. Postgres defaults to READ
+  // COMMITTED, so two concurrent top-ups both read the same balance and the
+  // second `set` erases the first: both ledger rows commit and the balance
+  // reflects one of them. The unique payment-id index does not help, because
+  // these are two DIFFERENT payments.
+  it('takes FOR UPDATE before computing the new balance', async () => {
+    walletAt(0);
+    payments.fetch.mockResolvedValue({
+      order_id: 'order_1', status: 'captured', amount: 50_000, notes: { walletId: 'w1' },
+    });
+
+    await verifyTopup('u1', 'order_1', 'pay_1', sign('order_1', 'pay_1'));
+
+    const raw = (prisma as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw;
+    expect(raw).toHaveBeenCalled();
+    const sql = raw.mock.calls[0][0].join?.('?') ?? String(raw.mock.calls[0][0]);
+    expect(sql).toMatch(/FOR UPDATE/i);
+  });
 });
 
 describe('the credited amount', () => {
@@ -160,14 +188,46 @@ describe('a payment that has already been credited', () => {
   });
 });
 
+describe('an order that is not a top-up', () => {
+  it('is refused rather than credited', async () => {
+    // A signed payment from any other flow on this account. Its order carries
+    // no wallet stamp, and an absent stamp used to mean "no check to do".
+    walletAt(0);
+    payments.fetch.mockResolvedValue({ order_id: 'order_1', status: 'captured', amount: 50_000 });
+    orders.fetch.mockResolvedValue({ id: 'order_1', notes: {} });
+
+    await expect(verifyTopup('u1', 'order_1', 'pay_1', sign('order_1', 'pay_1')))
+      .rejects.toThrow(/not for your wallet/i);
+    expect(e.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('an authorized but uncaptured payment', () => {
+  it('creates no credits', async () => {
+    // Authorization reserves the funds; the capture can still fail or never
+    // happen. Crediting on it hands out spendable balance for money that never
+    // arrived.
+    walletAt(0);
+    payments.fetch.mockResolvedValue({
+      order_id: 'order_1', status: 'authorized', amount: 50_000,
+    });
+
+    await expect(verifyTopup('u1', 'order_1', 'pay_1', sign('order_1', 'pay_1')))
+      .rejects.toThrow(/not captured/i);
+    expect(e.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("somebody else's payment", () => {
   it('cannot be replayed into your own wallet', async () => {
     // The order id, payment id and signature all reach the browser, so none of
     // them is a secret. What stops the replay is the walletId on the order.
     walletAt(0);
-    payments.fetch.mockResolvedValue({
-      order_id: 'order_1', status: 'captured', amount: 500_000,
-      notes: { walletId: 'someone-elses-wallet' },
+    payments.fetch.mockResolvedValue({ order_id: 'order_1', status: 'captured', amount: 500_000 });
+    // The binding lives on the ORDER. Razorpay does not copy order notes onto
+    // the payment, so checking the payment found nothing and let this through.
+    orders.fetch.mockResolvedValue({
+      id: 'order_1', notes: { kind: 'wallet_topup', walletId: 'someone-elses-wallet' },
     });
 
     await expect(verifyTopup('u1', 'order_1', 'pay_1', sign('order_1', 'pay_1')))
