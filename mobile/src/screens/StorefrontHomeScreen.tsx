@@ -898,8 +898,16 @@ function LaneTab({
   return (
     <PressScale onPress={onPress} scaleTo={0.97} cardStyle={[styles.laneTab, on && styles.laneTabOn]}>
       <View style={styles.laneTabTop}>
-        <Text style={[styles.laneTabLabel, on && styles.laneTabLabelOn]}>{label}</Text>
-        <Mono style={[styles.laneTabCount, on && styles.laneTabCountOn]}>{String(count)}</Mono>
+        <Text style={[styles.laneTabLabel, on && styles.laneTabLabelOn]} numberOfLines={1}>
+          {label}
+        </Text>
+        {/* A badge, not a loose digit. "Local shops" fills the tab, so
+            space-between had nothing left to distribute and the number ended up
+            flush against the final "s". A pill reads as a count at any label
+            length and cannot collide with the word. */}
+        <View style={[styles.laneTabBadge, on && styles.laneTabBadgeOn]}>
+          <Mono style={[styles.laneTabCount, on && styles.laneTabCountOn]}>{String(count)}</Mono>
+        </View>
       </View>
       <Mono style={[styles.laneTabSub, on && styles.laneTabCountOn]}>{sub.toUpperCase()}</Mono>
     </PressScale>
@@ -1281,15 +1289,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: design.paper,
     borderWidth: 1, borderColor: design.line, borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 9,
+    paddingHorizontal: 13, paddingVertical: 11,
   },
   laneTabOn: { backgroundColor: colors.forest, borderColor: colors.forest },
-  laneTabTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  laneTabLabel: { fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink },
+  laneTabTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // flex:1 so the label owns the leftover width and the badge is pushed to the
+  // edge, rather than both hugging their content in the middle.
+  laneTabLabel: { flex: 1, fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink },
   laneTabLabelOn: { color: colors.surface },
-  laneTabCount: { fontSize: 11, color: design.ink3 },
+  laneTabBadge: {
+    minWidth: 20, paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 999, backgroundColor: design.paper2, alignItems: 'center',
+  },
+  laneTabBadgeOn: { backgroundColor: 'rgba(244,241,234,0.18)' },
+  laneTabCount: { fontSize: 10.5, color: design.ink3 },
   laneTabCountOn: { color: colors.sage2 },
-  laneTabSub: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginTop: 1 },
+  laneTabSub: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginTop: 3 },
 
   shopsPad: { paddingHorizontal: 16, paddingTop: 14 },
   shopsLabel: { fontSize: 10, letterSpacing: 1.2, color: design.ink3, marginBottom: 12 },

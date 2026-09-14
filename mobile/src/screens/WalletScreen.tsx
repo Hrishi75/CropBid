@@ -184,6 +184,7 @@ export default function WalletScreen() {
                     key={amount}
                     onPress={() => void startTopup(amount)}
                     scaleTo={0.95}
+                    style={styles.presetSlot}
                     cardStyle={styles.preset}
                   >
                     <Text style={styles.presetText}>₹{amount.toLocaleString('en-IN')}</Text>
@@ -220,7 +221,7 @@ export default function WalletScreen() {
               </Text>
             </View>
 
-            <View style={styles.section}>
+            <View style={styles.historyHead}>
               <Mono style={styles.sectionLabel}>{t('HISTORY')}</Mono>
             </View>
           </View>
@@ -318,13 +319,19 @@ const styles = StyleSheet.create({
   errorText: { fontFamily: font.sans, fontSize: 14, color: colors.ember },
   retry: { fontFamily: font.sansSemi, fontSize: 14, color: colors.forest, textDecorationLine: 'underline', marginTop: 4 },
 
-  section: { paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+  section: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl },
   sectionLabel: { fontSize: 10, letterSpacing: 1.2, color: design.ink3, marginBottom: spacing.md },
+  // The statement needs air above it, or the last preset and the first row read as one block.
+  historyHead: { paddingHorizontal: spacing.lg, paddingTop: spacing.xxl, paddingBottom: spacing.xs },
 
   presets: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  // An even three-per-row grid. Content-width pills packed 4 then 1, so the
+  // last one sat alone against the left edge under three neighbours of three
+  // different widths, which reads as a layout that broke rather than a choice.
+  presetSlot: { flexBasis: '31%', flexGrow: 1 },
   preset: {
     borderWidth: 1, borderColor: design.line, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: 10, backgroundColor: design.paper,
+    paddingVertical: 11, alignItems: 'center', backgroundColor: design.paper,
   },
   presetText: { fontFamily: font.sansSemi, fontSize: 15, color: design.ink },
 

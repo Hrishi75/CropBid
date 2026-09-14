@@ -44,7 +44,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { Eyebrow, Mono } from '../../components/buyerKit';
+import { Mono } from '../../components/buyerKit';
 import { PressScale } from '../../components/motion';
 import { IconSprout } from '../../components/icons';
 import { myTransactions } from '../../api/endpoints';
@@ -107,8 +107,11 @@ export default function OrdersScreen() {
           />
         }
       >
+        {/* No eyebrow: the navigation header one line above already says
+            "Your orders", and repeating it puts the same words twice in the
+            first 40 pixels of the screen. The count is the only thing this
+            line adds. */}
         <View style={styles.head}>
-          <Eyebrow>{t('Your orders')}</Eyebrow>
           <Text style={styles.h1}>
             {orders.length === 0
               ? t('Nothing yet.')
@@ -219,7 +222,7 @@ function PartnerPitch({ onPress }: { onPress: () => void }) {
       <Mono style={styles.pitchTag}>FREE TO JOIN</Mono>
       <Text style={styles.pitchTitle}>Grow it or trade it? Sell it here.</Text>
       <Text style={styles.pitchBody}>
-        {t('Farmers, local shops and bulk buyers onboard free. No joining fee, no listing fee, no monthly charge. We take 2% only when a deal actually settles.')}
+        {t('Farmers, local shops and buyers onboard free. No joining fee, no listing fee, no monthly charge. We take 2% only when a deal actually settles.')}
       </Text>
       <View style={styles.pitchCta}>
         <Text style={styles.pitchCtaText}>{t('Become a partner')}</Text>
@@ -231,8 +234,8 @@ function PartnerPitch({ onPress }: { onPress: () => void }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: design.bg },
 
-  head: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  h1: { fontFamily: font.sansBold, fontSize: 28, color: design.ink, letterSpacing: -0.6, marginTop: 4 },
+  head: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  h1: { fontFamily: font.sansBold, fontSize: 28, color: design.ink, letterSpacing: -0.6 },
   error: { fontFamily: font.sans, fontSize: 14, color: colors.ember, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
 
   empty: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
