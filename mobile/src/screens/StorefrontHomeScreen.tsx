@@ -31,7 +31,6 @@
 // on ListingDetail.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Easing,
   Image,
@@ -43,27 +42,33 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Alert } from '../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { IconSearch } from '../components/icons';
 import { Mono } from '../components/buyerKit';
 import { LanguagePill } from '../components/LanguagePicker';
+import { WalletPill } from '../components/WalletPill';
+import { FreshBanner } from '../components/FreshBanner';
+import { ShopCard } from '../components/ShopCard';
+import { DeliveryList } from '../components/DeliveryList';
 import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
-import { browse, retailCities, updateLocation } from '../api/endpoints';
+import { browse, retailCities, retailShops, updateLocation } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
+import { sellerWords } from '../lib/sellerType';
 import { useCart, type CartPack } from '../context/CartContext';
 import { CartBar } from '../components/CartBar';
 import { QuantityStepper } from '../components/QuantityStepper';
-import type { Listing, Unit } from '../api/types';
+import type { Listing, RetailShop, Unit } from '../api/types';
 import { money, unitLabel } from '../lib/format';
 import {
   CATEGORY_TILES, CHIPS, RAILS, TICKER,
-  railFor, shopPack, type RailId, type ShopPack,
+  packVariants, railFor, shopPack, type RailId, type ShopPack,
 } from '../lib/catalog';
 
 const SEARCH_HINTS = ['tomato', 'fresh mango', 'wheat', 'onion', 'dal', 'turmeric'];
@@ -250,6 +255,15 @@ export default function StorefrontHomeScreen() {
   const [guestCity, setGuestCity] = useState('');
   const [savingCity, setSavingCity] = useState('');
   const [changingCity, setChangingCity] = useState(false);
+  // WHICH HALF OF THE SHELF. Local shops hold stock a few streets away and send
+  // it round today; Fresh is the farm side, bought at tomorrow's mandi and
+  // delivered next morning. Two genuinely different supply lines, so the
+  // shopper picks one rather than discovering which they got per card.
+  //
+  // Shops first, because that is what a household reaches for on a weekday, and
+  // because the shop is the unit this storefront is built around (CLAUDE.md §3).
+  const [lane, setLane] = useState<'shops' | 'fresh'>('shops');
+  const [shops, setShops] = useState<RetailShop[]>([]);
   const board = useLiveRates();
 
   const role = user?.role;
@@ -295,6 +309,30 @@ export default function StorefrontHomeScreen() {
     }
   }, [shopping, city, needsCity]);
 
+  // The city's shops, for the Local shops lane.
+  //
+  // Its own call rather than something derived from `listings`, because the
+  // server already groups a seller's whole shelf into one row with an item
+  // count, a crop list and a cheapest price. Rebuilding that here from a page
+  // of listings would get the count wrong the moment the listing feed is
+  // paginated, which it is.
+  //
+  // ONLY SELLERS HOLDING LIVE STOCK come back, so a shop that has just
+  // onboarded appears as soon as it lists something and drops off when it sells
+  // out. That is the endpoint's behaviour, not a filter kept in step here.
+  const loadShops = useCallback(async () => {
+    if (!shopping || needsCity) { setShops([]); return; }
+    try {
+      setShops(await retailShops(city));
+    } catch {
+      // Silent: the Fresh lane and the rest of the screen still work, and the
+      // lane's own empty state covers it.
+      setShops([]);
+    }
+  }, [shopping, city, needsCity]);
+
+  useEffect(() => { void loadShops(); }, [loadShops]);
+
   useEffect(() => {
     load();
   }, [load]);
@@ -314,9 +352,17 @@ export default function StorefrontHomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    // Both lanes, whichever is showing. A pull is "make this screen current",
+    // and switching tabs afterwards to find stale shops would undo that.
+    await Promise.all([load(), loadShops()]);
     setRefreshing(false);
-  }, [load]);
+  }, [load, loadShops]);
+
+  /** Only the shops. Farms are the Fresh lane and have their own half. */
+  const localShops = useMemo(
+    () => shops.filter((sh) => sh.sellerType === 'LOCAL_SHOP'),
+    [shops],
+  );
 
   // One card per CROP, not per lot: when several farmers sell the same crop
   // their lots collapse into a grouped card that opens the CropSellers
@@ -324,7 +370,17 @@ export default function StorefrontHomeScreen() {
   // empty, and says so.
   const items = useMemo<CardVM[]>(() => {
     const byCrop = new Map<string, Listing[]>();
-    for (const l of listings) {
+    // FRESH IS THE FARM SIDE. A local shop's stock is reachable through its own
+    // shop page in the other lane, so leaving it in the rails as well would put
+    // the same tomato on the screen twice under two different framings, one
+    // promising today and the other promising tomorrow morning.
+    //
+    // Only for shoppers: a farmer or a buyer is looking at the whole open
+    // market on purpose, and there are no lanes in that view.
+    const source = shopping
+      ? listings.filter((l) => l.farmer?.sellerType !== 'LOCAL_SHOP')
+      : listings;
+    for (const l of source) {
       const key = l.cropName.trim().toLowerCase();
       const group = byCrop.get(key);
       if (group) group.push(l);
@@ -341,6 +397,55 @@ export default function StorefrontHomeScreen() {
       pack: vm.shop ? shopPack({ crop: vm.name, cat: vm.cat, ...vm.shop }) : null,
     }));
   }, [listings, shopping]);
+
+  /**
+   * Every farm lot a household can actually be delivered, one row per LOT.
+   *
+   * Not grouped by crop the way the rails are: two farmers selling tomatoes at
+   * different prices are two different things to buy here, and collapsing them
+   * would hide the cheaper one behind whichever card won. The rails group
+   * because they are answering "what does a tomato cost"; this list is the
+   * order form.
+   *
+   * Priced first, because a lot with no retail price is open for bidding rather
+   * than for the shelf.
+   */
+  const deliverable = useMemo(
+    () => listings
+      .filter((l) =>
+        l.farmer?.sellerType !== 'LOCAL_SHOP' &&
+        l.directSaleEnabled &&
+        l.retailPricePerUnit != null &&
+        l.remainingQuantity > 0)
+      .map((listing) => ({
+        listing,
+        variants: packVariants({
+          crop: listing.cropName,
+          cat: railFor(listing.cropName),
+          unit: listing.unit,
+          floor: listing.retailPricePerUnit!,
+          ceiling: listing.retailPricePerUnit!,
+          retail: listing.retailPricePerUnit,
+          stockUnits: listing.remainingQuantity,
+        }),
+      }))
+      // A bulk-only crop (cotton, maize) has no household pack, and a lot can
+      // be too small for even its smallest one. Dropped HERE rather than inside
+      // the row, so the heading's count matches what is underneath it.
+      .filter((r) => r.variants.length > 0),
+    [listings],
+  );
+
+  /** The basket wiring one delivery row gets. Signed-in shoppers only. */
+  const deliveryCart = useCallback(
+    (l: Listing) => ({
+      inCart: quantityOf(l.id),
+      add,
+      setQuantity,
+      remove,
+    }),
+    [quantityOf, add, setQuantity, remove],
+  );
 
   const q = search.trim().toLowerCase();
   const browsing = q === '' && category === null;
@@ -427,6 +532,9 @@ export default function StorefrontHomeScreen() {
         <View style={styles.headerRow}>
           <Wordmark size={19} />
           <View style={styles.headerRight}>
+            {/* Renders nothing when signed out: a zero balance on an account
+                that does not exist is not a fact about anything. */}
+            <WalletPill />
             <LanguagePill />
             {user ? (
               <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
@@ -485,6 +593,38 @@ export default function StorefrontHomeScreen() {
           </View>
         ) : null}
 
+        {/* TWO SUPPLY LINES, PICKED RATHER THAN DISCOVERED. Local shops hold
+            stock a few streets away and send it round today; Fresh is bought at
+            tomorrow's mandi and delivered next morning. Neither is the better
+            one, so they sit side by side rather than one being the default and
+            the other buried.
+
+            Shoppers only. A buyer sourcing by the tonne has no lanes, and a
+            farmer is looking at the open market. */}
+        {shopping && !needsCity ? (
+          <View style={styles.laneBar}>
+            <LaneTab
+              label={t('Local shops')}
+              sub={t('Today')}
+              count={localShops.length}
+              on={lane === 'shops'}
+              onPress={() => { glide(); setLane('shops'); }}
+            />
+            <LaneTab
+              label={t('Fresh')}
+              sub={t('Tomorrow AM')}
+              count={items.length}
+              on={lane === 'fresh'}
+              onPress={() => { glide(); setLane('fresh'); }}
+            />
+          </View>
+        ) : null}
+
+        {/* The cutoff, on the Fresh lane only. It is the deadline that decides
+            whether an order makes tomorrow's mandi run, so it belongs with the
+            produce it governs rather than over the whole screen. */}
+        {shopping && !needsCity && lane === 'fresh' ? <FreshBanner /> : null}
+
         {needsCity ? (
           /* Asked before any produce is shown. An order that cannot be
              delivered is worse than an empty shop, so the city comes first. */
@@ -508,6 +648,39 @@ export default function StorefrontHomeScreen() {
                 <Text style={styles.cityGateCancel}>Cancel</Text>
               </PressScale>
             ) : null}
+          </View>
+        ) : shopping && lane === 'shops' ? (
+          /* ---- Local shops ------------------------------------------------
+             The shop is the unit. A card per counter, not per crop, so the
+             price difference between two shops selling the same tomato is
+             visible rather than averaged away (CLAUDE.md §3). Tapping one opens
+             its whole shelf. */
+          <View style={styles.shopsPad}>
+            {!loaded ? null : localShops.length > 0 ? (
+              <>
+                <Mono style={styles.shopsLabel}>
+                  {localShops.length} {localShops.length === 1 ? t('SHOP') : t('SHOPS')} ·{' '}
+                  {city.toUpperCase()}
+                </Mono>
+                {localShops.map((sh) => (
+                  <ShopCard
+                    key={sh.id}
+                    shop={sh}
+                    onPress={() => nav.navigate('Shop', { id: sh.id, city })}
+                  />
+                ))}
+              </>
+            ) : (
+              <View style={styles.empty}>
+                <Text style={styles.emptyEmoji}>🏪</Text>
+                <Text style={styles.emptyText}>
+                  {t('No shop in')} {city} {t('is selling today.')}
+                </Text>
+                <Text style={styles.emptySub}>
+                  {t('Try Fresh for produce arriving tomorrow morning.')}
+                </Text>
+              </View>
+            )}
           </View>
         ) : browsing ? (
           <>
@@ -543,9 +716,7 @@ export default function StorefrontHomeScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
-              <PromoCard tone="paper" emoji="🚜" title={t('Machines & equipment')} desc={t('Tractors, pumps and pipes — buy outright or hire by the day.')} onPress={() => nav.navigate('Equipment')} />
               <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t('Household packs at the farmer’s own price.')} />
-              <PromoCard tone="paper" emoji="🚜" title={t('Straight from the grower')} desc={t('A shorter chain means fairer prices — for the farm and for you.')} />
               <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
             </ScrollView>
 
@@ -607,6 +778,29 @@ export default function StorefrontHomeScreen() {
               );
             })}
 
+            {/* EVERYTHING WE CAN DELIVER, in one column with the sizes on it.
+                The rails above answer "what is the going rate for tomatoes";
+                this answers "what can I actually get, and how much of it".
+                Shoppers only: a farmer or buyer works in lots, not packs. */}
+            {shopping && deliverable.length > 0 ? (
+              <>
+                <View style={styles.railHead}>
+                  <View>
+                    <Mono style={styles.railEyebrow}>TOMORROW MORNING</Mono>
+                    <Text style={styles.railTitle}>Everything we deliver</Text>
+                  </View>
+                  <Mono style={styles.deliverCount}>
+                    {deliverable.length} {deliverable.length === 1 ? 'ITEM' : 'ITEMS'}
+                  </Mono>
+                </View>
+                <DeliveryList
+                  rows={deliverable}
+                  cart={isConsumer ? deliveryCart : null}
+                  onOpen={(l) => nav.navigate('ListingDetail', { id: l.id, preview: l })}
+                />
+              </>
+            ) : null}
+
             {/* how it works — compact strip + sell CTA, like the web footer run */}
             <Text style={styles.sectionTitle}>How CropBid works</Text>
             <View style={styles.howWrap}>
@@ -633,9 +827,10 @@ export default function StorefrontHomeScreen() {
                   : 'Registered farmers list in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'}
               </Text>
               <PressScale onPress={onSell} cardStyle={styles.sellBtn}>
-                <Text style={styles.sellBtnText}>{isFarmer ? 'List your harvest' : 'Become a seller'}</Text>
+                <Text style={styles.sellBtnText}>{isFarmer ? sellerWords(user).listCta : 'Become a seller'}</Text>
               </PressScale>
             </View>
+
           </>
         ) : (
           <>
@@ -657,6 +852,20 @@ export default function StorefrontHomeScreen() {
             )}
           </>
         )}
+        {/* THE FOOTER, outside every branch above. This screen is the only
+            surface a signed-out visitor ever sees and they have no Profile tab,
+            so the policies have to hang off it. Outside the `browsing` branch
+            specifically because the city gate renders instead of it, and that
+            gate is the FIRST thing a visitor meets: somebody deciding whether
+            to hand over a phone number is entitled to read the privacy policy
+            before they do. */}
+        <View style={styles.footerLinks}>
+          <FooterLink label="Help" onPress={() => nav.navigate('Help')} />
+          <FooterLink label="About" onPress={() => nav.navigate('About')} />
+          <FooterLink label="Privacy" onPress={() => nav.navigate('Policy', { kind: 'privacy' })} />
+          <FooterLink label="Terms" onPress={() => nav.navigate('Policy', { kind: 'terms' })} />
+        </View>
+        <Mono style={styles.footerNote}>CROPBID · INDIA</Mono>
       </ScrollView>
 
       {/* The running basket, riding the bottom of the shelf. This screen is a
@@ -665,6 +874,43 @@ export default function StorefrontHomeScreen() {
           shopper with something in it. */}
       <CartBar overTabBar />
     </View>
+  );
+}
+
+function FooterLink({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8}>
+      <Text style={styles.footerLink}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/**
+ * One of the two supply lines, as a tab.
+ *
+ * Carries its own count, so an empty lane announces itself before it is opened
+ * rather than after. A tab that says nothing about its contents makes the
+ * shopper tap it just to find out there is nothing there.
+ */
+function LaneTab({
+  label, sub, count, on, onPress,
+}: { label: string; sub: string; count: number; on: boolean; onPress: () => void }) {
+  return (
+    <PressScale onPress={onPress} scaleTo={0.97} cardStyle={[styles.laneTab, on && styles.laneTabOn]}>
+      <View style={styles.laneTabTop}>
+        <Text style={[styles.laneTabLabel, on && styles.laneTabLabelOn]} numberOfLines={1}>
+          {label}
+        </Text>
+        {/* A badge, not a loose digit. "Local shops" fills the tab, so
+            space-between had nothing left to distribute and the number ended up
+            flush against the final "s". A pill reads as a count at any label
+            length and cannot collide with the word. */}
+        <View style={[styles.laneTabBadge, on && styles.laneTabBadgeOn]}>
+          <Mono style={[styles.laneTabCount, on && styles.laneTabCountOn]}>{String(count)}</Mono>
+        </View>
+      </View>
+      <Mono style={[styles.laneTabSub, on && styles.laneTabCountOn]}>{sub.toUpperCase()}</Mono>
+    </PressScale>
   );
 }
 
@@ -1037,6 +1283,32 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  laneBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  laneTab: {
+    flex: 1,
+    backgroundColor: design.paper,
+    borderWidth: 1, borderColor: design.line, borderRadius: 12,
+    paddingHorizontal: 13, paddingVertical: 11,
+  },
+  laneTabOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  laneTabTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // flex:1 so the label owns the leftover width and the badge is pushed to the
+  // edge, rather than both hugging their content in the middle.
+  laneTabLabel: { flex: 1, fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink },
+  laneTabLabelOn: { color: colors.surface },
+  laneTabBadge: {
+    minWidth: 20, paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 999, backgroundColor: design.paper2, alignItems: 'center',
+  },
+  laneTabBadgeOn: { backgroundColor: 'rgba(244,241,234,0.18)' },
+  laneTabCount: { fontSize: 10.5, color: design.ink3 },
+  laneTabCountOn: { color: colors.sage2 },
+  laneTabSub: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginTop: 3 },
+
+  shopsPad: { paddingHorizontal: 16, paddingTop: 14 },
+  shopsLabel: { fontSize: 10, letterSpacing: 1.2, color: design.ink3, marginBottom: 12 },
+  emptySub: { fontFamily: font.sans, fontSize: 13, color: design.ink3, marginTop: 6, textAlign: 'center' },
   avatar: {
     width: 36,
     height: 36,
@@ -1256,6 +1528,7 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 10,
   },
+  deliverCount: { fontSize: 10, letterSpacing: 1, color: design.ink3 },
   railEyebrow: { fontSize: 9, letterSpacing: 0.8, color: design.ink3 },
   railTitle: { fontFamily: font.sansSemi, fontSize: 18, letterSpacing: -0.35, color: design.ink, marginTop: 3 },
   seeAll: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
@@ -1366,6 +1639,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   sellBtnText: { fontFamily: font.sansBold, fontSize: 13.5, color: colors.forest },
+
+  footerLinks: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    gap: 18, paddingHorizontal: 16, paddingTop: 26,
+  },
+  footerLink: { fontFamily: font.sansMed, fontSize: 13, color: design.ink3, textDecorationLine: 'underline' },
+  footerNote: { fontSize: 9, letterSpacing: 1, color: design.ink3, textAlign: 'center', paddingTop: 12 },
 
   empty: { alignItems: 'center', marginTop: 36, paddingHorizontal: 24, gap: 8 },
   emptyEmoji: { fontSize: 40 },

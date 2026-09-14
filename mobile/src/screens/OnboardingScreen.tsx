@@ -30,21 +30,16 @@ import { useAuth } from '../context/AuthContext';
 import { errorMessage } from '../api/client';
 import { buyerOnboarding, farmerOnboarding, type BuyerOnboardingInput } from '../api/endpoints';
 import { Button } from '../components/ui';
+import { IconArrowLeft } from '../components/icons';
 import { partnerApplication } from '../lib/partner';
+import type { SellerType } from '../api/types';
+import { COMPANY_LABEL, COMPANY_TYPES as COMPANY_TYPE_ORDER, wordsFor } from '../lib/sellerType';
 import { colors, radius, spacing } from '../theme';
 
 // Compact crop set for the farmer picker (server accepts any string[]).
 const CROPS = [
   'Rice', 'Wheat', 'Onion', 'Tomato', 'Potato', 'Grape', 'Sugarcane', 'Cotton',
   'Soybean', 'Maize', 'Chili', 'Turmeric', 'Banana', 'Mango', 'Groundnut', 'Coffee',
-];
-
-const COMPANY_TYPES: [BuyerOnboardingInput['companyType'], string][] = [
-  ['PROCESSOR', 'Processor'],
-  ['FMCG', 'FMCG'],
-  ['RESTAURANT', 'Restaurant'],
-  ['EXPORTER', 'Exporter'],
-  ['RETAILER', 'Retailer'],
 ];
 
 function taxLabel(country: string): string {
@@ -54,14 +49,78 @@ function taxLabel(country: string): string {
   return 'Tax ID';
 }
 
-export default function OnboardingScreen() {
+/** Which application a person is filling in. Not the same as their role. */
+export type PartnerKind = 'FARMER' | 'BUYER';
+
+/**
+ * The three kinds of seller, and what each must supply.
+ *
+ * These mirror `validateSellerApplication` on the server, which is the rule
+ * that actually decides. Repeated here only so the form asks for the right
+ * things and can say what is missing before a round trip; the server refuses
+ * regardless, and it is the one that counts.
+ */
+const SHOP_TYPES: [string, string][] = [
+  ['VEGETABLE', 'Vegetable shop'],
+  ['KIRANA', 'Kirana store'],
+  ['GENERAL', 'General store'],
+  ['DAIRY', 'Dairy'],
+  ['BAKERY', 'Bakery'],
+  ['OTHER', 'Something else'],
+];
+
+export default function OnboardingScreen({
+  kind,
+  sellerType = 'FARMER',
+  companyType: companyTypeProp,
+  onBack,
+}: {
+  kind?: PartnerKind;
+  sellerType?: SellerType;
+  /**
+   * Which kind of buyer, chosen on the step before this one.
+   *
+   * Passed down for the same reason `sellerType` is: the form should not ask
+   * again for something already answered, and a default of PROCESSOR filed
+   * every buyer who did not notice the chip row as a processor.
+   */
+  companyType?: BuyerOnboardingInput['companyType'];
+  /**
+   * Where the arrow goes, when there is somewhere to go.
+   *
+   * Omitted when this screen IS the wall: an account with a partner role and no
+   * profile has nothing behind it to return to, and an arrow that popped to
+   * nothing would be worse than none. Supplied when JoinScreen pushed it, where
+   * the shopper picked a kind and may want to pick another.
+   */
+  onBack?: () => void;
+} = {}) {
   const insets = useSafeAreaInsets();
   const { user, refreshUser, signOut } = useAuth();
   const country = user?.country || 'India';
   // A reviewer who asked for more, or said no, sends the applicant back here.
   // The form is identical; only the framing changes.
   const resubmitting = partnerApplication(user) !== null;
-  const isFarmer = user?.role === 'FARMER';
+
+  // WHICH FORM TO SHOW, in order: what they picked, then the role they already
+  // hold, then the seller form.
+  //
+  // It used to read user.role alone, which is the mistake CLAUDE.md section 4
+  // records the web fixing: a CONSUMER is precisely somebody with NO partner
+  // role yet, so `role === 'FARMER'` was false for every first-time applicant
+  // and every one of them was handed the buyer form, whichever card they
+  // tapped. The role you are applying for cannot also be the thing that selects
+  // the form.
+  //
+  // A resubmitting farmer is still a FARMER, so the role check keeps their own
+  // form in front of them without needing the caller to remember.
+  const isFarmer = kind ? kind === 'FARMER' : user?.role === 'FARMER';
+  // The word comes from what they are APPLYING FOR, not from the profile they
+  // already have. A first-time applicant has no sellerType on file at all, so
+  // reading the profile made a kirana store's application say "Tell us about
+  // your farm" over a form asking for a shop licence. Same mistake as picking
+  // the form from user.role, one field along.
+  const { place } = wordsFor(sellerType);
 
   // Farmer fields
   const [farmSize, setFarmSize] = useState('');
@@ -71,9 +130,33 @@ export default function OnboardingScreen() {
   const [fpoName, setFpoName] = useState('');
   const [apmcLicense, setApmcLicense] = useState('');
 
+  // Shop and wholesaler fields. The server requires a different set for each
+  // (auth.service `validateSellerApplication`), and the app used to send the
+  // farmer shape whoever was applying, so every shop was filed as a farm.
+  const [businessName, setBusinessName] = useState('');
+  const [shopType, setShopType] = useState('VEGETABLE');
+  const [address, setAddress] = useState('');
+  const [fssai, setFssai] = useState('');
+  const [gstin, setGstin] = useState('');
+
+  const isShop = isFarmer && sellerType === 'LOCAL_SHOP';
+  const isWholesaler = isFarmer && sellerType === 'WHOLESALER';
+  const isGrower = isFarmer && sellerType === 'FARMER';
+
   // Buyer fields
   const [companyName, setCompanyName] = useState('');
-  const [companyType, setCompanyType] = useState<BuyerOnboardingInput['companyType']>('PROCESSOR');
+  // NO SILENT DEFAULT. JoinScreen asks which kind before this screen, but this
+  // screen is ALSO reached directly: RootNavigator sends a BUYER account with
+  // no profile straight here (`needsApplication`), bypassing that picker. With
+  // a hardcoded fallback every one of those accounts was filed as a restaurant
+  // whatever it actually was, and nothing on screen said so, because the chip
+  // row that used to ask had been removed.
+  //
+  // Null means "not asked yet", and the form renders the picker itself rather
+  // than guessing.
+  const [companyType, setCompanyType] = useState<BuyerOnboardingInput['companyType'] | null>(
+    companyTypeProp ?? null,
+  );
   const [taxId, setTaxId] = useState('');
   const [volume, setVolume] = useState('');
 
@@ -86,12 +169,26 @@ export default function OnboardingScreen() {
 
   function validate(): string | null {
     if (isFarmer) {
-      const size = parseFloat(farmSize);
-      if (!Number.isFinite(size) || size <= 0) return 'Enter a valid farm size';
       if (!state.trim()) return 'Enter your state / region';
-      if (crops.length === 0) return 'Pick at least one crop';
+      if (isGrower) {
+        const size = parseFloat(farmSize);
+        if (!Number.isFinite(size) || size <= 0) return 'Enter a valid farm size';
+        if (crops.length === 0) return 'Pick at least one crop';
+      } else {
+        if (!businessName.trim()) {
+          return isShop ? 'Enter your shop name' : 'Enter your firm name';
+        }
+        if (isShop) {
+          if (!address.trim()) return 'Enter your shop address';
+          // Food on a consumer shelf needs a licence behind it. The server
+          // refuses without one; asking here saves the round trip.
+          if (!fssai.trim()) return 'Enter your FSSAI licence number';
+        }
+        if (isWholesaler && !gstin.trim()) return 'Enter your GSTIN';
+      }
     } else {
       if (!companyName.trim()) return 'Enter your company name';
+      if (!companyType) return 'Pick what kind of business you are';
     }
     return null;
   }
@@ -107,17 +204,31 @@ export default function OnboardingScreen() {
     try {
       if (isFarmer) {
         await farmerOnboarding({
-          farmSizeAcres: parseFloat(farmSize),
-          cropsGrown: crops,
+          // THE KIND, sent explicitly. Without it the column defaults to
+          // FARMER and every shop that ever applied through the app was filed
+          // as a farm.
+          sellerType,
           state: state.trim(),
           organicCertified: organic,
-          fpoName: fpoName.trim() || undefined,
-          apmcLicense: apmcLicense.trim() || undefined,
+          ...(isGrower
+            ? {
+                farmSizeAcres: parseFloat(farmSize),
+                cropsGrown: crops,
+                fpoName: fpoName.trim() || undefined,
+                apmcLicense: apmcLicense.trim() || undefined,
+              }
+            : {
+                businessName: businessName.trim(),
+                ...(isShop
+                  ? { shopType, address: address.trim(), fssaiLicense: fssai.trim() }
+                  : { gstin: gstin.trim() }),
+              }),
         });
       } else {
         await buyerOnboarding({
           companyName: companyName.trim(),
-          companyType,
+          // Non-null by here: validate() refuses without it.
+          companyType: companyType!,
           taxId: taxId.trim() || undefined,
           annualProcurementVolume: volume.trim() || undefined,
         });
@@ -139,14 +250,29 @@ export default function OnboardingScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.headerRow}>
-          <Text style={styles.eyebrow}>
-            {resubmitting ? 'Update your application' : 'Partner application'}
-          </Text>
+          <View style={styles.headerLeft}>
+            {onBack ? (
+              <Pressable
+                onPress={onBack}
+                hitSlop={12}
+                style={styles.backBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
+                <IconArrowLeft size={19} stroke={colors.forest} />
+              </Pressable>
+            ) : null}
+            <Text style={styles.eyebrow}>
+              {resubmitting ? 'Update your application' : 'Partner application'}
+            </Text>
+          </View>
           <Pressable onPress={signOut} hitSlop={8}>
             <Text style={styles.logout}>Log out</Text>
           </Pressable>
         </View>
-        <Text style={styles.title}>{isFarmer ? 'Tell us about your farm' : 'Tell us about your company'}</Text>
+        <Text style={styles.title}>
+          {isFarmer ? `Tell us about your ${place}` : 'Tell us about your company'}
+        </Text>
         <Text style={styles.sub}>
           {isFarmer
             ? 'Our team reviews every seller by hand, usually within 24 to 48 hours. These details are what they read — and what your agent later uses to match buyers and price your listings.'
@@ -156,16 +282,7 @@ export default function OnboardingScreen() {
         <View style={styles.card}>
           {isFarmer ? (
             <>
-              <Text style={styles.label}>Farm size (acres)</Text>
-              <TextInput
-                style={styles.input}
-                value={farmSize}
-                onChangeText={setFarmSize}
-                keyboardType="numeric"
-                placeholder="e.g., 15"
-                placeholderTextColor={colors.textMuted}
-              />
-
+              {/* Shared by all three: a reviewer needs to know where you are. */}
               <Text style={styles.label}>State / region</Text>
               <TextInput
                 style={styles.input}
@@ -174,6 +291,89 @@ export default function OnboardingScreen() {
                 placeholder="e.g., Maharashtra"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="words"
+              />
+
+              {!isGrower ? (
+                <>
+                  <Text style={styles.label}>{isShop ? 'Shop name' : 'Firm name'}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={businessName}
+                    onChangeText={setBusinessName}
+                    placeholder={isShop ? 'e.g., Ramji Sabji Bhandar' : 'e.g., Patil Trading Co.'}
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="words"
+                  />
+                </>
+              ) : null}
+
+              {isShop ? (
+                <>
+                  <Text style={styles.label}>What kind of shop</Text>
+                  <View style={styles.chips}>
+                    {SHOP_TYPES.map(([value, label]) => {
+                      const sel = shopType === value;
+                      return (
+                        <Pressable key={value} onPress={() => setShopType(value)} style={[styles.chip, sel && styles.chipActive]}>
+                          <Text style={[styles.chipText, sel && styles.chipTextActive]}>
+                            {sel ? '✓ ' : ''}{label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.label}>Shop address</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={address}
+                    onChangeText={setAddress}
+                    placeholder="Street, area, landmark"
+                    placeholderTextColor={colors.textMuted}
+                  />
+
+                  {/* Not optional, and the copy says why. Food on a consumer
+                      shelf needs a licence behind it, and the server refuses
+                      the application without one. */}
+                  <Text style={styles.label}>FSSAI licence number</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={fssai}
+                    onChangeText={setFssai}
+                    placeholder="14 digits, from your licence"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                  />
+                  <Text style={styles.hint}>
+                    Required for anyone selling food to households. We check it before you go live.
+                  </Text>
+                </>
+              ) : null}
+
+              {isWholesaler ? (
+                <>
+                  <Text style={styles.label}>GSTIN</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={gstin}
+                    onChangeText={setGstin}
+                    placeholder="15-character GST number"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="characters"
+                  />
+                </>
+              ) : null}
+
+              {isGrower ? (
+                <>
+              <Text style={styles.label}>Farm size (acres)</Text>
+              <TextInput
+                style={styles.input}
+                value={farmSize}
+                onChangeText={setFarmSize}
+                keyboardType="numeric"
+                placeholder="e.g., 15"
+                placeholderTextColor={colors.textMuted}
               />
 
               <Text style={styles.label}>Crops grown · {crops.length} selected</Text>
@@ -218,6 +418,8 @@ export default function OnboardingScreen() {
                   />
                 </>
               ) : null}
+                </>
+              ) : null}
             </>
           ) : (
             <>
@@ -231,17 +433,33 @@ export default function OnboardingScreen() {
                 autoCapitalize="words"
               />
 
-              <Text style={styles.label}>Company type</Text>
-              <View style={styles.chips}>
-                {COMPANY_TYPES.map(([value, lbl]) => {
-                  const sel = companyType === value;
-                  return (
-                    <Pressable key={value} onPress={() => setCompanyType(value)} style={[styles.chip, sel && styles.chipActive]}>
-                      <Text style={[styles.chipText, sel && styles.chipTextActive]}>{lbl}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              {/* Normally the step BEFORE this one asked, the same way a seller
+                  picks their kind first, and then this is skipped: asking twice
+                  invites the two answers to disagree.
+
+                  It is here for the path that does not come through JoinScreen,
+                  where a BUYER with no profile is sent straight to this form. */}
+              {companyTypeProp ? null : (
+                <>
+                  <Text style={styles.label}>What kind of business</Text>
+                  <View style={styles.chips}>
+                    {COMPANY_TYPE_ORDER.map((c) => {
+                      const sel = companyType === c;
+                      return (
+                        <Pressable
+                          key={c}
+                          onPress={() => setCompanyType(c as BuyerOnboardingInput['companyType'])}
+                          style={[styles.chip, sel && styles.chipActive]}
+                        >
+                          <Text style={[styles.chipText, sel && styles.chipTextActive]}>
+                            {sel ? '✓ ' : ''}{COMPANY_LABEL[c]}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
 
               <Text style={[styles.label, styles.optional]}>{taxLabel(country)} (optional)</Text>
               <TextInput
@@ -284,6 +502,8 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
   container: { padding: spacing.xl, paddingBottom: spacing.xxl },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  backBtn: { marginLeft: -4 },
   eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, color: colors.sage, textTransform: 'uppercase' },
   logout: { fontSize: 13, color: colors.ember, fontWeight: '600' },
   title: { fontSize: 26, fontWeight: '800', color: colors.forest, marginTop: spacing.sm },
@@ -331,5 +551,6 @@ const styles = StyleSheet.create({
   knob: { width: 22, height: 22, borderRadius: 999, backgroundColor: colors.surface, alignSelf: 'flex-start' },
   knobOn: { alignSelf: 'flex-end' },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
+  hint: { fontSize: 12.5, lineHeight: 18, color: colors.textMuted, marginTop: -4, marginBottom: 4 },
   spacer: { height: spacing.xs },
 });

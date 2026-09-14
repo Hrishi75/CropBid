@@ -21,6 +21,7 @@
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
+import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
 const UPDATED = '3 September 2026';
@@ -38,6 +39,8 @@ function Section({ title, id, children }: { title: string; id?: string; children
 }
 
 export function PrivacyPolicyPage() {
+  // Inside the phone app this page is the document and nothing else.
+  const embedded = isEmbedded();
   // The browser jumps to #cookies by itself only on a full document load. The
   // cookie notice links here from inside the app, where the URL changes without
   // one, so the jump has to be done by hand or the link lands at the top of a
@@ -61,20 +64,24 @@ export function PrivacyPolicyPage() {
 
   return (
     <div className="cb-landing rp">
-      <header className="rp-nav">
-        <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
-          <ArcMark />
-          <span className="wordmark-text">CropBid</span>
-        </Link>
-        <nav className="rp-nav-links" aria-label="Primary">
-          <Link to="/">Marketplace</Link>
-          <Link to="/rates">Live rates</Link>
-          <Link to="/partner" className="nav-signin">Become a partner</Link>
-          <SignInLink className="cb-btn cb-btn-primary">
-            <ArrowIcon />
-          </SignInLink>
-        </nav>
-      </header>
+      {/* The website's own nav, dropped inside the app: those links would
+          navigate the embedded frame away from the app entirely. */}
+      {embedded ? null : (
+        <header className="rp-nav">
+          <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
+            <ArcMark />
+            <span className="wordmark-text">CropBid</span>
+          </Link>
+          <nav className="rp-nav-links" aria-label="Primary">
+            <Link to="/">Marketplace</Link>
+            <Link to="/rates">Live rates</Link>
+            <Link to="/partner" className="nav-signin">Become a partner</Link>
+            <SignInLink className="cb-btn cb-btn-primary">
+              <ArrowIcon />
+            </SignInLink>
+          </nav>
+        </header>
+      )}
 
       <main className="rp-main">
         <div className="rp-head">
@@ -390,7 +397,7 @@ export function PrivacyPolicyPage() {
         </p>
       </main>
 
-      <CBFooter />
+      {embedded ? null : <CBFooter />}
     </div>
   );
 }

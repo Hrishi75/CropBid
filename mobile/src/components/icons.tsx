@@ -91,3 +91,48 @@ export const IconShield = (p: IcoProps) => (
     <Path d="M9 11l2 2 4-4" />
   </Ico>
 );
+
+// A wallet: the card body, plus the pocket and stud on its right edge.
+export const IconWallet = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M3 7.5A2.5 2.5 0 015.5 5H17a2 2 0 012 2v1" />
+    <Path d="M3 7.5V17a2 2 0 002 2h14a2 2 0 002-2v-2.5" />
+    <Path d="M21 8.5v6h-4.5a3 3 0 010-6H21z" />
+  </Ico>
+);
+
+export const IconClock = (p: IcoProps) => (
+  <Ico {...p}>
+    <Circle cx={12} cy={12} r={8.5} />
+    <Path d="M12 7.5V12l3 2" />
+  </Ico>
+);
+
+// A sprout in a hand: the Partner tab. Growing and trading, rather than the
+// briefcase every marketplace reaches for.
+export const IconSprout = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M12 20v-7" />
+    <Path d="M12 13c0-3 2-5 5-5 0 3-2 5-5 5z" />
+    <Path d="M12 13c0-2.5-1.8-4.5-4.5-4.5 0 2.7 2 4.5 4.5 4.5z" />
+    <Path d="M5 20h14" />
+  </Ico>
+);
+
+export const IconLeaf = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M4 20c0-8 5-13 16-13 0 9-5 13-13 13H4z" />
+    <Path d="M9 15c2-3 5-5 8-6" />
+  </Ico>
+);
+
+export const IconArrowLeft = (p: IcoProps) => <Ico {...p} d="M19 12H5M11 6l-6 6 6 6" />;
+
+export const IconPlus = (p: IcoProps) => <Ico {...p} sw={2.4} d="M12 5v14M5 12h14" />;
+
+export const IconBell2 = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M18 8a6 6 0 10-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
+    <Path d="M10.3 21a2 2 0 003.4 0" />
+  </Ico>
+);

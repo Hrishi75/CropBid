@@ -19,13 +19,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Alert } from '../lib/alert';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Mono } from '../components/buyerKit';
 import { PressScale } from '../components/motion';

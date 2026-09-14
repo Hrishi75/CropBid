@@ -18,7 +18,6 @@
 
 import React, { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -27,6 +26,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Alert } from '../lib/alert';
 import { PressScale } from './motion';
 import { Mono } from './buyerKit';
 import { fillRequirement, offerOnRequirement } from '../api/endpoints';

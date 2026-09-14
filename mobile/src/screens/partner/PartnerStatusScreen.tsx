@@ -21,13 +21,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mono } from '../../components/buyerKit';
@@ -158,8 +158,8 @@ export default function PartnerStatusScreen() {
 
         {waiting ? (
           <Text style={styles.hint}>
-            While you wait, today's mandi rates, the Sarkari Yojana hub and the equipment
-            catalogue are open to you. Your dashboard unlocks on approval.
+            While you wait, today's mandi rates and the Sarkari Yojana hub are open to
+            you. Your dashboard unlocks on approval.
           </Text>
         ) : null}
 
@@ -170,8 +170,20 @@ export default function PartnerStatusScreen() {
           <PressScale onPress={() => nav.navigate('Schemes')} cardStyle={styles.linkChip}>
             <Text style={styles.linkChipText}>Sarkari Yojana</Text>
           </PressScale>
-          <PressScale onPress={() => nav.navigate('Equipment')} cardStyle={styles.linkChip}>
-            <Text style={styles.linkChipText}>Equipment</Text>
+          {/* Somebody waiting on a decision has no Profile tab to reach these
+              from, and they are exactly the person most likely to want the
+              terms or a way to ask a question. */}
+          <PressScale onPress={() => nav.navigate('Help')} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Help</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('About')} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>About</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('Policy', { kind: 'terms' })} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Terms</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('Policy', { kind: 'privacy' })} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Privacy</Text>
           </PressScale>
         </View>
 

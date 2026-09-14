@@ -8,6 +8,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import * as browseService from '../services/browse.service';
+import { MIN_RETAIL_ORDER } from '../services/bid.service';
 
 // GET /api/browse — Browse listings with filters
 export async function browseListings(req: Request, res: Response, next: NextFunction) {
@@ -73,6 +74,19 @@ export async function getFilters(req: Request, res: Response, next: NextFunction
 }
 
 // GET /api/browse/cities — cities with live retail stock (consumer city picker)
+// GET /api/browse/retail-rules — the numbers the storefront has to agree with
+//
+// Served rather than hardcoded in each client, because a minimum order value
+// that the app and the server disagree about is a shopper being refused at the
+// pay button with no warning. One source, read at runtime.
+export async function getRetailRules(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ minOrderValue: MIN_RETAIL_ORDER, currency: 'INR' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getRetailCities(_req: Request, res: Response, next: NextFunction) {
   try {
     res.json(await browseService.getRetailCities());

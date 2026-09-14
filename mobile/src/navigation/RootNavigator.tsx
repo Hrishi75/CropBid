@@ -34,15 +34,24 @@ import SettleScreen from '../screens/buyer/SettleScreen';
 import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import WalletScreen from '../screens/WalletScreen';
 import FarmerHomeScreen from '../screens/farmer/HomeScreen';
 import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
 import CreateListingScreen from '../screens/farmer/CreateListingScreen';
 import EditProfileScreen from '../screens/farmer/EditProfileScreen';
 import StorefrontHomeScreen from '../screens/StorefrontHomeScreen';
+import ShopScreen from '../screens/ShopScreen';
 import CartScreen from '../screens/consumer/CartScreen';
+import OrdersScreen from '../screens/consumer/OrdersScreen';
 import CheckoutScreen from '../screens/consumer/CheckoutScreen';
 import PartnerStatusScreen from '../screens/partner/PartnerStatusScreen';
+import JoinScreen from '../screens/partner/JoinScreen';
+import AddressBookScreen from '../screens/profile/AddressBookScreen';
+import HelpScreen from '../screens/profile/HelpScreen';
+import AboutScreen from '../screens/profile/AboutScreen';
+import NotificationPrefsScreen from '../screens/profile/NotificationPrefsScreen';
+import PolicyScreen from '../screens/profile/PolicyScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
@@ -51,13 +60,13 @@ import CreateRequirementScreen from '../screens/buyer/CreateRequirementScreen';
 import CropSellersScreen from '../screens/CropSellersScreen';
 import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
-import EquipmentScreen from '../screens/EquipmentScreen';
 import BuyerTabBar from './BuyerTabBar';
 import FarmerTabBar from './FarmerTabBar';
 import ConsumerTabBar from './ConsumerTabBar';
 import type { BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, GuestStackParamList, PartnerStackParamList, RootStackParamList } from './types';
 import type { User } from '../api/types';
 import { isPendingPartner } from '../lib/partner';
+import { sellerWords } from '../lib/sellerType';
 
 // --- Buyer ---
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
@@ -83,6 +92,30 @@ function BuyerNavigator() {
   return (
     <RootStack.Navigator screenOptions={{ headerShown: false }}>
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
+      {/* Help, about and the policies. Registered on every stack: they are
+          the pages anyone might need whatever they are, and a route that
+          exists for shoppers only crashes when a farmer taps the same row. */}
+      <RootStack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: true, title: t('Help'), animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: t('About CropBid'), animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="Policy"
+        component={PolicyScreen as React.ComponentType<any>}
+        options={({ route }: any) => ({
+          headerShown: true,
+          title: route.params?.kind === 'terms'
+            ? t('Terms and conditions')
+            : route.params?.kind === 'privacy' ? t('Privacy policy') : t('Common questions'),
+          animation: 'slide_from_right',
+        })}
+      />
       <RootStack.Screen name="Auction" component={AuctionScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       {/* The demand board. A buyer reads it — it is the only view of what the
           rest of the market is paying — but cannot answer it: the fill and
@@ -115,14 +148,14 @@ function BuyerNavigator() {
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <RootStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Notifications"
@@ -137,15 +170,18 @@ function BuyerNavigator() {
 const FarmerTab = createBottomTabNavigator<FarmerTabParamList>();
 function FarmerTabs() {
   const { t } = useTranslation();
+  // A kirana store's tabs should not say "My Crops" and "My Farm". The labels
+  // come off sellerType, which the server has always sent. See lib/sellerType.
+  const words = sellerWords(useAuth().user);
   return (
     <FarmerTab.Navigator
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
       <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
-      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: t('My Crops') }} />
+      <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: t(words.stockTab) }} />
       <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
-      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: t('My Farm') }} />
+      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: t(words.homeTab) }} />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </FarmerTab.Navigator>
   );
@@ -157,6 +193,30 @@ function FarmerNavigator() {
   return (
     <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
+      {/* Help, about and the policies. Registered on every stack: they are
+          the pages anyone might need whatever they are, and a route that
+          exists for shoppers only crashes when a farmer taps the same row. */}
+      <FarmerStack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: true, title: t('Help'), animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: t('About CropBid'), animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
+        name="Policy"
+        component={PolicyScreen as React.ComponentType<any>}
+        options={({ route }: any) => ({
+          headerShown: true,
+          title: route.params?.kind === 'terms'
+            ? t('Terms and conditions')
+            : route.params?.kind === 'privacy' ? t('Privacy policy') : t('Common questions'),
+          animation: 'slide_from_right',
+        })}
+      />
       <FarmerStack.Screen name="CreateListing" component={CreateListingScreen} options={{ presentation: 'card', animation: 'slide_from_right' }} />
       <FarmerStack.Screen
         name="EditProfile"
@@ -190,14 +250,14 @@ function FarmerNavigator() {
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <FarmerStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <FarmerStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Notifications"
@@ -219,7 +279,7 @@ function ConsumerTabs() {
     >
       <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
       <ConsumerTab.Screen name="Cart" component={CartScreen} options={{ title: t('Cart') }} />
-      <ConsumerTab.Screen name="Orders" component={SettleScreen} options={{ title: t('Orders') }} />
+      <ConsumerTab.Screen name="Partner" component={JoinScreen} options={{ title: t('Partner') }} />
       <ConsumerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </ConsumerTab.Navigator>
   );
@@ -231,6 +291,60 @@ function ConsumerNavigator() {
   return (
     <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
       <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
+      {/* One local shop's counter. Pushed over the tabs rather than taking one:
+          a shopper goes to a shop and comes back, they do not live in it. */}
+      <ConsumerStack.Screen
+        name="Shop"
+        component={ShopScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      {/* A shopper's own order history, NOT buyer/SettleScreen. That screen is a
+          B2B escrow record ("Contracts", contract terms, per-quintal bid
+          quantities) and a household buying two kilos of tomatoes was being
+          shown a commodity settlement.
+
+          Reached from Profile rather than the tab bar: a history is checked now
+          and then, and the slot is better spent on what a shopper switches to
+          many times a session. */}
+      <ConsumerStack.Screen
+        name="Orders"
+        component={OrdersScreen}
+        options={{ headerShown: true, title: t('Your orders'), animation: 'slide_from_right' }}
+      />
+
+      {/* Profile's settings surfaces. All pushed with a header, because each is
+          a place you go, read, and come back from. */}
+      <ConsumerStack.Screen
+        name="AddressBook"
+        component={AddressBookScreen}
+        options={{ headerShown: true, title: t('Delivery addresses'), animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: true, title: t('Help'), animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: t('About CropBid'), animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="NotificationPrefs"
+        component={NotificationPrefsScreen}
+        options={{ headerShown: true, title: t('Notifications'), animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
+        name="Policy"
+        component={PolicyScreen as React.ComponentType<any>}
+        options={({ route }: any) => ({
+          headerShown: true,
+          title: route.params?.kind === 'terms'
+            ? t('Terms and conditions')
+            : route.params?.kind === 'privacy' ? t('Privacy policy') : t('Common questions'),
+          animation: 'slide_from_right',
+        })}
+      />
       {/* Pushed over the tabs, not a tab of its own: checkout is a one-way
           errand the shopper finishes or backs out of, and leaving the tab bar
           under it would invite them to wander off mid-address. */}
@@ -255,14 +369,14 @@ function ConsumerNavigator() {
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <ConsumerStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <ConsumerStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Notifications"
@@ -277,7 +391,7 @@ function ConsumerNavigator() {
 // Selling and bulk buying are applied for, and the server refuses every gated
 // route until an admin approves the application. So an unapproved partner does
 // not get their dashboard: they get the status screen, plus the reference
-// surfaces that are open to everyone anyway — rates, schemes, equipment — and
+// surfaces that are open to everyone anyway, rates and schemes, and
 // the form, if a reviewer sent them back for more.
 const PartnerStack = createNativeStackNavigator<PartnerStackParamList>();
 function PartnerNavigator() {
@@ -285,6 +399,30 @@ function PartnerNavigator() {
   return (
     <PartnerStack.Navigator screenOptions={{ headerShown: false }}>
       <PartnerStack.Screen name="PartnerStatus" component={PartnerStatusScreen} />
+      {/* Help, about and the policies. Registered on every stack: they are
+          the pages anyone might need whatever they are, and a route that
+          exists for shoppers only crashes when a farmer taps the same row. */}
+      <PartnerStack.Screen
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: true, title: t('Help'), animation: 'slide_from_right' }}
+      />
+      <PartnerStack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: t('About CropBid'), animation: 'slide_from_right' }}
+      />
+      <PartnerStack.Screen
+        name="Policy"
+        component={PolicyScreen as React.ComponentType<any>}
+        options={({ route }: any) => ({
+          headerShown: true,
+          title: route.params?.kind === 'terms'
+            ? t('Terms and conditions')
+            : route.params?.kind === 'privacy' ? t('Privacy policy') : t('Common questions'),
+          animation: 'slide_from_right',
+        })}
+      />
       <PartnerStack.Screen
         name="Application"
         component={OnboardingScreen}
@@ -296,14 +434,14 @@ function PartnerNavigator() {
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <PartnerStack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <PartnerStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
-      />
-      <PartnerStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
       />
     </PartnerStack.Navigator>
   );
@@ -317,6 +455,14 @@ function GuestNavigator() {
   return (
     <GuestStack.Navigator screenOptions={{ headerShown: false }}>
       <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
+      {/* Open to guests: the shelf is public and the gate is at the basket, not
+          the window. ShelfCard renders the ADD button only for a signed-in
+          CONSUMER, so there is nothing here a stranger can act on. */}
+      <GuestStack.Screen
+        name="Shop"
+        component={ShopScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
       <GuestStack.Screen
         name="CropSellers"
         component={CropSellersScreen as React.ComponentType<any>}
@@ -333,14 +479,38 @@ function GuestNavigator() {
         options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
+        name="Wallet"
+        component={WalletScreen}
+        options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
       />
+      {/* Help, about and the policies. Registered on every stack: they are
+          the pages anyone might need whatever they are, and a route that
+          exists for shoppers only crashes when a farmer taps the same row. */}
       <GuestStack.Screen
-        name="Equipment"
-        component={EquipmentScreen}
-        options={{ headerShown: true, title: t('Machines & equipment'), presentation: 'card', animation: 'slide_from_right' }}
+        name="Help"
+        component={HelpScreen}
+        options={{ headerShown: true, title: t('Help'), animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="About"
+        component={AboutScreen}
+        options={{ headerShown: true, title: t('About CropBid'), animation: 'slide_from_right' }}
+      />
+      <GuestStack.Screen
+        name="Policy"
+        component={PolicyScreen as React.ComponentType<any>}
+        options={({ route }: any) => ({
+          headerShown: true,
+          title: route.params?.kind === 'terms'
+            ? t('Terms and conditions')
+            : route.params?.kind === 'privacy' ? t('Privacy policy') : t('Common questions'),
+          animation: 'slide_from_right',
+        })}
       />
       <GuestStack.Screen
         name="Login"

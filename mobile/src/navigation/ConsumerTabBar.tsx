@@ -1,6 +1,15 @@
-// Custom bottom tab bar for the consumer app — lean 4-tab variant of
-// BuyerTabBar (Home / Cart / Orders / You), no dark marketplace surface since
-// there's no auction tab.
+// Custom bottom tab bar for the consumer app — Home / Cart / Partner / You, no
+// dark marketplace surface since there's no auction tab.
+//
+// ORDERS IS NOT HERE. It moved behind Profile: an order history is something a
+// shopper checks now and then, and a tab slot is for what they switch to many
+// times a session.
+//
+// PARTNER IS A TAB, not a row buried in the profile. Every account on CropBid
+// starts as a shopper (CLAUDE.md section 4), so this bar is what every single
+// new user sees, and the door into selling or buying in bulk has to be visible
+// from it rather than found. It keeps its slot after somebody applies, where it
+// reports where the application stands.
 //
 // Cart carries a count badge. That badge is this app's answer to the web
 // header's basket chip (client/src/components/consumer/CartBar.tsx): a shopper
@@ -10,14 +19,14 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { IconBasket, IconDoc, IconHome, IconUser, IcoProps } from '../components/icons';
+import { IconBasket, IconHome, IconSprout, IconUser, IcoProps } from '../components/icons';
 import { useCart } from '../context/CartContext';
 import { colors, design, font } from '../theme';
 
 const ICONS: Record<string, React.ComponentType<IcoProps>> = {
   Home: IconHome,
   Cart: IconBasket,
-  Orders: IconDoc,
+  Partner: IconSprout,
   You: IconUser,
 };
 

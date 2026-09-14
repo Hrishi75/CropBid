@@ -57,9 +57,9 @@ enum Language {
 }
 
 enum Unit {
-  KG      // Kilogram — universal
+  KG // Kilogram — universal
   QUINTAL // 100 kg — common in Indian mandis
-  TONNE   // 1000 kg — for bulk/export
+  TONNE // 1000 kg — for bulk/export
 }
 
 enum QualityGrade {
@@ -69,19 +69,19 @@ enum QualityGrade {
 }
 
 enum ListingStatus {
-  ACTIVE     // Open for bids
+  ACTIVE // Open for bids
   IN_AUCTION // Multiple buyers bidding live
-  SOLD       // Deal closed
-  EXPIRED    // Past expiry date, no deal
+  SOLD // Deal closed
+  EXPIRED // Past expiry date, no deal
 }
 
 enum CompanyType {
-  PROCESSOR      // Food processing companies
-  FMCG           // Fast-moving consumer goods
-  RESTAURANT     // Restaurant chains, cafés, cloud kitchens
-  EXPORTER       // Export companies
-  RETAILER       // Retail chains
-  WHOLESALER     // Bulk traders buying lots to redistribute
+  PROCESSOR // Food processing companies
+  FMCG // Fast-moving consumer goods
+  RESTAURANT // Restaurant chains, cafés, cloud kitchens
+  EXPORTER // Export companies
+  RETAILER // Retail chains
+  WHOLESALER // Bulk traders buying lots to redistribute
   SMALL_BUSINESS // Sweet shops, tiffin services, caterers — small recurring volumes
 }
 
@@ -91,7 +91,7 @@ enum CompanyType {
 // (a shop selling food needs an FSSAI licence; a farmer selling raw produce
 // does not).
 enum SellerType {
-  FARMER     // Grows what they sell
+  FARMER // Grows what they sell
   LOCAL_SHOP // Neighbourhood shop holding same-day stock
   WHOLESALER // Bulk stock, lowest unit price, minimum order applies
 }
@@ -100,12 +100,12 @@ enum SellerType {
 // reaches the marketplace until an admin moves them to APPROVED — dashboards
 // and mutating routes are gated on this, client- and server-side.
 enum PartnerStatus {
-  SUBMITTED    // Application in, waiting for first review
+  SUBMITTED // Application in, waiting for first review
   UNDER_REVIEW // An admin has picked it up
-  NEEDS_INFO   // Sent back to the applicant — statusNote says what's missing
-  APPROVED     // Live: dashboard and marketplace unlocked
-  REJECTED     // Turned down — statusNote says why
-  SUSPENDED    // Was live, pulled by an admin
+  NEEDS_INFO // Sent back to the applicant — statusNote says what's missing
+  APPROVED // Live: dashboard and marketplace unlocked
+  REJECTED // Turned down — statusNote says why
+  SUSPENDED // Was live, pulled by an admin
 }
 
 enum AgentType {
@@ -114,36 +114,36 @@ enum AgentType {
 }
 
 enum NegotiationStyle {
-  AGGRESSIVE   // Push hard, small concessions
-  BALANCED     // Fair market rate, reasonable concessions
+  AGGRESSIVE // Push hard, small concessions
+  BALANCED // Fair market rate, reasonable concessions
   CONSERVATIVE // Close deals fast, near asking price
 }
 
 enum BidStatus {
-  PENDING   // Waiting for response
-  ACCEPTED  // Farmer accepted
-  REJECTED  // Farmer rejected
+  PENDING // Waiting for response
+  ACCEPTED // Farmer accepted
+  REJECTED // Farmer rejected
   COUNTERED // Farmer counter-offered
-  EXPIRED   // Timed out
+  EXPIRED // Timed out
 }
 
 enum PaymentStatus {
   AWAITING_PAYMENT // Transaction created, buyer has not paid yet (Razorpay order open)
-  ESCROW           // Money captured & held by platform
-  RELEASED         // Paid to farmer
-  REFUNDED         // Returned to buyer
+  ESCROW // Money captured & held by platform
+  RELEASED // Paid to farmer
+  REFUNDED // Returned to buyer
 }
 
 enum DeliveryStatus {
-  PENDING    // Not yet shipped
+  PENDING // Not yet shipped
   IN_TRANSIT // On the way
-  DELIVERED  // Reached buyer
-  CONFIRMED  // Buyer confirmed receipt
+  DELIVERED // Reached buyer
+  CONFIRMED // Buyer confirmed receipt
 }
 
 enum NegotiationOutcome {
-  DEAL        // Agreement reached
-  NO_DEAL     // Could not agree
+  DEAL // Agreement reached
+  NO_DEAL // Could not agree
   IN_PROGRESS // Still negotiating
 }
 
@@ -151,21 +151,21 @@ enum NegotiationOutcome {
 // image of a Listing's lifecycle: it opens with a quantity, gets whittled down
 // by partial fills, and closes at zero.
 enum RequirementStatus {
-  OPEN      // Accepting fills and offers
+  OPEN // Accepting fills and offers
   FULFILLED // remainingQuantity hit 0 — every unit is spoken for
-  CLOSED    // Buyer withdrew it before it filled
-  EXPIRED   // neededBy passed with quantity still open.
-            // NOTE: nothing sets this automatically — there is no scheduler in
-            // this codebase (same story as ListingStatus.EXPIRED). The feed and
-            // both accept paths reject past-deadline rows lazily instead.
+  CLOSED // Buyer withdrew it before it filled
+  EXPIRED // neededBy passed with quantity still open.
+  // NOTE: nothing sets this automatically — there is no scheduler in
+  // this codebase (same story as ListingStatus.EXPIRED). The feed and
+  // both accept paths reject past-deadline rows lazily instead.
 }
 
 enum RequirementOfferStatus {
-  PENDING   // Awaiting the buyer's decision
-  ACCEPTED  // Buyer took it — a Listing + Bid + Transaction now exist
-  REJECTED  // Buyer declined
+  PENDING // Awaiting the buyer's decision
+  ACCEPTED // Buyer took it — a Listing + Bid + Transaction now exist
+  REJECTED // Buyer declined
   WITHDRAWN // Farmer pulled it before the buyer decided
-  EXPIRED   // Requirement filled or closed underneath it
+  EXPIRED // Requirement filled or closed underneath it
 }
 
 // The two product paths, not a style flag: an INSTANT row is born ACCEPTED (the
@@ -183,28 +183,33 @@ enum RequirementOfferKind {
 // A User has either a FarmerProfile or BuyerProfile (or neither if Admin).
 
 model User {
-  id          String   @id @default(uuid())
-  name        String
+  id         String   @id @default(uuid())
+  name       String
   // Phone is the primary contact/login identifier (required at signup);
   // email is optional. Both stay nullable at the DB level for legacy rows.
-  email       String?  @unique
+  email      String?  @unique
   // Nullable since phone+OTP signup landed: a shopper who has only ever signed
   // in with a code has NO password, and login must refuse the password path
   // for those accounts rather than comparing against an empty hash.
-  password    String?  // Hashed with bcrypt — NEVER store plain text
-  role        Role
-  phone       String?  @unique
-  location    String?
-  country     String   @default("India")
-  currency    Currency @default(INR)
-  language    Language @default(EN)
-  avatar      String?  // URL to uploaded avatar image
-  trustScore  Float    @default(50) // 0-100, builds with successful transactions
+  password   String? // Hashed with bcrypt — NEVER store plain text
+  role       Role
+  phone      String?  @unique
+  location   String?
+  country    String   @default("India")
+  currency   Currency @default(INR)
+  language   Language @default(EN)
+  avatar     String? // URL to uploaded avatar image
+  trustScore Float    @default(50) // 0-100, builds with successful transactions
 
   // Admin can suspend an account. A suspended user can't log in or refresh their
   // session (both flows reject with 403), and suspending clears refreshToken so
   // any live session dies at its next refresh. Reversible via the admin panel.
-  suspended   Boolean  @default(false)
+  suspended Boolean @default(false)
+
+  /// Prepaid credits. Optional because a wallet is created on first read, not
+  /// at signup: most accounts never top one up, and a row per user that is
+  /// always zero is a row that only exists to be joined against.
+  wallet Wallet?
 
   // Refresh token for JWT auth — stored hashed, null when logged out
   // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
@@ -220,16 +225,17 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations — these don't create columns, they define how models connect
-  farmerProfile FarmerProfile?
-  buyerProfile  BuyerProfile?
-  agentConfig   AgentConfig?
-  bids          Bid[]          // A buyer's bids
-  farmerTransactions Transaction[] @relation("FarmerTransactions")
-  buyerTransactions  Transaction[] @relation("BuyerTransactions")
-  notifications Notification[]
+  farmerProfile      FarmerProfile?
+  buyerProfile       BuyerProfile?
+  agentConfig        AgentConfig?
+  bids               Bid[] // A buyer's bids
+  farmerTransactions Transaction[]      @relation("FarmerTransactions")
+  buyerTransactions  Transaction[]      @relation("BuyerTransactions")
+  notifications      Notification[]
   equipmentEnquiries EquipmentEnquiry[] // Machinery leads this user has raised
-  buyerRequirements BuyerRequirement[]  // Demand this buyer has posted
-  requirementOffers RequirementOffer[]  // Responses this farmer has sent
+  buyerRequirements  BuyerRequirement[] // Demand this buyer has posted
+  requirementOffers  RequirementOffer[] // Responses this farmer has sent
+  addresses          Address[]
 }
 
 // =============================================================================
@@ -249,17 +255,17 @@ model User {
 // column, even a short-lived one. Rows are deleted on success and swept on
 // expiry (see pruneExpiredPendingSignups).
 model PendingSignup {
-  id        String   @id @default(uuid())
+  id       String   @id @default(uuid())
   // Unique so a resend or a retyped signup REPLACES the earlier attempt rather
   // than leaving several live codes for one address.
-  email     String   @unique // normalized (lowercased)
-  phone     String            // normalized (digits, optional leading +)
-  name      String
-  password  String            // bcrypt hash, never plaintext
-  role      Role
-  country   String   @default("India")
-  currency  Currency @default(INR)
-  language  Language @default(EN)
+  email    String   @unique // normalized (lowercased)
+  phone    String // normalized (digits, optional leading +)
+  name     String
+  password String // bcrypt hash, never plaintext
+  role     Role
+  country  String   @default("India")
+  currency Currency @default(INR)
+  language Language @default(EN)
 
   // SHA-256 of the 6-digit code — see utils/signupOtp.ts for why not bcrypt.
   codeHash   String
@@ -289,31 +295,31 @@ model PendingSignup {
 // a hash rather than bcrypt is the right call for a short-lived 6-digit code.
 // Rows are deleted on success and swept on expiry.
 model PhoneChallenge {
-  id         String   @id @default(uuid())
+  id       String @id @default(uuid())
   // Unique: asking for another code REPLACES the live one, so a number never
   // has two valid codes at once.
-  phone      String   @unique
-  codeHash   String
+  phone    String @unique
+  codeHash String
 
   // Role to give the account if this code creates one. Consumers self-serve;
   // FARMER/BUYER come from the partner flow and still face the approval gate.
   // ADMIN is never accepted here.
-  intendedRole Role   @default(CONSUMER)
+  intendedRole Role @default(CONSUMER)
 
   // Which channel actually carried the code, and where it went. Stored so the
   // code-entry screen can say "check WhatsApp" or "check your email"
   // truthfully — telling someone to watch WhatsApp for a code that landed in
   // their inbox is its own kind of lockout.
-  channel    String   @default("whatsapp") // whatsapp | sms | email | console
+  channel String  @default("whatsapp") // whatsapp | sms | email | console
   // The address the email fallback used. Either the account's, or one the
   // person typed when WhatsApp could not reach them.
-  email      String?
+  email   String?
 
   attempts   Int      @default(0)
   expiresAt  DateTime
   lastSentAt DateTime @default(now()) // drives the resend cooldown
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([expiresAt])
 }
@@ -333,24 +339,24 @@ model PhoneChallenge {
 // is, and the farm-only columns are nullable because a shop has no acreage.
 
 model FarmerProfile {
-  id             String     @id @default(uuid())
-  userId         String     @unique // One user = one profile
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique // One user = one profile
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  sellerType     SellerType @default(FARMER)
+  sellerType SellerType @default(FARMER)
 
   // --- Application lifecycle (see PartnerStatus) ---
   // Existing rows were backfilled APPROVED in the migration: they were live
   // before the approval gate existed, and locking them out would be a regression.
   status       PartnerStatus @default(SUBMITTED)
-  statusNote   String?       // Reviewer's note — what's missing (NEEDS_INFO) or why (REJECTED)
+  statusNote   String? // Reviewer's note — what's missing (NEEDS_INFO) or why (REJECTED)
   submittedAt  DateTime      @default(now()) // Last (re)submission — drives queue ordering + SLA
   reviewedAt   DateTime?
-  reviewedById String?       // Admin userId — who made the call (see also AuditLog)
+  reviewedById String? // Admin userId — who made the call (see also AuditLog)
 
   // --- Farm fields (FARMER only; a shop or wholesaler has neither) ---
-  farmSizeAcres  Float?   // Farm size in acres
-  cropsGrown     String[] // Doubles as "categories stocked" for shops/wholesalers
+  farmSizeAcres Float? // Farm size in acres
+  cropsGrown    String[] // Doubles as "categories stocked" for shops/wholesalers
 
   // --- Shop / wholesale fields (LOCAL_SHOP and WHOLESALER) ---
   businessName  String? // Shop or firm name — the consumer-facing identity
@@ -358,23 +364,23 @@ model FarmerProfile {
   address       String? // Street address; city lives on User.location
   fssaiLicense  String? // Food licence — required before a shop's stock can go live
   gstin         String? // Optional for shops (most are under threshold), expected for wholesalers
-  minOrderValue Float?  // WHOLESALER: minimum order value in account currency
-  leadTimeDays  Int?    // WHOLESALER: days from order to dispatch
+  minOrderValue Float? // WHOLESALER: minimum order value in account currency
+  leadTimeDays  Int? // WHOLESALER: days from order to dispatch
 
   // Location
-  country        String   @default("India")
-  state          String   // e.g., "Maharashtra", "Punjab", "California"
+  country String @default("India")
+  state   String // e.g., "Maharashtra", "Punjab", "California"
 
   // India-specific fields (shown conditionally when country is India)
-  fpoName        String?  // Farmer Producer Organization name
-  apmcLicense    String?  // Agricultural Produce Market Committee license
+  fpoName     String? // Farmer Producer Organization name
+  apmcLicense String? // Agricultural Produce Market Committee license
 
   // Certification
   organicCertified  Boolean @default(false)
   certificationBody String? // "NPOP" (India), "USDA Organic" (US), "EU Organic" (Europe)
 
-  bankDetails    Json?    // Flexible JSON for bank info (varies by country)
-  verified       Boolean  @default(false) // Admin-verified (legacy badge; the gate is `status`)
+  bankDetails Json? // Flexible JSON for bank info (varies by country)
+  verified    Boolean @default(false) // Admin-verified (legacy badge; the gate is `status`)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -391,13 +397,13 @@ model FarmerProfile {
 // =============================================================================
 
 model BuyerProfile {
-  id                       String      @id @default(uuid())
-  userId                   String      @unique
-  user                     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  companyName              String
-  companyType              CompanyType
-  country                  String      @default("India")
+  companyName String
+  companyType CompanyType
+  country     String      @default("India")
 
   // --- Application lifecycle — same machine as FarmerProfile.status ---
   // Existing rows backfilled APPROVED in the migration.
@@ -409,11 +415,11 @@ model BuyerProfile {
 
   // Tax ID label changes by country:
   //   India = GST Number, US = EIN, EU = VAT Number
-  taxId                    String?
+  taxId String?
 
-  annualProcurementVolume  String?     // e.g., "500-1000 tonnes"
-  outletCount              Int?        // RESTAURANT chains: how many kitchens take delivery
-  verified                 Boolean     @default(false) // Legacy badge; the gate is `status`
+  annualProcurementVolume String? // e.g., "500-1000 tonnes"
+  outletCount             Int? // RESTAURANT chains: how many kitchens take delivery
+  verified                Boolean @default(false) // Legacy badge; the gate is `status`
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -428,31 +434,31 @@ model BuyerProfile {
 // Buyers browse listings and place bids on them.
 
 model Listing {
-  id             String        @id @default(uuid())
+  id String @id @default(uuid())
 
   // Which farmer owns this listing
-  farmerId       String
-  farmer         FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  farmerId String
+  farmer   FarmerProfile @relation(fields: [farmerId], references: [id], onDelete: Cascade)
 
   // Crop details
-  cropName       String        // e.g., "Rice", "Wheat", "Cotton"
-  cropVariety    String?       // e.g., "Basmati", "Sharbati", "Shankar-6"
-  quantity       Float         // Total quantity on offer (fixed at creation)
-  remainingQuantity Float      // Stock left for direct sale — decremented on each consumer purchase
-  unit           Unit          @default(KG)
-  qualityGrade   QualityGrade
+  cropName          String // e.g., "Rice", "Wheat", "Cotton"
+  cropVariety       String? // e.g., "Basmati", "Sharbati", "Shankar-6"
+  quantity          Float // Total quantity on offer (fixed at creation)
+  remainingQuantity Float // Stock left for direct sale — decremented on each consumer purchase
+  unit              Unit         @default(KG)
+  qualityGrade      QualityGrade
 
   // Pricing — farmer sets a range for bidding
   // pricePerUnitMin = floor price (won't sell below this)
   // pricePerUnitMax = ideal price (what farmer hopes to get)
   pricePerUnitMin Float
   pricePerUnitMax Float
-  currency       Currency      @default(INR)
+  currency        Currency @default(INR)
 
   // Direct-to-consumer retail sale — a separate fixed-price channel that runs
   // alongside bidding. When enabled, consumers can instant-buy any quantity up
   // to remainingQuantity at retailPricePerUnit, no negotiation involved.
-  directSaleEnabled  Boolean   @default(false)
+  directSaleEnabled  Boolean @default(false)
   retailPricePerUnit Float?
 
   // True when this row exists only to carry a buyer-requirement fill into the
@@ -460,14 +466,14 @@ model Listing {
   // so a fill needs a Listing to hang off. Born SOLD with remainingQuantity 0;
   // it is never inventory, so listing.service and analytics filter it out.
   // Same marker technique as Bid.isDirectPurchase.
-  isRequirementFill  Boolean   @default(false)
+  isRequirementFill Boolean @default(false)
 
   // Dates
-  harvestDate    DateTime?     // When the crop was/will be harvested
-  expiryDate     DateTime?     // When this listing expires
+  harvestDate DateTime? // When the crop was/will be harvested
+  expiryDate  DateTime? // When this listing expires
 
   // Description & media
-  description    String?
+  description     String?
   // Machine translations of `description`, written fire-and-forget AFTER the
   // row is saved (services/translation.service.ts). `description` always holds
   // the original as the farmer wrote it; the column matching descriptionLang
@@ -481,25 +487,25 @@ model Listing {
   descriptionEn   String?
   descriptionHi   String?
   descriptionMr   String?
-  descriptionLang Language?    // Language the farmer actually wrote in
-  images         String[]      // Array of uploaded image URLs
-  labReportUrl   String?       // Lab quality report
+  descriptionLang Language? // Language the farmer actually wrote in
+  images          String[] // Array of uploaded image URLs
+  labReportUrl    String? // Lab quality report
 
   // Classification
-  organic        Boolean       @default(false)
-  location       String        // City/town
-  country        String        @default("India")
-  state          String        // State/province
+  organic  Boolean @default(false)
+  location String // City/town
+  country  String  @default("India")
+  state    String // State/province
 
-  status         ListingStatus @default(ACTIVE)
+  status ListingStatus @default(ACTIVE)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  bids          Bid[]
-  transactions  Transaction[]
-  negotiations  Negotiation[]
+  bids             Bid[]
+  transactions     Transaction[]
+  negotiations     Negotiation[]
   requirementOffer RequirementOffer? // Set when this listing is a requirement fill
 }
 
@@ -521,46 +527,46 @@ model Listing {
 // Company details are still one hop away via User.buyerProfile.
 
 model BuyerRequirement {
-  id                String            @id @default(uuid())
+  id String @id @default(uuid())
 
-  buyerId           String
-  buyer             User              @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id], onDelete: Cascade)
 
-  cropName          String            // e.g., "Cotton"
-  cropVariety       String?           // e.g., "Shankar-6"
+  cropName    String // e.g., "Cotton"
+  cropVariety String? // e.g., "Shankar-6"
 
-  quantity          Float             // Total demand, fixed at creation
-  remainingQuantity Float             // Decremented on every fill; 0 → FULFILLED
-  unit              Unit              @default(QUINTAL)
-  qualityGrade      QualityGrade      // Minimum grade the buyer will accept
+  quantity          Float // Total demand, fixed at creation
+  remainingQuantity Float // Decremented on every fill; 0 → FULFILLED
+  unit              Unit         @default(QUINTAL)
+  qualityGrade      QualityGrade // Minimum grade the buyer will accept
 
   // A single number, not a range: this is what the buyer will pay, and it is the
   // price an INSTANT fill executes at. Farmers who want more send a COUNTER.
-  pricePerUnit      Float
-  currency          Currency          @default(INR)
+  pricePerUnit Float
+  currency     Currency @default(INR)
 
   // Where the goods must LAND. Deliberately separate from the fill listing's
   // location/state, which is where they ship FROM.
-  deliveryLocation  String            // City/town, e.g. "Nagpur"
-  deliveryState     String
-  deliveryCountry   String            @default("India")
-  neededBy          DateTime?         // Delivery deadline
+  deliveryLocation String // City/town, e.g. "Nagpur"
+  deliveryState    String
+  deliveryCountry  String    @default("India")
+  neededBy         DateTime? // Delivery deadline
 
-  description       String?
+  description     String?
   // Stored translations — see the matching block on Listing for the full
   // rationale. Same worker, same idempotence rule, same null-means-fall-back.
-  descriptionEn     String?
-  descriptionHi     String?
-  descriptionMr     String?
-  descriptionLang   Language?
-  organic           Boolean           @default(false) // Buyer REQUIRES organic
+  descriptionEn   String?
+  descriptionHi   String?
+  descriptionMr   String?
+  descriptionLang Language?
+  organic         Boolean   @default(false) // Buyer REQUIRES organic
 
   // Copied onto the auto-created Bid so a requirement deal carries the same
   // commercial terms a hand-placed bid does.
-  paymentTerms      String?           // LC | NET7 | NET15 — validated at the API boundary
-  deliveryTerms     String?           // FOB | CIF — validated at the API boundary
+  paymentTerms  String? // LC | NET7 | NET15 — validated at the API boundary
+  deliveryTerms String? // FOB | CIF — validated at the API boundary
 
-  status            RequirementStatus @default(OPEN)
+  status RequirementStatus @default(OPEN)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -589,36 +595,36 @@ model BuyerRequirement {
 // that is the only place that needs it (Listing.farmerId).
 
 model RequirementOffer {
-  id            String                 @id @default(uuid())
+  id String @id @default(uuid())
 
   requirementId String
-  requirement   BuyerRequirement       @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  requirement   BuyerRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
 
-  farmerId      String
-  farmer        User                   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  farmerId String
+  farmer   User   @relation(fields: [farmerId], references: [id], onDelete: Cascade)
 
-  kind          RequirementOfferKind
-  quantity      Float
-  pricePerUnit  Float
-  totalAmount   Float                  // pricePerUnit × quantity, snapshotted.
-                                       // The Transaction is money-of-record.
-  currency      Currency               @default(INR)
-  message       String?
+  kind         RequirementOfferKind
+  quantity     Float
+  pricePerUnit Float
+  totalAmount  Float // pricePerUnit × quantity, snapshotted.
+  // The Transaction is money-of-record.
+  currency     Currency             @default(INR)
+  message      String?
 
-  status        RequirementOfferStatus @default(PENDING)
+  status RequirementOfferStatus @default(PENDING)
 
   // Set the moment the offer becomes a real deal. Nullable because a PENDING /
   // REJECTED / WITHDRAWN offer never produces one. @unique means the database
   // itself refuses to let one offer mint two listings or two bids — a hard
   // backstop under the conditional-claim logic in the service.
-  listingId     String?                @unique
-  listing       Listing?               @relation(fields: [listingId], references: [id])
-  bidId         String?                @unique
-  bid           Bid?                   @relation(fields: [bidId], references: [id])
+  listingId String?  @unique
+  listing   Listing? @relation(fields: [listingId], references: [id])
+  bidId     String?  @unique
+  bid       Bid?     @relation(fields: [bidId], references: [id])
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  respondedAt DateTime?                // When the buyer accepted/rejected
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  respondedAt DateTime? // When the buyer accepted/rejected
 
   @@index([requirementId, status])
   @@index([farmerId, createdAt])
@@ -631,29 +637,29 @@ model RequirementOffer {
 // The agent uses these settings when making automated decisions.
 
 model AgentConfig {
-  id               String           @id @default(uuid())
-  userId           String           @unique
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  agentType        AgentType
+  agentType AgentType
 
   // Master toggle — is the agent active?
-  autoNegotiate    Boolean          @default(true)
-  active           Boolean          @default(true)
+  autoNegotiate Boolean @default(true)
+  active        Boolean @default(true)
 
   // Price boundaries — the agent NEVER crosses these
-  minPrice         Float?           // Farmer: won't sell below this
-  maxPrice         Float?           // Buyer: won't pay above this
+  minPrice Float? // Farmer: won't sell below this
+  maxPrice Float? // Buyer: won't pay above this
 
   // Buyer-specific: what crops to look for
-  preferredCrops   String[]
+  preferredCrops String[]
 
   // Buyer-specific: quality requirements
   // Example JSON: { "minGrade": "B", "maxMoisture": 14, "pesticidesAllowed": false }
   qualityRequirements Json?
 
   // Max distance to consider (for logistics)
-  maxDistanceKm    Int?
+  maxDistanceKm Int?
 
   // If bid price >= this threshold, auto-accept immediately
   autoAcceptThreshold Float?
@@ -676,20 +682,20 @@ model AgentConfig {
 // The bid can be manual (buyer typed it) or automatic (AI agent placed it).
 
 model Bid {
-  id              String    @id @default(uuid())
+  id String @id @default(uuid())
 
-  listingId       String
-  listing         Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-  buyerId         String
-  buyer           User      @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id], onDelete: Cascade)
 
-  bidPricePerUnit Float     // Price per unit offered
-  totalAmount     Float     // bidPricePerUnit × quantity
-  quantity        Float     // How much the buyer wants
+  bidPricePerUnit Float // Price per unit offered
+  totalAmount     Float // bidPricePerUnit × quantity
+  quantity        Float // How much the buyer wants
 
-  currency        Currency  @default(INR)
-  message         String?   // Optional message from buyer
+  currency Currency @default(INR)
+  message  String? // Optional message from buyer
 
   // Order fulfilment details, snapshotted at order time so the seller can
   // arrange delivery and reach the buyer. When the client doesn't collect
@@ -697,15 +703,15 @@ model Bid {
   // buyer's profile phone/location.
   deliveryAddress String?
   contactPhone    String?
-  paymentTerms    String?   // LC | NET7 | NET15 — validated at the API boundary
-  deliveryTerms   String?   // FOB | CIF — validated at the API boundary
+  paymentTerms    String? // LC | NET7 | NET15 — validated at the API boundary
+  deliveryTerms   String? // FOB | CIF — validated at the API boundary
 
   // Was this bid placed by the AI agent or manually by the user?
-  isAgentBid      Boolean   @default(false)
+  isAgentBid Boolean @default(false)
 
   // True for a consumer's instant fixed-price purchase (no negotiation) —
   // created directly with status ACCEPTED, skipping the PENDING bid flow.
-  isDirectPurchase Boolean  @default(false)
+  isDirectPurchase Boolean @default(false)
 
   // Client-minted reference for ONE intended direct purchase, so a retry after
   // a lost response returns the order that already exists instead of buying the
@@ -713,17 +719,17 @@ model Bid {
   // race, and it rolls the stock decrement back with it. Null for everything
   // that is not a direct purchase (negotiated bids have an accept step to be
   // idempotent about instead).
-  idempotencyKey  String?   @unique
+  idempotencyKey String? @unique
 
-  status          BidStatus @default(PENDING)
-  counterPrice    Float?    // If farmer counters, this is their price
+  status       BidStatus @default(PENDING)
+  counterPrice Float? // If farmer counters, this is their price
 
-  createdAt  DateTime  @default(now())
-  expiresAt  DateTime? // Bids can have a deadline
+  createdAt DateTime  @default(now())
+  expiresAt DateTime? // Bids can have a deadline
 
   // Relations
-  transaction  Transaction?
-  negotiation  Negotiation?
+  transaction      Transaction?
+  negotiation      Negotiation?
   requirementOffer RequirementOffer? // Set when this bid is a requirement fill
 }
 
@@ -734,38 +740,38 @@ model Bid {
 // This is the financial record of every deal on the platform.
 
 model Transaction {
-  id                String        @id @default(uuid())
+  id String @id @default(uuid())
 
-  listingId         String
-  listing           Listing       @relation(fields: [listingId], references: [id])
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id])
 
-  bidId             String        @unique // One transaction per bid
-  bid               Bid           @relation(fields: [bidId], references: [id])
+  bidId String @unique // One transaction per bid
+  bid   Bid    @relation(fields: [bidId], references: [id])
 
-  farmerId          String
-  farmer            User          @relation("FarmerTransactions", fields: [farmerId], references: [id])
+  farmerId String
+  farmer   User   @relation("FarmerTransactions", fields: [farmerId], references: [id])
 
-  buyerId           String
-  buyer             User          @relation("BuyerTransactions", fields: [buyerId], references: [id])
+  buyerId String
+  buyer   User   @relation("BuyerTransactions", fields: [buyerId], references: [id])
 
   // Financial details
   finalPricePerUnit Float
   totalAmount       Float
-  currency          Currency      @default(INR)
+  currency          Currency @default(INR)
 
   // Platform fee — how CropBid makes money
-  platformFeePercent Float        @default(2.0)  // 2% fee
-  platformFeeAmount  Float                        // Calculated: totalAmount × 2%
+  platformFeePercent Float @default(2.0) // 2% fee
+  platformFeeAmount  Float // Calculated: totalAmount × 2%
 
   // Default stays ESCROW for a clean single-step enum migration (Postgres can't use
   // a freshly-added enum value as a DEFAULT in the same migration). The real initial
   // status for new deals is set explicitly to AWAITING_PAYMENT in transaction.service.ts.
-  paymentStatus     PaymentStatus @default(ESCROW)
-  deliveryStatus    DeliveryStatus @default(PENDING)
+  paymentStatus  PaymentStatus  @default(ESCROW)
+  deliveryStatus DeliveryStatus @default(PENDING)
 
   // Razorpay (capture-only). Order is created when buyer initiates payment;
   // paymentId is set once the payment is verified/captured into the platform account.
-  razorpayOrderId   String?       @unique
+  razorpayOrderId   String? @unique
   razorpayPaymentId String?
 
   createdAt DateTime @default(now())
@@ -791,27 +797,27 @@ model Transaction {
 // JSON array is simpler and faster for this use case.
 
 model Negotiation {
-  id             String             @id @default(uuid())
+  id String @id @default(uuid())
 
-  listingId      String
-  listing        Listing            @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-  bidId          String             @unique
-  bid            Bid                @relation(fields: [bidId], references: [id], onDelete: Cascade)
+  bidId String @unique
+  bid   Bid    @relation(fields: [bidId], references: [id], onDelete: Cascade)
 
-  farmerAgentId  String
-  farmerAgent    AgentConfig        @relation("FarmerAgent", fields: [farmerAgentId], references: [id])
+  farmerAgentId String
+  farmerAgent   AgentConfig @relation("FarmerAgent", fields: [farmerAgentId], references: [id])
 
-  buyerAgentId   String
-  buyerAgent     AgentConfig        @relation("BuyerAgent", fields: [buyerAgentId], references: [id])
+  buyerAgentId String
+  buyerAgent   AgentConfig @relation("BuyerAgent", fields: [buyerAgentId], references: [id])
 
   // The negotiation log — see comment above for structure
-  rounds         Json               @default("[]")
+  rounds Json @default("[]")
 
-  finalOutcome   NegotiationOutcome @default(IN_PROGRESS)
+  finalOutcome NegotiationOutcome @default(IN_PROGRESS)
 
-  startedAt      DateTime           @default(now())
-  endedAt        DateTime?          // Null while in progress
+  startedAt DateTime  @default(now())
+  endedAt   DateTime? // Null while in progress
 }
 
 // =============================================================================
@@ -825,20 +831,20 @@ model Negotiation {
 //   2. Sent via Socket.io in real-time (instant if user is online)
 
 model Notification {
-  id        String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type      String   // e.g., "NEW_BID", "BID_ACCEPTED", "AGENT_ACTION"
-  title     String   // e.g., "New bid on your Rice listing"
-  message   String   // e.g., "Buyer X offered ₹2,400/quintal for 50 quintals"
+  type    String // e.g., "NEW_BID", "BID_ACCEPTED", "AGENT_ACTION"
+  title   String // e.g., "New bid on your Rice listing"
+  message String // e.g., "Buyer X offered ₹2,400/quintal for 50 quintals"
 
-  read      Boolean  @default(false)
+  read Boolean @default(false)
 
   // Flexible payload for linking to relevant entities
   // Example: { "listingId": "abc", "bidId": "xyz" }
-  data      Json?
+  data Json?
 
   createdAt DateTime @default(now())
 }
@@ -851,6 +857,146 @@ model Waitlist {
   id        String   @id @default(uuid())
   email     String   @unique
   createdAt DateTime @default(now())
+}
+
+// =============================================================================
+// Model: Address — where a shopper has things delivered
+// =============================================================================
+// A household does not have one address. They have home, and a parent's flat,
+// and the office they want the vegetables sent to on a Tuesday. Retyping the
+// street every checkout is the friction that makes people abandon a basket, and
+// `User.location` (a city) was never going to carry it.
+//
+// SEPARATE FROM User.location, which stays. That column is the DELIVERY CITY:
+// it decides which shelf a shopper sees and the server refuses a purchase that
+// crosses it. This model is the street address within that city. Merging them
+// would mean a shopper with two saved addresses has two cities, and the shelf
+// would not know which one to show.
+//
+// FREE TEXT, ON PURPOSE. Indian addresses do not decompose into house/street/
+// postcode the way a form wants them to: "near Shivaji Chowk, behind the
+// temple" is a real and useful address, and a required "Street line 2" makes it
+// unenterable. What is structured is only what is actually used: a label to
+// pick between them, and a phone for the person receiving it.
+model Address {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// What the shopper calls it: "Home", "Mum's place", "Office". Theirs to
+  /// name, not a fixed enum, because the third one is never on anyone's list.
+  label String
+
+  /// The address itself, as they wrote it.
+  line String
+
+  /// The city this address is in. Denormalised from User.location at save time
+  /// rather than joined, because an address does not move when the account's
+  /// delivery city changes: switching city must not silently relabel a saved
+  /// Pune address as being in Nagpur.
+  city String
+
+  /// Who is receiving it. Defaults to the account holder's number, but a
+  /// delivery to a parent's flat should ring the parent.
+  phone String?
+
+  /// Optional landmark, kept apart from `line` because riders read it first.
+  landmark String?
+
+  /// The one checkout starts on. Exactly one per user is true at a time, held
+  /// by the service rather than the database: Postgres has no partial-unique
+  /// that survives the row being updated rather than inserted, so setting a new
+  /// default clears the others inside one transaction.
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Read as "this shopper's addresses, default first".
+  @@index([userId, isDefault])
+}
+
+// =============================================================================
+// Model: Wallet — prepaid credits, and the ledger behind them
+// =============================================================================
+// A shopper tops the wallet up and spends it. 1 CREDIT IS 1 RUPEE: there is no
+// exchange rate, no bonus multiplier and no expiry, because every one of those
+// is a pricing decision nobody has taken, and inventing one here would put a
+// number on screen that no one can justify. If credits ever stop being rupees,
+// that is a product decision first and a migration second.
+//
+// THE BALANCE IS A CACHE. `WalletEntry` is the record; `balance` is the running
+// total kept alongside it so the navbar does not have to sum the ledger on
+// every paint. Every write moves both, inside one interactive transaction, so
+// they cannot disagree. If they ever do, the ledger is right.
+//
+// Money is a Float here to match the rest of the schema (Transaction.
+// totalAmount, Bid.totalAmount). It is the wrong type for money everywhere it
+// appears and this model does not make it worse, but it is why every credit is
+// rounded to 2dp before it is written: see wallet.service.
+model Wallet {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Running total, in credits. Never written directly, only by applyEntry().
+  balance Float @default(0)
+
+  /// Follows the account's own currency, so a wallet cannot quietly hold INR
+  /// for a USD account. India-only today (CLAUDE.md §2), but the column is
+  /// already there on User and disagreeing with it would be a bug in waiting.
+  currency Currency @default(INR)
+
+  entries WalletEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// One movement of credits. Append-only: a correction is a new entry, never an
+/// edit, because a ledger you can rewrite is not a ledger.
+model WalletEntry {
+  id       String @id @default(uuid())
+  walletId String
+  wallet   Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  type WalletEntryType
+
+  /// Signed, in credits. Positive adds, negative removes. Signed rather than a
+  /// separate direction column so the ledger sums to the balance with a plain
+  /// SUM and cannot be summed wrongly.
+  amount Float
+
+  /// The running total immediately after this entry. Denormalised on purpose:
+  /// a statement has to show what the balance was at the time, and
+  /// recomputing it from the start of history to render one row is absurd.
+  balanceAfter Float
+
+  /// What a person reads on the statement row.
+  note String?
+
+  /// Razorpay's payment id for a top-up. UNIQUE, and that is the whole
+  /// idempotency guarantee: the verify endpoint can be called twice by a
+  /// retrying client or a webhook racing the callback, and the second insert
+  /// loses to this constraint rather than crediting the account again.
+  razorpayPaymentId String? @unique
+  razorpayOrderId   String?
+
+  createdAt DateTime @default(now())
+
+  /// A statement is read newest-first, per wallet.
+  @@index([walletId, createdAt])
+}
+
+enum WalletEntryType {
+  /// Credits bought with money.
+  TOPUP
+  /// Credits spent on an order.
+  SPEND
+  /// Credits returned when an order was refunded.
+  REFUND
+  /// A human correction, made by an admin. Always leaves a note.
+  ADJUSTMENT
 }
 
 // =============================================================================
@@ -867,22 +1013,22 @@ model Waitlist {
 // actorId for "what did this user do" queries.
 
 model AuditLog {
-  id         String   @id @default(uuid())
+  id String @id @default(uuid())
 
-  actorId    String?
-  actorRole  String?  // Snapshot of role at action time (FARMER / BUYER / ADMIN / SYSTEM)
+  actorId   String?
+  actorRole String? // Snapshot of role at action time (FARMER / BUYER / ADMIN / SYSTEM)
 
-  action     String   // e.g., "bid.accept", "transaction.refund", "admin.user.update"
-  entityType String   // e.g., "Bid", "Transaction", "User", "Listing"
-  entityId   String   // ID of the affected entity
+  action     String // e.g., "bid.accept", "transaction.refund", "admin.user.update"
+  entityType String // e.g., "Bid", "Transaction", "User", "Listing"
+  entityId   String // ID of the affected entity
 
   // Diff / context — before/after values, request IP, user-agent, reason text, etc.
-  metadata   Json?
+  metadata Json?
 
-  ip         String?
-  userAgent  String?
+  ip        String?
+  userAgent String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([actorId])
@@ -921,22 +1067,22 @@ enum PaidBy {
 // =============================================================================
 
 model LogisticsPartner {
-  id                String         @id @default(uuid())
+  id                String        @id @default(uuid())
   name              String
   type              LogisticsType
-  coverageRegions   String[]       // States/provinces covered
-  coverageCountries String[]       // Countries covered
-  vehicleTypes      String[]       // e.g., ["10-ton truck", "Reefer Van"]
+  coverageRegions   String[] // States/provinces covered
+  coverageCountries String[] // Countries covered
+  vehicleTypes      String[] // e.g., ["10-ton truck", "Reefer Van"]
   minQuantityKg     Float
   maxQuantityKg     Float
-  costPerKmPerKg    Float          // Rate calculation base
+  costPerKmPerKg    Float // Rate calculation base
   avgDeliveryDays   Int
-  rating            Float          @default(4.0)
+  rating            Float         @default(4.0)
   contactEmail      String
   contactPhone      String
-  apiEndpoint       String?        // For future API integration
-  commissionPercent Float          @default(7.5) // CropBid earns 5-10%
-  active            Boolean        @default(true)
+  apiEndpoint       String? // For future API integration
+  commissionPercent Float         @default(7.5) // CropBid earns 5-10%
+  active            Boolean       @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -949,13 +1095,13 @@ model LogisticsPartner {
 // =============================================================================
 
 model Shipment {
-  id                    String           @id @default(uuid())
+  id String @id @default(uuid())
 
-  transactionId         String           @unique
-  transaction           Transaction      @relation(fields: [transactionId], references: [id])
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
 
-  logisticsPartnerId    String
-  logisticsPartner      LogisticsPartner @relation(fields: [logisticsPartnerId], references: [id])
+  logisticsPartnerId String
+  logisticsPartner   LogisticsPartner @relation(fields: [logisticsPartnerId], references: [id])
 
   pickupLocation        String
   pickupDate            DateTime
@@ -963,23 +1109,23 @@ model Shipment {
   estimatedDeliveryDate DateTime
   actualDeliveryDate    DateTime?
 
-  vehicleType           String
-  vehicleNumber         String?
-  driverName            String?
-  driverPhone           String?
+  vehicleType   String
+  vehicleNumber String?
+  driverName    String?
+  driverPhone   String?
 
-  distanceKm            Float
-  totalWeightKg         Float
-  transportCost         Float
-  platformCommission    Float            // CropBid's cut from logistics
-  currency              Currency         @default(INR)
+  distanceKm         Float
+  totalWeightKg      Float
+  transportCost      Float
+  platformCommission Float // CropBid's cut from logistics
+  currency           Currency @default(INR)
 
-  paidBy                PaidBy
-  splitPercentBuyer     Float?           // Only used when paidBy = SPLIT
+  paidBy            PaidBy
+  splitPercentBuyer Float? // Only used when paidBy = SPLIT
 
-  status                ShipmentStatus   @default(PENDING_PICKUP)
-  trackingUpdates       Json             @default("[]")
-  proofOfDelivery       String?          // Photo URL
+  status          ShipmentStatus @default(PENDING_PICKUP)
+  trackingUpdates Json           @default("[]")
+  proofOfDelivery String? // Photo URL
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1001,14 +1147,14 @@ model Shipment {
 // An Equipment row can offer either or both (see `mode`).
 
 enum EquipmentCategory {
-  TRACTOR    // Tractors and power tillers
-  TILLAGE    // Rotavators, cultivators, ploughs, harrows
-  HARVESTER  // Combine harvesters, reapers
+  TRACTOR // Tractors and power tillers
+  TILLAGE // Rotavators, cultivators, ploughs, harrows
+  HARVESTER // Combine harvesters, reapers
   IRRIGATION // Pumps, pipes, sprinklers, drip sets
-  SPRAYER    // Knapsack, boom and power sprayers
-  THRESHER   // Threshers, winnowers, shellers
-  POWER      // Motors, diesel engines, gensets
-  TOOLS      // Hand implements and small attachments
+  SPRAYER // Knapsack, boom and power sprayers
+  THRESHER // Threshers, winnowers, shellers
+  POWER // Motors, diesel engines, gensets
+  TOOLS // Hand implements and small attachments
 }
 
 enum EquipmentCondition {
@@ -1029,9 +1175,9 @@ enum EnquiryIntent {
 }
 
 enum EnquiryStatus {
-  NEW       // Raised, dealer not yet reached
+  NEW // Raised, dealer not yet reached
   CONTACTED // Dealer has spoken to the farmer
-  CLOSED    // Resolved either way
+  CLOSED // Resolved either way
 }
 
 // =============================================================================
@@ -1043,25 +1189,25 @@ enum EnquiryStatus {
 // optional userId rather than being replaced.
 
 model EquipmentDealer {
-  id            String   @id @default(uuid())
-  name          String
-  location      String   // City/town
-  state         String
-  country       String   @default("India")
+  id       String @id @default(uuid())
+  name     String
+  location String // City/town
+  state    String
+  country  String @default("India")
 
-  contactPhone  String   // Revealed to a farmer only once they raise an enquiry
-  contactEmail  String?
+  contactPhone String // Revealed to a farmer only once they raise an enquiry
+  contactEmail String?
 
   // Curated trust signals — CropBid vouches for verified dealers.
-  verified      Boolean  @default(false)
-  rating        Float    @default(4.0)
+  verified Boolean @default(false)
+  rating   Float   @default(4.0)
 
   // Some dealers are empanelled under the government's SMAM subsidy scheme,
   // which means a farmer buying through them can claim 40–50% back. Surfacing
   // this is a genuine reason to pick one dealer over another.
   smamEmpanelled Boolean @default(false)
 
-  active        Boolean  @default(true)
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1080,54 +1226,53 @@ model EquipmentDealer {
 // =============================================================================
 
 model Equipment {
-  id          String             @id @default(uuid())
+  id String @id @default(uuid())
 
-  dealerId    String
-  dealer      EquipmentDealer    @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+  dealerId String
+  dealer   EquipmentDealer @relation(fields: [dealerId], references: [id], onDelete: Cascade)
 
-  title       String             // e.g., "Mahindra 575 DI XP Plus"
-  category    EquipmentCategory
-  brand       String?
-  modelName   String?            // `model` is a Prisma keyword — hence modelName
-  condition   EquipmentCondition @default(NEW)
-  yearMade    Int?               // Relevant for USED listings
+  title     String // e.g., "Mahindra 575 DI XP Plus"
+  category  EquipmentCategory
+  brand     String?
+  modelName String? // `model` is a Prisma keyword — hence modelName
+  condition EquipmentCondition @default(NEW)
+  yearMade  Int? // Relevant for USED listings
 
-  mode        EquipmentMode      @default(SALE)
+  mode EquipmentMode @default(SALE)
 
   // Pricing. Which fields are set depends on `mode` — the service validates
   // that a SALE row has salePrice and a RENT row has at least one rent rate.
   salePrice        Float?
   rentPricePerDay  Float?
   rentPricePerHour Float?
-  securityDeposit  Float?        // Refundable, rentals only
-  currency         Currency      @default(INR)
+  securityDeposit  Float? // Refundable, rentals only
+  currency         Currency @default(INR)
 
   // Spec sheet. Free-form strings keep this flexible across a tractor and a
   // 2-inch pipe without a table per category.
-  powerHp     Float?             // Horsepower, where it applies
-  specs       String[]           // e.g., ["540 PTO RPM", "1600 kg lift"]
+  powerHp Float? // Horsepower, where it applies
+  specs   String[] // e.g., ["540 PTO RPM", "1600 kg lift"]
 
   description String?
   images      String[]
 
-  location    String
-  state       String
+  location String
+  state    String
 
-  active      Boolean            @default(true)
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   enquiries EquipmentEnquiry[]
 
-  // Browse is always filtered by these — index the hot paths.
-  @@index([category, active])
-  @@index([state, active])
-
   // The catalogue loader's identity for a machine. Enforcing it here rather
   // than trusting the loader means two concurrent runs cannot both decide a
   // row is missing and insert it twice.
   @@unique([dealerId, title])
+  // Browse is always filtered by these — index the hot paths.
+  @@index([category, active])
+  @@index([state, active])
 }
 
 // =============================================================================
@@ -1138,23 +1283,23 @@ model Equipment {
 // catalogue be scraped for contacts.
 
 model EquipmentEnquiry {
-  id          String        @id @default(uuid())
+  id String @id @default(uuid())
 
   equipmentId String
-  equipment   Equipment     @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
 
-  userId      String        // Whoever raised it — usually a FARMER
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String // Whoever raised it — usually a FARMER
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  intent      EnquiryIntent // Buying or hiring — a BOTH listing needs this
-  message     String?
+  intent  EnquiryIntent // Buying or hiring — a BOTH listing needs this
+  message String?
 
   // Rental window, when intent = RENT. Advisory only; the dealer confirms
   // availability offline since we hold no booking calendar.
-  rentFrom    DateTime?
-  rentTo      DateTime?
+  rentFrom DateTime?
+  rentTo   DateTime?
 
-  status      EnquiryStatus @default(NEW)
+  status EnquiryStatus @default(NEW)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

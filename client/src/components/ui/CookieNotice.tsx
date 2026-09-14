@@ -26,6 +26,7 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { isEmbedded } from '../../utils/embedded';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -63,6 +64,13 @@ export function CookieNotice() {
   // the app mounts with createRoot, not hydrateRoot: the prerendered markup is
   // replaced outright, so there is no server render for this to disagree with.
   const [show, setShow] = useState(() => !alreadySeen());
+
+  // NEVER INSIDE THE PHONE APP. It reads these pages to avoid keeping a second
+  // copy of a legal document (see utils/embedded), and a banner about what a
+  // browser stores is meaningless to somebody reading the terms in an app that
+  // stores none of it. Checked before `show` so it cannot be dismissed into
+  // sessionStorage on the app's behalf either.
+  if (isEmbedded()) return null;
 
   if (!show) return null;
 

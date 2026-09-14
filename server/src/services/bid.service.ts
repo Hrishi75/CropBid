@@ -239,6 +239,15 @@ function findByIdempotencyKey(key: string, buyerId: string) {
 // one whenever the quantity moves. Leaving the key off entirely still works and
 // still buys, it just leaves the caller carrying the ambiguity, which is what
 // every pre-existing client does.
+/**
+ * The smallest retail order we will take, in rupees.
+ *
+ * Below this a delivery costs more than the order is worth. One constant in one
+ * place so the app can read the same number back off the API rather than
+ * hardcoding a second copy that drifts.
+ */
+export const MIN_RETAIL_ORDER = 150;
+
 export async function createDirectPurchase(consumerId: string, input: DirectPurchaseInput) {
   // Before anything is validated or claimed: if this exact purchase already
   // happened, hand back what it produced.
@@ -301,6 +310,29 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
 
   const retailPrice = listing.retailPricePerUnit;
   const totalAmount = retailPrice * input.quantity;
+
+  // MINIMUM ORDER VALUE.
+  //
+  // A ₹40 order of coriander cannot pay for someone to drive it across a city,
+  // and the 2% platform fee on it is 80 paise. The floor is what makes a
+  // delivery run worth making.
+  //
+  // Enforced HERE, not only in the basket. The app checks it too so the shopper
+  // is told before they reach the pay button, but a check that only exists in a
+  // client is not a rule: this endpoint is public API and takes a listing and a
+  // quantity from anyone signed in.
+  //
+  // PER ORDER, and that is a real limitation rather than a decision. Retail
+  // checkout places one order per lot (see the note in the app's Checkout), so
+  // a ₹200 basket split across two farms is two ₹100 orders and both are
+  // refused. Making the floor apply to the BASKET needs the server to be told
+  // about the basket, which it currently never is.
+  if (totalAmount < MIN_RETAIL_ORDER) {
+    throw new ApiError(
+      400,
+      `Orders start at ₹${MIN_RETAIL_ORDER}. Add a little more to this seller's items and try again.`,
+    );
+  }
 
   const contact = await orderContactDefaults(consumerId, input);
 

@@ -37,7 +37,6 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -46,6 +45,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { BillDetails } from '../../components/BillDetails';
 import { Mono } from '../../components/buyerKit';
@@ -137,11 +137,14 @@ export default function CheckoutScreen() {
       return;
     }
 
-    // Orders is a tab under ConsumerTabs, which is BELOW this screen in the
-    // stack. Naming the parent both pops the checkout off and lands on the
-    // right tab; a bare navigate('Orders') would switch the tab underneath and
-    // leave the shopper still staring at the checkout they just finished.
-    const done = () => nav.navigate('ConsumerTabs', { screen: 'Orders' });
+    // Orders is a SIBLING of this screen on the consumer stack now, not a tab
+    // under it, so navigating to it by name replaces the checkout rather than
+    // switching a tab underneath and leaving the shopper staring at the
+    // checkout they just finished.
+    //
+    // `replace`, not `navigate`: backing out of a fresh order list should not
+    // return to a checkout for a basket that has already been paid for.
+    const done = () => nav.replace('Orders');
 
     if (failures.length > 0) {
       Alert.alert(
