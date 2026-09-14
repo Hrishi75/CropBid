@@ -199,6 +199,41 @@ describe('two requests at once', () => {
     expect(await defaults(USER)).toBe(1);
   });
 
+  it('keeps the address the shopper picked when a delete races the promotion', async () => {
+    // Delete ends in a promotion of its own, so it is a write like the others.
+    // Serialised, the shopper's explicit choice wins whichever transaction goes
+    // first: promote-then-delete leaves Home not-default so the delete promotes
+    // nothing, and delete-then-promote has the promotion land last. Unlocked,
+    // the delete reads `isDefault` before the promotion clears it and then
+    // promotes SHOP over the Work the shopper just chose.
+    //
+    // TWO THINGS THIS TEST NEEDED BEFORE IT ACTUALLY CAUGHT ANYTHING.
+    // Counting defaults is not enough: the bad interleaving still leaves
+    // exactly one, so the assertion has to name the winner. And one round is
+    // not enough: the first pair of transactions in a fresh process spends its
+    // time opening connections and accidentally serialises, so a single-shot
+    // race test passed against the broken code every time. Over ten rounds the
+    // unlocked version loses about eight.
+    for (let round = 0; round < 10; round++) {
+      await prisma.address.deleteMany({ where: { userId: USER } });
+
+      const home = await createAddress(USER, input('Home'));
+      const work = await createAddress(USER, input('Work'));
+      const shop = await createAddress(USER, input('Shop'));
+      expect((await prisma.address.findUniqueOrThrow({ where: { id: home.id } })).isDefault).toBe(true);
+
+      await Promise.all([
+        setDefaultAddress(USER, work.id),
+        deleteAddress(USER, home.id),
+      ]);
+
+      const rows = await prisma.address.findMany({ where: { userId: USER } });
+      expect(rows.map((r) => r.id).sort()).toEqual([work.id, shop.id].sort());
+      expect(rows.filter((r) => r.isDefault)).toHaveLength(1);
+      expect(rows.find((r) => r.isDefault)?.id).toBe(work.id);
+    }
+  });
+
   it('does not make two users wait on each other', async () => {
     // The lock is per book, so unrelated accounts must not serialise. This
     // would pass even if the lock were global, but it documents the intent and

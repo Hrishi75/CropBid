@@ -144,11 +144,20 @@ export default function CartScreen() {
   // So each orderable line is checked against the floor on its own, the way the
   // server will. Named rather than counted, because "add ₹50 more" is useless
   // when the shopper cannot tell which of four rows is short.
+  //
+  // AGAINST THE UNROUNDED PRODUCT, not `lineTotal`. `lineTotal` is rounded to
+  // paise for display, and the server compares `price * quantity` raw, so
+  // ₹149.995 shows as ₹150, passes here, and is refused there. Checkout sends
+  // these same two numbers, so multiplying them is exactly the server's basis.
   const shortLines = useMemo(() => {
     if (minOrder == null) return [];
     return bill.orderable
-      .filter((l) => l.lineTotal < minOrder)
-      .map((l) => ({ name: l.item.cropName, shortBy: Math.ceil(minOrder - l.lineTotal) }));
+      .map((l) => ({ line: l, raw: l.price * l.quantity }))
+      .filter(({ raw }) => raw < minOrder)
+      .map(({ line, raw }) => ({
+        name: line.item.cropName,
+        shortBy: Math.ceil(minOrder - raw),
+      }));
   }, [bill.orderable, minOrder]);
 
   const blockCheckout = bill.loading || bill.orderable.length === 0 || shortLines.length > 0;

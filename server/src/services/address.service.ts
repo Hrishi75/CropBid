@@ -14,8 +14,10 @@
 //
 // A TRANSACTION ALONE IS NOT ENOUGH, which review caught. Under READ COMMITTED
 // two simultaneous first-address requests both count zero rows and both mark
-// their own row default. Every write here therefore takes an advisory lock on
-// the user's book first: see `lockAddressBook`.
+// their own row default. All four write paths therefore take an advisory lock
+// on the user's book as their first statement: see `lockAddressBook`. Delete
+// is one of them, because it promotes a replacement when it removes the
+// default and that promotion races anybody else's.
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
@@ -152,6 +154,11 @@ export async function setDefaultAddress(userId: string, addressId: string) {
 
 export async function deleteAddress(userId: string, addressId: string) {
   await prisma.$transaction(async (tx) => {
+    // DELETE TAKES THE LOCK TOO, which the first pass missed. It ends in a
+    // promotion like the others do: deleting the default while another request
+    // promotes a different row lets the delete's automatic promotion land last
+    // and quietly overwrite the choice the shopper just made.
+    await lockAddressBook(tx, userId);
     const owned = await tx.address.findFirst({ where: { id: addressId, userId } });
     if (!owned) throw new ApiError(404, 'Address not found');
 
