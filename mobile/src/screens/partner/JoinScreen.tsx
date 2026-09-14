@@ -28,23 +28,167 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import OnboardingScreen, { type PartnerKind } from '../OnboardingScreen';
+import type { SellerType } from '../../api/types';
+import { COMPANY_LABEL, COMPANY_TYPES, type CompanyType } from '../../lib/sellerType';
 import { Mono } from '../../components/buyerKit';
 import { PressScale } from '../../components/motion';
-import { IconArrow, IconCheck, IconShield, IconSprout } from '../../components/icons';
+import { IconArrow, IconArrowLeft, IconCheck, IconShield, IconSprout } from '../../components/icons';
 import { useAuth } from '../../context/AuthContext';
 import { PARTNER_STATUS_META, partnerApplication } from '../../lib/partner';
 import { colors, design, font, radius, spacing } from '../../theme';
+
+/** A short badge per buyer kind, so the cards scan without reading each body. */
+const BUYER_BADGE: Record<CompanyType, string> = {
+  RESTAURANT: 'FOOD SERVICE',
+  SMALL_BUSINESS: 'SMALL',
+  WHOLESALER: 'WHOLESALE',
+  PROCESSOR: 'PROCESSING',
+  FMCG: 'FMCG',
+  EXPORTER: 'EXPORT',
+  RETAILER: 'RETAIL',
+};
+
+/** What each kind actually does, in the words they would use. */
+const BUYER_BLURB: Record<CompanyType, string> = {
+  RESTAURANT: 'Restaurants, cafés, cloud kitchens. Regular produce for a kitchen.',
+  SMALL_BUSINESS: 'Sweet shops, tiffin services, caterers. Smaller recurring volumes.',
+  WHOLESALER: 'Buying lots and redistributing them to other traders or shops.',
+  PROCESSOR: 'Mills, packers and food manufacturers buying raw crop.',
+  FMCG: 'Packaged-goods companies sourcing ingredients at volume.',
+  EXPORTER: 'Buying for shipment abroad, usually against a contract.',
+  RETAILER: 'Retail chains and supermarkets stocking shelves.',
+};
 
 export default function JoinScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const { user } = useAuth();
   const [kind, setKind] = useState<PartnerKind | null>(null);
+  // WHICH KIND OF SELLER, asked before the form rather than assumed.
+  //
+  // Tapping "I sell" used to go straight to a farm application: acreage, crops
+  // grown, FPO affiliation. A kirana store owner was asked how many acres they
+  // farm, and whatever they typed was filed as sellerType FARMER, because the
+  // app never sent one and the column defaults to it. The server has always
+  // had three kinds with different required fields (auth.service
+  // `validateSellerApplication`); only the app pretended there was one.
+  const [sellerType, setSellerType] = useState<SellerType | null>(null);
+  // Buyers get the same treatment as sellers: which kind, before the form.
+  // Seven of them, and the form no longer asks again once it is chosen.
+  const [companyType, setCompanyType] = useState<CompanyType | null>(null);
 
   const application = partnerApplication(user);
+  // A reviewer sending a shop back for more should not make them re-declare
+  // that they are a shop. Their existing type seeds the picker, so the resubmit
+  // button lands straight on the right form.
+  const existingType = user?.farmerProfile?.sellerType ?? null;
 
-  // Once they have chosen, this screen gets out of the way entirely.
-  if (kind) return <OnboardingScreen kind={kind} />;
+  // Once they have chosen, this screen gets out of the way entirely. A seller
+  // is not done choosing until the KIND is picked too.
+  // Back goes to the step BEFORE this one, not always to the top: a seller
+  // returns to the three kinds they just chose from, a buyer to the two doors.
+  if (kind === 'BUYER' && companyType) {
+    return (
+      <OnboardingScreen
+        kind="BUYER"
+        companyType={companyType}
+        onBack={() => setCompanyType(null)}
+      />
+    );
+  }
+  if (kind === 'FARMER' && sellerType) {
+    return (
+      <OnboardingScreen
+        kind="FARMER"
+        sellerType={sellerType}
+        onBack={() => setSellerType(null)}
+      />
+    );
+  }
+
+  if (kind === 'BUYER') {
+    return (
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[styles.pad, { paddingTop: insets.top + spacing.xl, paddingBottom: spacing.xxl * 2 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Pressable
+          onPress={() => setKind(null)}
+          hitSlop={12}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <IconArrowLeft size={19} stroke={colors.forest} />
+          <Text style={styles.backText}>{t('Back')}</Text>
+        </Pressable>
+
+        <Text style={styles.title}>{t('What kind of business?')}</Text>
+        <Text style={styles.copy}>
+          {t('This is what a reviewer reads first, and it decides which growers your agent looks for.')}
+        </Text>
+
+        {/* All seven the server accepts, the three most common first. The form
+            used to offer five of them and miss WHOLESALER and SMALL_BUSINESS
+            entirely, so two real kinds of buyer had to claim to be something
+            they were not. */}
+        {COMPANY_TYPES.map((c) => (
+          <Card
+            key={c}
+            badge={BUYER_BADGE[c]}
+            title={COMPANY_LABEL[c]}
+            body={BUYER_BLURB[c]}
+            onPress={() => setCompanyType(c)}
+          />
+        ))}
+      </ScrollView>
+    );
+  }
+
+  if (kind === 'FARMER') {
+    return (
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={[styles.pad, { paddingTop: insets.top + spacing.xl }]}
+      >
+        <Pressable
+          onPress={() => setKind(null)}
+          hitSlop={12}
+          style={styles.back}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <IconArrowLeft size={19} stroke={colors.forest} />
+          <Text style={styles.backText}>{t('Back')}</Text>
+        </Pressable>
+
+        <Text style={styles.title}>{t('Which of these are you?')}</Text>
+        <Text style={styles.copy}>
+          {t('They are reviewed differently and the form asks for different things, so this decides what we need from you.')}
+        </Text>
+
+        <Card
+          badge={t('FARM')}
+          title={t('I grow it myself')}
+          body={t('A farm selling its own harvest. We will ask for your acreage and what you grow.')}
+          onPress={() => setSellerType('FARMER')}
+        />
+        <Card
+          badge={t('SHOP')}
+          title={t('I run a local shop')}
+          body={t('A kirana, vegetable or general store selling to households nearby. We will ask for your shop address and FSSAI licence.')}
+          onPress={() => setSellerType('LOCAL_SHOP')}
+        />
+        <Card
+          badge={t('WHOLESALE')}
+          title={t('I trade in bulk')}
+          body={t('Buying lots and redistributing them. We will ask for your firm name and GSTIN.')}
+          onPress={() => setSellerType('WHOLESALER')}
+        />
+      </ScrollView>
+    );
+  }
 
   // ---- Already applied -----------------------------------------------------
   // The status, not the form. Offering a blank application to somebody who sent
@@ -85,7 +229,11 @@ export default function JoinScreen() {
 
         {resubmit ? (
           <PressScale
-            onPress={() => setKind(application.kind === 'SELLER' ? 'FARMER' : 'BUYER')}
+            onPress={() => {
+              if (application.kind === 'SELLER') setSellerType(existingType ?? 'FARMER');
+              else setCompanyType((user?.buyerProfile?.companyType as CompanyType) ?? 'RESTAURANT');
+              setKind(application.kind === 'SELLER' ? 'FARMER' : 'BUYER');
+            }}
             scaleTo={0.98}
             cardStyle={styles.primaryBtn}
           >
@@ -131,13 +279,13 @@ export default function JoinScreen() {
       <Card
         badge={t('SELLER')}
         title={t('I grow or stock produce')}
-        body={t('Farmers, local shops and wholesalers. List a lot, take bids, or fill what a buyer has already asked for.')}
+        body={t('A farm, a local shop or a wholesaler. We will ask which on the next screen, because each is reviewed differently.')}
         onPress={() => setKind('FARMER')}
       />
       <Card
-        badge={t('BULK BUYER')}
-        title={t('I buy by the tonne')}
-        body={t('Processors, exporters, retailers, restaurants. Bid on lots, run auctions, or post what you need and let farmers come to you.')}
+        badge={t('BUYER')}
+        title={t('I buy for my business')}
+        body={t('A restaurant, a shop, a processor or a trading firm. Register and you can bid on lots, run auctions, or post what you need and let farmers come to you.')}
         onPress={() => setKind('BUYER')}
       />
 
@@ -155,7 +303,7 @@ export default function JoinScreen() {
       <View style={styles.aside}>
         <Text style={styles.asideTitle}>{t('One thing to know')}</Text>
         <Text style={styles.asideBody}>
-          {t('An approved seller or bulk buyer account cannot also use the basket. If somebody in your household shops here, keep their account separate from this one.')}
+          {t('An approved seller or buyer account cannot also use the basket. If somebody in your household shops here, keep their account separate from this one.')}
         </Text>
       </View>
     </ScrollView>
@@ -257,6 +405,10 @@ const styles = StyleSheet.create({
   cardTitle: { fontFamily: font.sansSemi, fontSize: 18, color: design.ink, marginTop: spacing.sm },
   cardBody: { fontFamily: font.sans, fontSize: 13, lineHeight: 20, color: design.ink3, marginTop: 5 },
 
+  back: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.xs, marginBottom: spacing.sm, alignSelf: 'flex-start' },
+  title: { fontFamily: font.sansBold, fontSize: 27, color: design.ink, letterSpacing: -0.5 },
+  copy: { fontFamily: font.sans, fontSize: 14.5, lineHeight: 22, color: design.ink2, marginTop: spacing.sm },
+  backText: { fontFamily: font.sansMed, fontSize: 14, color: colors.forest },
   reviewNote: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
     marginTop: spacing.lg,

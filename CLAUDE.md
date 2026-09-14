@@ -135,6 +135,20 @@ Order of precedence when choosing which form to show: an application already on 
 
 **The app matches now (2026-09-13).** `SignupScreen` has no role picker: it writes `CONSUMER` and says so before anything is typed. The door is the **Partner tab** (`screens/partner/JoinScreen`), a permanent slot in the consumer tab bar because every account starts as a shopper, so that bar is what every new user sees. It hands the chosen kind DOWN to `OnboardingScreen` as a `kind` prop instead of letting it re-read `user.role`, which is mistake #2 above one layer along. Once an application is on file the tab reports its status rather than offering the form again.
 
+**The app asks WHICH KIND before the form, on both sides (2026-09-14).** Tapping "I sell" used to go straight to a farm application: acreage, crops grown, FPO affiliation. A kirana store owner was asked how many acres they farm, and whatever they typed was filed as `sellerType: FARMER`, because the app never sent one and the column defaults to it. **Every seller who ever applied through the app is a FARMER in the database whatever they actually are.**
+
+The server was always ready for this: `validateSellerApplication` has required a different set per kind since the column existed, and the app simply never sent `sellerType`, `businessName`, `shopType`, `address`, `fssaiLicense` or `gstin`.
+
+| Kind | The form asks for |
+|---|---|
+| Farm | acreage, crops, FPO and APMC |
+| Local shop | shop name, shop type, address, **FSSAI licence** |
+| Wholesaler | firm name, **GSTIN** |
+
+Buyers get the same shape: which of the seven company types, then the form. The type is chosen on the step before and **the form no longer asks again**, because two pickers for one field invite two answers. The old in-form chip row defaulted to `PROCESSOR`, so any buyer who did not notice it was filed as one, and it offered five of the seven: `WHOLESALER` and `SMALL_BUSINESS` could not be selected at all.
+
+Every step has a back arrow, and a resubmitting seller's existing type seeds the picker so they are not made to re-declare what they already are.
+
 **A pending applicant keeps their basket, and that needed a split** in `mobile/src/lib/partner.ts`:
 
 - `partnerApplication()` reads the profile **whatever role holds it**. Gating on the role returned null for exactly the people who need to see "under review", since an applicant is a CONSUMER until a reviewer promotes them.
@@ -161,6 +175,16 @@ Order of precedence when choosing which form to show: an application already on 
 **It is a notice, not a consent gate, and that is a decision rather than a shortcut.** CropBid sets exactly one cookie: the httpOnly `refreshToken` in `REFRESH_COOKIE_OPTIONS` (`auth.controller.ts`), which nobody who never signs in ever receives. Everything else on the visitor's device is localStorage the site cannot run without: basket, delivery city, language, the idle-timeout clock. Nothing optional is set, so Accept/Reject buttons would be a promise that rejecting turns something off, when one of them would do nothing at all.
 
 **The day anything optional is added, this component is the wrong thing to edit.** An analytics or advertising cookie needs real prior consent: off by default, a reject that works, and a way to change the answer later. The current copy and the privacy page both say we would ask first, so shipping a tracker behind this notice would make two published pages false.
+
+### The app reads these very pages (2026-09-14)
+
+`/terms`, `/privacy` and `/faq` are shown inside the phone app rather than copied into it, so one document serves both surfaces. Two copies of something held to the standard above is two places to keep true, and the app's is the one nobody would remember.
+
+**`?app=1` strips the website off the document** (`client/src/utils/embedded.ts`). Without it a shopper reading the terms in the app gets a cookie banner about browser storage they are not using, a nav bar offering "Marketplace" and "Sign in" that would navigate the frame out of the app, and a site footer. `CookieNotice` returns null on that flag before it even checks `sessionStorage`, so an app view cannot dismiss the notice on a browser visitor's behalf.
+
+**A query param, not a frame check.** `window.self !== window.top` catches the web iframe and is FALSE in a native WebView, which renders the page as the top-level document, so every real phone would have kept the chrome.
+
+**Nothing changes for a browser visitor.** Every hide is conditional on the flag, which only the app sends.
 
 Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery and Contact pages**. Delivery is §8 of the terms, which may or may not satisfy them, so check the dashboard checklist.
 
@@ -194,6 +218,19 @@ DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run de
 - No SMTP/WhatsApp configured locally → **OTP codes and emails print to the API log.**
 - Blank Razorpay keys → payment endpoints return 503 and everything else works.
 - Blank `DATA_GOV_API_KEY` → rates fall back to static reference prices, badged `ref`. This is also true in production and looks like a UI bug but is not.
+
+Running the app against a local everything, which is what testing the policy screens needs:
+
+```bash
+# the web client, whose pages the app embeds
+cd client && npm run dev -- --port 5199
+
+# the app, pointed at both
+cd mobile && EXPO_PUBLIC_API_URL=http://localhost:5055/api \
+  EXPO_PUBLIC_SITE_URL=http://localhost:5199 npx expo start --web --port 8085
+```
+
+Both variables default to production, so an unset one is not a broken build, it is a build reading live data.
 
 **CI runs the server test suite** (`Test (vitest)` in the server job, `.github/workflows/ci.yml`). The client job is lint + build and the mobile job is typecheck, neither of which runs tests, because neither has a suite. Client typecheck needs `tsc -b`, not `tsc --noEmit` (project references).
 
@@ -229,12 +266,27 @@ Web has none of these. They are `mobile/` only.
 
 ### Profile
 
-Orders (history), Delivery addresses, Notifications, Help, About, Privacy, Terms, Share. Consumer-only as a block, because those routes live on the consumer stack and a farmer tapping one would crash on a missing route.
+Orders (history), Delivery addresses and Notifications are **shopper-only**: a farmer has no basket, so those routes live on the consumer stack alone. **Help, About, Privacy, Terms and Share are on every stack**, because they are not a shopper feature and were reachable by one role only because that is where they happened to be built. A pending applicant gets them as chips on the status screen, having no Profile tab, and a signed-out visitor gets them in a footer on the storefront, which sits OUTSIDE the browsing branch so it is there at the city gate too: that gate is the first screen anyone meets and it is where they are deciding whether to hand over a phone number.
 
 - **Orders is a history and nothing else.** It used to render `buyer/SettleScreen`, a B2B escrow record ("Contracts", contract terms, per-quintal bid quantities), to households buying two kilos of tomatoes. It is behind Profile rather than a tab: a history is checked now and then, and the slot is better spent on what a shopper switches to many times a session.
-- **Terms and Privacy open the live website in a WebView, deliberately not copied.** They are 385 lines each and §5 holds every claim in them to being true of the code, which has been got wrong before. Two copies is two places to keep true, and the app's is the one nobody would remember.
+- **Terms and Privacy open the live website, deliberately not copied.** See §5 for `?app=1`. **`react-native-webview` has no web implementation** and renders the sentence "React Native WebView does not support this platform." where the document should be: not an error, so `onError` never fires and a fallback never shows. `PolicyScreen` therefore renders a plain iframe on web and the WebView on native. `RazorpayCheckout` has the same problem and is unfixed, so payment cannot be exercised in a browser at all.
+- **`EXPO_PUBLIC_SITE_URL` overrides where those pages come from**, defaulting to production. Without it a change to the policy pages cannot be seen in the app until the web client deploys, which makes the pair untestable together.
 - **Notification toggles are device-local and say so.** There is no push infrastructure and no preference model on the server. A switch labelled "email alerts" that silently changed nothing is a lie the user cannot detect.
 - **Help is `info@cropbid.in`** and sets the expectation at a working day or two, because nobody is on a chat rota.
+
+### A seller is not always a farmer
+
+**`lib/sellerType.ts` owns every word the app uses for a seller.** The app used to label everything off one boolean, `role === 'FARMER'`, so a kirana store owner saw "farmer" on their profile, "My Crops" and "My Farm" in the tab bar, "Tell us about your farm" on the application and "BUYERS TRUST YOU" over their trust score. The database always knew better: `sellerType` is on the row and on the wire, and only the client threw it away.
+
+| | Farm | Local shop | Wholesaler |
+|---|---|---|---|
+| Tabs | My Crops / My Farm | My Stock / My Shop | My Lots / My Business |
+| Trust | BUYERS TRUST YOU | SHOPPERS TRUST YOU | BUYERS TRUST YOU |
+| Details card | Your farm, FARM SIZE | Your shop, no acreage row | Your business |
+
+**A shop is known by its `businessName`**, a farmer by their own name, so a shop whose profile shows the owner's name is showing the wrong identity to everyone who buys from them.
+
+**The profile header carries two pills**, because the account model has two levels: `SELLER` plus the kind, or `BUYER` plus the company type. `roleTag`'s predecessor was `isFarmer ? 'farmer' : 'buyer'`, which labelled every CONSUMER account a buyer, and since §4 that is every new account.
 
 ### `Alert.alert` is a no-op on react-native-web
 

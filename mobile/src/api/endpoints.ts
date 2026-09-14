@@ -17,6 +17,7 @@ import type {
   RequirementOffer,
   RetailShop,
   RetailShopDetail,
+  SellerType,
   Transaction,
   TransactionStats,
   Unit,
@@ -162,18 +163,43 @@ export async function deleteAccount(password: string): Promise<void> {
 }
 
 // --- Onboarding (creates the role profile required to use the app) ---
+/**
+ * A SELLER application, whichever of the three kinds it is.
+ *
+ * Mirrors `sellerApplicationSchema` on the server. Almost everything is
+ * optional because the required set depends on `sellerType`, and that rule
+ * lives server-side in `validateSellerApplication` rather than being restated
+ * here where it could drift: a farm needs acreage and crops, a shop needs an
+ * address and an FSSAI licence, a wholesaler needs a GSTIN.
+ *
+ * `sellerType` itself is optional only for backwards compatibility with callers
+ * written before there were three kinds; omitting it files the application as a
+ * FARMER, which is what the column defaults to.
+ */
 export interface FarmerOnboardingInput {
-  farmSizeAcres: number;
-  cropsGrown: string[];
+  sellerType?: SellerType;
   state: string;
   organicCertified?: boolean;
+  // Farm
+  farmSizeAcres?: number;
+  cropsGrown?: string[];
   fpoName?: string;
   apmcLicense?: string;
+  // Local shop and wholesaler
+  businessName?: string;
+  shopType?: string;
+  address?: string;
+  fssaiLicense?: string;
+  gstin?: string;
 }
 
 export interface BuyerOnboardingInput {
   companyName: string;
-  companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
+  // All seven the server accepts. It used to list five, which is why
+  // WHOLESALER and SMALL_BUSINESS could not be selected in the app at all.
+  companyType:
+    | 'RESTAURANT' | 'SMALL_BUSINESS' | 'WHOLESALER'
+    | 'PROCESSOR' | 'FMCG' | 'EXPORTER' | 'RETAILER';
   taxId?: string;
   annualProcurementVolume?: string;
 }

@@ -28,6 +28,17 @@ export interface User {
   avatar?: string | null;
   trustScore: number;
   farmerProfile?: {
+    // WHAT KIND OF SELLER THIS IS. The model is called FarmerProfile for
+    // historical reasons and holds all three kinds; `sellerType` is the column
+    // that says which (CLAUDE.md §4: read it as a SELLER profile). The server
+    // has always sent these — `farmerProfile: true` selects every column — and
+    // this type simply never named them, so the app collapsed a kirana store
+    // into "farmer" everywhere it showed a label.
+    sellerType?: SellerType;
+    /** What a shop trades as. A FARMER has none and is known by their own name. */
+    businessName?: string | null;
+    /** "vegetable", "kirana", "general", ... Only a shop has one. */
+    shopType?: string | null;
     farmSizeAcres?: number;
     state?: string;
     cropsGrown?: string[];

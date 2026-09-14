@@ -33,6 +33,7 @@ import { useAuth } from '../context/AuthContext';
 import type { ProfileParamList } from '../navigation/types';
 import { deleteAccount, uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
+import { accountTags, sellerDisplayName, sellerWords } from '../lib/sellerType';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -76,11 +77,21 @@ export default function ProfileScreen() {
     }
   }
   const farm = user.farmerProfile;
+  // What to call this seller's things. A kirana store is not a farm, and the
+  // app used to tell them it was. See lib/sellerType.
+  const words = sellerWords(user);
   const photo = mediaUrl(user.avatar);
   const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
   const subtitle = isFarmer
-    ? `${t('Farmer')}${farm?.state ? ` · ${farm.state}` : ''}`
-    : user.buyerProfile?.companyName ?? t('Buyer');
+    ? `${t(words.noun)}${farm?.state ? ` · ${farm.state}` : ''}`
+    : isConsumer
+      ? t('Shopper')
+      : user.buyerProfile?.companyName ?? t('Buyer');
+  // A shop is known by what it trades as, a farmer by their own name. Showing
+  // the owner's name on a shop's profile shows the wrong identity to everyone
+  // who buys from them.
+  const displayName = isFarmer ? sellerDisplayName(user) : user.name;
+  const tags = accountTags(user);
 
   async function onRefresh() {
     setRefreshing(true);
@@ -204,7 +215,13 @@ export default function ProfileScreen() {
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <Eyebrow>{t('Your account')}</Eyebrow>
-            <StatusPill tone="sage">{isFarmer ? t('farmer') : t('buyer')}</StatusPill>
+            {/* Two levels, because the account model has two: "SELLER" covers
+                a farm, a kirana store and a wholesaler, and each wants
+                different words everywhere else in the app. */}
+            <View style={styles.tagRow}>
+              <StatusPill tone="paper">{tags.category}</StatusPill>
+              {tags.subtype ? <StatusPill tone="sage">{t(tags.subtype)}</StatusPill> : null}
+            </View>
           </View>
           <Text style={styles.h1}>
             {isFarmer ? <>Everything about <Text style={styles.h1Serif}>you.</Text></> : <>Your <Text style={styles.h1Serif}>account.</Text></>}
@@ -220,7 +237,7 @@ export default function ProfileScreen() {
                   <Image source={{ uri: photo }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarEmpty]}>
-                    <Text style={styles.avatarLetter}>{user.name[0]?.toUpperCase()}</Text>
+                    <Text style={styles.avatarLetter}>{displayName[0]?.toUpperCase()}</Text>
                   </View>
                 )}
                 {uploading ? (
@@ -233,7 +250,7 @@ export default function ProfileScreen() {
                 </View>
               </Pressable>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
+                <Text style={styles.name} numberOfLines={1}>{displayName}</Text>
                 <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
                 <Text style={styles.photoHint}>{t('Tap the photo to change it')}</Text>
               </View>
@@ -242,7 +259,7 @@ export default function ProfileScreen() {
             {/* trust meter */}
             <View style={styles.trustBlock}>
               <View style={styles.rowBetween}>
-                <Mono style={styles.trustLabel}>{isFarmer ? 'BUYERS TRUST YOU' : 'TRUST SCORE'}</Mono>
+                <Mono style={styles.trustLabel}>{isFarmer ? words.trustLabel : 'TRUST SCORE'}</Mono>
                 <Mono style={styles.trustVal}>{trust} / 100</Mono>
               </View>
               <View style={styles.track}>
@@ -275,7 +292,7 @@ export default function ProfileScreen() {
             {isFarmer ? (
               <>
                 <View style={styles.divider} />
-                <Field label="VILLAGE / TOWN" value={user.location ?? 'not set'} />
+                <Field label={isFarmer && words.sizeLabel ? 'VILLAGE / TOWN' : 'CITY'} value={user.location ?? 'not set'} />
               </>
             ) : null}
             <View style={styles.divider} />
@@ -287,18 +304,24 @@ export default function ProfileScreen() {
         {isFarmer ? (
           <>
             <View style={[styles.sectionHead, styles.sidePadHead]}>
-              <Eyebrow>{t('Your farm')}</Eyebrow>
+              <Eyebrow>{t(words.placeSection)}</Eyebrow>
               {farm?.organicCertified ? <StatusPill tone="sage">organic</StatusPill> : null}
             </View>
             <View style={styles.sidePad}>
               <View style={styles.card}>
-                <Field label="FARM SIZE" value={farm?.farmSizeAcres != null ? `${farm.farmSizeAcres} acres` : 'not set'} />
-                <View style={styles.divider} />
+                {/* Acreage is a farm's fact. A kirana store has none, and
+                    "FARM SIZE: not set" reads as something they forgot. */}
+                {words.sizeLabel ? (
+                  <>
+                    <Field label={words.sizeLabel} value={farm?.farmSizeAcres != null ? `${farm.farmSizeAcres} acres` : 'not set'} />
+                    <View style={styles.divider} />
+                  </>
+                ) : null}
                 <Field label="STATE" value={farm?.state ?? 'not set'} />
                 {farm?.cropsGrown?.length ? (
                   <>
                     <View style={styles.divider} />
-                    <Mono style={styles.cropsLabel}>YOUR CROPS</Mono>
+                    <Mono style={styles.cropsLabel}>{words.stockLabel}</Mono>
                     <View style={styles.chipWrap}>
                       {farm.cropsGrown.map((c) => (
                         <View key={c} style={styles.chip}>
@@ -370,15 +393,16 @@ export default function ProfileScreen() {
           {isFarmer ? (
             <Row label={t('Your AI helper')} hint={t('Answers offers for you')} onPress={() => nav.navigate('Helper')} />
           ) : null}
-          {/* --- The settings menu ---------------------------------------
-              Consumer-only, because these routes live on the consumer stack.
-              A farmer or buyer tapping them would crash on a missing route,
-              which is why the whole block is gated rather than each row. */}
+          {/* --- Shopper-only ---------------------------------------------
+              A farmer has no basket, so no order history, no delivery
+              addresses and no order notifications. These three routes live on
+              the consumer stack alone, so the gate is real rather than
+              cosmetic. */}
           {isConsumer ? (
             <>
-              {/* First in the block, because it is the row people are actually
-                  looking for. It used to be a tab; the history is what they
-                  came to Profile for, the settings are what they find. */}
+              {/* First, because it is the row people are actually looking for.
+                  It used to be a tab; the history is what they came to Profile
+                  for, the settings are what they find. */}
               <Row
                 label={t('Your orders')}
                 hint={t('Everything you have ordered')}
@@ -394,31 +418,38 @@ export default function ProfileScreen() {
                 hint={t('What this device tells you about')}
                 onPress={() => nav.navigate('NotificationPrefs')}
               />
-              <Row
-                label={t('Help')}
-                hint={t('Write to us at info@cropbid.in')}
-                onPress={() => nav.navigate('Help')}
-              />
-              <Row
-                label={t('About CropBid')}
-                hint={t('What we do, and what we charge')}
-                onPress={() => nav.navigate('About')}
-              />
-              <Row
-                label={t('Privacy policy')}
-                onPress={() => nav.navigate('Policy', { kind: 'privacy' })}
-              />
-              <Row
-                label={t('Terms and conditions')}
-                onPress={() => nav.navigate('Policy', { kind: 'terms' })}
-              />
-              <Row
-                label={t('Share CropBid')}
-                hint={t('Send the app to someone')}
-                onPress={shareApp}
-              />
             </>
           ) : null}
+
+          {/* --- Everyone ------------------------------------------------
+              Help, about and the policies are not a shopper feature. A farmer
+              wants the terms as much as a household does, and these were
+              reachable by one role only because that is where they happened to
+              be built. Registered on every stack now, so no role taps a row
+              into a missing route. */}
+          <Row
+            label={t('Help')}
+            hint={t('Write to us at info@cropbid.in')}
+            onPress={() => nav.navigate('Help')}
+          />
+          <Row
+            label={t('About CropBid')}
+            hint={t('What we do, and what we charge')}
+            onPress={() => nav.navigate('About')}
+          />
+          <Row
+            label={t('Privacy policy')}
+            onPress={() => nav.navigate('Policy', { kind: 'privacy' })}
+          />
+          <Row
+            label={t('Terms and conditions')}
+            onPress={() => nav.navigate('Policy', { kind: 'terms' })}
+          />
+          <Row
+            label={t('Share CropBid')}
+            hint={t('Send the app to someone')}
+            onPress={shareApp}
+          />
 
           <Row
             label={t('Log out')}
@@ -550,6 +581,7 @@ const styles = StyleSheet.create({
   langHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginBottom: 10 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingBottom: 8 },
 
+  tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatarWrap: { width: 84, height: 84 },
   avatar: { width: 84, height: 84, borderRadius: 999, backgroundColor: design.paper2 },

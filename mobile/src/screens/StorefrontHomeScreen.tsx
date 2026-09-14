@@ -60,6 +60,7 @@ import { browse, retailCities, retailShops, updateLocation } from '../api/endpoi
 import api, { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
+import { sellerWords } from '../lib/sellerType';
 import { useCart, type CartPack } from '../context/CartContext';
 import { CartBar } from '../components/CartBar';
 import { QuantityStepper } from '../components/QuantityStepper';
@@ -826,9 +827,10 @@ export default function StorefrontHomeScreen() {
                   : 'Registered farmers list in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'}
               </Text>
               <PressScale onPress={onSell} cardStyle={styles.sellBtn}>
-                <Text style={styles.sellBtnText}>{isFarmer ? 'List your harvest' : 'Become a seller'}</Text>
+                <Text style={styles.sellBtnText}>{isFarmer ? sellerWords(user).listCta : 'Become a seller'}</Text>
               </PressScale>
             </View>
+
           </>
         ) : (
           <>
@@ -850,6 +852,20 @@ export default function StorefrontHomeScreen() {
             )}
           </>
         )}
+        {/* THE FOOTER, outside every branch above. This screen is the only
+            surface a signed-out visitor ever sees and they have no Profile tab,
+            so the policies have to hang off it. Outside the `browsing` branch
+            specifically because the city gate renders instead of it, and that
+            gate is the FIRST thing a visitor meets: somebody deciding whether
+            to hand over a phone number is entitled to read the privacy policy
+            before they do. */}
+        <View style={styles.footerLinks}>
+          <FooterLink label="Help" onPress={() => nav.navigate('Help')} />
+          <FooterLink label="About" onPress={() => nav.navigate('About')} />
+          <FooterLink label="Privacy" onPress={() => nav.navigate('Policy', { kind: 'privacy' })} />
+          <FooterLink label="Terms" onPress={() => nav.navigate('Policy', { kind: 'terms' })} />
+        </View>
+        <Mono style={styles.footerNote}>CROPBID · INDIA</Mono>
       </ScrollView>
 
       {/* The running basket, riding the bottom of the shelf. This screen is a
@@ -858,6 +874,14 @@ export default function StorefrontHomeScreen() {
           shopper with something in it. */}
       <CartBar overTabBar />
     </View>
+  );
+}
+
+function FooterLink({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8}>
+      <Text style={styles.footerLink}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1600,6 +1624,13 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   sellBtnText: { fontFamily: font.sansBold, fontSize: 13.5, color: colors.forest },
+
+  footerLinks: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center',
+    gap: 18, paddingHorizontal: 16, paddingTop: 26,
+  },
+  footerLink: { fontFamily: font.sansMed, fontSize: 13, color: design.ink3, textDecorationLine: 'underline' },
+  footerNote: { fontSize: 9, letterSpacing: 1, color: design.ink3, textAlign: 'center', paddingTop: 12 },
 
   empty: { alignItems: 'center', marginTop: 36, paddingHorizontal: 24, gap: 8 },
   emptyEmoji: { fontSize: 40 },

@@ -170,6 +170,21 @@ export default function PartnerStatusScreen() {
           <PressScale onPress={() => nav.navigate('Schemes')} cardStyle={styles.linkChip}>
             <Text style={styles.linkChipText}>Sarkari Yojana</Text>
           </PressScale>
+          {/* Somebody waiting on a decision has no Profile tab to reach these
+              from, and they are exactly the person most likely to want the
+              terms or a way to ask a question. */}
+          <PressScale onPress={() => nav.navigate('Help')} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Help</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('About')} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>About</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('Policy', { kind: 'terms' })} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Terms</Text>
+          </PressScale>
+          <PressScale onPress={() => nav.navigate('Policy', { kind: 'privacy' })} cardStyle={styles.linkChip}>
+            <Text style={styles.linkChipText}>Privacy</Text>
+          </PressScale>
         </View>
 
         <PressScale

@@ -15,6 +15,13 @@ export type AuthStackParamList = {
 // they try to act (buy, bid, sell, open the profile).
 export type GuestStackParamList = {
   GuestHome: undefined;
+  // Help, about and the policies. On EVERY stack, because they are the pages
+  // anyone might need whatever they are: a farmer wants the terms as much as a
+  // shopper, and a guest is entitled to read the privacy policy before handing
+  // over a phone number.
+  Help: undefined;
+  About: undefined;
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
   // One local shop's whole shelf, pushed from a shop card on Home.
   Shop: { id: string; city: string };
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
@@ -50,6 +57,13 @@ export type BuyerTabParamList = {
 
 export type RootStackParamList = {
   Tabs: undefined;
+  // Help, about and the policies. On EVERY stack, because they are the pages
+  // anyone might need whatever they are: a farmer wants the terms as much as a
+  // shopper, and a guest is entitled to read the privacy policy before handing
+  // over a phone number.
+  Help: undefined;
+  About: undefined;
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyRequirements: undefined;
@@ -76,6 +90,13 @@ export type FarmerTabParamList = {
 
 export type FarmerStackParamList = {
   FarmerTabs: undefined;
+  // Help, about and the policies. On EVERY stack, because they are the pages
+  // anyone might need whatever they are: a farmer wants the terms as much as a
+  // shopper, and a guest is entitled to read the privacy policy before handing
+  // over a phone number.
+  Help: undefined;
+  About: undefined;
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyOffers: undefined;
@@ -113,12 +134,16 @@ export type ConsumerStackParamList = {
   // shopper checks now and then, not a place they live, and a tab slot is for
   // what they switch to many times a session.
   Orders: undefined;
-  // Profile's settings surfaces. Consumer-only for now: the farmer and buyer
-  // stacks would need their own registrations to reach Help or About.
+  // Shopper-only surfaces. A farmer has no basket, so no delivery addresses
+  // and no order notifications.
   AddressBook: undefined;
+  NotificationPrefs: undefined;
+  // Help, about and the policies. On EVERY stack, because they are the pages
+  // anyone might need whatever they are: a farmer wants the terms as much as a
+  // shopper, and a guest is entitled to read the privacy policy before handing
+  // over a phone number.
   Help: undefined;
   About: undefined;
-  NotificationPrefs: undefined;
   Policy: { kind: 'terms' | 'privacy' | 'faq' };
   Checkout: undefined;
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
@@ -150,6 +175,13 @@ export type DemandStackParamList = {
 // that stay open to everyone and the form they can be sent back to.
 export type PartnerStackParamList = {
   PartnerStatus: undefined;
+  // Help, about and the policies. On EVERY stack, because they are the pages
+  // anyone might need whatever they are: a farmer wants the terms as much as a
+  // shopper, and a guest is entitled to read the privacy policy before handing
+  // over a phone number.
+  Help: undefined;
+  About: undefined;
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
   Application: undefined;
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Wallet: undefined;
