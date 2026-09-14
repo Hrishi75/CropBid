@@ -35,7 +35,7 @@ Languages: English, Hindi, Marathi. Sign-in is phone + 6-digit code; passwords e
 - **Not yet incorporated.** Incorporation in progress. `/terms` and `/privacy` say so outright rather than naming a company that does not exist. Wired to an `OPERATOR` constant in `client/src/pages/TermsPage.tsx`. **Fill it the day the certificate arrives** and the interim wording disappears on its own.
 - The footer must not say "CropBid, **Inc.**", a US suffix on an unincorporated Indian business. It did for a long time.
 - **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a.
-- **Minimum retail order: ₹150** (`MIN_RETAIL_ORDER`, `bid.service.ts`). Below it a delivery run costs more than the order is worth, and 2% of a ₹40 basket is 80 paise. Enforced on the server, and served to clients at `GET /browse/retail-rules` so the app reads the number rather than keeping a second copy that drifts. **It is per ORDER, not per basket**, and retail checkout places one order per lot. The cart therefore checks each line against the floor and names the ones that are short: comparing the basket TOTAL was worse than no gate at all, because two ₹100 lots passed as a ₹200 basket and were then both refused at the till. It compares the **unrounded** `price * quantity`, the server's own basis, not the paise-rounded `lineTotal` the row displays, or ₹149.995 shows as ₹150 and passes a gate the server then fails. Making it genuinely a basket rule means telling the server about the basket, which it is never told.
+- **Minimum retail order: ₹150** (`MIN_RETAIL_ORDER`, `bid.service.ts`). **The web cart does not know about it**: only the app calls `/browse/retail-rules`, so a shopper on the site fills a ₹80 basket, is told nothing, and is refused at checkout. Same bug the app had until it was fixed; the fix has not been ported. Below it a delivery run costs more than the order is worth, and 2% of a ₹40 basket is 80 paise. Enforced on the server, and served to clients at `GET /browse/retail-rules` so the app reads the number rather than keeping a second copy that drifts. **It is per ORDER, not per basket**, and retail checkout places one order per lot. The cart therefore checks each line against the floor and names the ones that are short: comparing the basket TOTAL was worse than no gate at all, because two ₹100 lots passed as a ₹200 basket and were then both refused at the till. It compares the **unrounded** `price * quantity`, the server's own basis, not the paise-rounded `lineTotal` the row displays, or ₹149.995 shows as ₹150 and passes a gate the server then fails. Making it genuinely a basket rule means telling the server about the basket, which it is never told.
 - **Retail footprint: Pune and Nagpur.** Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
 
 ### 2a. Freight is ours (shipped 2026-09-06)
@@ -158,9 +158,9 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **Unresolved, and now more visible:** roles are exclusive, so an approved seller cannot use the cart (`/cart`, `/checkout`, `/orders` are `allowedRoles={['CONSUMER']}`; `POST /bids/direct-purchase` is `requireRole('CONSUMER')`). `ShopScreen` renders the shelf read-only for them rather than 403ing at checkout, and `JoinScreen` warns before they apply, but both are plasters. If selling should stack on top of shopping, that is a role-to-capabilities refactor nobody has decided.
 
-## 5. Public policy pages
+## 5. Public pages
 
-`/terms`, `/privacy`, `/faq`, all linked from the footer. **Every claim in them must be true of the code today.** They are written to that rule and it has been broken before:
+`/terms`, `/privacy`, `/faq` and `/how-it-works`, all linked from the footer. **Every claim in them must be true of the code today.** They are written to that rule and it has been broken before:
 
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
@@ -185,6 +185,25 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 **A query param, not a frame check.** `window.self !== window.top` catches the web iframe and is FALSE in a native WebView, which renders the page as the top-level document, so every real phone would have kept the chrome.
 
 **Nothing changes for a browser visitor.** Every hide is conditional on the flag, which only the app sends.
+
+### `/how-it-works` drifts, and it drifted badly (rewritten 2026-09-14)
+
+The marketing page is held to the same rule as the legal ones and it is the one that breaks, because a product change lands in code and nobody thinks of the landing page. Six claims were on screen and untrue when it was audited:
+
+| On the page | What the code does |
+|---|---|
+| "the agent watches lots and bids for you" | `agent.service` exports get-config, set-config, toggle. No scheduler exists. What ships is two-sided: with BOTH agents active, either party hands one bid over and they negotiate it out |
+| "Book a transport partner in-app" | Booking went ADMIN-only in #133, and the seller pays |
+| households have "no minimums" | `MIN_RETAIL_ORDER` refuses anything under ₹150 |
+| "16 crops rated & forecast" | The board carries 30, and the forecast maps over the same list |
+| "verifies every lot ourselves" | We do not test lots, which the Quality section on that same page said in as many words |
+| "No passwords, ever" | Password sign-in is a real second lane |
+
+Two of those had a working contradiction elsewhere on the same page, which is the tell: **when a page argues with itself, one half is stale.** Also added, because they were simply missing: the household shelf (shop-first, the two lanes, Pune and Nagpur, 500 g, the ₹150 floor), the three seller kinds and their licences, and the fact that **freight is billed to the seller**, which an applicant could previously not learn from any public page.
+
+**The freight line is on `/how-it-works` but not on `/partner`**, which is the page somebody actually applies from. Same disclosure, not made there yet.
+
+**The nav on this page hides at 1240px, not the 960px the other landing pages use** (`.hiw-nav`). It carries eight links where they carry four, and `.nav` is a space-between row with nothing stopping the middle group colliding with the wordmark. It had been overlapping for a while at ordinary laptop widths.
 
 Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery and Contact pages**. Delivery is §8 of the terms, which may or may not satisfy them, so check the dashboard checklist.
 

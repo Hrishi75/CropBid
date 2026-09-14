@@ -2,16 +2,39 @@
 // How It Works — the simple version
 // =============================================================================
 // One story, told in order, in plain language: what CropBid is (hero), the
-// four steps of a deal (#how), the live price anchor (#rates), the 7-day
-// forecast (#forecast), everything else in the box (#features), buying direct
-// (#consumers), pricing (#pricing), mission, CTA.
+// four steps of a deal (#how), who sells here (#partner), the household shelf
+// (#consumers), quality standards (#quality), the live price anchor (#rates),
+// the 7-day forecast (#forecast), everything else in the box (#features),
+// pricing (#pricing), mission, CTA.
 //
 // Two rules for this page:
-//   1. Every claim describes something that ships in the app TODAY.
+//   1. Every claim describes something that ships TODAY.
 //   2. Every section uses the same centered shell (.hiw-sec > .hiw-inner >
 //      .hiw-head) so the whole page lines up on one axis.
 // The rates board and the forecast preview are LIVE — real API output, not
 // screenshots.
+//
+// RULE 1 IS NOT DECORATION, and this page had drifted a long way off it before
+// the 2026-09-14 pass. What was on screen and untrue:
+//
+//   - "the agent watches lots and bids for you". agent.service.ts exports three
+//     functions: read config, write config, toggle. There is no scheduler in
+//     the server and nothing anywhere places a bid on your behalf. What does
+//     exist is two-sided: when BOTH parties have an active agent, either can
+//     hand one bid over and the pair negotiate it out (negotiation.service).
+//   - "Book a transport partner in-app". Booking became ADMIN-only in #133.
+//     A farmer cannot book, and the seller pays the freight, which this page
+//     did not mention at all.
+//   - "no minimums" for households, next to a server that refuses anything
+//     under MIN_RETAIL_ORDER.
+//   - "16 crops rated & forecast every day". The board carries 30.
+//   - "verifies every lot ourselves" in the mission quote, on the same page as
+//     a Quality section explaining that we do not test lots.
+//   - "No passwords, ever", when password sign-in is a real second lane.
+//
+// Every one of those was a sentence somebody wrote when it was true. The way
+// they go stale is that the product moves and the page does not, so when you
+// change something, grep this file for it.
 // =============================================================================
 
 import { useEffect, useState, type ReactNode } from 'react';
@@ -32,10 +55,10 @@ import { SignInLink } from '../../components/auth/SignInLink';
 const NAV_LINKS = [
   ['How it works', '#how'],
   ['Partners',     '#partner'],
+  ['Households',   '#consumers'],
   ['Quality',      '#quality'],
   ['Live rates',   '#rates'],
   ['Forecast',     '#forecast'],
-  ['What you get', '#features'],
   ['Pricing',      '#pricing'],
 ] as const;
 
@@ -43,23 +66,26 @@ const NAV_LINKS = [
 // first because it is what makes the rest of it trustworthy, and because it is
 // genuinely the first thing that happens to anyone selling here.
 const STEPS: Array<[emoji: string, title: string, desc: string]> = [
-  ['✅', 'Sellers apply, we review', 'Farmers, local shops and wholesalers apply with their licences. Our team checks every application before they can sell to anyone.'],
+  ['✅', 'Sellers apply, we review', 'Farms, local shops and wholesalers each answer a different form and hand over the licence their trade needs. A person reads every application before anyone can sell.'],
   ['🌾', 'Approved sellers list stock', 'Crop, quantity, quality and their own asking price — from a phone, without travelling to the mandi.'],
-  ['🧺', 'Buyers bid — or just buy', 'Businesses bid in open rounds where every offer is visible. Households simply buy at the listed price.'],
-  ['🛡️', 'Escrow pays out on delivery', 'The buyer pays first and the money is held on the platform. Transport is booked in-app; when delivery is confirmed the seller is paid.'],
+  ['🧺', 'Buyers bid, or just buy', 'Businesses bid in open rounds where every offer is visible, or post what they need and let farmers fill it. Households buy off a shop\'s shelf at the listed price.'],
+  ['🛡️', 'We move it, escrow settles', 'The buyer pays up front and the money sits on the platform. We book the carrier ourselves so the load gets checked on the way through, and the seller is paid out once delivery is confirmed.'],
 ];
 
-// Everything else that ships in the app today. Rates and forecast have their
-// own sections above, so they are not repeated here.
+// Everything else that ships today. Rates, the forecast, the household shelf
+// and the partner gate have their own sections, so they are not repeated here.
+//
+// CHECK THE CODE BEFORE ADDING A CARD. Three of the eight that used to sit
+// here described things the server does not do; see the note at the top.
 const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🔨', 'Live auctions', 'Open bidding rounds on bulk lots — every offer visible, updated in real time.'],
   ['🤝', 'Counter-offers', 'Not happy with a bid? Counter it. The whole conversation stays on the record.'],
-  ['🤖', 'AI trading agent', 'Set your floor and ceiling — the agent watches lots and bids for you, within your rules.'],
-  ['🧺', 'Buy any quantity', 'One sack or a truckload — anyone can buy straight from a farmer, no bidding needed.'],
-  ['🚚', 'Delivery & tracking', 'Book a transport partner in-app and follow every deal: paid → shipped → delivered.'],
+  ['📋', 'Demand board', 'Buyers post what they need and at what price. Farmers fill it outright or come back with an offer.'],
+  ['🤖', 'Agents that haggle for you', 'Set your floor, your ceiling and how hard to push. When both sides have an agent switched on, either can hand a bid over and let the two of them settle it, every round written down.'],
+  ['🚚', 'We book the truck, not you', 'CropBid books the carrier so we can check the goods in transit. The seller pays the freight, and both sides follow the deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
-  ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place and, where the law needs it, a licence on file.'],
-  ['📱', 'No passwords, ever', 'Sign in with your phone number and a 6-digit code. Nothing to remember, nothing to reset.'],
+  ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place, and the licence their trade needs: FSSAI for a food shop, GSTIN for a wholesale firm.'],
+  ['📱', 'Sign in with your phone', 'A phone number and a 6-digit code. English, Hindi or Marathi, on the site or the app.'],
 ];
 
 // =============================================================================
@@ -204,14 +230,22 @@ const QUALITY_STANDARDS: QStandard[] = [
 // Mirrors the three steps on /partner — same words, so somebody who reads it
 // here and applies there doesn't get told a different story.
 const PARTNER_STEPS: Array<[n: string, title: string, desc: string]> = [
-  ['01', 'Apply', 'Tell us who you are, what you sell or buy, and your licence numbers. Ten minutes, from a phone.'],
+  ['01', 'Say what you are', 'A farm, a local shop or a wholesale firm. You pick first, and the form you get asks for that trade and nothing else: acreage and crops for a farm, FSSAI and an address for a shop, GSTIN for a firm.'],
   ['02', 'We review', 'A real person checks it, usually within 24–48 hours. If something is missing we ask for it — you don\'t start over.'],
   ['03', 'Go live', 'Approved partners get the full dashboard: listings, orders, bids, deliveries, analytics. You can trade the same day.'],
 ];
 
+// The three seller kinds, so an applicant knows which door they are walking
+// through before they start typing. Matches SellerType on the server.
+const SELLER_KINDS: Array<[emoji: string, title: string, desc: string]> = [
+  ['🚜', 'Farms', 'Sell your own harvest by the quintal or tonne to businesses nationwide, and by the kilo to households in your city.'],
+  ['🏪', 'Local shops', 'A kirana, a dairy counter or a fruit stall. Your own shopfront on CropBid, with your name on it and today\'s delivery.'],
+  ['📦', 'Wholesalers', 'Move volume through the auctions and the demand board, with your firm and GSTIN on the record.'],
+];
+
 const PRICING: Array<[big: string, label: string, desc: string]> = [
-  ['Free', 'to list and browse', 'Listing a crop, browsing the market, rates and the forecast cost nothing.'],
-  ['2%', 'only when a deal settles', 'One flat fee on completed deals. No subscriptions, no hidden charges.'],
+  ['Free', 'to join, list and browse', 'Applying, listing a crop, browsing the market, rates and the forecast all cost nothing. There is no signup fee.'],
+  ['2%', 'only when a deal settles', 'One flat fee on completed deals. No subscriptions.'],
   ['100%', 'of the money in escrow', 'Held on-platform from payment until confirmed delivery. Nobody can run with it.'],
 ];
 
@@ -221,7 +255,7 @@ const PRICING: Array<[big: string, label: string, desc: string]> = [
 
 function Nav({ country, onChangeCountry }: { country: Country; onChangeCountry: (c: Country) => void }) {
   return (
-    <header className="nav">
+    <header className="nav hiw-nav">
       <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
         <ArcMark />
         <span className="wordmark-text">CropBid</span>
@@ -272,10 +306,11 @@ function Hero() {
         <span className="italic">Nothing hidden in between.</span>
       </h1>
       <p className="cb-body hiw-hero-lede">
-        CropBid is a marketplace for food. Farmers, local shops and wholesalers apply
+        CropBid is a marketplace for food. Farms, local shops and wholesalers apply
         to sell here and are reviewed before they can trade. They list at their own
-        price. Businesses bid or order in bulk, households buy by the kilo, and the
-        money waits in escrow until it's delivered. That's the whole idea.
+        price, anchored to the day's government mandi rate. Businesses bid or order
+        in bulk, households buy by the kilo from a shop they can name, and the money
+        waits in escrow until it's delivered. That's the whole idea.
       </p>
       <div className="hiw-hero-actions">
         <Link to="/partner" className="cb-btn cb-btn-primary">
@@ -287,8 +322,8 @@ function Hero() {
       <div className="hiw-facts">
         {([
           ['4,600+', 'govt mandis in the live price feed'],
-          ['16', 'crops rated & forecast every day'],
-          ['2%', 'flat fee — nothing else'],
+          ['30', 'crops rated and forecast every day'],
+          ['2%', 'flat fee, only on a settled deal'],
         ] as const).map(([n, l]) => (
           <div key={l} className="hiw-fact">
             <div className="hiw-fact-n">{n}</div>
@@ -513,18 +548,61 @@ function Features() {
   );
 }
 
+// The household shelf. This section did not exist in any real form before
+// 2026-09-14: it was four lines saying "anyone can buy here, no minimums",
+// which was both thin and wrong. Retail is now a shop-first shelf with a floor
+// on the order and a city it has to be in, and every one of those is a thing a
+// shopper finds out at checkout if the page does not say it first.
+//
+// SHOP-FIRST IS THE ARGUMENT, not an implementation detail, so it leads. The
+// same tomato is ₹24 at one Pune shop and ₹28 at another and we do not average
+// that away, because averaging it away is what Blinkit does and the whole point
+// here is the name over the door.
 function BuyDirect() {
   return (
-    <section id="consumers" className="hiw-sec">
+    <section id="consumers" className="hiw-sec alt">
       <div className="hiw-inner">
         <SectionHead
-          eyebrow="Not a trader?"
-          title={<>Buy for your kitchen,<br /><span className="italic">straight from the source.</span></>}
-          sub="Anyone can buy here — one sack or a week's vegetables, at the seller's own listed price. No bidding, no minimums. Your phone number and a 6-digit code is the whole sign-up; you only need it when you check out."
+          eyebrow="For your kitchen"
+          title={<>You are buying from a shop,<br /><span className="italic">not from an algorithm.</span></>}
+          sub="Pick your city, pick a shop, buy what is on its shelf. We do not merge every seller's tomatoes into one anonymous card, because the shop you have bought from for years is the thing worth keeping."
         />
+
+        <div className="hiw-panel">
+          <div className="hiw-grid two">
+            <div className="hiw-card">
+              <span className="hiw-card-e" aria-hidden="true">🏪</span>
+              <h3>Local shops, today</h3>
+              <p>
+                Kiranas, dairies and fruit stalls near you, each with their own shopfront
+                and their own prices. Order in the day and it comes the same day.
+              </p>
+            </div>
+            <div className="hiw-card">
+              <span className="hiw-card-e" aria-hidden="true">🌾</span>
+              <h3>Fresh from the farm, tomorrow</h3>
+              <p>
+                Produce bought at tomorrow's mandi run and delivered that morning. It is a
+                batch, not a speed, so the app counts down to the nightly cutoff and tells
+                you the day it lands.
+              </p>
+            </div>
+          </div>
+
+          <p className="hiw-note">
+            <strong>The small print, up front.</strong> Household delivery runs in
+            <strong> Pune and Nagpur</strong> today, and you can only buy from sellers in
+            your own city, because a few kilos of vegetables cannot be freighted across the
+            country. Produce is priced by the kilo and sold from 500 g up. Orders start at
+            <strong> ₹150 per seller</strong>: below that the trip costs more than the
+            basket is worth. Signing up is a phone number and a 6-digit code, and you only
+            need it at checkout.
+          </p>
+        </div>
+
         <div className="hiw-cta-row">
           <Link to="/" className="cb-btn cb-btn-primary">
-            Start buying direct
+            Browse shops near you
             <ArrowIcon />
           </Link>
         </div>
@@ -535,13 +613,24 @@ function BuyDirect() {
 
 function Partner() {
   return (
-    <section id="partner" className="hiw-sec alt">
+    <section id="partner" className="hiw-sec">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Selling on CropBid"
           title={<>Not a marketplace <span className="italic">anyone can walk into.</span></>}
-          sub="Farmers, local shops and wholesalers sell here — but only after we've checked them. That gate is the product: it is why a buyer can trust a name they have never bought from before."
+          sub="Farms, local shops and wholesalers sell here — but only after we've checked them. That gate is the product: it is why a buyer can trust a name they have never bought from before."
         />
+
+        <div className="hiw-grid three" style={{ marginBottom: 14 }}>
+          {SELLER_KINDS.map(([emoji, title, desc]) => (
+            <div key={title} className="hiw-card">
+              <span className="hiw-card-e" aria-hidden="true">{emoji}</span>
+              <h3>{title}</h3>
+              <p>{desc}</p>
+            </div>
+          ))}
+        </div>
+
         <div className="hiw-grid three">
           {PARTNER_STEPS.map(([n, title, desc]) => (
             <div key={n} className="hiw-card">
@@ -551,6 +640,20 @@ function Partner() {
             </div>
           ))}
         </div>
+
+        {/* Freight is billed to the seller, and an applicant should read that
+            here rather than discover it on their first settlement. It is on
+            TransactionDetail and the Deliveries lede in the app, both of which
+            are behind the approval they have not got yet. */}
+        <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
+          <strong>Two things to know before you apply.</strong> You keep your own
+          prices: we never set them, and every listing shows the day's government
+          mandi rate beside yours so the buyer is arguing with the market and not
+          with you. And we book the transport rather than you, so the load can be
+          checked on the way through, which means <strong>the freight is billed to
+          the seller</strong> and shows as its own line on the settlement.
+        </p>
+
         <div className="hiw-cta-row">
           <Link to="/partner" className="cb-btn cb-btn-primary">
             Become a partner
@@ -567,7 +670,7 @@ function Partner() {
 
 function Pricing() {
   return (
-    <section id="pricing" className="hiw-sec alt">
+    <section id="pricing" className="hiw-sec">
       <div className="hiw-inner">
         <SectionHead
           eyebrow="Pricing"
@@ -583,6 +686,16 @@ function Pricing() {
             </div>
           ))}
         </div>
+
+        {/* "No hidden charges" used to sit in the 2% card. It cannot, now that
+            freight is billed to the seller: a charge is not hidden only if it
+            is written down somewhere the payer reads. */}
+        <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
+          <strong>What is not in the 2%.</strong> Transport is charged separately and
+          on top, at what the carrier quotes, and it is billed to the seller. Household
+          orders have a ₹150 floor per seller. Those two are the only other numbers
+          there are.
+        </p>
       </div>
     </section>
   );
@@ -597,11 +710,18 @@ function Mission() {
         </div>
         <div>
           <span className="cb-eyebrow">Why we built CropBid</span>
+          {/* DO NOT put "we verify every lot" back in here. We do not test
+              lots, the Quality section on this same page says so in as many
+              words, and the two of them contradicting each other is worse than
+              either one alone. What we actually check is the seller, at the
+              gate, and the goods in transit once we are the ones booking the
+              truck. */}
           <p className="testimonial-quote">
             “Every harvest, growers lose margin to prices they never get to see.
-            CropBid runs transparent, auditable auctions, verifies every lot ourselves, and
-            handles transport farm-to-buyer — so farmers get fair prices without ever leaving
-            the field.”
+            CropBid checks every seller at the door, runs the bidding in the open against
+            the day's government rate, and moves the goods itself — so a farmer gets a
+            fair price without ever leaving the field, and a household knows whose shop
+            it came from.”
           </p>
           <div className="testimonial-attribution">
             <div className="name">The CropBid team</div>
@@ -620,10 +740,11 @@ function CTA() {
         <div className="cta-grid-bg" />
         <div className="cta-inner">
           <div>
-            <h2 className="cb-h1">Stop guessing prices.<br />Start running auctions.</h2>
+            <h2 className="cb-h1">Stop guessing prices.<br />Start trading in the open.</h2>
             <p className="cb-body cta-lede">
-              List your first lot or place your first bid in minutes. Live mandi rates, open
-              bidding, escrow settlement — bring your crop, we'll bring the market.
+              List your first lot, place your first bid, or fill your kitchen from a shop
+              down the road. Live mandi rates, open bidding, escrow settlement — bring your
+              crop, we'll bring the market.
             </p>
           </div>
           <div className="cta-actions">
@@ -658,12 +779,15 @@ export function HowItWorksPage() {
       <Nav country={country} onChangeCountry={handleChangeCountry} />
       <Hero />
       <Steps />
+      {/* The two audiences back to back: who may sell, then what a household
+          actually gets. Reference material (quality, rates, forecast) follows,
+          because it is what you read second. */}
       <Partner />
+      <BuyDirect />
       <Quality />
       <LiveRates />
       <Forecast />
       <Features />
-      <BuyDirect />
       <Pricing />
       <Mission />
       <CTA />

@@ -338,6 +338,22 @@ body * {
 }
 .cb-landing .nav-links { display: flex; gap: 28px; font-size: 14.5px; opacity: 0.9; }
 .cb-landing .nav-links a { color: inherit; text-decoration: none; }
+/* This page carries eight nav links where the landing page carries four, and
+   .nav is a space-between flex row with nothing stopping the middle group
+   colliding with the wordmark. Between 960px (where the links hide) and roughly
+   1300px they did: "How it works" wrapped to two lines and sat on top of the
+   logo. Tighten the row first and only drop it when tightening is not enough.
+   Scoped to .hiw-nav so the other landing pages, which fit, are untouched. */
+@media (max-width: 1300px) {
+  .cb-landing .hiw-nav .nav-links { gap: 18px; font-size: 13.5px; }
+  .cb-landing .hiw-nav .nav-links a { white-space: nowrap; }
+}
+/* Tightened, the row still needs ~1190px for wordmark + links + actions, so it
+   comes off well above the 960px the other landing pages use. Measured, not
+   guessed: below this it collides again. */
+@media (max-width: 1240px) {
+  .cb-landing .hiw-nav .nav-links { display: none; }
+}
 .cb-landing .nav-actions { display: flex; align-items: center; gap: 12px; }
 /* Also a <button> now that sign-in opens a modal instead of navigating —
    reset the UA button chrome so the two render identically. */
@@ -1793,6 +1809,21 @@ body * {
   display: flex; flex-direction: column; gap: 10px;
 }
 .cb-landing .hiw-card.center { align-items: center; text-align: center; }
+/* Two-up, for the pair of household delivery lanes. `.three` is a no-op label
+   on the default 3-column grid; this one actually changes the track count. */
+.cb-landing .hiw-grid.two { grid-template-columns: repeat(2, 1fr); }
+/* The plain-spoken caveat under a section: the floor on an order, what the 2%
+   does not cover, who pays the freight. Same treatment as .qc-grade-note, which
+   does the same job for the A/B/C grade, so the page has one voice for "here is
+   the bit you would otherwise find out later". */
+.cb-landing .hiw-note {
+  padding: 15px 17px;
+  background: var(--cb-paper); border: 1px solid var(--cb-line);
+  border-left: 3px solid var(--cb-sage); border-radius: 10px;
+  font-size: 13.5px; line-height: 1.6; color: var(--cb-ink-2);
+}
+.cb-landing .hiw-sec.alt .hiw-note { background: var(--cb-bg); }
+.cb-landing .hiw-note strong { color: var(--cb-ink); font-weight: 600; }
 .cb-landing .hiw-card-e { font-size: 26px; line-height: 1; }
 .cb-landing .hiw-card h3 { font-size: 17.5px; font-weight: 600; letter-spacing: -0.01em; }
 .cb-landing .hiw-card p { font-size: 14px; line-height: 1.55; color: var(--cb-ink-2); }
@@ -1806,6 +1837,7 @@ body * {
   .cb-landing .hiw-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 640px) {
+  .cb-landing .hiw-grid.two { grid-template-columns: 1fr; }
   .cb-landing .hiw-sec { padding: 64px 20px; }
   .cb-landing .hiw-hero { padding: 64px 20px 56px; }
   .cb-landing .hiw-steps { grid-template-columns: 1fr; }
