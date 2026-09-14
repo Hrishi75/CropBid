@@ -47,7 +47,7 @@ export interface CartTotals {
   orderable: CartLine[];
   /** Sum of the orderable lines. Unbuyable rows never reach the bill. */
   itemsTotal: number;
-  /** Charged to the shopper today: nothing. The grower delivers locally. */
+  /** Charged to the shopper today: nothing. The seller delivers locally. */
   deliveryFee: number;
   toPay: number;
   currency: string;
@@ -147,9 +147,9 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
     lines,
     orderable,
     itemsTotal,
-    // No delivery charge is levied on a retail order today: the grower brings it
+    // No delivery charge is levied on a retail order today: the seller brings it
     // in with the local round, and the platform's 2% is taken out of the
-    // grower's settlement, not added to the shopper's bill. The bill says so in
+    // seller's settlement, not added to the shopper's bill. The bill says so in
     // words rather than showing a ₹0 line that looks like a placeholder.
     deliveryFee: 0,
     toPay: itemsTotal,

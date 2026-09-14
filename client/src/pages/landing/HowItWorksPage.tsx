@@ -600,7 +600,7 @@ function BuyDirect() {
             <strong> Pune and Nagpur</strong> today, and you can only buy from sellers in
             your own city, because a few kilos of vegetables cannot be freighted across the
             country. Produce is priced by the kilo and sold from 500 g up. Each item in
-            your basket is ordered separately from its grower, and
+            your basket is ordered separately from its seller, and
             <strong> every one of those orders starts at ₹150</strong>: below that the trip
             costs more than the order is worth. Signing up is a phone number and a 6-digit
             code, and you only need it at checkout.
@@ -705,7 +705,7 @@ function Pricing() {
             is written down somewhere the payer reads. */}
         {/* PER ORDER, and a retail basket becomes one order per lot, so this
             is per lot too. Not per seller and not per basket: two ₹100 lots
-            from the same grower are two ₹100 orders and both are refused. See
+            from the same seller are two ₹100 orders and both are refused. See
             the note above MIN_RETAIL_ORDER in bid.service. */}
         <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
           <strong>What is not in the 2%.</strong> Transport is charged separately and

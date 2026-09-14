@@ -11,7 +11,7 @@
 //      vanishing or — worse — being billed and then refused at the API.
 //
 //   2. IT SAYS HOW MANY ORDERS THIS IS. One basket is not one order here. Every
-//      lot is a separate grower with a separate escrow settlement, so four lots
+//      lot is a separate seller with a separate escrow settlement, so four lots
 //      means four orders in Orders. Hiding that would make the orders list look
 //      wrong the moment the shopper opened it.
 //
@@ -88,7 +88,7 @@ function CartRow({
           <Text style={styles.rowProblem}>{problem}</Text>
         ) : repriced ? (
           <Text style={styles.rowProblem}>
-            Price updated by the grower — was {money(item.pricePerUnit, item.currency)}/{unit}.
+            Price updated by the seller — was {money(item.pricePerUnit, item.currency)}/{unit}.
           </Text>
         ) : null}
 
@@ -143,7 +143,7 @@ export default function CartScreen() {
   //
   // So each orderable line is checked against the floor on its own, the way the
   // server will. PER LOT, not per seller: checkout posts one order per line, so
-  // two ₹100 lots from the SAME grower are two ₹100 orders and both are refused.
+  // two ₹100 lots from the SAME seller are two ₹100 orders and both are refused.
   // Named rather than counted, because "add ₹50 more" is useless when the shopper
   // cannot tell which of four rows is short.
   //
@@ -176,7 +176,7 @@ export default function CartScreen() {
             {hydrated ? 'Your cart is empty' : 'Fetching your cart…'}
           </Text>
           <Text style={styles.emptyBody}>
-            Add produce from the shop and it collects here — one bill, however many growers it
+            Add produce from the shop and it collects here — one bill, however many sellers it
             comes from.
           </Text>
           <PressScale onPress={() => nav.navigate('Home')} cardStyle={styles.emptyBtn}>
@@ -234,7 +234,7 @@ export default function CartScreen() {
         {shortLines.length > 0 && minOrder != null ? (
           <View style={styles.minNote}>
             <Text style={styles.minNoteText}>
-              Each item is ordered separately from its grower, and an order starts at{' '}
+              Each item is ordered separately from its seller, and an order starts at{' '}
               {money(minOrder, bill.currency)}.
             </Text>
             {shortLines.map((l) => (
