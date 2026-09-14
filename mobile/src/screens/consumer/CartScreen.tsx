@@ -142,8 +142,10 @@ export default function CartScreen() {
   // prevent.
   //
   // So each orderable line is checked against the floor on its own, the way the
-  // server will. Named rather than counted, because "add ₹50 more" is useless
-  // when the shopper cannot tell which of four rows is short.
+  // server will. PER LOT, not per seller: checkout posts one order per line, so
+  // two ₹100 lots from the SAME grower are two ₹100 orders and both are refused.
+  // Named rather than counted, because "add ₹50 more" is useless when the shopper
+  // cannot tell which of four rows is short.
   //
   // AGAINST THE UNROUNDED PRODUCT, not `lineTotal`. `lineTotal` is rounded to
   // paise for display, and the server compares `price * quantity` raw, so
@@ -232,7 +234,7 @@ export default function CartScreen() {
         {shortLines.length > 0 && minOrder != null ? (
           <View style={styles.minNote}>
             <Text style={styles.minNoteText}>
-              Each seller's items are ordered separately, and an order starts at{' '}
+              Each item is ordered separately from its grower, and an order starts at{' '}
               {money(minOrder, bill.currency)}.
             </Text>
             {shortLines.map((l) => (
@@ -268,7 +270,7 @@ export default function CartScreen() {
                 : shortLines.length > 0
                   ? shortLines.length === 1
                     ? `Add ${money(shortLines[0].shortBy, bill.currency)} of ${shortLines[0].name}`
-                    : `${shortLines.length} sellers are under the minimum`
+                    : `${shortLines.length} items are under the minimum`
                   : `Checkout · ${money(bill.toPay, bill.currency)}`}
           </Text>
         </PressScale>

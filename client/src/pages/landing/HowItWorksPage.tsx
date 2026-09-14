@@ -69,7 +69,7 @@ const STEPS: Array<[emoji: string, title: string, desc: string]> = [
   ['✅', 'Sellers apply, we review', 'Farms, local shops and wholesalers each answer a different form and hand over the licence their trade needs. A person reads every application before anyone can sell.'],
   ['🌾', 'Approved sellers list stock', 'Crop, quantity, quality and their own asking price — from a phone, without travelling to the mandi.'],
   ['🧺', 'Buyers bid, or just buy', 'Businesses bid in open rounds where every offer is visible, or post what they need and let farmers fill it. Households buy off a shop\'s shelf at the listed price.'],
-  ['🛡️', 'We move it, escrow settles', 'The buyer pays up front and the money sits on the platform. We book the carrier ourselves so the load gets checked on the way through, and the seller is paid out once delivery is confirmed.'],
+  ['🛡️', 'We move it, escrow settles', 'The buyer pays up front and the money sits on the platform. We book the carrier rather than leaving it to the seller, so the delivery is ours to answer for, and the seller is paid out once the buyer confirms it arrived.'],
 ];
 
 // Everything else that ships today. Rates, the forecast, the household shelf
@@ -82,7 +82,7 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🤝', 'Counter-offers', 'Not happy with a bid? Counter it. The whole conversation stays on the record.'],
   ['📋', 'Demand board', 'Buyers post what they need and at what price. Farmers fill it outright or come back with an offer.'],
   ['🤖', 'Agents that haggle for you', 'Set your floor, your ceiling and how hard to push. When both sides have an agent switched on, either can hand a bid over and let the two of them settle it, every round written down.'],
-  ['🚚', 'We book the truck, not you', 'CropBid books the carrier so we can check the goods in transit. The seller pays the freight, and both sides follow the deal: paid → shipped → delivered.'],
+  ['🚚', 'We book the truck, not you', 'One less thing for a farmer to arrange, and a delivery the platform answers for instead of a number the seller gave you. The seller pays the freight, and both sides follow the deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
   ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place, and the licence their trade needs: FSSAI for a food shop, GSTIN for a wholesale firm.'],
   ['📱', 'Sign in with your phone', 'A phone number and a 6-digit code. English, Hindi or Marathi, on the site or the app.'],
@@ -580,11 +580,17 @@ function BuyDirect() {
             </div>
             <div className="hiw-card">
               <span className="hiw-card-e" aria-hidden="true">🌾</span>
+              {/* The app really does run a live countdown to the nightly
+                  cutoff (mobile lib/freshWindow, components/FreshBanner). It is
+                  still the wrong thing to describe here: a visitor reading this
+                  is on the website, where no such clock exists, and nothing in
+                  the server refuses a late order anyway. Name the promise, not
+                  a widget on a surface they are not looking at. */}
               <h3>Fresh from the farm, tomorrow</h3>
               <p>
                 Produce bought at tomorrow's mandi run and delivered that morning. It is a
-                batch, not a speed, so the app counts down to the nightly cutoff and tells
-                you the day it lands.
+                batch rather than a speed: there is one run a day, and what you order joins
+                the next one.
               </p>
             </div>
           </div>
@@ -593,10 +599,11 @@ function BuyDirect() {
             <strong>The small print, up front.</strong> Household delivery runs in
             <strong> Pune and Nagpur</strong> today, and you can only buy from sellers in
             your own city, because a few kilos of vegetables cannot be freighted across the
-            country. Produce is priced by the kilo and sold from 500 g up. Orders start at
-            <strong> ₹150 per seller</strong>: below that the trip costs more than the
-            basket is worth. Signing up is a phone number and a 6-digit code, and you only
-            need it at checkout.
+            country. Produce is priced by the kilo and sold from 500 g up. Each item in
+            your basket is ordered separately from its grower, and
+            <strong> every one of those orders starts at ₹150</strong>: below that the trip
+            costs more than the order is worth. Signing up is a phone number and a 6-digit
+            code, and you only need it at checkout.
           </p>
         </div>
 
@@ -644,14 +651,20 @@ function Partner() {
         {/* Freight is billed to the seller, and an applicant should read that
             here rather than discover it on their first settlement. It is on
             TransactionDetail and the Deliveries lede in the app, both of which
-            are behind the approval they have not got yet. */}
+            are behind the approval they have not got yet.
+
+            DO NOT say the goods are inspected in transit. Owning the booking is
+            what would MAKE an inspection possible and that is the argument in
+            CLAUDE.md §2a, but ShipmentStatus runs PENDING_PICKUP → PICKED_UP →
+            IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED with no inspection step,
+            no result field, and nobody doing it. */}
         <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
           <strong>Two things to know before you apply.</strong> You keep your own
           prices: we never set them, and every listing shows the day's government
           mandi rate beside yours so the buyer is arguing with the market and not
-          with you. And we book the transport rather than you, so the load can be
-          checked on the way through, which means <strong>the freight is billed to
-          the seller</strong> and shows as its own line on the settlement.
+          with you. And we book the transport rather than you, which means
+          <strong> the freight is billed to the seller</strong> and shows as its own
+          line on the settlement.
         </p>
 
         <div className="hiw-cta-row">
@@ -690,11 +703,15 @@ function Pricing() {
         {/* "No hidden charges" used to sit in the 2% card. It cannot, now that
             freight is billed to the seller: a charge is not hidden only if it
             is written down somewhere the payer reads. */}
+        {/* PER ORDER, and a retail basket becomes one order per lot, so this
+            is per lot too. Not per seller and not per basket: two ₹100 lots
+            from the same grower are two ₹100 orders and both are refused. See
+            the note above MIN_RETAIL_ORDER in bid.service. */}
         <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
           <strong>What is not in the 2%.</strong> Transport is charged separately and
           on top, at what the carrier quotes, and it is billed to the seller. Household
-          orders have a ₹150 floor per seller. Those two are the only other numbers
-          there are.
+          orders have a ₹150 floor, applied to each item ordered rather than to the
+          basket. Those two are the only other numbers there are.
         </p>
       </div>
     </section>

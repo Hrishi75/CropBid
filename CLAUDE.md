@@ -199,6 +199,12 @@ The marketing page is held to the same rule as the legal ones and it is the one 
 | "verifies every lot ourselves" | We do not test lots, which the Quality section on that same page said in as many words |
 | "No passwords, ever" | Password sign-in is a real second lane |
 
+Review then caught **three more that the rewrite introduced**, which is the same failure one turn later, so they are worth naming:
+
+- "the load gets checked on the way through". Owning the booking is what would MAKE an inspection possible and that is the whole argument in §2a, but `ShipmentStatus` runs `PENDING_PICKUP → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED` with no inspection step, no result field, and §2a itself says nobody does it today. **Writing the rationale as though it were the feature** is how this one gets made; the honest line is that we book the carrier so the delivery is ours to answer for.
+- "the app counts down to the nightly cutoff". True of `mobile/lib/freshWindow`, wrong to put on the website, where the reader has no such clock and no server refuses a late order either.
+- "₹150 per seller". **It is per LOT.** Checkout posts one `directPurchase` per line, so two ₹100 lots from the SAME grower are two ₹100 orders and both are refused. The app's cart note and its checkout button said "seller" too, three elements above a `BillDetails` line already saying "one per lot", and the server's own error said "this seller's items". All four fixed together.
+
 Two of those had a working contradiction elsewhere on the same page, which is the tell: **when a page argues with itself, one half is stale.** Also added, because they were simply missing: the household shelf (shop-first, the two lanes, Pune and Nagpur, 500 g, the ₹150 floor), the three seller kinds and their licences, and the fact that **freight is billed to the seller**, which an applicant could previously not learn from any public page.
 
 **The freight line is on `/how-it-works` but not on `/partner`**, which is the page somebody actually applies from. Same disclosure, not made there yet.
