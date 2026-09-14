@@ -14,7 +14,6 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,6 +21,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Eyebrow, Mono } from '../../components/buyerKit';

@@ -21,13 +21,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Mono } from '../../components/buyerKit';
@@ -158,8 +158,8 @@ export default function PartnerStatusScreen() {
 
         {waiting ? (
           <Text style={styles.hint}>
-            While you wait, today's mandi rates, the Sarkari Yojana hub and the equipment
-            catalogue are open to you. Your dashboard unlocks on approval.
+            While you wait, today's mandi rates and the Sarkari Yojana hub are open to
+            you. Your dashboard unlocks on approval.
           </Text>
         ) : null}
 
@@ -169,9 +169,6 @@ export default function PartnerStatusScreen() {
           </PressScale>
           <PressScale onPress={() => nav.navigate('Schemes')} cardStyle={styles.linkChip}>
             <Text style={styles.linkChipText}>Sarkari Yojana</Text>
-          </PressScale>
-          <PressScale onPress={() => nav.navigate('Equipment')} cardStyle={styles.linkChip}>
-            <Text style={styles.linkChipText}>Equipment</Text>
           </PressScale>
         </View>
 

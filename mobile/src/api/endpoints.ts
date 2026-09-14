@@ -1,6 +1,8 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
+  Address,
+  AddressInput,
   AgentConfig,
   AppNotification,
   Auction,
@@ -13,10 +15,15 @@ import type {
   QualityGrade,
   RequirementFilterOptions,
   RequirementOffer,
+  RetailShop,
+  RetailShopDetail,
   Transaction,
   TransactionStats,
   Unit,
   User,
+  Wallet,
+  WalletEntry,
+  WalletTopupOrder,
 } from './types';
 
 // --- Auth ---
@@ -197,6 +204,42 @@ export async function browse(params?: {
 export async function retailCities(): Promise<Array<{ city: string; state: string }>> {
   const { data } = await api.get<Array<{ city: string; state: string }>>('/browse/cities');
   return data ?? [];
+}
+
+/**
+ * The storefront's own rules, chiefly the minimum order value.
+ *
+ * FETCHED, not hardcoded. The server refuses an order under the floor
+ * (bid.service `MIN_RETAIL_ORDER`), and a second copy of that number in the app
+ * is a copy that eventually disagrees with it. When it does, the shopper is
+ * refused at the pay button having been told the basket was fine.
+ */
+export async function retailRules(): Promise<{ minOrderValue: number; currency: string }> {
+  const { data } = await api.get<{ minOrderValue: number; currency: string }>('/browse/retail-rules');
+  return data;
+}
+
+/**
+ * The sellers with stock on the shelf in `city`.
+ *
+ * Returns BOTH local shops and farms; the caller splits them. Only sellers
+ * holding live retail stock come back, so a newly onboarded shop appears the
+ * moment it lists something and drops off when it sells out.
+ */
+export async function retailShops(city: string): Promise<RetailShop[]> {
+  const { data } = await api.get<{ shops: RetailShop[] }>('/browse/shops', { params: { city } });
+  return data.shops ?? [];
+}
+
+/**
+ * One shop and its whole shelf.
+ *
+ * The city is required by the server and has no "skip the check" value: a shop
+ * opened without one is a shop that may not deliver to the shopper.
+ */
+export async function retailShop(id: string, city: string): Promise<RetailShopDetail> {
+  const { data } = await api.get<RetailShopDetail>(`/browse/shops/${id}`, { params: { city } });
+  return data;
 }
 
 export async function fetchListing(id: string): Promise<Listing> {
@@ -534,5 +577,80 @@ export async function listAuctions(): Promise<Auction[]> {
 
 export async function getAuctionState(listingId: string): Promise<Auction> {
   const { data } = await api.get<Auction>(`/auctions/${listingId}`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Address book
+// ---------------------------------------------------------------------------
+// All scoped to the caller by the session, so none of these takes a userId.
+
+export async function fetchAddresses(): Promise<Address[]> {
+  const { data } = await api.get<{ addresses: Address[] }>('/addresses');
+  return data.addresses ?? [];
+}
+
+export async function createAddress(input: AddressInput): Promise<Address> {
+  const { data } = await api.post<Address>('/addresses', input);
+  return data;
+}
+
+export async function updateAddress(id: string, input: AddressInput): Promise<Address> {
+  const { data } = await api.put<Address>(`/addresses/${id}`, input);
+  return data;
+}
+
+/** Make this the one checkout starts on. The server demotes whichever held it. */
+export async function setDefaultAddress(id: string): Promise<Address> {
+  const { data } = await api.patch<Address>(`/addresses/${id}/default`);
+  return data;
+}
+
+export async function deleteAddress(id: string): Promise<void> {
+  await api.delete(`/addresses/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Wallet — prepaid credits
+// ---------------------------------------------------------------------------
+// All authenticated, and all scoped to the caller: there is no userId in any of
+// these, so there is no call that can read or move somebody else's credits.
+
+export async function fetchWallet(): Promise<Wallet> {
+  const { data } = await api.get<Wallet>('/wallet');
+  return data;
+}
+
+/** A page of the statement, newest first. */
+export async function walletEntries(cursor?: string): Promise<{ entries: WalletEntry[]; nextCursor: string | null }> {
+  const { data } = await api.get<{ entries: WalletEntry[]; nextCursor: string | null }>(
+    '/wallet/entries',
+    { params: cursor ? { cursor } : undefined },
+  );
+  return { entries: data.entries ?? [], nextCursor: data.nextCursor ?? null };
+}
+
+/** Start a top-up. Creates no credits: an order is only an intent. */
+export async function createWalletTopup(amount: number): Promise<WalletTopupOrder> {
+  const { data } = await api.post<WalletTopupOrder>('/wallet/topup/order', { amount });
+  return data;
+}
+
+/**
+ * Finish a top-up.
+ *
+ * Deliberately does NOT send the amount. The server reads what was actually
+ * paid from Razorpay, because a client that could state its own top-up value
+ * could mint credits for free.
+ */
+export async function verifyWalletTopup(handshake: {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}): Promise<{ balance: number; currency: string }> {
+  const { data } = await api.post<{ balance: number; currency: string }>(
+    '/wallet/topup/verify',
+    handshake,
+  );
   return data;
 }

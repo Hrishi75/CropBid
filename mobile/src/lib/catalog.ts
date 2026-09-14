@@ -180,6 +180,90 @@ export function shopPack(opts: {
   };
 }
 
+// =============================================================================
+// SKUs — the same crop in several pack sizes
+// =============================================================================
+// One pack per crop is enough for a card in a rail, where the job is "here is
+// the going rate". It is not enough for a delivery list, where the shopper is
+// filling a week's basket and a household that wants 5 kg of onions should not
+// have to tap +1 kg five times.
+//
+// THE SIZES COME OFF A FIXED LADDER, not from multiplying the base pack. A
+// ladder keeps every size a number people actually buy in: doubling a 200 g
+// paneer pack gives 400 g and 800 g, which no shop has ever sold. Anchoring to
+// the ladder gives 200 g, 500 g, 1 kg.
+// Tops out at 10 because staples genuinely sell that way: a 5 kg and a 10 kg
+// bag of wheat or rice are both normal household buys, and stopping at 5 left
+// grains with a single size and nothing to choose between.
+const SIZE_LADDER_KG = [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10];
+
+/** How many sizes to offer. Three fits a phone row without wrapping or scrolling. */
+const MAX_VARIANTS = 3;
+
+export interface PackVariant {
+  /** "500 g", "2 kg", "1 L". */
+  label: string;
+  /** Pack size in kg (litres for liquids). */
+  kg: number;
+  /** Pack size in the LISTING's own unit — what the order actually carries. */
+  units: number;
+  /** ₹ for this pack. */
+  price: number;
+}
+
+/**
+ * The pack sizes a crop is offered in, cheapest first.
+ *
+ * Starts at the crop's own base pack and climbs the ladder from there, so a
+ * spice never starts at a kilo and a staple never starts at 100 g. Capped by
+ * what is actually in stock: offering a 5 kg pack off a lot with 3 kg left is
+ * an order the server would refuse.
+ *
+ * Returns an empty array for a bulk-only crop (cotton, maize), which has no
+ * household pack at all and keeps its wholesale framing.
+ */
+export function packVariants(opts: {
+  crop: string;
+  cat: RailId;
+  unit: string;
+  floor: number;
+  ceiling: number;
+  retail?: number | null;
+  /** Stock remaining, in the listing's own unit. */
+  stockUnits: number;
+}): PackVariant[] {
+  const base = shopPack(opts);
+  if (!base) return [];
+
+  const isLitre = opts.unit === 'LITRE';
+  // Everything at or above the crop's own pack size. Below it would offer a
+  // 100 g bag of potatoes.
+  const sizes = SIZE_LADDER_KG.filter((kg) => kg >= base.kg).slice(0, MAX_VARIANTS);
+
+  // A base pack bigger than every rung (nothing sensible above it) still has to
+  // be offered, or the crop vanishes from the list entirely.
+  if (sizes.length === 0) sizes.push(base.kg);
+
+  return sizes
+    .map((kg) => ({
+      label: weightLabel(kg, isLitre),
+      kg,
+      // Rounded in KILOGRAMS then converted, for the reason orderQuantity
+      // documents below: converting first collapses small packs of big lots.
+      units: Number(kg.toFixed(3)) / base.kgPerUnit,
+      price: Math.round(base.perKg * kg),
+    }))
+    // Never offer more than the lot holds. The server would refuse it, and a
+    // disabled-looking chip is a worse answer than no chip.
+    .filter((v) => v.units <= opts.stockUnits);
+}
+
+/** "250 g", "1 kg", "1 L". Grams below a kilo, because 0.25 kg is not how anyone shops. */
+export function weightLabel(kg: number, isLitre = false): string {
+  if (isLitre) return kg < 1 ? `${Math.round(kg * 1000)} ml` : `${+kg.toFixed(2)} L`;
+  return kg < 1 ? `${Math.round(kg * 1000)} g` : `${+kg.toFixed(2)} kg`;
+}
+
 // How much a shopper's basket of `count` packs comes to in the LISTING's own
 // unit — the figure that goes on the order.
 //

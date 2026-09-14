@@ -20,13 +20,21 @@
 // arithmetic moves.
 // =============================================================================
 
-import React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BillDetails } from '../../components/BillDetails';
 import { QuantityStepper } from '../../components/QuantityStepper';
 import { Mono } from '../../components/buyerKit';
+import { retailRules } from '../../api/endpoints';
 import { FadeInImage, PressScale } from '../../components/motion';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
@@ -113,6 +121,26 @@ export default function CartScreen() {
   const city = user?.location?.trim() || '';
   const bill = useCartLines(items, city);
 
+  // The floor, from the server. Null until it lands, and the gate stays open
+  // while it is null: refusing checkout because a rules fetch was slow would be
+  // a worse failure than letting the server do the refusing.
+  const [minOrder, setMinOrder] = useState<number | null>(null);
+  useEffect(() => {
+    let on = true;
+    retailRules()
+      .then((r) => { if (on) setMinOrder(r.minOrderValue); })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []);
+
+  // How much short the basket is. Measured on what is actually orderable, not
+  // the whole basket: an out-of-stock row is not going to be paid for and
+  // counting it would let a basket through that the server then refuses.
+  const shortBy = minOrder != null && bill.orderable.length > 0 && bill.itemsTotal < minOrder
+    ? Math.ceil(minOrder - bill.itemsTotal)
+    : 0;
+  const blockCheckout = bill.loading || bill.orderable.length === 0 || shortBy > 0;
+
   if (items.length === 0) {
     return (
       <View style={styles.flex}>
@@ -175,6 +203,20 @@ export default function CartScreen() {
           ))}
         </View>
 
+        {/* THE FLOOR, SHOWN BEFORE THE PAY BUTTON, not discovered at it. The
+            server refuses anything under it, so a shopper who only finds out
+            after tapping Checkout has been told their basket was fine and then
+            contradicted. The number comes from the API rather than a constant
+            here, so the two can never disagree. */}
+        {shortBy > 0 && minOrder != null ? (
+          <View style={styles.minNote}>
+            <Text style={styles.minNoteText}>
+              Add {money(shortBy, bill.currency)} more to check out. Orders start at{' '}
+              {money(minOrder, bill.currency)}.
+            </Text>
+          </View>
+        ) : null}
+
         <BillDetails
           itemCount={bill.orderable.length}
           itemsTotal={bill.itemsTotal}
@@ -188,21 +230,18 @@ export default function CartScreen() {
 
       <View style={[styles.foot, { paddingBottom: 12 }]}>
         <PressScale
-          onPress={
-            bill.loading || bill.orderable.length === 0 ? undefined : () => nav.navigate('Checkout')
-          }
+          onPress={blockCheckout ? undefined : () => nav.navigate('Checkout')}
           scaleTo={0.98}
-          cardStyle={[
-            styles.checkoutBtn,
-            (bill.loading || bill.orderable.length === 0) && styles.checkoutBtnDim,
-          ]}
+          cardStyle={[styles.checkoutBtn, blockCheckout && styles.checkoutBtnDim]}
         >
           <Text style={styles.checkoutText}>
             {bill.loading
               ? 'Checking stock…'
               : bill.orderable.length === 0
                 ? 'Nothing to check out'
-                : `Checkout · ${money(bill.toPay, bill.currency)}`}
+                : shortBy > 0
+                  ? `Add ${money(shortBy, bill.currency)} to check out`
+                  : `Checkout · ${money(bill.toPay, bill.currency)}`}
           </Text>
         </PressScale>
       </View>
@@ -212,6 +251,15 @@ export default function CartScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
+  minNote: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    backgroundColor: '#f6e4d9',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  minNoteText: { fontFamily: font.sansMed, fontSize: 13, lineHeight: 19, color: colors.ember },
   head: {
     flexDirection: 'row',
     alignItems: 'flex-end',

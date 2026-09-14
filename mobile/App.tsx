@@ -28,6 +28,7 @@ import RootNavigator from './src/navigation/RootNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { IdleGuard } from './src/components/IdleGuard';
 import { Loading } from './src/components/ui';
+import { AlertHost } from './src/components/AlertHost';
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -61,6 +62,10 @@ export default function App() {
             <CartProvider>
               <StatusBar style="dark" />
               <RootNavigator />
+              {/* Last, so its modal sits above every screen. Renders nothing
+                  until something is queued. Web only in practice: native keeps
+                  the platform dialog. See lib/alert. */}
+              <AlertHost />
             </CartProvider>
           </IdleGuard>
         </AuthProvider>

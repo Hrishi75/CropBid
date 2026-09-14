@@ -6,11 +6,11 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Share,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +19,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Alert } from '../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -51,9 +52,29 @@ export default function ProfileScreen() {
   if (!user) return null;
 
   const isFarmer = user.role === 'FARMER';
+  const isConsumer = user.role === 'CONSUMER';
   // A shopper has no demand board: the routes are not in the consumer stack and
   // the server refuses the feed to anyone but a farmer or a buyer.
   const trades = isFarmer || user.role === 'BUYER';
+
+  /**
+   * Hand the app to somebody else.
+   *
+   * The system share sheet rather than a copied link, so it reaches whatever
+   * the sender actually uses. WhatsApp is the realistic destination in India
+   * and it renders the URL as a preview card from the site's own metadata,
+   * which is why the message leads with words and ends with the link.
+   */
+  async function shareApp() {
+    try {
+      await Share.share({
+        message: t("Fresh from the farm, at the farmer's own price. Order vegetables on CropBid: https://cropbid.in"),
+      });
+    } catch {
+      // The sheet was dismissed, or the platform refused it. Not sharing is not
+      // a failure the user needs telling about.
+    }
+  }
   const farm = user.farmerProfile;
   const photo = mediaUrl(user.avatar);
   const trust = Math.round(Math.min(Math.max(user.trustScore, 0), 100));
@@ -349,6 +370,56 @@ export default function ProfileScreen() {
           {isFarmer ? (
             <Row label={t('Your AI helper')} hint={t('Answers offers for you')} onPress={() => nav.navigate('Helper')} />
           ) : null}
+          {/* --- The settings menu ---------------------------------------
+              Consumer-only, because these routes live on the consumer stack.
+              A farmer or buyer tapping them would crash on a missing route,
+              which is why the whole block is gated rather than each row. */}
+          {isConsumer ? (
+            <>
+              {/* First in the block, because it is the row people are actually
+                  looking for. It used to be a tab; the history is what they
+                  came to Profile for, the settings are what they find. */}
+              <Row
+                label={t('Your orders')}
+                hint={t('Everything you have ordered')}
+                onPress={() => nav.navigate('Orders')}
+              />
+              <Row
+                label={t('Delivery addresses')}
+                hint={t('Where your orders go')}
+                onPress={() => nav.navigate('AddressBook')}
+              />
+              <Row
+                label={t('Notifications')}
+                hint={t('What this device tells you about')}
+                onPress={() => nav.navigate('NotificationPrefs')}
+              />
+              <Row
+                label={t('Help')}
+                hint={t('Write to us at info@cropbid.in')}
+                onPress={() => nav.navigate('Help')}
+              />
+              <Row
+                label={t('About CropBid')}
+                hint={t('What we do, and what we charge')}
+                onPress={() => nav.navigate('About')}
+              />
+              <Row
+                label={t('Privacy policy')}
+                onPress={() => nav.navigate('Policy', { kind: 'privacy' })}
+              />
+              <Row
+                label={t('Terms and conditions')}
+                onPress={() => nav.navigate('Policy', { kind: 'terms' })}
+              />
+              <Row
+                label={t('Share CropBid')}
+                hint={t('Send the app to someone')}
+                onPress={shareApp}
+              />
+            </>
+          ) : null}
+
           <Row
             label={t('Log out')}
             hint={isFarmer ? t('You can come back any time') : undefined}

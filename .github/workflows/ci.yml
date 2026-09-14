@@ -46,6 +46,40 @@ jobs:
       run:
         working-directory: server
 
+    # A throwaway Postgres for the suite.
+    #
+    # Most tests mock the Prisma client and need none of this. A few cannot:
+    # address.service holds "exactly one default address" inside a transaction
+    # rather than in a constraint, and the only way to know that holds is to
+    # commit and look. Mocking it would assert that the file calls the functions
+    # the file calls.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cropbid
+          POSTGRES_DB: cropbid_test
+          # No password at all, rather than a throwaway one committed to the
+          # repo. The container is reachable only from this job's own runner and
+          # is destroyed with it, so a password protects nothing; what it does
+          # do is put a credential-shaped string in git, which secret scanners
+          # rightly flag and which teaches the next person that committing one
+          # is normal here.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        # Without the health check the first test can beat the server to
+        # accepting connections, which fails as a test failure rather than as
+        # the infrastructure problem it is.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://cropbid@localhost:5432/cropbid_test
+
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -62,6 +96,12 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      # Applies the committed migrations rather than pushing the schema, so CI
+      # exercises the same SQL production will run. A migration that is valid
+      # Prisma but broken SQL fails here instead of on deploy.
+      - name: Apply migrations
+        run: npx prisma migrate deploy
 
       - name: Test (vitest)
         run: npm test

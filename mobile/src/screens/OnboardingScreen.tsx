@@ -54,14 +54,30 @@ function taxLabel(country: string): string {
   return 'Tax ID';
 }
 
-export default function OnboardingScreen() {
+/** Which application a person is filling in. Not the same as their role. */
+export type PartnerKind = 'FARMER' | 'BUYER';
+
+export default function OnboardingScreen({ kind }: { kind?: PartnerKind } = {}) {
   const insets = useSafeAreaInsets();
   const { user, refreshUser, signOut } = useAuth();
   const country = user?.country || 'India';
   // A reviewer who asked for more, or said no, sends the applicant back here.
   // The form is identical; only the framing changes.
   const resubmitting = partnerApplication(user) !== null;
-  const isFarmer = user?.role === 'FARMER';
+
+  // WHICH FORM TO SHOW, in order: what they picked, then the role they already
+  // hold, then the seller form.
+  //
+  // It used to read user.role alone, which is the mistake CLAUDE.md section 4
+  // records the web fixing: a CONSUMER is precisely somebody with NO partner
+  // role yet, so `role === 'FARMER'` was false for every first-time applicant
+  // and every one of them was handed the buyer form, whichever card they
+  // tapped. The role you are applying for cannot also be the thing that selects
+  // the form.
+  //
+  // A resubmitting farmer is still a FARMER, so the role check keeps their own
+  // form in front of them without needing the caller to remember.
+  const isFarmer = kind ? kind === 'FARMER' : user?.role === 'FARMER';
 
   // Farmer fields
   const [farmSize, setFarmSize] = useState('');

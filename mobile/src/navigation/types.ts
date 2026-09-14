@@ -15,11 +15,13 @@ export type AuthStackParamList = {
 // they try to act (buy, bid, sell, open the profile).
 export type GuestStackParamList = {
   GuestHome: undefined;
+  // One local shop's whole shelf, pushed from a shop card on Home.
+  Shop: { id: string; city: string };
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
+  Wallet: undefined;
   Schemes: undefined;
-  Equipment: undefined;
   Login: undefined;
   Signup: undefined;
   ForgotPassword: undefined;
@@ -56,8 +58,8 @@ export type RootStackParamList = {
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
+  Wallet: undefined;
   Schemes: undefined;
-  Equipment: undefined;
   Notifications: undefined;
 };
 
@@ -84,8 +86,8 @@ export type FarmerStackParamList = {
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
+  Wallet: undefined;
   Schemes: undefined;
-  Equipment: undefined;
   Notifications: undefined;
 };
 
@@ -96,18 +98,34 @@ export type FarmerStackParamList = {
 export type ConsumerTabParamList = {
   Home: undefined;
   Cart: undefined;
-  Orders: undefined;
+  // The door into selling or buying in bulk. A tab rather than a profile row
+  // because every account starts as a shopper, so this bar is what every new
+  // user sees. It stays after they apply, reporting on the application.
+  Partner: undefined;
   You: undefined;
 };
 
 export type ConsumerStackParamList = {
   ConsumerTabs: undefined;
+  // One local shop's whole shelf, pushed from a shop card on Home.
+  Shop: { id: string; city: string };
+  // Past orders. A pushed screen rather than a tab: a history is something a
+  // shopper checks now and then, not a place they live, and a tab slot is for
+  // what they switch to many times a session.
+  Orders: undefined;
+  // Profile's settings surfaces. Consumer-only for now: the farmer and buyer
+  // stacks would need their own registrations to reach Help or About.
+  AddressBook: undefined;
+  Help: undefined;
+  About: undefined;
+  NotificationPrefs: undefined;
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
   Checkout: undefined;
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
+  Wallet: undefined;
   Schemes: undefined;
-  Equipment: undefined;
   Notifications: undefined;
 };
 
@@ -134,8 +152,8 @@ export type PartnerStackParamList = {
   PartnerStatus: undefined;
   Application: undefined;
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
+  Wallet: undefined;
   Schemes: undefined;
-  Equipment: undefined;
 };
 
 // ProfileScreen (the "You" tab) is mounted in the buyer, farmer, and consumer

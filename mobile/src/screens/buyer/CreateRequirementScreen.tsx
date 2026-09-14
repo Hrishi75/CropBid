@@ -19,7 +19,6 @@
 
 import React, { useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,6 +29,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { Mono } from '../../components/buyerKit';
 import { Button } from '../../components/ui';

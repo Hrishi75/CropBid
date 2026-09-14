@@ -49,7 +49,15 @@ export interface User {
 export interface Listing {
   id: string;
   farmerId: string;
-  farmer?: { user?: Pick<User, 'id' | 'name' | 'trustScore' | 'avatar'> };
+  // `sellerType` decides which lane a lot belongs to: a LOCAL_SHOP holds stock
+  // and delivers today, everyone else is the next-morning mandi run. The server
+  // has always sent it (PUBLIC_SELLER_SELECT); this type just never named it.
+  farmer?: {
+    sellerType?: SellerType;
+    businessName?: string | null;
+    shopType?: string | null;
+    user?: Pick<User, 'id' | 'name' | 'trustScore' | 'avatar'>;
+  };
   cropName: string;
   cropVariety: string | null;
   quantity: number;
@@ -291,4 +299,125 @@ export interface Auction {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
+}
+
+// -----------------------------------------------------------------------------
+// Wallet — prepaid credits
+// -----------------------------------------------------------------------------
+// 1 credit is 1 rupee. No exchange rate, no bonus, no expiry: see
+// server/src/services/wallet.service for why inventing one would be a pricing
+// decision made in the wrong place.
+
+/** A saved delivery address. See server/prisma Address for why `line` is free text. */
+export interface Address {
+  id: string;
+  label: string;
+  line: string;
+  city: string;
+  phone: string | null;
+  landmark: string | null;
+  /** Exactly one of a shopper's addresses is true. The server holds that. */
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface AddressInput {
+  label: string;
+  line: string;
+  city: string;
+  phone?: string | null;
+  landmark?: string | null;
+  isDefault?: boolean;
+}
+
+export type SellerType = 'FARMER' | 'LOCAL_SHOP' | 'WHOLESALER';
+
+/** A city that actually has direct-sale stock. */
+export interface RetailCity {
+  city: string;
+  state: string;
+}
+
+/**
+ * One seller as it appears in the city's shop list.
+ *
+ * Only sellers HOLDING LIVE RETAIL STOCK come back from /browse/shops, so a
+ * shop that has onboarded but listed nothing does not appear, and one that
+ * sells out drops off on its own. That is the behaviour rather than a filter
+ * the app has to remember to apply.
+ *
+ * `fromPricePerKg` is the cheapest thing on the shelf, already normalised to
+ * kilograms by the server. It is a "from" price, so a card must label it as
+ * one: shown bare it reads as the price of whatever is pictured.
+ */
+export interface RetailShop {
+  id: string;
+  name: string;
+  sellerType: SellerType;
+  shopType: string | null;
+  city: string;
+  state: string;
+  verified: boolean;
+  trustScore: number;
+  itemCount: number;
+  crops: string[];
+  organicCount: number;
+  currency: string;
+  fromPricePerKg: number | null;
+  image: string | null;
+  lastRestockedAt: string;
+}
+
+/** The header of a shop page: who they are, not what they sell. */
+export interface RetailShopHeader {
+  id: string;
+  name: string;
+  sellerType: SellerType;
+  shopType: string | null;
+  city: string;
+  state: string;
+  verified: boolean;
+  trustScore: number;
+  organicCertified: boolean;
+  certificationBody: string | null;
+  itemCount: number;
+}
+
+export interface RetailShopDetail {
+  shop: RetailShopHeader;
+  listings: Listing[];
+}
+
+export type WalletEntryType = 'TOPUP' | 'SPEND' | 'REFUND' | 'ADJUSTMENT';
+
+export interface Wallet {
+  balance: number;
+  currency: string;
+  /**
+   * Whether credits can pay for an order yet.
+   *
+   * Served by the API rather than hardcoded here, so the day checkout learns to
+   * spend credits the app stops saying otherwise without a release. False
+   * today: `spend()` exists on the server and nothing calls it.
+   */
+  canSpend: boolean;
+  limits: { min: number; max: number };
+}
+
+/** One movement of credits. Signed: positive adds, negative removes. */
+export interface WalletEntry {
+  id: string;
+  type: WalletEntryType;
+  amount: number;
+  /** The running total straight after this entry, so a statement row is readable on its own. */
+  balanceAfter: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface WalletTopupOrder {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
 }
