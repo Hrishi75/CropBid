@@ -122,7 +122,7 @@ export const ROUTES: RouteMeta[] = [
     path: '/how-it-works',
     title: 'How CropBid Works — Reviewed Sellers, Bidding & Escrow',
     description:
-      'Farmers, local shops and wholesalers are reviewed before they can sell. Then they list at their own price, buyers bid or buy outright, and escrow pays out on delivery. The whole CropBid flow, step by step.',
+      'Farms, local shops and wholesalers are reviewed before they can sell. They list at their own price against the day\'s mandi rate, businesses bid or buy outright, households buy by the kilo from a shop they can name, and escrow pays out on delivery.',
     priority: '0.7',
     changefreq: 'monthly',
   },

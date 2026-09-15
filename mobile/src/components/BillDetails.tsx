@@ -6,8 +6,8 @@
 // column adds up to the amount the direct-purchase API will charge.
 //
 // WHY DELIVERY AND THE PLATFORM FEE ARE WORDS, NOT ZEROS
-// Neither is charged to the shopper. The grower brings a retail order in on
-// their local round, and CropBid's 2% comes out of the grower's settlement
+// Neither is charged to the shopper. The seller brings a retail order in on
+// their local round, and CropBid's 2% comes out of the seller's settlement
 // rather than being added on top. A "₹0" against each would read as a
 // placeholder for a fee that lands later; saying who pays it is both shorter
 // and true.
@@ -59,7 +59,7 @@ export function BillDetails({
         value={deliveryFee > 0 ? money(deliveryFee, currency) : 'Free'}
         muted={deliveryFee === 0}
       />
-      <Row label="Platform fee" value="Paid by the grower" muted />
+      <Row label="Platform fee" value="Paid by the seller" muted />
 
       <View style={styles.totalRow}>
         <Mono style={styles.totalLabel}>TO PAY</Mono>
@@ -75,13 +75,13 @@ export function BillDetails({
 
       {orderCount != null && orderCount > 1 ? (
         <Text style={styles.note}>
-          Each lot is settled with its own grower, so this becomes {orderCount} orders — one per lot,
+          Each lot is settled with its own seller, so this becomes {orderCount} orders — one per lot,
           each tracked separately in Orders.
         </Text>
       ) : null}
 
       <Text style={styles.note}>
-        You pay after the order is placed. Money is held by CropBid and released to the grower only
+        You pay after the order is placed. Money is held by CropBid and released to the seller only
         once you confirm the delivery arrived.
       </Text>
     </View>

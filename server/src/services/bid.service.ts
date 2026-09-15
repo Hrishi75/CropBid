@@ -330,7 +330,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
   if (totalAmount < MIN_RETAIL_ORDER) {
     throw new ApiError(
       400,
-      `Orders start at ₹${MIN_RETAIL_ORDER}. Add a little more to this seller's items and try again.`,
+      `Orders start at ₹${MIN_RETAIL_ORDER}. Add a little more of this item and try again.`,
     );
   }
 

@@ -4,8 +4,8 @@
 // ONE BASKET, SEVERAL ORDERS — AND WHY THAT IS NOT A BUG
 // POST /bids/direct-purchase claims one lot's stock, mints a pre-ACCEPTED bid
 // and opens a Transaction in the same DB transaction. That pairing is the whole
-// escrow model: one lot, one grower, one settlement the shopper releases when
-// that grower's produce arrives. Four lots genuinely are four settlements, so
+// escrow model: one lot, one seller, one settlement the shopper releases when
+// that seller's produce arrives. Four lots genuinely are four settlements, so
 // this screen places four purchases and says so before the shopper commits,
 // rather than inventing a basket-level order the rest of the system has no
 // concept of.
@@ -207,7 +207,7 @@ export default function CheckoutScreen() {
           <Text style={touched && !phoneValid ? styles.fieldError : styles.hint}>
             {touched && !phoneValid
               ? 'Enter a valid phone number'
-              : 'Every grower in this order uses this to arrange delivery.'}
+              : 'Every seller in this order uses this to arrange delivery.'}
           </Text>
         </View>
 
