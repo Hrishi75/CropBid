@@ -89,7 +89,9 @@ export async function createEnquiry(req: Request, res: Response, next: NextFunct
       parsed.data
     );
 
-    res.status(201).json(result);
+    // 201 for a new lead, 200 when this account had already raised one for
+    // this product and is being handed that lead back.
+    res.status(result.created ? 201 : 200).json(result);
   } catch (error) {
     next(error);
   }

@@ -1,17 +1,30 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
+  Address,
+  AddressInput,
   AgentConfig,
   AppNotification,
   Auction,
   Bid,
+  BuyerRequirement,
   DeliveryStatus,
   Listing,
   Negotiation,
   Paginated,
+  QualityGrade,
+  RequirementFilterOptions,
+  RequirementOffer,
+  RetailShop,
+  RetailShopDetail,
+  SellerType,
   Transaction,
   TransactionStats,
+  Unit,
   User,
+  Wallet,
+  WalletEntry,
+  WalletTopupOrder,
 } from './types';
 
 // --- Auth ---
@@ -90,6 +103,14 @@ export async function resendSignupOtp(pendingId: string): Promise<PendingSignup>
   return data.pendingSignup;
 }
 
+// Asks for a single-use reset link, emailed to the address given. The endpoint
+// is deliberately enumeration-safe — it answers the same way whether or not an
+// account exists — so the screen must show the same confirmation either way.
+// The link itself opens the web reset page; there is no in-app reset step.
+export async function forgotPassword(email: string): Promise<void> {
+  await api.post('/auth/forgot-password', { email });
+}
+
 export async function fetchMe(): Promise<User> {
   const { data } = await api.get<{ user: User }>('/auth/me');
   return data.user;
@@ -142,18 +163,43 @@ export async function deleteAccount(password: string): Promise<void> {
 }
 
 // --- Onboarding (creates the role profile required to use the app) ---
+/**
+ * A SELLER application, whichever of the three kinds it is.
+ *
+ * Mirrors `sellerApplicationSchema` on the server. Almost everything is
+ * optional because the required set depends on `sellerType`, and that rule
+ * lives server-side in `validateSellerApplication` rather than being restated
+ * here where it could drift: a farm needs acreage and crops, a shop needs an
+ * address and an FSSAI licence, a wholesaler needs a GSTIN.
+ *
+ * `sellerType` itself is optional only for backwards compatibility with callers
+ * written before there were three kinds; omitting it files the application as a
+ * FARMER, which is what the column defaults to.
+ */
 export interface FarmerOnboardingInput {
-  farmSizeAcres: number;
-  cropsGrown: string[];
+  sellerType?: SellerType;
   state: string;
   organicCertified?: boolean;
+  // Farm
+  farmSizeAcres?: number;
+  cropsGrown?: string[];
   fpoName?: string;
   apmcLicense?: string;
+  // Local shop and wholesaler
+  businessName?: string;
+  shopType?: string;
+  address?: string;
+  fssaiLicense?: string;
+  gstin?: string;
 }
 
 export interface BuyerOnboardingInput {
   companyName: string;
-  companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER';
+  // All seven the server accepts. It used to list five, which is why
+  // WHOLESALER and SMALL_BUSINESS could not be selected in the app at all.
+  companyType:
+    | 'RESTAURANT' | 'SMALL_BUSINESS' | 'WHOLESALER'
+    | 'PROCESSOR' | 'FMCG' | 'EXPORTER' | 'RETAILER';
   taxId?: string;
   annualProcurementVolume?: string;
 }
@@ -184,6 +230,42 @@ export async function browse(params?: {
 export async function retailCities(): Promise<Array<{ city: string; state: string }>> {
   const { data } = await api.get<Array<{ city: string; state: string }>>('/browse/cities');
   return data ?? [];
+}
+
+/**
+ * The storefront's own rules, chiefly the minimum order value.
+ *
+ * FETCHED, not hardcoded. The server refuses an order under the floor
+ * (bid.service `MIN_RETAIL_ORDER`), and a second copy of that number in the app
+ * is a copy that eventually disagrees with it. When it does, the shopper is
+ * refused at the pay button having been told the basket was fine.
+ */
+export async function retailRules(): Promise<{ minOrderValue: number; currency: string }> {
+  const { data } = await api.get<{ minOrderValue: number; currency: string }>('/browse/retail-rules');
+  return data;
+}
+
+/**
+ * The sellers with stock on the shelf in `city`.
+ *
+ * Returns BOTH local shops and farms; the caller splits them. Only sellers
+ * holding live retail stock come back, so a newly onboarded shop appears the
+ * moment it lists something and drops off when it sells out.
+ */
+export async function retailShops(city: string): Promise<RetailShop[]> {
+  const { data } = await api.get<{ shops: RetailShop[] }>('/browse/shops', { params: { city } });
+  return data.shops ?? [];
+}
+
+/**
+ * One shop and its whole shelf.
+ *
+ * The city is required by the server and has no "skip the check" value: a shop
+ * opened without one is a shop that may not deliver to the shopper.
+ */
+export async function retailShop(id: string, city: string): Promise<RetailShopDetail> {
+  const { data } = await api.get<RetailShopDetail>(`/browse/shops/${id}`, { params: { city } });
+  return data;
 }
 
 export async function fetchListing(id: string): Promise<Listing> {
@@ -253,11 +335,152 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
 export async function directPurchase(input: {
   listingId: string;
   quantity: number;
+  /**
+   * The unit `quantity` is denominated in. Optional on the wire, but the server
+   * only runs its unit-agreement guard when it is present, so omitting it means
+   * a seller who re-denominates an active listing mid-basket has the order
+   * silently rescaled instead of refused: a number measured in kilograms read
+   * as quintals is a hundredfold order, charged and decremented as such.
+   * Always send it, and send the LIVE unit rather than the cart's snapshot.
+   */
+  unit?: Unit;
   deliveryAddress?: string;
   contactPhone?: string;
   idempotencyKey?: string;
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids/direct-purchase', input);
+  return data;
+}
+
+// --- Demand board (the reverse marketplace) ---------------------------------
+// Buyers post what they need; farmers fill it at the posted price or counter
+// with their own. The board is READ-ONLY for buyers — the fill and counter
+// routes are FARMER-only on the server, so hiding those buttons is a courtesy,
+// not the boundary. The server also strips a competitor buyer's identity from
+// the rows it serves to another buyer, so a row with no `buyer` is normal.
+
+export interface RequirementFeedParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  crop?: string;
+  state?: string;
+  quality?: QualityGrade;
+  /** BuyerProfile.companyType — "restaurant chains only", and so on. */
+  buyerType?: string;
+  organic?: 'true' | 'false';
+  priceMin?: number;
+  priceMax?: number;
+  sort?: 'createdAt' | 'pricePerUnit' | 'quantity' | 'neededBy';
+}
+
+export interface RequirementFeedPage {
+  requirements: BuyerRequirement[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export async function requirementFeed(params: RequirementFeedParams = {}): Promise<RequirementFeedPage> {
+  const { data } = await api.get<RequirementFeedPage>('/requirements/feed', {
+    params: {
+      ...params,
+      // A deadline sorts soonest-first; everything else newest or highest
+      // first. Same pairing the web board uses, so the two agree on what
+      // "sorted by needed-by" means.
+      ...(params.sort ? { order: params.sort === 'neededBy' ? 'asc' : 'desc' } : {}),
+    },
+  });
+  return data;
+}
+
+// Which crops, states and buyer types the board actually holds right now — so
+// the filter sheet offers only choices that can return a row.
+export async function requirementFilters(): Promise<RequirementFilterOptions> {
+  const { data } = await api.get<RequirementFilterOptions>('/requirements/filters');
+  return data;
+}
+
+export async function fetchRequirement(id: string): Promise<BuyerRequirement> {
+  const { data } = await api.get<BuyerRequirement>(`/requirements/${id}`);
+  return data;
+}
+
+// --- Farmer actions on the board ---
+// Fills at the buyer's posted price. This CLOSES the deal: the server mints an
+// already-accepted bid and opens the transaction, so there is nothing for the
+// buyer to approve afterwards.
+export async function fillRequirement(
+  id: string,
+  input: { quantity: number; message?: string },
+): Promise<RequirementOffer> {
+  const { data } = await api.post<RequirementOffer>(`/requirements/${id}/accept`, input);
+  return data;
+}
+
+// Counters with the farmer's own price. Unlike a fill, this waits on the buyer.
+export async function offerOnRequirement(
+  id: string,
+  input: { quantity: number; pricePerUnit: number; message?: string },
+): Promise<RequirementOffer> {
+  const { data } = await api.post<RequirementOffer>(`/requirements/${id}/offers`, input);
+  return data;
+}
+
+export async function myRequirementOffers(): Promise<RequirementOffer[]> {
+  const { data } = await api.get<RequirementOffer[]>('/requirements/offers/my');
+  return data;
+}
+
+export async function withdrawRequirementOffer(offerId: string): Promise<void> {
+  await api.delete(`/requirements/offers/${offerId}`);
+}
+
+// --- Buyer actions on their own demand ---
+export interface RequirementInput {
+  cropName: string;
+  cropVariety?: string;
+  quantity: number;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  /** Always INR: prices are typed against ₹ MSP and mandi anchors. */
+  currency: 'INR';
+  deliveryLocation: string;
+  deliveryState: string;
+  neededBy?: string;
+  description?: string;
+  organic: boolean;
+  paymentTerms?: string;
+  deliveryTerms?: string;
+}
+
+export async function myRequirements(status?: string): Promise<RequirementFeedPage> {
+  const { data } = await api.get<RequirementFeedPage>('/requirements/my', {
+    params: status ? { status } : undefined,
+  });
+  return data;
+}
+
+export async function createRequirement(input: RequirementInput): Promise<BuyerRequirement> {
+  const { data } = await api.post<BuyerRequirement>('/requirements', input);
+  return data;
+}
+
+export async function closeRequirement(id: string): Promise<void> {
+  await api.put(`/requirements/${id}/close`);
+}
+
+export async function offersForRequirement(id: string): Promise<RequirementOffer[]> {
+  const { data } = await api.get<RequirementOffer[]>(`/requirements/${id}/offers`);
+  return data;
+}
+
+export async function acceptRequirementOffer(offerId: string): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/accept`);
+  return data;
+}
+
+export async function rejectRequirementOffer(offerId: string): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/reject`);
   return data;
 }
 
@@ -380,5 +603,80 @@ export async function listAuctions(): Promise<Auction[]> {
 
 export async function getAuctionState(listingId: string): Promise<Auction> {
   const { data } = await api.get<Auction>(`/auctions/${listingId}`);
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Address book
+// ---------------------------------------------------------------------------
+// All scoped to the caller by the session, so none of these takes a userId.
+
+export async function fetchAddresses(): Promise<Address[]> {
+  const { data } = await api.get<{ addresses: Address[] }>('/addresses');
+  return data.addresses ?? [];
+}
+
+export async function createAddress(input: AddressInput): Promise<Address> {
+  const { data } = await api.post<Address>('/addresses', input);
+  return data;
+}
+
+export async function updateAddress(id: string, input: AddressInput): Promise<Address> {
+  const { data } = await api.put<Address>(`/addresses/${id}`, input);
+  return data;
+}
+
+/** Make this the one checkout starts on. The server demotes whichever held it. */
+export async function setDefaultAddress(id: string): Promise<Address> {
+  const { data } = await api.patch<Address>(`/addresses/${id}/default`);
+  return data;
+}
+
+export async function deleteAddress(id: string): Promise<void> {
+  await api.delete(`/addresses/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Wallet — prepaid credits
+// ---------------------------------------------------------------------------
+// All authenticated, and all scoped to the caller: there is no userId in any of
+// these, so there is no call that can read or move somebody else's credits.
+
+export async function fetchWallet(): Promise<Wallet> {
+  const { data } = await api.get<Wallet>('/wallet');
+  return data;
+}
+
+/** A page of the statement, newest first. */
+export async function walletEntries(cursor?: string): Promise<{ entries: WalletEntry[]; nextCursor: string | null }> {
+  const { data } = await api.get<{ entries: WalletEntry[]; nextCursor: string | null }>(
+    '/wallet/entries',
+    { params: cursor ? { cursor } : undefined },
+  );
+  return { entries: data.entries ?? [], nextCursor: data.nextCursor ?? null };
+}
+
+/** Start a top-up. Creates no credits: an order is only an intent. */
+export async function createWalletTopup(amount: number): Promise<WalletTopupOrder> {
+  const { data } = await api.post<WalletTopupOrder>('/wallet/topup/order', { amount });
+  return data;
+}
+
+/**
+ * Finish a top-up.
+ *
+ * Deliberately does NOT send the amount. The server reads what was actually
+ * paid from Razorpay, because a client that could state its own top-up value
+ * could mint credits for free.
+ */
+export async function verifyWalletTopup(handshake: {
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}): Promise<{ balance: number; currency: string }> {
+  const { data } = await api.post<{ balance: number; currency: string }>(
+    '/wallet/topup/verify',
+    handshake,
+  );
   return data;
 }

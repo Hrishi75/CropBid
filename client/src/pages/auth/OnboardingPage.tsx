@@ -29,7 +29,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
-import { PARTNER_TYPE_KEY } from './SignupPage';
+import { PARTNER_TYPE_KEY, forgetPartnerType } from './SignupPage';
 import { SELLER_TYPE_LABEL, SHOP_TYPE_OPTIONS } from '../../utils/partner';
 import type { CompanyType, SellerType } from '../../types';
 import api from '../../lib/axios';
@@ -217,8 +217,43 @@ export function OnboardingPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const hint = partnerTypeHint();
-  const isFarmer = user?.role === 'FARMER';
+  // Read ONCE, into state. `partnerTypeHint()` reads sessionStorage on every
+  // render, and the effect below clears it, so re-reading would return null on
+  // the next render and silently fall back to the account role. /onboarding can
+  // stay mounted with `user` still null while auth restores, so that re-render
+  // is the normal path, not an edge case: a consumer who clicked "Apply as
+  // farmer" would have been shown the buyer form.
+  const [hint] = useState(partnerTypeHint);
+
+  // Which form to show. The parked intent wins, because it is what the person
+  // just clicked on /partner; user.role is the fallback for someone who landed
+  // here without going through the door (a resubmission, a bookmark).
+  //
+  // Reading role alone was wrong for the case this flow now supports: a
+  // CONSUMER applying to sell is not a FARMER yet, so `role === 'FARMER'` was
+  // false and they were handed the BUYER form after clicking "Apply as
+  // farmer". Silently the wrong application.
+  // A FRESH CLICK WINS. The hint is written by /partner at the moment somebody
+  // presses "Apply as ...", and consumed below, so its presence means they just
+  // chose. Letting an existing profile outrank it made the opposite application
+  // unreachable: a consumer with a seller application who pressed "Apply as
+  // buyer" was shown the seller form, and with both on file the buyer form
+  // could not be opened at all. The server allows an account to hold both, so
+  // the UI must let them start the second one.
+  //
+  // With no hint (a bookmark, a link from the status page, a reload) the
+  // profile on file decides, which is what a NEEDS_INFO resubmission needs, and
+  // role is the last resort.
+  const isFarmer = hint ? hint.role === 'FARMER'
+    : user?.farmerProfile ? true
+    : user?.buyerProfile ? false
+    : user?.role === 'FARMER';
+
+  // Consume it. Left in place, a hint would outrank the profile on every later
+  // visit for the rest of the session, so a farmer who once looked at the buyer
+  // cards would keep reopening the wrong form. Safe to clear because `hint`
+  // above is state, captured before this runs and unaffected by the removal.
+  useEffect(() => { forgetPartnerType(); }, []);
 
   // Resubmission: when a reviewer sent the application back, the same form
   // reopens with the previous answers in place and the note on top.

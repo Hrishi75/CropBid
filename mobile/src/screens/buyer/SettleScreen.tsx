@@ -3,7 +3,16 @@
 // (PATCH /transactions/:id/delivery) to release escrow. Payment itself runs
 // through Razorpay on the web client.
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { Alert } from '../../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconArrow, IconCheck, IconShield } from '../../components/icons';
 import { Eyebrow, GridBg, Mono, StatusPill } from '../../components/buyerKit';

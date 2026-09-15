@@ -62,7 +62,11 @@ const LISTING = {
   unit: 'KG',
   currency: 'INR',
   directSaleEnabled: true,
-  retailPricePerUnit: 30,
+  // ₹100/kg against the default quantity of 2 puts the fixture order at ₹200,
+  // clear of MIN_RETAIL_ORDER. These tests are about replay, locality and unit
+  // agreement; an order that trips the minimum-value floor first would never
+  // reach the code any of them are checking.
+  retailPricePerUnit: 100,
   remainingQuantity: 100,
   // Matches the buyer's city in beforeEach. Retail is city-scoped and the
   // service refuses an order it cannot deliver, so a fixture without a
@@ -71,7 +75,7 @@ const LISTING = {
   farmer: { userId: 'farmer-1' },
 };
 
-const EXISTING_ORDER = { id: 'bid-original', quantity: 2, totalAmount: 60, idempotencyKey: KEY };
+const EXISTING_ORDER = { id: 'bid-original', quantity: 2, totalAmount: 200, idempotencyKey: KEY };
 
 // The tx client the service is handed inside $transaction. Every call is
 // recorded so a test can assert that stock was, or was not, claimed.
@@ -240,6 +244,42 @@ describe('createDirectPurchase — locality', () => {
     listingFindUnique.mockResolvedValue({ ...LISTING, location: 'pune' });
 
     await expect(createDirectPurchase(CONSUMER, input())).resolves.toBeDefined();
+  });
+});
+
+describe('createDirectPurchase — minimum order value', () => {
+  // A ₹40 order of coriander cannot pay for a delivery run, and 2% of it is 80
+  // paise. The floor is what makes the run worth making. It lives on the server
+  // because the basket's copy of the rule is a courtesy, not a fence: this
+  // endpoint takes a listing and a quantity from anyone signed in.
+
+  it('refuses an order under the floor, and claims no stock', async () => {
+    findFirst.mockResolvedValue(null);
+    // 1 kg at ₹100 is ₹100, under ₹150.
+    await expect(createDirectPurchase(CONSUMER, input({ quantity: 1 })))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(listingUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('names the floor, so the shopper knows how much more to add', async () => {
+    findFirst.mockResolvedValue(null);
+    await expect(createDirectPurchase(CONSUMER, input({ quantity: 1 })))
+      .rejects.toThrow(/₹150/);
+  });
+
+  it('takes an order exactly on the floor', async () => {
+    findFirst.mockResolvedValue(null);
+    listingFindUnique.mockResolvedValue({ ...LISTING, retailPricePerUnit: 150 });
+    // Exactly ₹150. A strict > would refuse this and the message would then be
+    // telling the shopper to add more to an order that already qualifies.
+    await expect(createDirectPurchase(CONSUMER, input({ quantity: 1 }))).resolves.toBeDefined();
+  });
+
+  it('is checked against the total, not the unit price', async () => {
+    findFirst.mockResolvedValue(null);
+    listingFindUnique.mockResolvedValue({ ...LISTING, retailPricePerUnit: 20 });
+    // ₹20/kg is far under the floor per unit; 10 kg of it is ₹200 and fine.
+    await expect(createDirectPurchase(CONSUMER, input({ quantity: 10 }))).resolves.toBeDefined();
   });
 });
 

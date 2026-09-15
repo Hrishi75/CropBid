@@ -130,7 +130,13 @@ export function NotificationDropdown() {
     // Navigate based on notification type and data
     setIsOpen(false);
     const data = notification.data;
-    if (data?.negotiationId) {
+    if (notification.type === 'DEAL_NEEDS_TRANSPORT') {
+      // Ops ping, so it lands on the job rather than the record. It must also
+      // come BEFORE the transactionId branch below: that one goes to
+      // /transactions/:id, and getTransaction() authorises on farmerId/buyerId
+      // only, so an admin following it gets a 403 on their own notification.
+      navigate(`/admin/logistics/book/${data?.transactionId}`);
+    } else if (data?.negotiationId) {
       navigate(`/negotiations/${data.negotiationId}`);
     } else if (data?.transactionId) {
       navigate(`/transactions/${data.transactionId}`);

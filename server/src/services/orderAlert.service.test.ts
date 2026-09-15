@@ -27,12 +27,21 @@ vi.mock('./email.service', () => ({
   sendNewOrderEmail: vi.fn(),
 }));
 
+// The ops in-app ping rides along with this email. Mocked rather than exercised
+// because it reaches the socket layer, and this file is about the alert; what
+// matters here is only WHEN it is called, which the last two cases pin down.
+vi.mock('./notification.helpers', () => ({
+  notifyAdminsDealClosed: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { prisma } from '../lib/prisma';
 import { sendNewOrderEmail } from './email.service';
+import { notifyAdminsDealClosed } from './notification.helpers';
 import { alertNewOrder } from './orderAlert.service';
 
 const findUnique = prisma.transaction.findUnique as unknown as ReturnType<typeof vi.fn>;
 const sendMock = sendNewOrderEmail as unknown as ReturnType<typeof vi.fn>;
+const notifyMock = notifyAdminsDealClosed as unknown as ReturnType<typeof vi.fn>;
 
 const ORDER = {
   id: 'ffffffff-0000-0000-0000-0000000abc123',
@@ -107,5 +116,47 @@ describe('alertNewOrder', () => {
     expect(errorSpy).toHaveBeenCalled();
 
     errorSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The ops ping. It lives here, not in createTransaction, because that runs
+// inside the caller's interactive transaction and the row is not committed
+// yet — paging ops from there could announce a deal that then rolled back and
+// hand them a booking link to nothing. These two cases are that rule.
+// ---------------------------------------------------------------------------
+describe('alertNewOrder — ops deal notification', () => {
+  it('pages ops once the order is confirmed committed', async () => {
+    findUnique.mockResolvedValue(ORDER);
+
+    await alertNewOrder('bid-1', 'BID_ACCEPTED');
+
+    expect(notifyMock).toHaveBeenCalledTimes(1);
+    expect(notifyMock).toHaveBeenCalledWith(
+      'Onion',
+      'Rajesh Patil',
+      'Anita Desai',
+      1250,
+      'INR',
+      ORDER.id,
+    );
+  });
+
+  it('stays silent when the sale rolled back', async () => {
+    findUnique.mockResolvedValue(null);
+
+    await alertNewOrder('bid-1', 'BID_ACCEPTED');
+
+    expect(notifyMock).not.toHaveBeenCalled();
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+
+  it('still emails when the ops ping fails', async () => {
+    findUnique.mockResolvedValue(ORDER);
+    notifyMock.mockRejectedValueOnce(new Error('socket down'));
+
+    await expect(alertNewOrder('bid-1', 'BID_ACCEPTED')).resolves.toBeUndefined();
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
   });
 });

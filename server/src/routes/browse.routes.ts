@@ -20,6 +20,9 @@ const router = Router();
 router.get('/', browseController.browseListings);
 router.get('/filters', browseController.getFilters);
 router.get('/cities', browseController.getRetailCities);
+// The storefront's own rules (minimum order value). Public: a guest filling a
+// basket has to be told the floor before they try to pay.
+router.get('/retail-rules', browseController.getRetailRules);
 // Shop-first retail: the city's shops, then one shop's whole shelf. Public —
 // a shopper browses before they ever sign in, and the signup gate is at the
 // cart, not the window.

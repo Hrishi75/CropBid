@@ -23,6 +23,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { enquiryLimiter } from '../middleware/rateLimiter';
 import * as agriInputController from '../controllers/agriInput.controller';
 
 const router = Router();
@@ -38,6 +39,10 @@ router.get('/:id', agriInputController.getAgriInputById);
 // Lead capture — any signed-in account may enquire. Not farmer-gated, same as
 // equipment: an FPO secretary or a buyer running a contract-farming block has
 // as much reason to source seed as an individual farmer does.
-router.post('/:id/enquiry', authenticate, agriInputController.createEnquiry);
+//
+// Auth alone does not protect the numbers. Every product id is on the public
+// browse, so one account could enquire on each in turn and collect them all.
+// enquiryLimiter goes AFTER authenticate so it can key on that account.
+router.post('/:id/enquiry', authenticate, enquiryLimiter, agriInputController.createEnquiry);
 
 export default router;

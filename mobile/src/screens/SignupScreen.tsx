@@ -1,9 +1,21 @@
-// Signup screen — create a farmer or buyer account. Mirrors the web SignupPage:
+// Signup screen — create an account. Mirrors the web signup flow:
 // role, name, country (which fixes the account currency), phone (the primary
 // contact and login identifier — required), email (required for buyers,
 // optional for farmers and consumers), and a password with
 // live-validated rules. On success AuthContext.signUp() sets the user; the root
-// navigator then routes to onboarding (no profile yet).
+// navigator then routes to the partner application (no profile yet).
+//
+// EVERYONE ARRIVES AS A SHOPPER. There is no role picker, and that is the
+// point: this used to open with FARMER/BUYER/CONSUMER pills defaulting to
+// FARMER, which minted a partner account at signup and dropped a first-time
+// visitor into an application form before they had seen anything the product
+// does. Selling and buying in bulk are applied for afterwards, from the Partner
+// tab, and approval is what grants the role.
+//
+// CLAUDE.md section 4 records the web fixing the same thing, and the rule
+// behind it: the role you are applying for cannot also be the entry
+// requirement. The server already agrees, `/auth/onboarding/{farmer,buyer}`
+// accept CONSUMER precisely because that is who applies.
 //
 // BUYERS TAKE A SECOND STEP. signUp() resolves to 'verification-required' for
 // them: the server has parked their details and emailed a 6-digit code, and no
@@ -197,7 +209,9 @@ export default function SignupScreen() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<Role>('FARMER');
+  // Not state, and not a choice. See the header: every account starts as a
+  // shopper, and trading is applied for from inside one.
+  const role: Role = 'CONSUMER';
   const [country, setCountry] = useState('India');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -227,13 +241,11 @@ export default function SignupScreen() {
     /^[+0-9][0-9\s\-()]*$/.test(phone.trim()) &&
     phone.trim().length <= 20 &&
     phone.replace(/[^0-9]/g, '').length >= 7;
-  // Buyers must give an email; farmers and consumers may leave it blank, but a
-  // filled-in address still has to be well-formed.
-  const emailRequired = role === 'BUYER';
+  // Optional, now that every account starts as a shopper: phone is the
+  // identifier, and a household has no reason to hand over an address to buy a
+  // kilo of onions. A filled-in one still has to be well-formed.
   const emailValid =
-    email.trim() === ''
-      ? !emailRequired
-      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    email.trim() === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const nameValid = name.trim().length >= 2;
   const formValid = nameValid && phoneValid && emailValid && passwordValid;
 
@@ -245,9 +257,7 @@ export default function SignupScreen() {
           : !phoneValid
             ? 'Enter a valid phone number'
             : !emailValid
-              ? emailRequired && email.trim() === ''
-                ? 'Email is required for buyer accounts'
-                : 'Enter a valid email address'
+              ? 'Enter a valid email address'
               : 'Password does not meet the requirements',
       );
       return;
@@ -290,20 +300,13 @@ export default function SignupScreen() {
         <Text style={styles.tagline}>Create your account</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>I'm a</Text>
-          <View style={styles.pillRow}>
-            {(['FARMER', 'BUYER', 'CONSUMER'] as const).map((r) => (
-              <Pressable
-                key={r}
-                onPress={() => setRole(r)}
-                style={[styles.pill, role === r && styles.pillActive]}
-              >
-                <Text style={[styles.pillText, role === r && styles.pillTextActive]}>
-                  {r === 'FARMER' ? 'Farmer' : r === 'BUYER' ? 'Buyer' : 'Consumer'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          {/* No role picker. Everyone gets a shopper's account, live on the
+              spot; growing and bulk buying are applied for from the Partner tab
+              afterwards, and said here rather than discovered. */}
+          <Text style={styles.roleNote}>
+            Your account is ready straight away. Pick your city and the local shelf opens. If you
+            also grow, or buy in bulk, apply for that from the Partner tab once you're in.
+          </Text>
 
           <Text style={styles.label}>Full name</Text>
           <TextInput
@@ -331,7 +334,7 @@ export default function SignupScreen() {
             placeholderTextColor={colors.textMuted}
           />
 
-          <Text style={styles.label}>{emailRequired ? 'Email' : 'Email (optional)'}</Text>
+          <Text style={styles.label}>Email (optional)</Text>
           <TextInput
             style={styles.input}
             value={email}
@@ -428,18 +431,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginBottom: spacing.lg,
   },
-  pillRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg },
-  pill: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-  },
-  pillActive: { borderColor: colors.forest, backgroundColor: colors.forest },
-  pillText: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
-  pillTextActive: { color: colors.textInverse },
   select: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -455,6 +446,7 @@ const styles = StyleSheet.create({
   selectText: { fontSize: 16, color: colors.text },
   selectMeta: { fontSize: 14, color: colors.textMuted, fontWeight: '600' },
   rules: { flexDirection: 'row', flexWrap: 'wrap', marginTop: -spacing.sm, marginBottom: spacing.md },
+  roleNote: { fontSize: 12.5, lineHeight: 18, color: colors.textMuted, marginTop: spacing.sm, marginBottom: spacing.md },
   ruleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, width: '50%', paddingVertical: 3 },
   ruleMark: { fontSize: 12, color: colors.textMuted },
   ruleMarkOk: { color: colors.sage },

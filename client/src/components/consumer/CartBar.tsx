@@ -42,7 +42,10 @@ export function CartBar() {
           <span className="cn-cartbar-count">{count}</span>
           <span className="cn-cartbar-txt">
             <span className="cn-cartbar-items">{label}</span>
-            <span className="cn-cartbar-total cb-mono">{formatCurrency(snapshotTotal, currency)}</span>
+            {/* No `cb-mono` here: that atom is only defined as a descendant of
+                .cb-landing / .cb-app and this bar renders above both, so the
+                class would do nothing. .cn-cartbar-total sets the font itself. */}
+            <span className="cn-cartbar-total">{formatCurrency(snapshotTotal, currency)}</span>
           </span>
         </span>
         <span className="cn-cartbar-cta">View cart →</span>

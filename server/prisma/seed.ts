@@ -22,6 +22,7 @@ import bcrypt from 'bcryptjs';
 import { cropImageFor } from './cropImages';
 import { isLocalDatabase } from '../src/utils/seedGuard';
 import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE } from './equipmentCatalogue';
+import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE } from './agriInputCatalogue';
 
 // Prisma v7 requires a driver adapter for direct database connections.
 // PrismaPg connects to PostgreSQL using the `pg` library under the hood.
@@ -265,6 +266,10 @@ async function main() {
   await prisma.equipmentEnquiry.deleteMany();
   await prisma.equipment.deleteMany();
   await prisma.equipmentDealer.deleteMany();
+  // Inputs likewise: AgriInputEnquiry carries a userId foreign key too.
+  await prisma.agriInputEnquiry.deleteMany();
+  await prisma.agriInput.deleteMany();
+  await prisma.inputSupplier.deleteMany();
   await prisma.waitlist.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.negotiation.deleteMany();
@@ -677,6 +682,135 @@ async function main() {
 
   console.log(`  ✅ Created ${LOCAL_SHOPS.length} local shops holding ${shopListingCount} lines`);
 
+
+  // =========================================================================
+  // 7c. Farms on the household shelf — the Fresh lane
+  // =========================================================================
+  // The app's storefront has two supply lines: LOCAL SHOPS holding stock a few
+  // streets away, and FRESH, bought at the next morning's mandi and delivered
+  // that morning. 7b seeded the shops. This seeds the other half.
+  //
+  // WITHOUT IT THE FRESH LANE IS ONE ITEM. The Indian farmers above are spread
+  // across fifteen cities for the wholesale market, and only Pune and Nagpur
+  // are retail cities (CLAUDE.md §2), so barely any farm lot lands somewhere a
+  // household can be delivered from. That is right for the wholesale seed and
+  // wrong for the retail one, so the retail half gets its own farms.
+  //
+  // Denominated in KG, like the shops, because the app shelves these as
+  // household packs and a QUINTAL lot priced per kilo is the same lot with an
+  // extra conversion in front of it.
+  console.log('  Creating farms on the household shelf...');
+
+  const SHELF_FARMS = [
+    {
+      owner: 'Anita Jadhav', email: 'anita.farm@cropbid.test', phone: '+91-9700000011',
+      city: 'Pune', state: 'Maharashtra', acres: 6,
+      stock: [
+        { crop: 'Tomato',    variety: 'Pusa Ruby',   qty: 180, price: 23, grade: 'A' as const, organic: true  },
+        { crop: 'Spinach',   variety: 'Desi Palak',  qty: 40,  price: 32, grade: 'A' as const, organic: true  },
+        { crop: 'Cauliflower', variety: 'Snowball',  qty: 90,  price: 25, grade: 'A' as const, organic: false },
+        { crop: 'Coriander', variety: 'Local',       qty: 22,  price: 54, grade: 'A' as const, organic: true  },
+      ],
+    },
+    {
+      owner: 'Vitthal Shinde', email: 'vitthal.farm@cropbid.test', phone: '+91-9700000012',
+      city: 'Pune', state: 'Maharashtra', acres: 11,
+      stock: [
+        { crop: 'Onion',     variety: 'Nashik Red',  qty: 400, price: 17, grade: 'A' as const, organic: false },
+        { crop: 'Potato',    variety: 'Jyoti',       qty: 350, price: 15, grade: 'B' as const, organic: false },
+        { crop: 'Grapes',    variety: 'Thompson',    qty: 120, price: 68, grade: 'A' as const, organic: false },
+        { crop: 'Wheat',     variety: 'Sharbati',    qty: 500, price: 35, grade: 'A' as const, organic: false },
+      ],
+    },
+    {
+      owner: 'Shalini Rane', email: 'shalini.farm@cropbid.test', phone: '+91-9700000013',
+      city: 'Nagpur', state: 'Maharashtra', acres: 8,
+      stock: [
+        { crop: 'Orange',     variety: 'Nagpur Santra', qty: 260, price: 52, grade: 'A' as const, organic: false },
+        { crop: 'Brinjal',    variety: 'Local',         qty: 80,  price: 24, grade: 'A' as const, organic: true  },
+        { crop: 'Lady Finger',variety: 'Local',         qty: 55,  price: 36, grade: 'A' as const, organic: false },
+        { crop: 'Turmeric',   variety: 'Salem',         qty: 45,  price: 138, grade: 'A' as const, organic: true },
+      ],
+    },
+    {
+      owner: 'Kishor Meshram', email: 'kishor.farm@cropbid.test', phone: '+91-9700000014',
+      city: 'Nagpur', state: 'Maharashtra', acres: 14,
+      stock: [
+        { crop: 'Green Chilli', variety: 'Guntur',   qty: 35,  price: 48, grade: 'A' as const, organic: false },
+        { crop: 'Cabbage',      variety: 'Local',    qty: 110, price: 15, grade: 'B' as const, organic: false },
+        { crop: 'Carrot',       variety: 'Ooty',     qty: 70,  price: 39, grade: 'A' as const, organic: false },
+        { crop: 'Rice',         variety: 'Chinnor',  qty: 420, price: 55, grade: 'A' as const, organic: false },
+      ],
+    },
+  ];
+
+  let shelfFarmLots = 0;
+  for (const f of SHELF_FARMS) {
+    const user = await prisma.user.create({
+      data: {
+        name: f.owner,
+        email: f.email,
+        password: hashedPassword,
+        role: 'FARMER',
+        phone: normalizePhone(f.phone),
+        location: f.city,
+        country: 'India',
+        currency: 'INR',
+        trustScore: 60 + Math.random() * 30,
+      },
+    });
+
+    const profile = await prisma.farmerProfile.create({
+      data: {
+        userId: user.id,
+        // FARMER, not LOCAL_SHOP: that is exactly what puts these in the Fresh
+        // lane rather than the shop list. The app derives the lane from
+        // sellerType and never stores it.
+        sellerType: 'FARMER',
+        status: 'APPROVED', // seeded demo partners skip the review queue
+        farmSizeAcres: f.acres,
+        cropsGrown: f.stock.map((it) => it.crop),
+        country: 'India',
+        state: f.state,
+        verified: true,
+      },
+    });
+
+    for (const it of f.stock) {
+      await prisma.listing.create({
+        data: {
+          farmerId: profile.id,
+          cropName: it.crop,
+          cropVariety: it.variety,
+          quantity: it.qty,
+          remainingQuantity: it.qty,
+          unit: 'KG',
+          pricePerUnitMin: Math.round(it.price * 0.85),
+          pricePerUnitMax: it.price,
+          currency: 'INR',
+          qualityGrade: it.grade,
+          organic: it.organic,
+          harvestDate: new Date(Date.now() - Math.random() * 5 * 24 * 60 * 60 * 1000),
+          expiryDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000),
+          description: `${it.variety} ${it.crop.toLowerCase()} from ${f.owner}'s farm near ${f.city}.`,
+          images: cropImageFor(it.crop) ? [cropImageFor(it.crop)!] : [],
+          location: f.city,
+          country: 'India',
+          state: f.state,
+          status: 'ACTIVE',
+          // The whole point of this block: on the household shelf, priced for
+          // a household. The farmer's own retail price, so no shelf margin is
+          // applied on top of it.
+          directSaleEnabled: true,
+          retailPricePerUnit: it.price,
+        },
+      });
+      shelfFarmLots++;
+    }
+  }
+
+  console.log(`  ✅ Created ${SHELF_FARMS.length} shelf farms holding ${shelfFarmLots} lots`);
+
   // =========================================================================
   // 8. Create Agent Configs (30)
   // =========================================================================
@@ -1040,6 +1174,60 @@ async function main() {
   console.log(`  ✅ Created ${EQUIPMENT_DEALERS.length} equipment dealers and ${EQUIPMENT_CATALOGUE.length} machines`);
 
   // =========================================================================
+  // 12c. Input Suppliers + Seed & Fertiliser Catalogue
+  // =========================================================================
+  // Same shape as 12b. The difference is the licences: this is a development
+  // database, so the catalogue's placeholder licence numbers are written here
+  // and the licence gate has something to pass. seedAgriInputs.ts, which runs
+  // against production, deliberately writes none (see supplierLoadFields).
+  console.log('  Creating input suppliers and the seed & fertiliser catalogue...');
+
+  const supplierIdByName = new Map<string, string>();
+  for (const s of INPUT_SUPPLIERS) {
+    const row = await prisma.inputSupplier.create({
+      data: {
+        name: s.name,
+        location: s.location,
+        state: s.state,
+        contactPhone: s.contactPhone,
+        contactEmail: s.contactEmail ?? null,
+        verified: s.verified ?? false,
+        rating: s.rating ?? 4.0,
+        seedLicence: s.seedLicence ?? null,
+        fertiliserLicence: s.fertiliserLicence ?? null,
+        pesticideLicence: s.pesticideLicence ?? null,
+      },
+      select: { id: true },
+    });
+    supplierIdByName.set(s.name, row.id);
+  }
+
+  for (const p of AGRI_INPUT_CATALOGUE) {
+    await prisma.agriInput.create({
+      data: {
+        supplierId: supplierIdByName.get(p.supplier)!,
+        title: p.title,
+        category: p.category,
+        brand: p.brand ?? null,
+        cropNames: p.cropNames,
+        packSize: p.packSize,
+        pricePerPack: p.pricePerPack,
+        subsidised: p.subsidised ?? false,
+        composition: p.composition ?? null,
+        germinationPct: p.germinationPct ?? null,
+        seedTreatment: p.seedTreatment ?? null,
+        dosagePerAcre: p.dosagePerAcre ?? null,
+        specs: p.specs ?? [],
+        description: p.description ?? null,
+        location: p.location,
+        state: p.state,
+      },
+    });
+  }
+
+  console.log(`  ✅ Created ${INPUT_SUPPLIERS.length} input suppliers and ${AGRI_INPUT_CATALOGUE.length} products`);
+
+  // =========================================================================
   // 13. Create Consumer Test Account (direct-to-consumer retail buyer)
   // =========================================================================
   // No profile needed — CONSUMER skips onboarding entirely (mobile RootNavigator).
@@ -1074,6 +1262,8 @@ async function main() {
     logisticsPartners: await prisma.logisticsPartner.count(),
     equipmentDealers: await prisma.equipmentDealer.count(),
     equipment: await prisma.equipment.count(),
+    inputSuppliers: await prisma.inputSupplier.count(),
+    agriInputs: await prisma.agriInput.count(),
   };
 
   console.log('\n🌾 Seed completed! Database populated with:\n');
@@ -1089,6 +1279,8 @@ async function main() {
   console.log(`  🚚 Logistics Partners:  ${counts.logisticsPartners}`);
   console.log(`  🏪 Equipment Dealers:   ${counts.equipmentDealers}`);
   console.log(`  🚜 Equipment:           ${counts.equipment}`);
+  console.log(`  🌱 Input Suppliers:     ${counts.inputSuppliers}`);
+  console.log(`  🧪 Agri Inputs:         ${counts.agriInputs}`);
   console.log('\n  All test users password: password123');
   console.log('  Admin login: admin@cropbid.test / password123');
   console.log('  Sample farmer: rajesh@cropbid.test / password123');

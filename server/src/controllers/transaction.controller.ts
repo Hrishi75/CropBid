@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import * as transactionService from '../services/transaction.service';
 import { auditFromRequest } from '../services/audit.service';
+import { alertNewOrder } from '../services/orderAlert.service';
 
 const createTxSchema = z.object({
   bidId: z.string().min(1, 'bidId is required'),
@@ -25,7 +26,14 @@ export async function createTransaction(req: Request, res: Response, next: NextF
     // Authorization: verify the requesting user is involved in this bid
     const bid = await prisma.bid.findUnique({
       where: { id: bidId },
-      include: { listing: { include: { farmer: true } } },
+      include: {
+        listing: { include: { farmer: true } },
+        // Whether this deal is already on the books. createTransaction returns
+        // the existing row rather than erroring, so without this a retry of
+        // this endpoint would re-alert ops for a deal already alerted, and
+        // Bid.transaction is unique so it costs nothing to ask here.
+        transaction: { select: { id: true } },
+      },
     });
 
     if (!bid) {
@@ -40,7 +48,25 @@ export async function createTransaction(req: Request, res: Response, next: NextF
       return res.status(403).json({ message: 'You are not authorized to create this transaction' });
     }
 
+    const alreadyOnTheBooks = bid.transaction !== null;
     const transaction = await transactionService.createTransaction(bidId);
+
+    // Post-commit, like every other path that closes a deal. createTransaction
+    // is called with the top-level client here, so it is committed by this
+    // line, and alertNewOrder re-reads before doing anything.
+    //
+    // This route had never fired it, so the ops email was already missing for
+    // deals struck through it. That went unnoticed while the admin notification
+    // lived inside createTransaction and covered this path by accident; moving
+    // the notification onto alertNewOrder would have turned one silent gap into
+    // two. One call closes both.
+    //
+    // Only on the request that actually creates the deal. createTransaction is
+    // idempotent and hands back the existing row, so alerting unconditionally
+    // would email ops and re-notify every admin each time somebody retried this
+    // endpoint, or called it after another path had already closed the deal.
+    if (!alreadyOnTheBooks) void alertNewOrder(bidId, 'BID_ACCEPTED');
+
     res.status(201).json(transaction);
   } catch (error) {
     next(error);

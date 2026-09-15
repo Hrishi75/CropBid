@@ -13,7 +13,7 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE } from './agriInputCatalogue';
+import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE, supplierLoadFields } from './agriInputCatalogue';
 
 // Mirrors the SELLABLE filter in agriInput.service.ts. ORGANIC, MICRONUTRIENT
 // and SEEDLING are ungated: they are not controlled categories.
@@ -122,5 +122,20 @@ describe('agri-input catalogue', () => {
       (s) => !s.seedLicence && !s.fertiliserLicence && !s.pesticideLicence,
     );
     expect(unlicensed.length).toBeGreaterThan(0);
+  });
+
+  it('never lets the production loader write a licence or vouch for a shop', () => {
+    // The licence numbers above are placeholders and SELLABLE only checks that
+    // a licence column is not null, so the loader that runs against production
+    // must write none of them. Written, they would pass the gate and label an
+    // unchecked shop "checked by CropBid"; re-run, they would overwrite a
+    // licence someone had cleared by hand.
+    const forbidden = ['seedLicence', 'fertiliserLicence', 'pesticideLicence', 'verified', 'active'];
+    const leaks = INPUT_SUPPLIERS.flatMap((s) =>
+      Object.keys(supplierLoadFields(s))
+        .filter((k) => forbidden.includes(k))
+        .map((k) => `${s.name}: ${k}`),
+    );
+    expect(leaks).toEqual([]);
   });
 });

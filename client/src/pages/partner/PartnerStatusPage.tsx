@@ -17,7 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import { partnerApplication, PARTNER_STATUS_META } from '../../utils/partner';
-import api from '../../lib/axios';
+import api, { keepAliveSession } from '../../lib/axios';
 
 // The three review stages, as a timeline. Which dot is lit depends on status.
 function Timeline({ status }: { status: string }) {
@@ -57,11 +57,42 @@ export function PartnerStatusPage() {
   // Approval can land while this page is open (admin clicks, user waits).
   // One refetch on mount keeps the common path — "email said approved, opened
   // the app" — from showing a stale WAITING screen.
+  //
+  // The token has to be refreshed too, not just the user object. Approval now
+  // PROMOTES the account from CONSUMER, and the access token carries the role
+  // it was minted with, so the freshly approved partner would arrive at their
+  // dashboard still holding a CONSUMER token and collect 403s from every role
+  // guard until it expired. Nothing self-heals that: the axios interceptor
+  // refreshes on 401, and a stale role returns 403.
+  //
+  // /auth/refresh re-reads the user and mints from user.role, so one call is
+  // enough. It runs before updateUser so the redirect below cannot fire on the
+  // approved profile while the old token is still in play.
   useEffect(() => {
     let on = true;
-    api.get('/auth/me')
-      .then(({ data }) => { if (on && data?.user) updateUser(data.user); })
-      .catch(() => {});
+    (async () => {
+      try {
+        const { data } = await api.get('/auth/me');
+        if (!on || !data?.user) return;
+
+        const approved = partnerApplication(data.user)?.status === 'APPROVED';
+        if (approved && data.user.role !== user?.role) {
+          // Through keepAliveSession, NOT a bare post to /auth/refresh. Refresh
+          // tokens rotate, so two overlapping refreshes leave one holding a
+          // revoked credential: if the interceptor or the idle keepalive lost
+          // that race it would sign out the applicant we just approved.
+          // keepAliveSession holds the same isRefreshing lock those two use, and
+          // returns early when one is already in flight, which is fine here
+          // because the server mints from the freshly read user.role either way.
+          await keepAliveSession();
+          if (!on) return;
+        }
+
+        if (on) updateUser(data.user);
+      } catch {
+        /* stale screen, not a broken one */
+      }
+    })();
     return () => { on = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

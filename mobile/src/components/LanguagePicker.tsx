@@ -10,7 +10,8 @@
 // =============================================================================
 
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Alert } from '../lib/alert';
 import { useTranslation } from 'react-i18next';
 import { PressScale } from './motion';
 import { colors, design, font } from '../theme';

@@ -73,8 +73,20 @@ router.post('/change-password', authenticate, changePasswordHandler);
 // Delete own account — body carries the current password as confirmation
 router.delete('/me', authenticate, deleteAccountHandler);
 
-// Onboarding (must be logged in + correct role)
-router.post('/onboarding/farmer', authenticate, requireRole('FARMER'), farmerOnboardingHandler);
-router.post('/onboarding/buyer', authenticate, requireRole('BUYER'), buyerOnboardingHandler);
+// Onboarding — the partner APPLICATION. Must be logged in; the role is what
+// you are applying to become, so it cannot also be the entry requirement.
+//
+// CONSUMER is here because that is who applies. Everyone arrives on CropBid as
+// a shopper, and applying to sell or to buy at volume is a form they fill from
+// inside a signed-in consumer account. Gating this on FARMER made the endpoint
+// reachable only by someone who already was one, which is why a signed-in
+// shopper could not apply at all.
+//
+// FARMER/BUYER stay allowed for resubmission after a reviewer sends an
+// application back (NEEDS_INFO), and for anyone who signed up through the
+// logged-out partner door. Approval is still the only thing that grants the
+// role: see reviewPartnerApplication in admin.service.ts.
+router.post('/onboarding/farmer', authenticate, requireRole('CONSUMER', 'FARMER'), farmerOnboardingHandler);
+router.post('/onboarding/buyer', authenticate, requireRole('CONSUMER', 'BUYER'), buyerOnboardingHandler);
 
 export default router;

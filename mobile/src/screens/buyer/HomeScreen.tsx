@@ -263,6 +263,25 @@ export default function HomeScreen() {
             </View>
           ) : null}
         </View>
+
+        {/* Demand — the exchange run the other way. Instead of hunting the
+            market for a lot that happens to fit, say what is needed and let
+            farmers come to it. */}
+        <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
+          <Eyebrow>Your demand</Eyebrow>
+          <Pressable onPress={() => nav.navigate('Demand')}>
+            <Text style={styles.manage}>See the board</Text>
+          </Pressable>
+        </View>
+        <View style={[styles.sidePad, styles.demandRow]}>
+          <Pressable style={({ pressed }) => [styles.demandPrimary, pressed && styles.pressed]} onPress={() => nav.navigate('CreateRequirement')}>
+            <Text style={styles.demandPrimaryText}>Post what you need </Text>
+            <IconArrow size={13} stroke="#f4f1ea" />
+          </Pressable>
+          <Pressable style={({ pressed }) => [styles.demandGhost, pressed && styles.pressed]} onPress={() => nav.navigate('MyRequirements')}>
+            <Text style={styles.demandGhostText}>Your requirements</Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </View>
   );
@@ -306,6 +325,11 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3 },
 
   manage: { fontFamily: font.sansMed, fontSize: 13, color: colors.forest },
+  demandRow: { flexDirection: 'row', gap: 10 },
+  demandPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 11, backgroundColor: colors.forest },
+  demandPrimaryText: { fontFamily: font.sansMed, fontSize: 13.5, color: '#f4f1ea' },
+  demandGhost: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 13, borderRadius: 11, backgroundColor: design.paper, borderWidth: 1, borderColor: design.line },
+  demandGhostText: { fontFamily: font.sansMed, fontSize: 13.5, color: design.ink },
   agentRow: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 12, paddingVertical: 13, paddingHorizontal: 14 },
   agentIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line, alignItems: 'center', justifyContent: 'center' },
   agentName: { fontFamily: font.sansMed, fontSize: 15, letterSpacing: -0.15, color: design.ink },

@@ -8,8 +8,14 @@
 //   1. parent creates a Razorpay order (POST /payments/order) and passes it here
 //   2. this modal loads checkout.js with the order + key and opens Checkout
 //   3. on success Checkout calls handler(); the page postMessage()s the signed
-//      handshake out to RN, and we POST it to /payments/verify (authed axios)
-//   4. the server validates the HMAC and flips the txn AWAITING_PAYMENT -> ESCROW
+//      handshake out to RN, and we POST it to a verify endpoint (authed axios)
+//   4. the server validates the HMAC and settles whatever was being paid for
+//
+// TWO THINGS ARE PAID FOR THROUGH HERE, so the verify step is a prop rather
+// than a hardcoded call: an order (AWAITING_PAYMENT -> ESCROW) and a wallet
+// top-up (credits onto the balance). The WebView, the script and the handshake
+// plumbing are identical for both, and a second copy of this file would be a
+// second place for the postMessage contract to rot.
 //
 // Test mode: the keyId returned by the server is the Razorpay TEST key, so this
 // is a test checkout — pay with card 4111 1111 1111 1111 (any future expiry/CVV).
@@ -21,7 +27,7 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { colors, design, font } from '../theme';
-import { verifyPayment, type PaymentOrder } from '../api/endpoints';
+import { verifyPayment } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import type { Transaction } from '../api/types';
 
@@ -31,17 +37,48 @@ interface Prefill {
   contact?: string;
 }
 
-interface Props {
-  order: PaymentOrder | null; // non-null => modal is open
+/**
+ * What this modal actually needs to open Checkout.
+ *
+ * A structural subset of PaymentOrder rather than PaymentOrder itself, because
+ * `transactionId` is the CALLER's business and a wallet top-up has none.
+ * Requiring it would have meant inventing a fake id to satisfy a field nothing
+ * in this file reads.
+ */
+export interface CheckoutOrder {
+  orderId: string;
+  amount: number; // smallest currency subunit (paise for INR)
+  currency: string;
+  keyId: string;
+}
+
+/** The signed handshake Checkout hands back. Snake_case: it is Razorpay's shape. */
+export interface Handshake {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface Props<T> {
+  order: CheckoutOrder | null; // non-null => modal is open
   prefill?: Prefill;
-  onPaid: (tx: Transaction) => void;
+  /**
+   * What to POST the handshake to. Defaults to the transaction verify, so
+   * existing callers are unchanged; the wallet passes its own.
+   *
+   * MUST be the thing that talks to the server. The money is already taken by
+   * the time this runs, so a caller that skipped it would leave a shopper
+   * charged with nothing to show for it.
+   */
+  verify?: (handshake: Handshake) => Promise<T>;
+  onPaid: (result: T) => void;
   onClose: (err?: string) => void;
 }
 
 // The page is loaded with an https baseUrl so checkout.js gets a real origin.
 const CHECKOUT_ORIGIN = 'https://cropbid.in';
 
-function buildHtml(order: PaymentOrder, prefill: Prefill): string {
+function buildHtml(order: CheckoutOrder, prefill: Prefill): string {
   // All interpolated values go through JSON.stringify so they're safely quoted.
   return `<!doctype html>
 <html>
@@ -88,7 +125,9 @@ function buildHtml(order: PaymentOrder, prefill: Prefill): string {
 </html>`;
 }
 
-export default function RazorpayCheckout({ order, prefill, onPaid, onClose }: Props) {
+export default function RazorpayCheckout<T = Transaction>({
+  order, prefill, verify, onPaid, onClose,
+}: Props<T>) {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
@@ -104,12 +143,13 @@ export default function RazorpayCheckout({ order, prefill, onPaid, onClose }: Pr
     if (msg.type === 'success') {
       setVerifying(true);
       try {
-        const tx = await verifyPayment({
+        const handshake: Handshake = {
           razorpay_order_id: msg.razorpay_order_id,
           razorpay_payment_id: msg.razorpay_payment_id,
           razorpay_signature: msg.razorpay_signature,
-        });
-        onPaid(tx);
+        };
+        const run = verify ?? ((h: Handshake) => verifyPayment(h) as Promise<T>);
+        onPaid(await run(handshake));
       } catch (e) {
         onClose(errorMessage(e, 'Payment captured but verification failed. Pull to refresh.'));
       } finally {

@@ -6,6 +6,15 @@ export type Unit = 'KG' | 'QUINTAL' | 'TONNE';
 export type QualityGrade = 'A' | 'B' | 'C';
 export type BidStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'COUNTERED' | 'EXPIRED';
 export type ListingStatus = 'ACTIVE' | 'IN_AUCTION' | 'SOLD' | 'EXPIRED';
+// Where a seller's or buyer's application sits in review. Mirrors the
+// PartnerStatus enum in server/prisma/schema.prisma.
+export type PartnerStatus =
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'NEEDS_INFO'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'SUSPENDED';
 
 export interface User {
   id: string;
@@ -19,18 +28,47 @@ export interface User {
   avatar?: string | null;
   trustScore: number;
   farmerProfile?: {
+    // WHAT KIND OF SELLER THIS IS. The model is called FarmerProfile for
+    // historical reasons and holds all three kinds; `sellerType` is the column
+    // that says which (CLAUDE.md §4: read it as a SELLER profile). The server
+    // has always sent these — `farmerProfile: true` selects every column — and
+    // this type simply never named them, so the app collapsed a kirana store
+    // into "farmer" everywhere it showed a label.
+    sellerType?: SellerType;
+    /** What a shop trades as. A FARMER has none and is known by their own name. */
+    businessName?: string | null;
+    /** "vegetable", "kirana", "general", ... Only a shop has one. */
+    shopType?: string | null;
     farmSizeAcres?: number;
     state?: string;
     cropsGrown?: string[];
     organicCertified?: boolean;
+    // The partner application's lifecycle. A profile exists from the moment the
+    // application is filed, so its presence means "applied", not "approved" —
+    // only `status` says that. See lib/partner.ts.
+    status?: PartnerStatus;
+    statusNote?: string | null;
   } | null;
-  buyerProfile?: { companyName?: string; companyType?: string } | null;
+  buyerProfile?: {
+    companyName?: string;
+    companyType?: string;
+    status?: PartnerStatus;
+    statusNote?: string | null;
+  } | null;
 }
 
 export interface Listing {
   id: string;
   farmerId: string;
-  farmer?: { user?: Pick<User, 'id' | 'name' | 'trustScore' | 'avatar'> };
+  // `sellerType` decides which lane a lot belongs to: a LOCAL_SHOP holds stock
+  // and delivers today, everyone else is the next-morning mandi run. The server
+  // has always sent it (PUBLIC_SELLER_SELECT); this type just never named it.
+  farmer?: {
+    sellerType?: SellerType;
+    businessName?: string | null;
+    shopType?: string | null;
+    user?: Pick<User, 'id' | 'name' | 'trustScore' | 'avatar'>;
+  };
   cropName: string;
   cropVariety: string | null;
   quantity: number;
@@ -53,6 +91,98 @@ export interface Listing {
   createdAt: string;
   matchScore?: number;
   _count?: { bids: number };
+}
+
+// --- The demand board (the reverse marketplace) -----------------------------
+// A requirement is a buyer saying "I need this, at this price, by this date";
+// farmers fill it outright or counter with their own price. Mirrors the shapes
+// in client/src/types/index.ts, trimmed to the fields the app reads.
+
+export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
+export type RequirementOfferStatus =
+  | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+/** INSTANT filled at the buyer's own price; COUNTER proposed the farmer's. */
+export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
+
+// The counterparty-safe buyer shape the API returns on a requirement: company
+// details only, never taxId, procurement volume, phone or email. It is absent
+// entirely when the reader is another BUYER — the server redacts competitor
+// identity, so treat a missing buyer as normal, not as an error.
+export interface RequirementBuyer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  buyerProfile?: {
+    companyName?: string | null;
+    companyType?: string | null;
+    country?: string;
+    verified?: boolean;
+  } | null;
+}
+
+export interface RequirementOfferFarmer {
+  id: string;
+  name: string;
+  trustScore: number;
+  avatar: string | null;
+  farmerProfile?: { state?: string | null; organicCertified?: boolean; verified?: boolean } | null;
+}
+
+export interface BuyerRequirement {
+  id: string;
+  buyerId: string;
+  buyer?: RequirementBuyer;
+  cropName: string;
+  cropVariety: string | null;
+  quantity: number;
+  /** What is still unfilled. A requirement can be filled in pieces. */
+  remainingQuantity: number;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  currency: string;
+  deliveryLocation: string;
+  deliveryState: string;
+  deliveryCountry?: string;
+  neededBy: string | null;
+  description: string | null;
+  organic: boolean;
+  paymentTerms: string | null;
+  deliveryTerms: string | null;
+  status: RequirementStatus;
+  createdAt: string;
+  updatedAt?: string;
+  offers?: RequirementOffer[];
+  // On the feed this counts ALL offers; on /my it counts only PENDING ones,
+  // because that is the number the buyer has to act on.
+  _count?: { offers: number };
+}
+
+export interface RequirementOffer {
+  id: string;
+  requirementId: string;
+  requirement?: BuyerRequirement;
+  farmerId: string;
+  farmer?: RequirementOfferFarmer;
+  kind: RequirementOfferKind;
+  quantity: number;
+  pricePerUnit: number;
+  totalAmount: number;
+  currency: string;
+  message: string | null;
+  status: RequirementOfferStatus;
+  listingId: string | null;
+  bidId: string | null;
+  createdAt: string;
+  respondedAt: string | null;
+}
+
+/** What the feed can actually be narrowed by, as the server reports it. */
+export interface RequirementFilterOptions {
+  crops?: string[];
+  states?: string[];
+  buyerTypes?: string[];
 }
 
 export interface Bid {
@@ -180,4 +310,125 @@ export interface Auction {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
+}
+
+// -----------------------------------------------------------------------------
+// Wallet — prepaid credits
+// -----------------------------------------------------------------------------
+// 1 credit is 1 rupee. No exchange rate, no bonus, no expiry: see
+// server/src/services/wallet.service for why inventing one would be a pricing
+// decision made in the wrong place.
+
+/** A saved delivery address. See server/prisma Address for why `line` is free text. */
+export interface Address {
+  id: string;
+  label: string;
+  line: string;
+  city: string;
+  phone: string | null;
+  landmark: string | null;
+  /** Exactly one of a shopper's addresses is true. The server holds that. */
+  isDefault: boolean;
+  createdAt: string;
+}
+
+export interface AddressInput {
+  label: string;
+  line: string;
+  city: string;
+  phone?: string | null;
+  landmark?: string | null;
+  isDefault?: boolean;
+}
+
+export type SellerType = 'FARMER' | 'LOCAL_SHOP' | 'WHOLESALER';
+
+/** A city that actually has direct-sale stock. */
+export interface RetailCity {
+  city: string;
+  state: string;
+}
+
+/**
+ * One seller as it appears in the city's shop list.
+ *
+ * Only sellers HOLDING LIVE RETAIL STOCK come back from /browse/shops, so a
+ * shop that has onboarded but listed nothing does not appear, and one that
+ * sells out drops off on its own. That is the behaviour rather than a filter
+ * the app has to remember to apply.
+ *
+ * `fromPricePerKg` is the cheapest thing on the shelf, already normalised to
+ * kilograms by the server. It is a "from" price, so a card must label it as
+ * one: shown bare it reads as the price of whatever is pictured.
+ */
+export interface RetailShop {
+  id: string;
+  name: string;
+  sellerType: SellerType;
+  shopType: string | null;
+  city: string;
+  state: string;
+  verified: boolean;
+  trustScore: number;
+  itemCount: number;
+  crops: string[];
+  organicCount: number;
+  currency: string;
+  fromPricePerKg: number | null;
+  image: string | null;
+  lastRestockedAt: string;
+}
+
+/** The header of a shop page: who they are, not what they sell. */
+export interface RetailShopHeader {
+  id: string;
+  name: string;
+  sellerType: SellerType;
+  shopType: string | null;
+  city: string;
+  state: string;
+  verified: boolean;
+  trustScore: number;
+  organicCertified: boolean;
+  certificationBody: string | null;
+  itemCount: number;
+}
+
+export interface RetailShopDetail {
+  shop: RetailShopHeader;
+  listings: Listing[];
+}
+
+export type WalletEntryType = 'TOPUP' | 'SPEND' | 'REFUND' | 'ADJUSTMENT';
+
+export interface Wallet {
+  balance: number;
+  currency: string;
+  /**
+   * Whether credits can pay for an order yet.
+   *
+   * Served by the API rather than hardcoded here, so the day checkout learns to
+   * spend credits the app stops saying otherwise without a release. False
+   * today: `spend()` exists on the server and nothing calls it.
+   */
+  canSpend: boolean;
+  limits: { min: number; max: number };
+}
+
+/** One movement of credits. Signed: positive adds, negative removes. */
+export interface WalletEntry {
+  id: string;
+  type: WalletEntryType;
+  amount: number;
+  /** The running total straight after this entry, so a statement row is readable on its own. */
+  balanceAfter: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface WalletTopupOrder {
+  orderId: string;
+  amount: number;
+  currency: string;
+  keyId: string;
 }

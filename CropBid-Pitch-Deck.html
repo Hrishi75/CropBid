@@ -183,15 +183,18 @@
 
   /* ---------- tile grids ---------- */
 
-  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  /* Three across, two down. It was 2x2 while the product was four things;
+     the shop, the demand board and the review queue are three more, and a
+     six-up grid holds them at the same slide height. */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
   .tile {
     background: var(--field);
     border-radius: 10px;
-    padding: 24px 26px 22px;
+    padding: 24px 25px 22px;
   }
-  .tile h3 { font-size: 20px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.01em; }
+  .tile h3 { font-size: 19px; font-weight: 700; margin-bottom: 8px; letter-spacing: -.01em; line-height: 1.25; }
   .tile h3 .knum { color: var(--leaf); }
-  .tile p { font-size: 16px; line-height: 1.45; color: var(--ink-soft); }
+  .tile p { font-size: 15.5px; line-height: 1.45; color: var(--ink-soft); }
 
   /* ---------- business model ladder ---------- */
 
@@ -439,7 +442,7 @@
     <p class="sub">Farmers, traders, retailers and consumers — trading around <strong>live government mandi prices</strong>, with money held safe in <strong>escrow</strong> until delivery.</p>
     <p class="title-links">cropbid.in <span>·</span> Android &amp; iOS <span>·</span> हिंदी · मराठी · English</p>
     <div class="backed">
-      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b></span>
+      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b> &nbsp;·&nbsp; <b>Founder Startup House</b></span>
       <span class="placeholder">‹ your name · contact ›</span>
     </div>
   </section>
@@ -480,16 +483,24 @@
         <p>Buyers bid in transparent rounds — or each side's AI agent negotiates for them, round by round, within limits they set.</p>
       </div>
       <div class="tile">
-        <h3>Escrow payments</h3>
-        <p>Razorpay holds the money; it releases only on confirmed delivery. Sellers never ship and chase payments again.</p>
+        <h3>Escrow, and contact held until it funds</h3>
+        <p>Razorpay holds the money and releases it on confirmed delivery. The buyer's number reaches the farmer only once the escrow is funded, so nobody takes the deal off-platform.</p>
       </div>
       <div class="tile">
-        <h3>Direct retail channel</h3>
-        <p>Farmers flip a listing to retail at a fixed price; consumers buy any quantity instantly — farm to home, no bidding.</p>
+        <h3>A farm-to-home shop, with a cart</h3>
+        <p>Households fill one basket across several growers and pay one bill. The shelf only shows lots that can actually reach their city.</p>
+      </div>
+      <div class="tile">
+        <h3>Buyers post demand, sellers answer</h3>
+        <p>Restaurants, shops and processors publish what they need and at what price; farmers quote against it. The board runs the exchange in reverse.</p>
+      </div>
+      <div class="tile">
+        <h3>Every seller and buyer reviewed</h3>
+        <p>Farmers, local shops, wholesalers and business buyers apply and are approved by hand — supply on the shelf is vetted, not scraped.</p>
       </div>
     </div>
     <div class="foot">
-      <span>Live in production at cropbid.in — web storefront + native apps in Hindi, Marathi &amp; English.</span>
+      <span>Live in production at cropbid.in — web storefront + native apps, listings dictated by voice in Hindi, Marathi &amp; English.</span>
       <span>CropBid · cropbid.in — <span class="num">3</span></span>
     </div>
   </section>
@@ -582,19 +593,19 @@
     <div class="adv-list">
       <div class="adv">
         <h3>The anchor is public and ours to surface</h3>
-        <p>4,600+ mandi prices on every listing, in the farmer's language — the information advantage middlemen rely on, gone.</p>
+        <p>4,600+ mandi prices on every listing, in the farmer's language — and a farmer who cannot type lists by speaking. The information advantage middlemen rely on, gone.</p>
       </div>
       <div class="adv">
         <h3>Asset-light by design</h3>
         <p>We clear payments, we don't touch produce — no warehouses or spoilage, so unit economics survive scale.</p>
       </div>
       <div class="adv">
-        <h3>Whole chain on one screen</h3>
-        <p>Farmer, trader, wholesaler, retailer and consumer on the same exchange — every hop is our fee event, not a competitor's.</p>
+        <h3>Whole chain on one screen — both ways</h3>
+        <p>Farmer, shop, wholesaler, restaurant and household on the same exchange, with sellers listing and buyers posting demand. Every hop is our fee event, not a competitor's.</p>
       </div>
       <div class="adv">
         <h3>Trust that compounds</h3>
-        <p>Escrow + trust scores + AI-agent negotiation history — every completed deal makes the next one easier to win here.</p>
+        <p>Every partner is approved by hand; escrow, published quality limits and trust scores do the rest. Buyer contact stays sealed until the money is in — so the deal that follows is ours too.</p>
       </div>
     </div>
     <div class="foot"><span></span><span>CropBid · cropbid.in — <span class="num">7</span></span></div>
@@ -638,7 +649,7 @@
       <div class="phase now">
         <p class="when">Now · Built</p>
         <h3>The exchange is live</h3>
-        <p>Storefront, live mandi rates with market-wise detail, open bidding &amp; auctions, AI-agent negotiation, escrow with tracked deal flow, direct retail, Sarkari Yojana hub — web + native apps.</p>
+        <p>Storefront and city-local consumer shop with cart and one bill, live mandi rates, open bidding &amp; auctions, a buyer demand board, AI-agent negotiation, escrow with tracked deal flow, reviewed partner onboarding, voice listing, Sarkari Yojana hub — web + native apps.</p>
       </div>
       <div class="phase">
         <p class="when">Next · 90 days</p>
@@ -674,7 +685,7 @@
       </div>
     </div>
     <div class="foot">
-      <span>Incubated by <b>India 2047 Ventures</b></span>
+      <span>Incubated by <b>India 2047 Ventures</b> and <b>Founder Startup House</b></span>
       <span>CropBid · cropbid.in — <span class="num">10</span></span>
     </div>
   </section>
@@ -749,7 +760,7 @@
     </div>
     <p class="ask-goal"><b>What it buys:</b> <span class="placeholder">‹ N ›</span> districts live and <span class="placeholder">‹ ₹X Cr ›</span> annualised GMV through escrow in 24 months.</p>
     <div class="backed">
-      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b></span>
+      <span>INCUBATED BY&nbsp; <b>India 2047 Ventures</b> &nbsp;·&nbsp; <b>Founder Startup House</b></span>
       <span class="placeholder">‹ your name · email · phone ›</span>
     </div>
   </section>

@@ -34,6 +34,7 @@
 
 import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
+import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
 const UPDATED = '2 September 2026';
@@ -58,22 +59,28 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function TermsPage() {
+  // Inside the phone app this page is the document and nothing else.
+  const embedded = isEmbedded();
   return (
     <div className="cb-landing rp">
-      <header className="rp-nav">
-        <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
-          <ArcMark />
-          <span className="wordmark-text">CropBid</span>
-        </Link>
-        <nav className="rp-nav-links" aria-label="Primary">
-          <Link to="/">Marketplace</Link>
-          <Link to="/rates">Live rates</Link>
-          <Link to="/partner" className="nav-signin">Become a partner</Link>
-          <SignInLink className="cb-btn cb-btn-primary">
-            <ArrowIcon />
-          </SignInLink>
-        </nav>
-      </header>
+      {/* The website's own nav, dropped inside the app: those links would
+          navigate the embedded frame away from the app entirely. */}
+      {embedded ? null : (
+        <header className="rp-nav">
+          <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
+            <ArcMark />
+            <span className="wordmark-text">CropBid</span>
+          </Link>
+          <nav className="rp-nav-links" aria-label="Primary">
+            <Link to="/">Marketplace</Link>
+            <Link to="/rates">Live rates</Link>
+            <Link to="/partner" className="nav-signin">Become a partner</Link>
+            <SignInLink className="cb-btn cb-btn-primary">
+              <ArrowIcon />
+            </SignInLink>
+          </nav>
+        </header>
+      )}
 
       <main className="rp-main">
         <div className="rp-head">
@@ -379,7 +386,7 @@ export function TermsPage() {
         </Section>
       </main>
 
-      <CBFooter />
+      {embedded ? null : <CBFooter />}
     </div>
   );
 }

@@ -30,6 +30,7 @@
 // the number is handed over.
 // =============================================================================
 
+import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 
@@ -304,18 +305,38 @@ export async function createEnquiry(
     throw new ApiError(404, 'Product not found');
   }
 
-  const enquiry = await prisma.agriInputEnquiry.create({
-    data: {
-      agriInputId,
-      userId,
-      packQuantity: input.packQuantity,
-      acres: input.acres,
-      message: input.message,
-    },
-  });
+  // One lead per account per product, held by a unique index rather than a
+  // look-before-insert, so a double tap racing itself still writes one row. A
+  // repeat gets the lead already on file and the number with it: they earned
+  // the number the first time, and asking again must not put a second copy of
+  // the same lead in front of the shop. This stops one account filling the
+  // table; enquiryLimiter on the route is what stops it walking the catalogue.
+  let enquiry;
+  let created = true;
+  try {
+    enquiry = await prisma.agriInputEnquiry.create({
+      data: {
+        agriInputId,
+        userId,
+        packQuantity: input.packQuantity,
+        acres: input.acres,
+        message: input.message,
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) {
+      throw error;
+    }
+    enquiry = await prisma.agriInputEnquiry.findUniqueOrThrow({
+      where: { userId_agriInputId: { userId, agriInputId } },
+    });
+    created = false;
+  }
 
   return {
     enquiry,
+    // False on a repeat, so the controller answers 200 rather than 201.
+    created,
     // The payoff for raising an enquiry: now the farmer can call.
     supplier: {
       name: agriInput.supplier.name,

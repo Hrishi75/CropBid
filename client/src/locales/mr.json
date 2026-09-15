@@ -111,7 +111,7 @@
   "Start selling free": "मोफत विकायला सुरुवात करा",
   "See how it works": "हे कसे काम करते ते पाहा",
   "Incubated by": "इनक्युबेशन भागीदार",
-  "CropBid is built with the backing of India 2047 Ventures and Founder Startup House.": "CropBid हे India 2047 Ventures आणि Founder Startup House च्या पाठिंब्याने तयार केले आहे.",
+  "CropBid is built with the backing of India 2047 Ventures, Founder Startup House and the Sarvam Startup Program.": "CropBid हे India 2047 Ventures, Founder Startup House आणि Sarvam Startup Program च्या पाठिंब्याने तयार केले आहे.",
   "Fair price discovery for agriculture — live govt mandi rates, open bidding, escrow-settled deals, and farm-to-door logistics. Built in India, for farmers first.": "शेतीसाठी न्याय्य भाव शोध — लाइव सरकारी मंडी भाव, खुली बोली, एस्क्रो-सेटलमेंट व्यवहार, आणि शेत ते दार लॉजिस्टिक्स. भारतात बनवलेले, आधी शेतकऱ्यांसाठी.",
   "Govt Agmarknet data": "सरकारी अ‍ॅगमार्कनेट डेटा",
   "Razorpay escrow": "Razorpay एस्क्रो",
@@ -158,5 +158,11 @@
   "Become a partner": "पार्टनर व्हा",
   "Partner with us": "आमच्यासोबत भागीदारी करा",
   "Become a seller": "विक्रेता व्हा",
-  "Buy for a business": "व्यवसायासाठी खरेदी करा"
+  "Buy for a business": "व्यवसायासाठी खरेदी करा",
+
+  "Cookie notice": "कुकी सूचना",
+  "Cookies and browser storage": "कुकीज आणि ब्राउझर स्टोरेज",
+  "We only use what the site needs to work: a cookie that keeps you signed in, plus your basket, delivery city and language saved in this browser. No advertising cookies and no tracking across other websites.": "साइट चालण्यासाठी जेवढे आवश्यक आहे तेवढेच आम्ही ठेवतो: तुम्हाला साइन इन ठेवणारी एक कुकी, आणि याच ब्राउझरमध्ये जतन केलेली तुमची टोपली, डिलिव्हरी शहर आणि भाषा. जाहिरातींच्या कुकीज नाहीत आणि इतर वेबसाइटवर ट्रॅकिंग नाही.",
+  "Read the privacy policy": "गोपनीयता धोरण वाचा",
+  "Got it": "ठीक आहे"
 }

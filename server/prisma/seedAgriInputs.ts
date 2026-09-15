@@ -19,16 +19,23 @@
 // THE LICENCE COUNT AT THE END IS THE POINT
 // The final line reports how many rows are actually LIVE, which is not the same
 // as how many were written: agriInput.service.ts hides any controlled product
-// whose supplier lacks the matching licence. A gap between "written" and "live"
-// means a catalogue row names a shop that is not licensed for that category —
-// fix the licence or drop the row, because the row is invisible either way.
+// whose supplier lacks the matching licence.
+//
+// THIS SCRIPT NEVER WRITES A LICENCE
+// Nor the `verified` flag. The catalogue's licence numbers are placeholders and
+// this is the script that runs against production, so a supplier goes through
+// supplierLoadFields, which carries neither. On a fresh production load every
+// seed, fertiliser and crop-protection row is therefore hidden until a person
+// enters the checked licence on the supplier row, and that gap is the gate
+// working. On a development database, where seed.ts writes the placeholders, a
+// gap means a catalogue row names a shop not licensed for that category.
 //
 // RUN: npx ts-node prisma/seedAgriInputs.ts
 // =============================================================================
 
 import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE } from './agriInputCatalogue';
+import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE, supplierLoadFields } from './agriInputCatalogue';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter } as any);
@@ -63,18 +70,11 @@ async function main() {
   const supplierIds = new Map<string, string>();
 
   for (const s of INPUT_SUPPLIERS) {
-    // `active` is written on neither branch: a new supplier takes the schema
-    // default of true, and an existing one keeps whatever it has.
-    const shared = {
-      location: s.location,
-      contactPhone: s.contactPhone,
-      contactEmail: s.contactEmail ?? null,
-      verified: s.verified ?? false,
-      rating: s.rating ?? 4.0,
-      seedLicence: s.seedLicence ?? null,
-      fertiliserLicence: s.fertiliserLicence ?? null,
-      pesticideLicence: s.pesticideLicence ?? null,
-    };
+    // Neither `active`, `verified` nor any licence is written, on either
+    // branch (see supplierLoadFields). A new supplier takes the schema defaults
+    // of active, unverified and unlicensed; an existing one keeps whatever a
+    // person set.
+    const shared = supplierLoadFields(s);
 
     const row = await prisma.inputSupplier.upsert({
       where: { name_state: { name: s.name, state: s.state } },
@@ -155,9 +155,10 @@ async function main() {
 
   if (liveProducts < written) {
     console.warn(
-      `\n⚠️  ${written - liveProducts} active product(s) are HIDDEN because their supplier is not\n` +
-      `   licensed for that category. Add the licence to INPUT_SUPPLIERS or drop the row —\n` +
-      `   the catalogue will not show it either way.`,
+      `\n⚠️  ${written - liveProducts} active product(s) are HIDDEN because their supplier holds no\n` +
+      `   licence for that category on this database. This loader never writes licences:\n` +
+      `   enter each one on the supplier row by hand once the paperwork has been checked,\n` +
+      `   and its products go live.`,
     );
   }
 }

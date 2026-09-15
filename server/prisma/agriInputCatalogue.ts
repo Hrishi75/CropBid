@@ -7,9 +7,11 @@
 //
 // WHY THIS IS ITS OWN MODULE
 // Two callers need it and they must not drift:
-//   - prisma/seed.ts           wipes and rebuilds a development database
+//   - prisma/seed.ts           wipes and rebuilds a development database, and
+//                              writes everything below, licences included
 //   - prisma/seedAgriInputs.ts adds this catalogue to an existing database,
-//                              which is the only way to populate production
+//                              which is the only way to populate production,
+//                              and writes only supplierLoadFields for a shop
 // Same split as equipmentCatalogue.ts.
 //
 // LICENCES ARE NOT DECORATION
@@ -18,8 +20,13 @@
 // So adding a CROP_PROTECTION product to a shop with no pesticideLicence makes
 // that row invisible rather than making it sellable. That is deliberate: it is
 // the mechanism that keeps CropBid a listing venue instead of an unlicensed
-// seller. Licence numbers here follow real state formats but are PLACEHOLDERS
-// until each partner's paperwork is verified.
+// seller.
+//
+// The licence numbers here follow real state formats but are PLACEHOLDERS, so
+// they belong in a development database and nowhere else. The gate can only
+// test that a licence column is not null, which makes whatever writes that
+// column the real gate. In production a person writes it, after checking the
+// paperwork: see supplierLoadFields below.
 //
 // PRICES
 // Realistic Indian market rates as of 2026. Urea, DAP and MOP carry a statutory
@@ -42,6 +49,24 @@ export interface SupplierSeed {
   seedLicence?: string;
   fertiliserLicence?: string;
   pesticideLicence?: string;
+}
+
+// What the additive loader (seedAgriInputs.ts) may write for a supplier, which
+// is deliberately less than this file knows. No licence and no `verified` flag,
+// on create or on update: that loader is the one that runs against production
+// and the licences below are placeholders. Written there, they would pass the
+// licence gate and put "checked by CropBid" over a shop nobody has checked,
+// and every re-run would write them back over a licence someone had cleared.
+// A new supplier starts unverified and unlicensed, and a person enters each
+// licence once the paperwork is checked. `active` is left out for the loader's
+// own reason: a shop taken off by hand stays off.
+export function supplierLoadFields(s: SupplierSeed) {
+  return {
+    location: s.location,
+    contactPhone: s.contactPhone,
+    contactEmail: s.contactEmail ?? null,
+    rating: s.rating ?? 4.0,
+  };
 }
 
 export interface AgriInputSeed {

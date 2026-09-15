@@ -98,6 +98,44 @@ export const voiceLimiter = rateLimit({
   },
 });
 
+// The enquiry limiter's key: the ACCOUNT, and nothing else.
+//
+// An enquiry is the one request that hands over a shop's phone number, and the
+// public catalogue lists every product id, so what is being rationed is how
+// many numbers one account may collect. Adding the IP, as voiceLimiter does,
+// would give a fresh allowance to anyone who switched from wifi to mobile data.
+// The prefixes keep an account id from ever sharing a bucket with an address.
+// Falls back to the address only if this somehow runs unauthenticated.
+export function enquiryKey(req: {
+  ip?: string;
+  socket?: { remoteAddress?: string };
+  user?: { userId?: string };
+}): string {
+  const userId = req.user?.userId;
+  if (userId) return `user:${userId}`;
+  const rawIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  return `ip:${ipKeyGenerator(rawIp)}`;
+}
+
+// Enquiry limiter: mounted after authenticate on POST /agri-inputs/:id/enquiry.
+//
+// Twenty a day is more products than a farmer pricing a season's inputs asks
+// about in one day, and it turns walking the catalogue from one request loop
+// into days of a single account's allowance. The once-per-product index on
+// AgriInputEnquiry is a separate guard against a separate harm: it stops one
+// account filling the lead table, not collecting numbers.
+export const enquiryLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => enquiryKey(req),
+  message: {
+    error: true,
+    message: 'You have sent a lot of enquiries today. Please try again tomorrow.',
+  },
+});
+
 // Strict auth rate limiter — prevents brute force on login/signup/refresh.
 // Keys by (ip + account) when the body names an account so an attacker cannot
 // rotate IPs to bypass per-account locking, and cannot enumerate accounts

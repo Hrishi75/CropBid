@@ -34,6 +34,9 @@ interface AdminTransaction {
   platformFeeAmount: number;
   paymentStatus: string;
   deliveryStatus: string;
+  // Null until ops books a carrier. Present means the freight is arranged, so
+  // the row offers tracking rather than the booking form.
+  shipment: { id: string; status: string } | null;
   createdAt: string;
 }
 
@@ -240,6 +243,18 @@ export function AdminTransactions() {
                 )}
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <Link to={`/transactions/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
+                  {/* Freight is ours to arrange, so this row is the only way
+                      into the booking form. Sellers and buyers no longer have
+                      one. A booked deal links to tracking instead. */}
+                  {tx.shipment ? (
+                    <Link to={`/logistics/shipment/transaction/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>
+                      ⊞ Track delivery →
+                    </Link>
+                  ) : (
+                    <Link to={`/admin/logistics/book/${tx.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>
+                      ⊞ Book delivery →
+                    </Link>
+                  )}
                   {tx.paymentStatus === 'ESCROW' && (
                     <button type="button" onClick={() => handleRefund(tx.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>
                       ↺ Force refund

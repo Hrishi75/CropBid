@@ -133,6 +133,13 @@ export function TransactionDetail() {
 
   const isFarmer = user?.id === transaction.farmerId;
   const isBuyer = user?.id === transaction.buyerId;
+
+  // Freight is a real deduction from the seller's side, but only once we have
+  // actually booked a carrier. Until then there is no cost to show, and 0 is
+  // not a stand-in for "unknown": treating it as one would print a settlement
+  // figure the seller is not going to receive.
+  const freightCost = transaction.shipment?.transportCost ?? 0;
+  const freightKnown = transaction.shipment?.transportCost != null;
   const currentStepIndex = DELIVERY_STEPS.findIndex((s) => s.key === transaction.deliveryStatus);
 
   const lifecycleStep = transaction.paymentStatus === 'RELEASED' ? 5
@@ -214,9 +221,36 @@ export function TransactionDetail() {
           <SpecRow label="Price" value={<span className="cb-mono">{formatCurrency(transaction.finalPricePerUnit, transaction.currency)}/{transaction.listing?.unit?.toLowerCase()}</span>} />
           <SpecRow label="Total" value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
           <SpecRow label="Platform fee" value={<span className="cb-mono">−{formatCurrency(transaction.platformFeeAmount, transaction.currency)}</span>} />
+          {/*
+            Freight. CropBid books the carrier and the seller carries the cost,
+            so it belongs in the seller's column of this breakdown next to the
+            platform fee.
+
+            Two states, never one: the charge is only a number once a shipment
+            exists. Before that we say who owes it and leave the amount blank,
+            because a placeholder figure on a settlement screen is
+            indistinguishable from a real one. Same reason `freightKnown` gates
+            the total below.
+          */}
+          <SpecRow
+            label="Delivery (paid by seller)"
+            value={freightKnown
+              ? <span className="cb-mono">−{formatCurrency(freightCost, transaction.currency)}</span>
+              : <span className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>on booking</span>}
+          />
           <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
-            <SpecRow label="Farmer receives" value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(transaction.totalAmount - transaction.platformFeeAmount, transaction.currency)}</span>} />
+            <SpecRow
+              label={freightKnown ? 'Seller receives' : 'Seller receives, before delivery'}
+              value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(transaction.totalAmount - transaction.platformFeeAmount - freightCost, transaction.currency)}</span>}
+            />
           </div>
+          {isFarmer && (
+            <p className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
+              CropBid books the transport and checks the goods before they
+              travel. The freight charge is payable by you and is deducted from
+              your settlement.
+            </p>
+          )}
           <SpecRow label="Lot ID" value={<span className="cb-mono">#{transaction.listingId.slice(-6).toUpperCase()}</span>} />
         </div>
 
@@ -276,16 +310,15 @@ export function TransactionDetail() {
           {transaction.bid?.deliveryTerms && (
             <SpecRow label="Terms" value={[transaction.bid.paymentTerms, transaction.bid.deliveryTerms].filter(Boolean).join(' · ')} />
           )}
-          <SpecRow label="Carrier" value="—" />
+          {/* The carrier row is gone rather than dashed out. CropBid hires the
+              haulier and the API withholds its identity from both sides, so a
+              "Carrier —" row was promising a value that is never going to
+              arrive. Booking moved to /admin/logistics/book/:id. */}
+          <SpecRow label="Arranged by" value="CropBid" />
           <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Link to={`/logistics/shipment/transaction/${id}`} className="cb-btn cb-btn-ghost" style={{ fontSize: 12.5, justifyContent: 'flex-start' }}>
               Track shipment →
             </Link>
-            {transaction.deliveryStatus === 'PENDING' && (
-              <Link to={`/logistics/book/${id}`} className="cb-btn cb-btn-primary" style={{ fontSize: 12.5, justifyContent: 'flex-start' }}>
-                ⊞ Book transport →
-              </Link>
-            )}
           </div>
         </div>
       </div>
