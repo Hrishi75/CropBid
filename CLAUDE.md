@@ -54,6 +54,27 @@ The reason for all three is quality: we inspect the goods on the way through, an
 
 **Unresolved, and worth resolving before this scales:** flat 2% now has to cover software, escrow, freight booking *and* a person driving out to look at the goods. That may want a wholesale-tier fee. It is a decision nobody has taken, not a detail.
 
+### 2b. Contact is released by payment, not by a deal (tightened 2026-09-07)
+
+**Identity is public, contact is not, and contact is released only once the money is captured.** The rule and the helpers live in `services/contactVisibility.ts`; `isContactReleased()` is the whole decision, and it is true for `ESCROW` and `RELEASED` only.
+
+`AWAITING_PAYMENT` is deliberately not enough. A transaction row is *born* in that state the moment a bid is accepted, before the buyer has paid a rupee, so treating it as "deal done" would move the leak one click later and change nothing. A farmer holding ten unpaid bids would be holding ten buyers' direct numbers, and the obvious next call settles the deal off-platform, which is the normal way an agri marketplace dies.
+
+**What made this hard to hold: the buyer's phone and address are columns on `Bid`.** `Bid.contactPhone` and `Bid.deliveryAddress` are snapshotted off the buyer's profile at bid time (`orderContactDefaults`), and Prisma's `include` returns every scalar on a row. So an endpoint leaks by default, silently, without anyone deciding to send a phone number. Five did:
+
+- `PUT /bids/:id/reject` and `PUT /bids/:id/counter`. The cheapest attack on the platform: rejecting or countering costs the farmer nothing, keeps no obligation, and returned the buyer's phone and street address in the response body. Counter is worse, because the bid stays alive and the buyer is never told.
+- `PUT /bids/:id/accept`, at `AWAITING_PAYMENT`.
+- `GET /negotiations`, `/negotiations/:id`, `/negotiations/bid/:bidId`. The payment gate lives on the transaction, and a negotiation runs before a transaction exists, so nothing here gated anything.
+- `POST /requirements/:id/accept`. Fill one quintal of any open requirement and read the buyer's number off the reply, which turns the demand board into a contact directory.
+
+The list endpoints (`getIncomingBids`, `getBidsForListing`) were already redacted. **That is the point: opt-in redaction protects the endpoints somebody thought about.** The fix is `COUNTERPARTY_BID_SELECT`, a positive allowlist of the Bid columns a counterparty may see, plus `redactBidContact` on the mutation returns where Prisma decides the shape. `counterpartyBidSelect.test.ts` fails when `Bid` gains a column until someone classifies it, so the next migration cannot leak by omission.
+
+Two related rules that are easy to undo by accident: the buyer's **email is never released to the seller in either direction** (a phone is what a delivery needs, an email is where a direct-sourcing relationship starts), and `User.location` is withheld too, because it is free text and in practice holds whatever someone typed at signup, often a full address.
+
+**Not covered, on purpose:** admin endpoints, which must see both sides to run support, and `orderAlert.service`, which mails our own ops inbox.
+
+**Also tightened the same day:** the Socket.io handshake took the bidder's display name from `auth.userName`, a string the browser chose, and the auction room rendered it as the bidder and as `currentWinner`. Anyone could bid as a name they did not own. The name and role now come from the `User` row the token points at, which also drops the socket for a suspended account instead of letting a live access token outlast the ban.
+
 ## 3. The consumer model (shipped 2026-09-02, #127)
 
 **Shop-first, not aggregated SKUs.** A shopper picks a city, then a shop, then what is on its shelf. The same crop legitimately costs different amounts at different shops (₹24/kg at one Pune shop, ₹28 at another) and **that difference is the point, not noise to average away**.

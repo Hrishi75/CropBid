@@ -84,15 +84,22 @@ export async function createTransaction(bidId: string, client: Prisma.Transactio
   });
   if (existing) return existing;
 
+  // Narrow on purpose. This used to read `buyer: true` and `farmer: { include:
+  // { user: true } }`, which pulls two whole User rows, bcrypt hash, refresh
+  // token and password-reset token included, to use one foreign key off each of
+  // them. Nothing was returned to a caller, but a row like that only has to
+  // reach a log line or an error report once.
   const bid = await client.bid.findUnique({
     where: { id: bidId },
-    include: {
-      listing: {
-        include: {
-          farmer: { include: { user: true } },
-        },
-      },
-      buyer: true,
+    select: {
+      id: true,
+      listingId: true,
+      buyerId: true,
+      status: true,
+      quantity: true,
+      bidPricePerUnit: true,
+      currency: true,
+      listing: { select: { farmer: { select: { userId: true } } } },
     },
   });
 

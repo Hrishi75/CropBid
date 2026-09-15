@@ -39,6 +39,7 @@ import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { orderContactDefaults } from './bid.service';
+import { redactBidContact } from './contactVisibility';
 import {
   notifyNewRequirement,
   notifyRequirementOffer,
@@ -923,7 +924,15 @@ export async function acceptRequirementNow(
   void alertNewOrder(result.bid.id, 'REQUIREMENT_FILL');
   notifyExpiredOffers(result.expired, requirement.cropName, requirement.id);
 
-  return result;
+  // The caller here is the FARMER, and materialiseDeal snapshots the buyer's
+  // phone and delivery address onto the bid it creates. The deal is born at
+  // AWAITING_PAYMENT, so filling a requirement must not hand those over any
+  // more than accepting a bid does, otherwise the demand board is a directory:
+  // fill one quintal of anything open, read the buyer's number off the reply.
+  //
+  // acceptOffer materialises through the same helper and is deliberately NOT
+  // redacted: there the caller is the buyer, and it is their own contact.
+  return { ...result, bid: redactBidContact(result.bid) };
 }
 
 // =============================================================================

@@ -14,6 +14,13 @@
 // The server's Socket.io middleware verifies JWT on connection.
 // Unlike HTTP (where we add it as a header), Socket.io uses the
 // `auth` object in the handshake options.
+//
+// AND WHY ONLY THE TOKEN?
+// This used to send a `userName` too, and the auction room rendered it as the
+// bidder's name. Anything in this object is chosen by the browser, so that made
+// the name on a live bid unverified: the server now reads it from the account
+// the token belongs to. Do not add identity fields here: they cannot be
+// trusted on the other end, and a field that looks trusted is worse than none.
 // =============================================================================
 
 import { io, Socket } from 'socket.io-client';
@@ -21,7 +28,7 @@ import { getAccessToken } from './axios';
 
 let socket: Socket | null = null;
 
-export function getSocket(userName?: string): Socket {
+export function getSocket(): Socket {
   if (!socket) {
     const token = getAccessToken();
 
@@ -33,10 +40,7 @@ export function getSocket(userName?: string): Socket {
       // WHY auth object?
       // Socket.io passes this to the server during the initial handshake.
       // The server's middleware extracts the token and verifies it.
-      auth: {
-        token,
-        userName: userName || 'Anonymous',
-      },
+      auth: { token },
       // Don't connect automatically — we call connect() manually
       autoConnect: false,
       // Reconnect up to 5 times with exponential backoff
