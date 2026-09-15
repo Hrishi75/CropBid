@@ -27,6 +27,8 @@ An agricultural marketplace connecting Indian farmers directly with buyers, with
 
 Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
 
+Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
+
 Languages: English, Hindi, Marathi. Sign-in is phone + 6-digit code; passwords exist but are the secondary lane.
 
 ## 2. Business facts
@@ -258,6 +260,18 @@ cd mobile && EXPO_PUBLIC_API_URL=http://localhost:5055/api \
 
 Both variables default to production, so an unset one is not a broken build, it is a build reading live data.
 
+Both marketplace catalogues are loaded by hand, never through an API. Pass an explicit `DATABASE_URL`, because `server/.env` points at production:
+
+```bash
+cd server
+npx ts-node prisma/seedEquipment.ts    # machinery
+npx ts-node prisma/seedAgriInputs.ts   # seed, fertiliser, crop protection
+```
+
+Both are **additive and idempotent**: insert and update only, never delete, so they are safe against production and a re-run corrects prices in place. `active` is never written on update, so a row taken off the catalogue by hand stays off. `prisma/seed.ts` is the opposite, wiping every table first, and is development-only. It loads both catalogues as well, placeholder licences included, which is the one place those may be written.
+
+`seedAgriInputs.ts` warns when a product loaded but is **hidden** by the licence gate. On production that is expected until a licence has been entered by hand (§10), since the loader never writes one. On a development database it means a catalogue row names a shop not licensed for that category: fix the licence or drop the row.
+
 **CI runs the server test suite** (`Test (vitest)` in the server job, `.github/workflows/ci.yml`). The client job is lint + build and the mobile job is typecheck, neither of which runs tests, because neither has a suite. Client typecheck needs `tsc -b`, not `tsc --noEmit` (project references).
 
 **The server job now runs a throwaway Postgres** and applies migrations before testing. Most tests mock Prisma and need none of it; `address.service.test.ts` cannot, because "exactly one default address" is held inside a transaction rather than by a constraint and the only way to know it holds is to commit and look. Applying migrations rather than pushing the schema also means a migration that is valid Prisma but broken SQL fails in CI instead of on deploy.
@@ -334,3 +348,36 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 ### Also gone
 
 **Machines & equipment.** Screen, promo card, partner-status chip, five route types and five registrations, all removed.
+
+## 10. The two lead-gen marketplaces
+
+`/equipment` and `/inputs` share one shape, and it is **not** the trading shape. Get this wrong and the legal position goes with it.
+
+Both are web only. The app dropped its equipment screen (§9) and never had an inputs one.
+
+- **Neither creates a `Transaction`, a `Bid`, or touches Razorpay.** They write `EquipmentEnquiry` / `AgriInputEnquiry` rows. Leads, not orders. CropBid takes no payment for a tractor or a bag of urea.
+- **Dealers and suppliers are not `User`s.** No login, no self-serve, so there is **no write API**. Both catalogues are loaded by hand from a file (§7). If either ever gets self-service, the row gains an optional `userId` rather than being replaced.
+- **The contact rule.** A partner's phone number is returned by **exactly one function**, `createEnquiry`, which requires auth. Browse and detail expose name, location, rating and verified status only. That is what stops the catalogue being harvested into a contact list, and it is the same instinct as `contactVisibility.ts` on the trading side. **A new read path must not include `contactPhone`.**
+- **Auth alone does not stop the harvest**, which review caught on `/inputs`. Every product id is on the public browse, so one signed-in account could enquire on each in turn and leave with every number. Two guards, for two different harms. A unique index on `(userId, agriInputId)` means a repeat gets back the lead already on file (200, not 201) instead of writing another, so the table cannot be filled with copies. `enquiryLimiter` caps enquiries at 20 a day per **account**, not per IP, because what is being rationed is what one account may collect, and an IP in the key hands out a fresh allowance to anyone who changes network. **`/equipment` has neither yet.**
+
+### The licence rule (inputs only, and it is the load-bearing one)
+
+Selling seed, fertiliser or pesticide in India is a licensed trade: the **Seeds (Control) Order 1983**, the **Fertiliser (Control) Order 1985**, the **Insecticides Act 1968**. Licences are issued per state, per premises, by the state agriculture department.
+
+CropBid holds none of them and must never need to. That is only true while **CropBid does not own the stock**: the shop is seller of record. It also leaves spurious-seed liability with the licensed seller whose label is on the packet rather than with the platform, which matters because a failed seed lot is among the most litigated claims in Indian agriculture.
+
+`SELLABLE` in `agriInput.service.ts` is therefore a **query filter, not a post-filter**. Every read path composes it, so browse, detail, meta and enquiry are bound by the same rule and a guessed URL cannot walk around it. **Do not "simplify" it into a `.filter()` after the fetch.**
+
+`ORGANIC`, `MICRONUTRIENT` and `SEEDLING` are ungated on purpose. Vermicompost, a zinc supplement and a mango sapling are not controlled the way certified seed is, and gating them would empty the catalogue for no legal gain.
+
+**Corollary, and the one to remember: never make CropBid buy and resell inputs.** That needs all three licences in every state it operates, plus the crop-failure liability it currently does not carry. Any "we could hold stock and margin on it" proposal starts here.
+
+Licence *numbers* never leave the server. Clients get booleans, enough to render "licensed seed dealer" without publishing a document reference someone could copy onto a fake shopfront.
+
+**A licence reaches the production database only by hand, after someone has checked the paperwork.** The catalogue's licence numbers are placeholders in real state formats, and `SELLABLE` can only test that a column is not null, so whatever writes that column is the actual gate. `seed.ts` writes them, because a development database is where placeholders belong. `seedAgriInputs.ts`, the loader that runs against production, writes **no licence and no `verified` flag** on create or update: it goes through `supplierLoadFields` in the catalogue, and a test pins what that returns. A fresh production load therefore shows organic inputs, micronutrients and saplings and hides every seed, fertiliser and crop-protection row until a person enters the checked licence on the supplier row. That is the correct state, not a bug. Review caught the version before it, which loaded the placeholders: they passed the gate, put "holds a valid licence, checked by CropBid" over shops nobody had checked, and every re-run wrote them back over a licence someone had cleared.
+
+### Smaller calls worth not reversing
+
+- **Crop leads the filter on `/inputs`, not category.** A farmer does not want "fertiliser", they want to know what goes on cotton, and it is the one filter they can always complete without knowing a product name.
+- **Prices are per pack**, because that is how the trade sells: seed in 475g packets, urea in 45kg bags. A per-kg price would make every screen reconstruct the number the farmer actually pays.
+- **Urea, DAP and MOP carry a statutory MRP.** Those rows are flagged `subsidised`, and the page says the price is set by government, identical at every licensed shop, and that paying more is overcharging reportable to the district agriculture officer. Presenting a controlled price as this shop's own offer would be misleading.

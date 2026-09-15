@@ -4,7 +4,7 @@
 
 # CropBid — The AI-Powered Crop Exchange
 
-**One crop exchange for everyone — farmers, processors, retailers and consumers trade on the same platform, with AI-agent negotiation, escrow payments, live auctions, live government mandi rates from 4,600+ mandis, and logistics built in. In Hindi, Marathi and English.**
+**One crop exchange for everyone — farmers, processors, retailers and consumers trade on the same platform, with AI-agent negotiation, escrow payments, live auctions, live government mandi rates from 4,600+ mandis, and logistics built in. Plus the inputs side of the season: seed, fertiliser and machinery from licensed local suppliers. In Hindi, Marathi and English.**
 
 [![Live Demo](https://img.shields.io/badge/live-cropbid.in-2f6b3a?style=flat-square)](https://cropbid.in)
 &nbsp;
@@ -123,6 +123,8 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 - **Live Auctions** — real-time WebSocket bidding with anti-sniping
 - **Smart Matching** — AI-scored listing recommendations from buyer preferences
 - **Logistics** — partner selection, shipment tracking, cost + platform commission
+- **Farm Equipment** — a lead-gen catalogue of tractors, tillage, pumps and sprayers from curated dealers, to buy outright or hire by the day. Raising an enquiry is what unlocks the dealer's phone number, so the catalogue can't be scraped for contacts. No payment: the dealer closes offline
+- **Seeds, Fertiliser & Crop Protection** — the same lead-gen model for agri-inputs, filtered by **crop** rather than category ("what do I sow in cotton"), with pack price, dose per acre and germination on the tag. Every listing is **licence-gated**: a controlled product is only ever surfaced under a supplier holding the matching statutory licence (see Key Design Decisions)
 - **Trust Scores** — reputation builds through successful transactions (+2 per deal)
 - **Real-time Notifications** — dual-channel (DB persistence + Socket.io push)
 - **Analytics Dashboards** — Recharts visualizations for farmer, buyer, admin
@@ -354,6 +356,41 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | POST | `/api/waitlist` | Early-access signup |
 </details>
 
+<details>
+<summary><b>Equipment · Seeds &amp; Fertiliser</b> (lead-gen — no orders, no payments)</summary>
+
+Browsing is public on both surfaces; **enquiring requires auth, because the
+enquiry response is the only place a dealer's or supplier's phone number is
+ever returned.** That is what keeps the catalogues from being scraped for a
+contact list.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/equipment` | Browse machines — filter by `mode` (SALE/RENT), `category`, `state`, `q`, `maxPrice` |
+| GET | `/api/equipment/meta` | Categories with live counts + states in stock |
+| GET | `/api/equipment/:id` | Machine detail (no dealer phone) |
+| POST | `/api/equipment/:id/enquiry` | Raise a lead — **response carries the dealer's number** |
+| GET | `/api/equipment/enquiries/my` | My equipment leads (number included) |
+| GET | `/api/agri-inputs` | Browse inputs — filter by `crop`, `category`, `state`, `q`, `maxPrice` |
+| GET | `/api/agri-inputs/meta` | Categories with live counts + crops + states in stock |
+| GET | `/api/agri-inputs/:id` | Product detail (no supplier phone) |
+| POST | `/api/agri-inputs/:id/enquiry` | Raise a lead — **response carries the supplier's number** |
+| GET | `/api/agri-inputs/enquiries/my` | My input leads (number included) |
+
+Both catalogues are loaded by hand, never through an API:
+
+```bash
+cd server
+npx ts-node prisma/seedEquipment.ts    # tractors, pumps, sprayers
+npx ts-node prisma/seedAgriInputs.ts   # seed, fertiliser, crop protection
+```
+
+Both are **additive and idempotent** — they insert and update only, never
+delete, so they are safe to run against production. Re-running corrects prices
+in place. `active` is never written on update, so a row taken off the catalogue
+by hand does not quietly come back.
+</details>
+
 ---
 
 ## Socket.io Events
@@ -380,9 +417,11 @@ CropBid/
 │
 ├── server/                 # Express backend
 │   ├── prisma/
-│   │   ├── schema.prisma   # 13 models, 16 enums
+│   │   ├── schema.prisma   # 23 models, 27 enums
 │   │   ├── migrations/     # versioned SQL migrations
-│   │   └── seed.ts         # sample users, listings, agents, bids
+│   │   ├── seed.ts         # sample users, listings, agents, bids (DESTRUCTIVE — wipes first)
+│   │   ├── seedEquipment.ts    # equipment catalogue loader (additive, prod-safe)
+│   │   └── seedAgriInputs.ts   # seed/fertiliser catalogue loader (additive, prod-safe)
 │   └── src/
 │       ├── config/         # centralized env config
 │       ├── controllers/    # HTTP layer
@@ -414,7 +453,13 @@ CropBid/
 
 ## Database Schema
 
-**13 models:** User · FarmerProfile · BuyerProfile · Listing · AgentConfig · Bid · Transaction · Negotiation · Notification · Waitlist · AuditLog · LogisticsPartner · Shipment
+**23 models.**
+
+*Identity & onboarding* — User · PendingSignup · PhoneChallenge · FarmerProfile · BuyerProfile
+*Trading* — Listing · BuyerRequirement · RequirementOffer · AgentConfig · Bid · Transaction · Negotiation
+*Platform* — Notification · Waitlist · AuditLog · LogisticsPartner · Shipment
+*Equipment marketplace* — EquipmentDealer · Equipment · EquipmentEnquiry
+*Agri-input marketplace* — InputSupplier · AgriInput · AgriInputEnquiry
 
 Key relationships:
 - User → FarmerProfile / BuyerProfile / AgentConfig (1:1)
@@ -422,6 +467,14 @@ Key relationships:
 - Bid → Transaction (1:1) · Bid → Negotiation (1:1)
 - Transaction → Shipment (1:1)
 - Negotiation stores rounds as a JSON array
+- EquipmentDealer → Equipment → EquipmentEnquiry (1:many, cascading)
+- InputSupplier → AgriInput → AgriInputEnquiry (1:many, cascading)
+
+**The two marketplaces are deliberately separate from trading.** Neither
+EquipmentEnquiry nor AgriInputEnquiry touches Transaction, Bid or Razorpay —
+they are lead records, not orders. Dealers and suppliers are curated offline
+partners with no login, so their rows are loaded by hand from a catalogue file
+rather than created through a UI.
 
 ---
 
@@ -440,6 +493,9 @@ Key relationships:
 | In-memory auction state | Auctions are short-lived; persist to DB only on close |
 | Anti-sniping (30s extension) | Stops last-second bids from winning unfairly |
 | 2% platform fee | Computed at transaction creation, deducted on release |
+| Enquiry unlocks the phone number | The contact is the valuable part of a catalogue. Returning it from exactly one authenticated endpoint means every number handed out is attached to a real account |
+| Agri-inputs are licence-gated in SQL | Selling seed, fertiliser or pesticide is a licensed trade (Seeds Control Order 1983, Fertiliser Control Order 1985, Insecticides Act 1968). CropBid holds no licence and never owns stock — the **shop is seller of record**, which also leaves spurious-seed liability with the licensed seller. The service refuses to surface a controlled product whose supplier lacks the matching licence, on every read path, so the rule cannot be bypassed by a direct URL |
+| Dealers and suppliers have no login | They are curated offline partners, not users. Catalogue data is loaded from a file, which is why there is no write API for either marketplace |
 
 ---
 

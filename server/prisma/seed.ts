@@ -22,6 +22,7 @@ import bcrypt from 'bcryptjs';
 import { cropImageFor } from './cropImages';
 import { isLocalDatabase } from '../src/utils/seedGuard';
 import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE } from './equipmentCatalogue';
+import { INPUT_SUPPLIERS, AGRI_INPUT_CATALOGUE } from './agriInputCatalogue';
 
 // Prisma v7 requires a driver adapter for direct database connections.
 // PrismaPg connects to PostgreSQL using the `pg` library under the hood.
@@ -265,6 +266,10 @@ async function main() {
   await prisma.equipmentEnquiry.deleteMany();
   await prisma.equipment.deleteMany();
   await prisma.equipmentDealer.deleteMany();
+  // Inputs likewise: AgriInputEnquiry carries a userId foreign key too.
+  await prisma.agriInputEnquiry.deleteMany();
+  await prisma.agriInput.deleteMany();
+  await prisma.inputSupplier.deleteMany();
   await prisma.waitlist.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.negotiation.deleteMany();
@@ -1169,6 +1174,60 @@ async function main() {
   console.log(`  ✅ Created ${EQUIPMENT_DEALERS.length} equipment dealers and ${EQUIPMENT_CATALOGUE.length} machines`);
 
   // =========================================================================
+  // 12c. Input Suppliers + Seed & Fertiliser Catalogue
+  // =========================================================================
+  // Same shape as 12b. The difference is the licences: this is a development
+  // database, so the catalogue's placeholder licence numbers are written here
+  // and the licence gate has something to pass. seedAgriInputs.ts, which runs
+  // against production, deliberately writes none (see supplierLoadFields).
+  console.log('  Creating input suppliers and the seed & fertiliser catalogue...');
+
+  const supplierIdByName = new Map<string, string>();
+  for (const s of INPUT_SUPPLIERS) {
+    const row = await prisma.inputSupplier.create({
+      data: {
+        name: s.name,
+        location: s.location,
+        state: s.state,
+        contactPhone: s.contactPhone,
+        contactEmail: s.contactEmail ?? null,
+        verified: s.verified ?? false,
+        rating: s.rating ?? 4.0,
+        seedLicence: s.seedLicence ?? null,
+        fertiliserLicence: s.fertiliserLicence ?? null,
+        pesticideLicence: s.pesticideLicence ?? null,
+      },
+      select: { id: true },
+    });
+    supplierIdByName.set(s.name, row.id);
+  }
+
+  for (const p of AGRI_INPUT_CATALOGUE) {
+    await prisma.agriInput.create({
+      data: {
+        supplierId: supplierIdByName.get(p.supplier)!,
+        title: p.title,
+        category: p.category,
+        brand: p.brand ?? null,
+        cropNames: p.cropNames,
+        packSize: p.packSize,
+        pricePerPack: p.pricePerPack,
+        subsidised: p.subsidised ?? false,
+        composition: p.composition ?? null,
+        germinationPct: p.germinationPct ?? null,
+        seedTreatment: p.seedTreatment ?? null,
+        dosagePerAcre: p.dosagePerAcre ?? null,
+        specs: p.specs ?? [],
+        description: p.description ?? null,
+        location: p.location,
+        state: p.state,
+      },
+    });
+  }
+
+  console.log(`  ✅ Created ${INPUT_SUPPLIERS.length} input suppliers and ${AGRI_INPUT_CATALOGUE.length} products`);
+
+  // =========================================================================
   // 13. Create Consumer Test Account (direct-to-consumer retail buyer)
   // =========================================================================
   // No profile needed — CONSUMER skips onboarding entirely (mobile RootNavigator).
@@ -1203,6 +1262,8 @@ async function main() {
     logisticsPartners: await prisma.logisticsPartner.count(),
     equipmentDealers: await prisma.equipmentDealer.count(),
     equipment: await prisma.equipment.count(),
+    inputSuppliers: await prisma.inputSupplier.count(),
+    agriInputs: await prisma.agriInput.count(),
   };
 
   console.log('\n🌾 Seed completed! Database populated with:\n');
@@ -1218,6 +1279,8 @@ async function main() {
   console.log(`  🚚 Logistics Partners:  ${counts.logisticsPartners}`);
   console.log(`  🏪 Equipment Dealers:   ${counts.equipmentDealers}`);
   console.log(`  🚜 Equipment:           ${counts.equipment}`);
+  console.log(`  🌱 Input Suppliers:     ${counts.inputSuppliers}`);
+  console.log(`  🧪 Agri Inputs:         ${counts.agriInputs}`);
   console.log('\n  All test users password: password123');
   console.log('  Admin login: admin@cropbid.test / password123');
   console.log('  Sample farmer: rajesh@cropbid.test / password123');
