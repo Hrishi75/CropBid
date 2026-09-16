@@ -25,7 +25,6 @@ interface PathCard {
   type: string;
   title: string;
   desc: string;
-  points: string[];
 }
 
 // One card per subtype. `type` rides the querystring into signup and
@@ -35,19 +34,16 @@ const SELLER_PATHS: PathCard[] = [
     role: 'FARMER', type: 'FARMER',
     title: 'Farmer',
     desc: 'Sell your harvest to businesses and homes at your price.',
-    points: ['List crops, take bids or fixed-price orders', 'Second-day delivery tier — you quote lowest, win volume', 'Payments held in escrow, released on delivery'],
   },
   {
     role: 'FARMER', type: 'LOCAL_SHOP',
     title: 'Local shop',
     desc: 'Your shop, on phones across your neighbourhood.',
-    points: ['Your stock and your rates, visible to nearby buyers', 'Same-day tier — closest shop wins the urgent order', 'Keep the trust you built; we bring the footfall'],
   },
   {
     role: 'FARMER', type: 'WHOLESALER',
     title: 'Wholesaler',
     desc: 'Bulk orders from restaurants and shops, without the phone rounds.',
-    points: ['Set minimum order and lead time once', 'Bulk tier — priced to win the big baskets', 'GST invoices generated per order'],
   },
 ];
 
@@ -56,19 +52,16 @@ const BUYER_PATHS: PathCard[] = [
     role: 'BUYER', type: 'RESTAURANT',
     title: 'Restaurant / café',
     desc: 'Daily produce for your kitchens at wholesale rates.',
-    points: ['Post what you need; sellers come to you', 'One order across outlets, one invoice', 'Quality grades checked before dispatch'],
   },
   {
     role: 'BUYER', type: 'SMALL_BUSINESS',
     title: 'Small business',
     desc: 'Tiffin service, sweet shop, caterer — buy like the big chains.',
-    points: ['No minimum-volume gatekeeping', 'Recurring baskets in two taps', 'Prices from farmers, shops and wholesalers side by side'],
   },
   {
     role: 'BUYER', type: 'WHOLESALER',
     title: 'Wholesaler',
     desc: 'Source lots straight from farmers, at the farm gate price.',
-    points: ['Bid on graded lots before they hit the mandi', 'Escrow protects every deal', 'Logistics quoted alongside the lot'],
   },
 ];
 
@@ -89,15 +82,9 @@ function PathGrid({
         {paths.map((p) => (
           <div key={p.type + p.role} className="cb-card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 24 }}>
             <div style={{ fontSize: 19, fontWeight: 500, letterSpacing: '-0.01em' }}>{p.title}</div>
-            <p className="cb-small" style={{ margin: 0 }}>{p.desc}</p>
-            <ul className="cb-small" style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-              {p.points.map((pt) => (
-                <li key={pt} style={{ display: 'flex', gap: 8 }}>
-                  <span style={{ color: 'var(--cb-sage)' }}>—</span>
-                  <span>{pt}</span>
-                </li>
-              ))}
-            </ul>
+            {/* flex: 1 keeps the buttons on one line across a row of cards
+                whose descriptions run to different lengths. */}
+            <p className="cb-small" style={{ margin: 0, flex: 1 }}>{p.desc}</p>
             {/* Opens the sign-in window over this page rather than walking
                 somebody to a separate signup screen: they picked what they
                 are right here, and the number is all we still need. */}
