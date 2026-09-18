@@ -1,5 +1,5 @@
-// Login screen — phone-or-email + password sign-in. Phone is the primary
-// identifier; the server matches either column. Calls AuthContext.signIn();
+// Login screen — email-or-phone + password sign-in. An account signs up with
+// either (see SignupScreen), and the server matches either column. Calls AuthContext.signIn();
 // the root navigator swaps to the app once authenticated.
 
 import React, { useState } from 'react';
@@ -58,7 +58,7 @@ export default function LoginScreen() {
         <Text style={styles.tagline}>AI-powered crop trading</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Phone or email</Text>
+          <Text style={styles.label}>Email or phone number</Text>
           <TextInput
             style={styles.input}
             value={identifier}
@@ -66,7 +66,7 @@ export default function LoginScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="default"
-            placeholder="+91-9876543210"
+            placeholder="you@example.com or +91-9876543210"
             placeholderTextColor={colors.textMuted}
           />
 

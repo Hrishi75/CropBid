@@ -23,40 +23,47 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number');
 
-// Phone is the primary contact (required); email is optional for farmers and
-// consumers but REQUIRED for buyers (see the superRefine below). Forms may send
-// email as an empty string — treat that as "not provided" before validating.
+// Forms send a blank field as an empty string. Treat that as "not provided"
+// before validating, so an untouched box is absent rather than malformed.
+const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+// The sign-up form asks for an email address OR a phone number, whichever the
+// person has, and the account signs in with that and a password. At least one
+// is required (see the superRefine below), because it is the login identifier.
+//
+// There is no role field. Every account made here is a shopper (CLAUDE.md
+// section 4). App builds from before that rule still send one from their old
+// picker; zod drops keys the schema does not name, so it is never read.
 export const signupSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().email('Invalid email address').optional()
-  ),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.preprocess(blankToUndefined, z.string().email('Invalid email address').optional()),
   password: passwordSchema,
-  role: z.enum(['FARMER', 'BUYER', 'CONSUMER']),
   // The digit count is checked on the SEPARATOR-STRIPPED value, not the raw
   // string: "+      " is seven allowed characters but normalizes to "+", which
   // login can never match — that account would be locked out of its own login.
-  phone: z
-    .string()
-    .max(20)
-    .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
-    .refine(
-      (v) => v.replace(/[^0-9]/g, '').length >= 7,
-      'Phone number must have at least 7 digits'
-    ),
+  phone: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .max(20)
+      .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
+      .refine(
+        (v) => v.replace(/[^0-9]/g, '').length >= 7,
+        'Phone number must have at least 7 digits'
+      )
+      .optional(),
+  ),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI', 'MR']).optional(),
 }).superRefine((data, ctx) => {
-  // Buyers must sign up with an email. The check is cross-field, so it can't
-  // live on the email property itself; the path points back at the field so a
-  // client can highlight it.
-  if (data.role === 'BUYER' && !data.email) {
+  // Cross-field, so it cannot live on either property. The path points back at
+  // a field so a client can highlight it.
+  if (!data.email && !data.phone) {
     ctx.addIssue({
       code: 'custom',
       path: ['email'],
-      message: 'Email is required for buyer accounts',
+      message: 'Enter an email address or a phone number',
     });
   }
 });
@@ -178,11 +185,9 @@ const REFRESH_COOKIE_OPTIONS = {
 // ---------------------------------------------------------------------------
 // POST /api/auth/signup
 // ---------------------------------------------------------------------------
-// Two outcomes by role:
-//   FARMER / CONSUMER → 201 with the account and a session, as always.
-//   BUYER             → 202 with a pendingId. No account exists yet; the code
-//                       just emailed to them has to come back to /signup/verify
-//                       before one does.
+// Always a shopper, always 201 with the account and a session. Buyers used to
+// get a 202 and an emailed code here; that path is unreachable now that nobody
+// signs up as a buyer, and /signup/verify only finishes signups started before.
 export async function signupHandler(req: Request, res: Response) {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -191,25 +196,10 @@ export async function signupHandler(req: Request, res: Response) {
     return;
   }
 
-  const { name, email, password, role, phone, country, currency, language } = parsed.data;
-
-  if (role === 'BUYER') {
-    const pending = await authService.startBuyerSignup({
-      name, email, password, role, phone, country, currency, language,
-    });
-    // 202 Accepted: understood, not yet acted on — exactly this situation.
-    res.status(202).json({
-      pendingSignup: {
-        pendingId: pending.pendingId,
-        email: pending.email,
-        expiresAt: pending.expiresAt.toISOString(),
-      },
-    });
-    return;
-  }
+  const { name, email, password, phone, country, currency, language } = parsed.data;
 
   const result = await authService.signup({
-    name, email, password, role, phone, country, currency, language,
+    name, email, password, phone, country, currency, language,
   });
 
   // Set refresh token as httpOnly cookie
@@ -523,9 +513,8 @@ const startPhoneSignInSchema = z.object({
     .max(20)
     .regex(/^[+0-9][0-9\s\-()]*$/, 'Enter a valid phone number')
     .refine((v) => v.replace(/[^0-9]/g, '').length >= 7, 'Enter a valid phone number'),
-  // Set by the partner flow so the account it creates is a seller/buyer rather
-  // than a shopper. The service whitelists this — ADMIN is never accepted.
-  intendedRole: z.enum(['CONSUMER', 'FARMER', 'BUYER']).optional(),
+  // No intendedRole any more: a new account is always a shopper. Older web
+  // builds still send one; zod drops it unread.
   // Where to send the code if WhatsApp can't reach the number. Supplied on a
   // second attempt, after the first came back NEEDS_EMAIL. Blank is "absent".
   email: z.preprocess(

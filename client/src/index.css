@@ -1407,6 +1407,14 @@ body * {
   font-size: 14px; color: var(--cb-ink-2); text-decoration: none;
 }
 .st-menu-link:hover { background: rgba(20,20,15,0.04); color: var(--cb-ink); }
+/* A menu row that opens a window instead of navigating: same look as the links. */
+.st-menu-button {
+  background: none; border: none; text-align: left; width: 100%;
+  font-family: inherit; cursor: pointer;
+}
+/* The signed-in account menu: avatar button, dropdown anchored to its right edge. */
+.st-account { position: relative; flex-shrink: 0; display: inline-flex; }
+.st-account .st-menu { min-width: 210px; }
 .st-chip {
   flex-shrink: 0; cursor: pointer;
   font: inherit; font-size: 13px; font-weight: 500; color: var(--cb-ink-2);
@@ -2096,9 +2104,14 @@ body * {
      short label, which is what lets the brand, the actions and the menu
      button share one row instead of spilling onto a second. */
   .st-header-links .nav-signin { display: none; }
-  .st-header-links .cb-btn-primary { padding: 9px 14px; font-size: 13.5px; }
+  .st-header-links .cb-btn-primary,
+  .st-header-links .st-signup { padding: 9px 14px; font-size: 13.5px; }
   .st-main { padding: 14px 16px 56px; }
   .st-promos { grid-template-columns: 1fr; }
+}
+/* No room for Sign up beside Sign in on a narrow phone; it is in the menu. */
+@media (max-width: 520px) {
+  .st-header-links .st-signup { display: none; }
 }
 
 /* =============================================================================

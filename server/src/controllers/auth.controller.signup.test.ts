@@ -1,63 +1,60 @@
 // =============================================================================
-// signupSchema tests — the email rule differs by role
+// signupSchema tests: the identifier rule, and no role
 // =============================================================================
-// Phone is the primary contact for every account, but a buyer must also give an
-// email: that is the address deals and password resets reach them on, and a
-// buyer who signs up without one has no way back into their account. Farmers
-// and consumers stay phone-only by design, so the check has to be cross-field
-// rather than a plain required email.
+// A new account signs up with an email OR a phone, whichever the person has,
+// and at least one is required because it is what they sign in with. There is
+// no role: every account made at sign-up is a shopper, and a role sent by an
+// old app build must be dropped rather than read.
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
 
 import { signupSchema } from './auth.controller';
 
-const base = {
-  name: 'Rajesh',
-  phone: '+919876543210',
-  password: 'Sup3rSecret',
-};
+const shopper = { name: 'Asha', password: 'Sup3rSecret' };
 
-describe('signupSchema email requirement', () => {
-  it('rejects a buyer with no email at all', () => {
-    const parsed = signupSchema.safeParse({ ...base, role: 'BUYER' });
+describe('signupSchema identifier', () => {
+  it('accepts an email with no phone', () => {
+    const parsed = signupSchema.safeParse({ ...shopper, email: 'asha@cropbid.test' });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.phone).toBeUndefined();
+  });
+
+  it('accepts a phone with no email', () => {
+    expect(signupSchema.safeParse({ ...shopper, phone: '+919876543210' }).success).toBe(true);
+  });
+
+  it('treats blank fields as absent, so a form with neither filled is refused', () => {
+    const parsed = signupSchema.safeParse({ ...shopper, email: '', phone: '   ' });
 
     expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe('Email is required for buyer accounts');
-    // Pointed at the field so the form can highlight it.
+    expect(parsed.error?.issues[0]?.message).toBe('Enter an email address or a phone number');
+    // Pointed at a field so the form can highlight it.
     expect(parsed.error?.issues[0]?.path).toEqual(['email']);
   });
 
-  it('rejects a buyer whose form submitted an empty email string', () => {
-    // The preprocess step turns '' into undefined — the buyer rule must still
-    // fire, not be fooled into thinking a value was supplied.
-    const parsed = signupSchema.safeParse({ ...base, role: 'BUYER', email: '' });
-
-    expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues[0]?.message).toBe('Email is required for buyer accounts');
-  });
-
-  it('still rejects a buyer email that is malformed', () => {
-    const parsed = signupSchema.safeParse({ ...base, role: 'BUYER', email: 'not-an-email' });
+  it('still rejects an email that is malformed', () => {
+    const parsed = signupSchema.safeParse({ ...shopper, email: 'not-an-email' });
 
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues[0]?.message).toBe('Invalid email address');
   });
+});
 
-  it('accepts a buyer with a valid email', () => {
-    const parsed = signupSchema.safeParse({
-      ...base,
-      role: 'BUYER',
-      email: 'buyer@cropbid.test',
-    });
+describe('signupSchema role', () => {
+  // Old app builds had a role picker that defaulted to FARMER. The request must
+  // still succeed, with the role gone, so the service can only make a shopper.
+  it('drops a role sent by an old client instead of reading it', () => {
+    for (const role of ['FARMER', 'BUYER', 'ADMIN']) {
+      const parsed = signupSchema.safeParse({ ...shopper, email: 'asha@cropbid.test', role });
 
-    expect(parsed.success).toBe(true);
+      expect(parsed.success, `expected a ${role} request to be accepted`).toBe(true);
+      expect(parsed.data).not.toHaveProperty('role');
+    }
   });
 
-  it('leaves email optional for farmers and consumers', () => {
-    for (const role of ['FARMER', 'CONSUMER'] as const) {
-      const parsed = signupSchema.safeParse({ ...base, role });
-      expect(parsed.success, `expected ${role} to sign up without an email`).toBe(true);
-    }
+  it('no longer asks a would-be buyer for both an email and a phone', () => {
+    expect(signupSchema.safeParse({ ...shopper, phone: '+919876543210', role: 'BUYER' }).success).toBe(true);
   });
 });

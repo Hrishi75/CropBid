@@ -45,10 +45,11 @@ export async function login(identifier: string, password: string): Promise<User>
 
 export interface SignupInput {
   name: string;
-  phone: string; // primary contact + login identifier
+  // At least one of phone and email: whichever is given is what they sign in
+  // with. No role: the server makes every new account a shopper.
+  phone?: string;
   email?: string;
   password: string;
-  role: 'FARMER' | 'BUYER' | 'CONSUMER';
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
 }

@@ -88,7 +88,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Does it cost anything to join CropBid?',
-        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Signing in needs nothing but a phone number and a 6-digit code — there is no password. CropBid is available in English, Hindi and Marathi.',
+        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. You sign up with your name, an email address or phone number, and a password, and sign in with the same. CropBid is available in English, Hindi and Marathi.',
       },
       {
         q: 'What are live mandi rates and where do they come from?',
@@ -110,7 +110,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Do I need an email address?',
-        a: 'Not to buy or to sell as a farmer. Your phone number is the account, and many farmers do not have an email address, so we do not require one. Business buyers do need an email, because that is where their application and order paperwork goes.',
+        a: 'No. You can sign up with a phone number instead, because many farmers do not have an email address. Without an email we cannot send you a password-reset link, so if you forget your password, sign in with a code sent to your phone instead.',
       },
       {
         q: 'How do I delete my account and what happens to my data?',

@@ -84,9 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
-  // Farmers and consumers are signed in here. Buyers are not: they come back
-  // with a pendingId and no session, and the caller sends them to the code
-  // screen. Only verifySignUp below puts a buyer into state.
+  // Every new account is a shopper and is signed in here. The 'verification-
+  // required' branch belongs to the old buyer signup, which no request reaches
+  // any more; verifySignUp below only finishes one already in flight.
   const signUp = useCallback(async (input: SignupInput): Promise<SignupResult> => {
     const result = await apiSignup(input);
     if (result.status === 'created') setUser(result.user);
