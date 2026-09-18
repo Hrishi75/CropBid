@@ -240,13 +240,17 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // a status page. Everyone else stays exactly where they were, which is the
   // whole reason this is a modal and not a page.
   //
-  // `created` covers the partner doors: a brand-new account there is a shopper
-  // like every other, and the application is the next thing to fill in. The
-  // subtype they clicked is already parked for that form to pick up.
+  // A partner door sends every SHOPPER on to the application, whether this
+  // sign-in made their account or found an old one: either way they clicked
+  // "Apply", and that is where they were going. It is what PartnerPage already
+  // does for someone signed in when they click. The subtype they chose is
+  // parked for the form to pick up. `created` covers create-an-account, which
+  // hands back no user, and whose account can only be a new shopper's.
   function routeAfterAuth(user: User | null, created: boolean) {
+    const applying = intendedRole && intendedRole !== 'CONSUMER';
     if (user && isPendingPartner(user)) navigate('/partner/status');
     else if (user && (user.role === 'FARMER' || user.role === 'BUYER') && !user.farmerProfile && !user.buyerProfile) navigate('/onboarding');
-    else if (created && intendedRole && intendedRole !== 'CONSUMER') navigate('/onboarding');
+    else if (applying && (created || user?.role === 'CONSUMER')) navigate('/onboarding');
     else if (redirectTo) navigate(redirectTo);
   }
 
