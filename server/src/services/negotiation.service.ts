@@ -30,8 +30,22 @@ import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 import { notifyNegotiationResult } from './notification.helpers';
 import type { NegotiationContext } from '../utils/prompts';
+import { COUNTERPARTY_BID_SELECT } from './contactVisibility';
 
 const MAX_ROUNDS = 6; // Max back-and-forth rounds
+
+// A negotiation is read by BOTH sides, and one of them is the farmer, so every
+// query in this file needs two counterparty-safe projections:
+//
+//   PUBLIC_FARMER_SELECT   below, for the seller
+//   COUNTERPARTY_BID_SELECT  imported, for the bid
+//
+// The bid one matters most. Bid.deliveryAddress and Bid.contactPhone are the
+// buyer's real address and phone, and `bid: { include: { buyer } }` returns
+// every scalar on the row, so all four reads here used to hand them to the
+// farmer. Nothing else on this endpoint gates them: the payment check that
+// protects every other view of those two columns lives on the transaction, and
+// a negotiation runs before a transaction exists.
 
 // Counterparty-safe farmer shape: public display fields only — never the
 // private profile (bankDetails, apmcLicense, fpoName, farmSizeAcres).
@@ -258,7 +272,8 @@ async function runNegotiation(
         },
       },
       bid: {
-        include: {
+        select: {
+          ...COUNTERPARTY_BID_SELECT,
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
@@ -368,7 +383,8 @@ export async function getNegotiation(negotiationId: string, userId: string) {
         },
       },
       bid: {
-        include: {
+        select: {
+          ...COUNTERPARTY_BID_SELECT,
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
@@ -420,7 +436,8 @@ export async function getMyNegotiations(userId: string, role: string) {
         },
       },
       bid: {
-        include: {
+        select: {
+          ...COUNTERPARTY_BID_SELECT,
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
@@ -443,7 +460,8 @@ export async function getNegotiationByBid(bidId: string, userId: string) {
         },
       },
       bid: {
-        include: {
+        select: {
+          ...COUNTERPARTY_BID_SELECT,
           buyer: { select: { id: true, name: true, trustScore: true } },
         },
       },
