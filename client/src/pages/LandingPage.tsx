@@ -25,7 +25,7 @@
 // table.
 // =============================================================================
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -263,6 +263,26 @@ function Ticker({ currency, board }: { currency: CurrencyCode; board: RatesBoard
   );
 }
 
+// Close a header popover on any pointer press outside it, or on Escape, so it
+// never sits open behind the page. The section menu and the account menu both
+// use it; `inside` is the selector of the wrapper that owns the popover.
+function useDismiss(open: boolean, close: () => void, inside: string) {
+  useEffect(() => {
+    if (!open) return;
+    const onEvent = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
+      if (e.type === 'pointerdown' && (e.target as Element)?.closest?.(inside)) return;
+      close();
+    };
+    document.addEventListener('pointerdown', onEvent);
+    document.addEventListener('keydown', onEvent);
+    return () => {
+      document.removeEventListener('pointerdown', onEvent);
+      document.removeEventListener('keydown', onEvent);
+    };
+  }, [open, close, inside]);
+}
+
 function StoreHeader({
   country, onChangeCountry, query, onQuery, user,
 }: {
@@ -274,12 +294,14 @@ function StoreHeader({
 }) {
   const { t } = useTranslation();
   const { openAuth } = useAuthModal();
+  const { logout } = useAuth();
   // Seeded from the restored scroll position rather than defaulting to false:
   // reloading part-way down the page otherwise painted the header flat for a
   // frame and then snapped the shadow on.
   const [scrolled, setScrolled] = useState(() => typeof window !== 'undefined' && window.scrollY > 4);
   const [wordIdx, setWordIdx] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Where the header's account link goes, decided ONCE. The inline nav and the
   // collapsed menu below both render it, and keeping two copies of the role
@@ -305,22 +327,15 @@ function StoreHeader({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // The section links collapse into this menu below 960px. Close it on any
-  // outside pointer press or Escape so it never sits open behind the page.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key !== 'Escape') return;
-      if (e.type === 'pointerdown' && (e.target as Element)?.closest?.('.st-menu-wrap')) return;
-      setMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', close);
-    return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', close);
-    };
-  }, [menuOpen]);
+  // The section links collapse into this menu below 960px.
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const closeAccount = useCallback(() => setAccountOpen(false), []);
+  useDismiss(menuOpen, closeMenu, '.st-menu-wrap');
+  useDismiss(accountOpen, closeAccount, '.st-account');
+
+  const initials = user?.name
+    ? user.name.split(/\s+/).slice(0, 2).map((n) => n[0]).join('').toUpperCase()
+    : '?';
 
   // Blinkit-style rotating search hint: Search "tomatoes" → "kesar mangoes" → …
   useEffect(() => {
@@ -381,6 +396,43 @@ function StoreHeader({
                 // Renders nothing until there is something in it.
                 <CartLink />
               )}
+              {/* The account menu. Without it a signed-in shopper had no way to
+                  sign out from the storefront: this header offered Orders and
+                  the basket, and Sign out lived only in the app navbar, a page
+                  away. It stays visible at every width, so a phone gets it too. */}
+              <div className="st-account">
+                <button
+                  type="button"
+                  className="cb-nav-avatar"
+                  onClick={() => setAccountOpen((o) => !o)}
+                  aria-label={user.name}
+                  aria-expanded={accountOpen}
+                  aria-haspopup="menu"
+                >
+                  {initials}
+                </button>
+                {accountOpen && (
+                  <div className="st-menu" role="menu">
+                    <div className="cb-nav-menu-id">
+                      <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--cb-ink)' }}>{user.name}</span>
+                      {/* What they signed in with, so a shared phone shows whose
+                          account this is. */}
+                      <span className="cb-tiny">{user.email ?? user.phone}</span>
+                    </div>
+                    <Link to={account.to} role="menuitem" className="cb-nav-menu-link" onClick={closeAccount}>
+                      {t(account.label)}
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="cb-nav-menu-link"
+                      onClick={() => { closeAccount(); void logout(); }}
+                    >
+                      {t('Sign out')}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <>
@@ -392,6 +444,13 @@ function StoreHeader({
                   login page loses the scroll position and whatever was in the
                   basket, and a shopper who leaves the shelf often doesn't
                   come back. */}
+              {/* A first-time visitor's own door, opening the window straight on
+                  create-an-account. Sign in stays the loud one: a returning
+                  shopper is the commoner visitor. Folds into the menu on a
+                  narrow phone, where the row has no room for both. */}
+              <button type="button" className="cb-btn cb-btn-ghost st-signup" onClick={() => openAuth({ startWith: 'signup' })}>
+                {t('Sign up')}
+              </button>
               <button type="button" className="cb-btn cb-btn-primary" onClick={() => openAuth()}>
                 {t('Sign in')}
                 <ArrowIcon />
@@ -438,6 +497,16 @@ function StoreHeader({
               >
                 {t(account.label)}
               </Link>
+              {!user && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="st-menu-link st-menu-button"
+                  onClick={() => { setMenuOpen(false); openAuth({ startWith: 'signup' }); }}
+                >
+                  {t('Sign up')}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -467,7 +536,10 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
       ? { to: '/buyer/bids', label: 'My bids' }
       : user?.role === 'CONSUMER'
         ? { to: '/orders', label: 'My orders' }
-        : { to: '/signup', label: 'Sell your harvest' };
+        // The partner page, not /signup: sign-up makes a shopper and stops
+        // there, so a farmer sent to it never reached the application. From
+        // /partner, "Apply as ..." makes the account and opens the form.
+        : { to: '/partner', label: 'Sell your harvest' };
   // Floating live-price chips over the hero photo. Always three, always in the
   // same corners: today's real number when the govt feed answered for that
   // crop, the reference price tagged "ref" when it didn't — the same
@@ -747,7 +819,8 @@ function SellCTA({ user }: { user: User | null }) {
   // farmer-targeted. A household shopper is the last person to pitch "list your
   // harvest" at, and they were falling through to the guest version of it.
   if (user?.role === 'BUYER' || user?.role === 'CONSUMER') return null;
-  const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/signup';
+  // /partner rather than /signup, for the reason given on the hero's link.
+  const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/partner';
   const sellLabel = user?.role === 'FARMER' ? 'List your harvest' : 'Start selling free';
   return (
     <section className="cta st-reveal" ref={ref}>
