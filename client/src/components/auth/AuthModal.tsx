@@ -7,19 +7,22 @@
 // nothing lost. That is the point. A shopper who has to leave the shelf to
 // sign in often does not come back.
 //
-// TWO STEPS, NO PASSWORD:
-//   1. Phone number  → a 6-digit code goes out, over WhatsApp where possible
-//   2. Code (+ name, for a number we have never seen) → signed in
-// There is no signup/sign-in distinction because to the person typing there
-// isn't one: the code proves the number and the account is found or created.
+// THREE LANES, ONE WINDOW. Switching between them costs nothing and none of
+// them loses the page behind it.
 //
-// THE PASSWORD LANE. Not every account is passwordless. Admins made by
-// prisma/createAdmin.ts have a password and no other way in, and so does
-// anyone who signed up before the code flow existed. That door used to be
-// /login?password=1, unlinked on purpose — which in practice meant it did not
-// exist, because the header button opens this dialog and this dialog only
-// asked for a number. It is a toggle here now: same window, same scroll
-// position, and it does not depend on an SMS provider being reachable.
+//   Sign in (the default)  email or phone, and the password they chose
+//   Create an account      name, email or phone, password, confirm password.
+//                          No code: the account is made on the spot, as a
+//                          shopper, and they are signed in.
+//   One-time code          phone → a 6-digit code over WhatsApp → signed in.
+//                          Kept because accounts made through it before
+//                          sign-up existed have no password and no other way
+//                          in, and it is how a phone-only account gets back in
+//                          after forgetting its password.
+//
+// Sign-up verifies nothing yet, by decision: phone verification is to be
+// integrated later, and a new shopper should not wait on it. See CLAUDE.md
+// section 4.
 //
 // THE EMAIL RESCUE. WhatsApp does not reach everyone — no WhatsApp on the
 // number, Meta's unverified 250/day cap, an outage. When the server exhausts
@@ -29,11 +32,11 @@
 // place to look rather than guessing.
 //
 // THE SIDE PANEL is not decoration. Most people opening this are shoppers, so
-// the phone box owns the main column. The two other audiences — people who
+// the form owns the main column. The two other audiences — people who
 // want to SELL, and businesses buying at volume — get a standing invitation
 // beside it rather than a role question everyone else has to answer first.
 //
-// Both panels stack on mobile, phone box first.
+// Both panels stack on mobile, form first.
 // =============================================================================
 
 import { useEffect, useRef, useState } from 'react';
@@ -53,13 +56,54 @@ import toast from 'react-hot-toast';
 const RESEND_COOLDOWN_SECONDS = 30;
 
 export interface AuthModalOptions {
-  /** Role to create if the number is new. Set by the partner/business doors. */
+  /**
+   * Set by the partner/business doors. The code lane creates this role for a
+   * new number. Create-an-account always makes a shopper and then opens the
+   * application form, because approval is what grants the role.
+   */
   intendedRole?: PhoneSignInRole;
   /** Where to go after a successful sign-in. Defaults to staying put. */
   redirectTo?: string;
-  /** Headline override, so the partner door can say why it opened. */
+  /** Headline override for the lane the window opens on, saying why it opened. */
   title?: ReactNode;
+  /** Which lane to open on. Sign-in unless the caller knows they are new. */
+  startWith?: 'signin' | 'signup';
 }
+
+type Mode = 'password' | 'signup' | 'code';
+
+// Mirrors passwordSchema in the server's auth.controller. The server enforces
+// it; this is what lets the form say which rule is still unmet as they type.
+const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
+  { label: '8+ characters', test: (p) => p.length >= 8 },
+  { label: 'an uppercase letter', test: (p) => /[A-Z]/.test(p) },
+  { label: 'a lowercase letter', test: (p) => /[a-z]/.test(p) },
+  { label: 'a number', test: (p) => /[0-9]/.test(p) },
+];
+
+/**
+ * Read the one "email or phone" box. Anything with an @ is an email address;
+ * everything else has to be a phone number, counted on its digits the way the
+ * server counts them, so "+  -  " cannot pass as one.
+ */
+function readContact(raw: string): { email?: string; phone?: string } | null {
+  const value = raw.trim();
+  if (value.includes('@')) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? { email: value } : null;
+  }
+  const digits = value.replace(/[^0-9]/g, '');
+  return /^[+0-9][0-9\s\-()]*$/.test(value) && digits.length >= 7 && value.length <= 20
+    ? { phone: value }
+    : null;
+}
+
+type SignupField = 'name' | 'contact' | 'password' | 'confirm';
+
+// The in-text links that move between lanes.
+const LINK_BUTTON: React.CSSProperties = {
+  background: 'none', border: 'none', padding: 0, color: 'var(--cb-ember)',
+  fontWeight: 500, cursor: 'pointer', font: 'inherit',
+};
 
 interface AuthModalProps extends AuthModalOptions {
   open: boolean;
@@ -93,14 +137,15 @@ const SIDE_DOORS = [
   },
 ];
 
-export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: AuthModalProps) {
-  const { login, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
+export function AuthModal({ open, onClose, intendedRole, redirectTo, title, startWith }: AuthModalProps) {
+  const { login, signup, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
   const navigate = useNavigate();
 
-  // 'code' is the default for everyone; 'password' is the lane for accounts
-  // that have one. Kept as a mode rather than a second dialog so switching
-  // costs nothing and neither path loses the page behind it.
-  const [mode, setMode] = useState<'code' | 'password'>('code');
+  // Password sign-in is the default; see the header for the three lanes. The
+  // lane it opened on is kept too, because a caller's title ("Applying as a
+  // farmer") belongs to that lane and reads wrong over the other two.
+  const openingMode: Mode = startWith === 'signup' ? 'signup' : 'password';
+  const [mode, setMode] = useState<Mode>(openingMode);
 
   const [challenge, setChallenge] = useState<PhoneChallenge | null>(null);
   const [phone, setPhone] = useState('');
@@ -116,6 +161,10 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   const [verifying, setVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [error, setError] = useState<string>();
+  // Create-an-account only. The error is shown under the field it is about,
+  // rather than under the last box whatever went wrong.
+  const [confirm, setConfirm] = useState('');
+  const [errorField, setErrorField] = useState<SignupField>();
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -138,12 +187,14 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
     attemptRef.current += 1;
     if (open) {
       setSending(false); setSigningIn(false); setVerifying(false);
-      setMode('code');
+      setMode(openingMode);
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
-      setIdentifier(''); setPassword('');
-      setError(undefined); setCooldown(0);
+      setIdentifier(''); setPassword(''); setConfirm('');
+      setError(undefined); setErrorField(undefined); setCooldown(0);
     }
+  // openingMode is derived from a prop that only changes together with `open`.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
@@ -175,6 +226,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
   const needsName = Boolean(challenge?.isNewAccount);
   const nameValid = !needsName || name.trim().length >= 2;
   const passwordFormValid = identifier.trim().length > 0 && password.length > 0;
+  const unmetRules = PASSWORD_RULES.filter((r) => !r.test(password));
+  const clearError = () => { setError(undefined); setErrorField(undefined); };
 
   // Where a freshly signed-in account lands, decided once for both lanes. A
   // brand-new partner has an application to fill in; a partner mid-review has
@@ -209,26 +262,64 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
     }
   }
 
+  // Create an account: a shopper, made on the spot, and signed in. The server
+  // only ever asks a BUYER for an emailed code, so this never comes back as
+  // 'verification-required'.
+  async function handleSignup(e: React.FormEvent) {
+    e.preventDefault();
+    const contact = readContact(identifier);
+    const fail = (field: SignupField, message: string) => { setErrorField(field); setError(message); };
+    if (name.trim().length < 2) return fail('name', 'Tell us your name (at least 2 characters)');
+    if (!contact) return fail('contact', 'Enter a valid email address or phone number');
+    if (unmetRules.length) return fail('password', `Your password still needs ${unmetRules.map((r) => r.label).join(', ')}`);
+    if (confirm !== password) return fail('confirm', 'The two passwords do not match');
+
+    const attempt = attemptRef.current;
+    setSigningIn(true); setError(undefined); setErrorField(undefined);
+    try {
+      await signup({ name: name.trim(), ...contact, password, role: 'CONSUMER' });
+      if (attemptRef.current !== attempt) return;
+      toast.success(`Welcome to CropBid, ${name.trim().split(' ')[0]}`);
+      onClose();
+      // Came in through a partner door: the account they just made is a
+      // shopper's, and the application is the next thing to fill in. The
+      // subtype they clicked is already parked for that form to pick up.
+      if (intendedRole && intendedRole !== 'CONSUMER') navigate('/onboarding');
+      else if (redirectTo) navigate(redirectTo);
+    } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
+      // A taken email or number is about the contact box; anything else is
+      // shown at the foot of the form.
+      const status = err.response?.status;
+      fail(status === 409 ? 'contact' : 'confirm', err.response?.data?.message || 'Could not create your account just now');
+    } finally {
+      if (attemptRef.current === attempt) setSigningIn(false);
+    }
+  }
+
   // Switching lanes empties the one being left, so nothing half-typed is
   // sitting there submittable when someone comes back to it, and no stale
   // "Enter a valid phone number" greets them on the password form.
   //
-  // The identity itself travels, though. The password lane takes a phone as
-  // its identifier, so a number typed on the code step should not have to be
-  // typed again — and back the other way only when what they entered really is
-  // a number, since the code step has nowhere to send an email address.
-  function switchTo(next: 'code' | 'password') {
-    setError(undefined);
+  // The identity itself travels, though. Sign-in and create-an-account share
+  // one "email or phone" box, so someone who typed their email to sign in and
+  // then found they have no account does not type it again. A number typed on
+  // the code step carries into that box too, and back the other way only when
+  // what they entered really is a number, since the code step has nowhere to
+  // send an email address. Passwords never travel.
+  function switchTo(next: Mode) {
+    setError(undefined); setErrorField(undefined);
     attemptRef.current += 1;
-    if (next === 'password') {
-      setIdentifier(phone.trim());
-      setChallenge(null); setCode(''); setPhone('');
-    } else {
+    if (next === 'code') {
       const typed = identifier.trim();
       const digits = typed.replace(/[^0-9]/g, '');
       setPhone(!typed.includes('@') && digits.length >= 7 ? typed : '');
-      setIdentifier(''); setPassword('');
+      setIdentifier('');
+    } else if (mode === 'code') {
+      setIdentifier(phone.trim());
+      setChallenge(null); setCode(''); setPhone('');
     }
+    setPassword(''); setConfirm('');
     setMode(next);
   }
 
@@ -317,20 +408,97 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
             <span style={{ fontWeight: 500, letterSpacing: '-0.01em' }}>CropBid</span>
           </div>
 
-          {mode === 'password' ? (
+          {mode === 'signup' ? (
             <>
               <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
-                Sign in with<br /><span className="cb-italic">your password.</span>
+                {(mode === openingMode && title) || <>Create your<br /><span className="cb-italic">account.</span></>}
               </h2>
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
-                For accounts that were set up with one. Everyone else signs in
-                with a code sent to their phone.
+                {intendedRole && intendedRole !== 'CONSUMER'
+                  ? 'Make your account first. Your application opens straight after.'
+                  : "Takes a minute. You start as a shopper, and can apply to sell or buy in bulk once you're in."}
+              </p>
+
+              <form onSubmit={handleSignup} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <Input
+                  label="Your name"
+                  placeholder="What should we call you?"
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => { setName(e.target.value); clearError(); }}
+                  error={errorField === 'name' ? error : undefined}
+                  autoFocus
+                  required
+                />
+                <Input
+                  label="Email or phone number"
+                  placeholder="you@example.com or +91-9876543210"
+                  autoComplete="username"
+                  value={identifier}
+                  onChange={(e) => { setIdentifier(e.target.value); clearError(); }}
+                  error={errorField === 'contact' ? error : undefined}
+                  hint="Whichever you give is what you sign in with."
+                  required
+                />
+                <Input
+                  label="Password"
+                  type="password"
+                  placeholder="Choose a password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); clearError(); }}
+                  error={errorField === 'password' ? error : undefined}
+                  hint={
+                    !password ? '8+ characters, with an uppercase letter, a lowercase letter and a number.'
+                      : unmetRules.length ? `Still needs ${unmetRules.map((r) => r.label).join(', ')}.`
+                      : 'Good to go.'
+                  }
+                  required
+                />
+                <Input
+                  label="Confirm password"
+                  type="password"
+                  placeholder="Type it again"
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => { setConfirm(e.target.value); clearError(); }}
+                  error={errorField === 'confirm' ? error : undefined}
+                  hint={confirm && confirm !== password ? 'Does not match yet.' : undefined}
+                  required
+                />
+
+                <Button
+                  type="submit"
+                  size="lg"
+                  loading={signingIn}
+                  disabled={!name.trim() || !identifier.trim() || !password || !confirm}
+                  style={{ width: '100%' }}
+                >
+                  Create my account
+                  <ArrowIcon />
+                </Button>
+              </form>
+
+              <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
+                Already have an account?{' '}
+                <button type="button" onClick={() => switchTo('password')} style={LINK_BUTTON}>
+                  Sign in
+                </button>
+              </p>
+            </>
+          ) : mode === 'password' ? (
+            <>
+              <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
+                {(mode === openingMode && title) || <>Sign in<br /><span className="cb-italic">to continue.</span></>}
+              </h2>
+              <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
+                With the email or phone number and the password you signed up with.
               </p>
 
               <form onSubmit={handlePasswordSignIn} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input
-                  label="Phone or email"
-                  placeholder="+91-9876543210"
+                  label="Email or phone number"
+                  placeholder="you@example.com or +91-9876543210"
                   autoComplete="username"
                   value={identifier}
                   onChange={(e) => { setIdentifier(e.target.value); setError(undefined); }}
@@ -373,20 +541,29 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
               </form>
 
               <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
-                <button type="button" onClick={() => switchTo('code')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cb-ember)', fontWeight: 500, cursor: 'pointer', font: 'inherit' }}>
-                  ← Get a code instead
+                New to CropBid?{' '}
+                <button type="button" onClick={() => switchTo('signup')} style={LINK_BUTTON}>
+                  Create an account
+                </button>
+              </p>
+              {/* Accounts made through the code before sign-up existed have no
+                  password, so this is their only way in. It is also how a
+                  phone-only account gets back in after forgetting one. */}
+              <p className="cb-small" style={{ marginTop: 6, textAlign: 'center' }}>
+                <button type="button" onClick={() => switchTo('code')} style={{ ...LINK_BUTTON, color: 'var(--cb-ink-3)', fontWeight: 400 }}>
+                  No password? Get a code on WhatsApp instead
                 </button>
               </p>
             </>
           ) : !challenge ? (
             <>
               <h2 id="cb-auth-modal-title" className="cb-h3" style={{ margin: 0 }}>
-                {title || <>Enter your number<br /><span className="cb-italic">to continue.</span></>}
+                Sign in with<br /><span className="cb-italic">a one-time code.</span>
               </h2>
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
                 {needsEmail
                   ? "We couldn't reach that number on WhatsApp. Add an email and we'll send the code there."
-                  : "We'll send a 6-digit code to your WhatsApp. No password to remember."}
+                  : "We'll send a 6-digit code to your WhatsApp."}
               </p>
 
               <form onSubmit={handleSendCode} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -428,11 +605,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title }: Au
                 </Button>
               </form>
 
-              {/* The door for accounts that predate the code flow, and for
-                  admins, who have a password and nothing else. */}
               <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
-                <button type="button" onClick={() => switchTo('password')} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--cb-ember)', fontWeight: 500, cursor: 'pointer', font: 'inherit' }}>
-                  Use a password instead →
+                <button type="button" onClick={() => switchTo('password')} style={LINK_BUTTON}>
+                  ← Sign in with a password
                 </button>
               </p>
             </>

@@ -78,7 +78,8 @@ interface SignupInput {
   email?: string;
   password: string;
   role: 'FARMER' | 'BUYER' | 'CONSUMER';
-  phone: string;
+  /** Optional since sign-up takes an email OR a phone. Buyers still need both. */
+  phone?: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
   language?: UserLanguage;
@@ -90,16 +91,18 @@ interface SignupInput {
 // the same transaction that adds it).
 export type UserLanguage = 'EN' | 'HI' | 'MR';
 
-// Phone is the primary identifier — one account per phone. Email is optional
-// for non-buyers but must always be unique when provided. Shared by the direct
-// signup path and the buyer OTP path, which checks twice: once before emailing
-// a code (so we never send one to an address that already has an account) and
-// again at verification, because ten minutes is long enough for someone else to
-// have taken the number.
-async function assertIdentifiersFree(phone: string, email?: string): Promise<void> {
-  const existingPhone = await prisma.user.findUnique({ where: { phone } });
-  if (existingPhone) {
-    throw new ApiError(409, 'An account with this phone number already exists');
+// One account per phone and one per email. An account signs up with either or
+// both, and whichever it gives must be free. Shared by the direct signup path
+// and the buyer OTP path, which checks twice: once before emailing a code (so
+// we never send one to an address that already has an account) and again at
+// verification, because ten minutes is long enough for someone else to have
+// taken the number.
+async function assertIdentifiersFree(phone?: string, email?: string): Promise<void> {
+  if (phone) {
+    const existingPhone = await prisma.user.findUnique({ where: { phone } });
+    if (existingPhone) {
+      throw new ApiError(409, 'An account with this phone number already exists');
+    }
   }
 
   if (email) {
@@ -122,7 +125,7 @@ async function createUserAndIssueTokens(data: {
   email: string | null;
   hashedPassword: string;
   role: SignupInput['role'];
-  phone: string;
+  phone: string | null;
   country?: string;
   currency?: SignupInput['currency'];
   language?: SignupInput['language'];
@@ -197,8 +200,15 @@ export async function signup(input: SignupInput) {
   }
 
   const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
+  const phone = input.phone ? normalizePhone(input.phone) || undefined : undefined;
 
-  const phone = normalizePhone(input.phone);
+  // The identifier is what they sign in with, so an account with neither could
+  // never be reached again. The controller's schema refuses it first; repeated
+  // here so it holds for every caller of the service.
+  if (!email && !phone) {
+    throw new ApiError(400, 'Enter an email address or a phone number');
+  }
+
   await assertIdentifiersFree(phone, email);
 
   // Cost factor 12 ≈ 250ms — slow enough to resist brute-force, fast enough
@@ -210,7 +220,7 @@ export async function signup(input: SignupInput) {
     email: email || null,
     hashedPassword,
     role: input.role,
-    phone,
+    phone: phone ?? null,
     country: input.country,
     currency: input.currency,
     language: input.language,
@@ -236,7 +246,11 @@ export async function startBuyerSignup(input: SignupInput) {
     throw new ApiError(400, 'Email is required for buyer accounts');
   }
 
-  const phone = normalizePhone(input.phone);
+  // PendingSignup.phone is required, and a buyer is reached on it for deals.
+  const phone = input.phone ? normalizePhone(input.phone) : '';
+  if (!phone) {
+    throw new ApiError(400, 'Phone is required for buyer accounts');
+  }
   await assertIdentifiersFree(phone, email);
 
   // Opportunistic sweep — cheap (indexed range delete) and keeps the table from

@@ -54,7 +54,9 @@ interface AuthContextType {
 
 interface SignupData {
   name: string;
-  phone: string; // primary contact + login identifier
+  // At least one of phone and email: whichever is given is what they sign in
+  // with. Buyers need both.
+  phone?: string;
   email?: string;
   password: string;
   role: 'FARMER' | 'BUYER' | 'CONSUMER';

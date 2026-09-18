@@ -85,7 +85,7 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🚚', 'We book the truck, not you', 'One less thing for a farmer to arrange, and a delivery the platform answers for instead of a number the seller gave you. The seller pays the freight, and both sides follow the deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
   ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place, and the licence their trade needs: FSSAI for a food shop, GSTIN for a wholesale firm.'],
-  ['📱', 'Sign in with your phone', 'A phone number and a 6-digit code. English, Hindi or Marathi, on the site or the app.'],
+  ['📱', 'Sign up in a minute', 'Your name, an email or phone number, and a password. English, Hindi or Marathi, on the site or the app.'],
 ];
 
 // =============================================================================
@@ -602,8 +602,8 @@ function BuyDirect() {
             country. Produce is priced by the kilo and sold from 500 g up. Each item in
             your basket is ordered separately from its seller, and
             <strong> every one of those orders starts at ₹150</strong>: below that the trip
-            costs more than the order is worth. Signing up is a phone number and a 6-digit
-            code, and you only need it at checkout.
+            costs more than the order is worth. Signing up takes a name, an email or phone
+            number and a password, and you only need it at checkout.
           </p>
         </div>
 

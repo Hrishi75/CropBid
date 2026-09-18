@@ -137,7 +137,8 @@ export function PartnerPage() {
   //
   // Signed in  → straight to the form. Their account already exists; applying
   //              is a form to fill, not an account to make.
-  // Signed out → the sign-in window, carrying intendedRole as before.
+  // Signed out → the window opens on create-an-account. They make a shopper's
+  //              account, and the application form opens straight after.
   function onApply(p: PathCard) {
     rememberPartnerType(p.role, p.type);
 
@@ -148,6 +149,7 @@ export function PartnerPage() {
 
     openAuth({
       intendedRole: p.role,
+      startWith: 'signup',
       title: <>Applying as<br /><span className="cb-italic">{p.title.toLowerCase()}.</span></>,
     });
   }

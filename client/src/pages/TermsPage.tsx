@@ -122,8 +122,8 @@ export function TermsPage() {
         <Section title="2. Who can use CropBid">
           <p>
             You must be at least 18 and able to enter a contract under Indian law. You must
-            give accurate details and keep them current — your phone number is your account,
-            and a wrong one locks you out of your own sign-in.
+            give accurate details and keep them current. The email address or phone number
+            you sign up with is your account, and a wrong one can lock you out of it.
           </p>
           <p>
             <strong>Selling is by application.</strong> Farmers, local shops and wholesalers

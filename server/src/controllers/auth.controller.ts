@@ -23,40 +23,64 @@ const passwordSchema = z.string()
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number');
 
-// Phone is the primary contact (required); email is optional for farmers and
-// consumers but REQUIRED for buyers (see the superRefine below). Forms may send
-// email as an empty string — treat that as "not provided" before validating.
+// Forms send a blank field as an empty string. Treat that as "not provided"
+// before validating, so an untouched box is absent rather than malformed.
+const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
+// The sign-up form asks for an email address OR a phone number, whichever the
+// person has, and the account signs in with that and a password. At least one
+// is required (see the superRefine below), because it is the login identifier.
+// Buyers still need both: email for their paperwork, phone for the pending
+// signup row, which has no way to hold a buyer without one.
 export const signupSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(100),
-  email: z.preprocess(
-    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().email('Invalid email address').optional()
-  ),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
+  email: z.preprocess(blankToUndefined, z.string().email('Invalid email address').optional()),
   password: passwordSchema,
-  role: z.enum(['FARMER', 'BUYER', 'CONSUMER']),
+  // Everyone arrives as a shopper (CLAUDE.md section 4), so a client that says
+  // nothing gets one. FARMER and BUYER are still accepted for app builds that
+  // predate that rule.
+  role: z.enum(['FARMER', 'BUYER', 'CONSUMER']).default('CONSUMER'),
   // The digit count is checked on the SEPARATOR-STRIPPED value, not the raw
   // string: "+      " is seven allowed characters but normalizes to "+", which
   // login can never match — that account would be locked out of its own login.
-  phone: z
-    .string()
-    .max(20)
-    .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
-    .refine(
-      (v) => v.replace(/[^0-9]/g, '').length >= 7,
-      'Phone number must have at least 7 digits'
-    ),
+  phone: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .max(20)
+      .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
+      .refine(
+        (v) => v.replace(/[^0-9]/g, '').length >= 7,
+        'Phone number must have at least 7 digits'
+      )
+      .optional(),
+  ),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI', 'MR']).optional(),
 }).superRefine((data, ctx) => {
-  // Buyers must sign up with an email. The check is cross-field, so it can't
-  // live on the email property itself; the path points back at the field so a
-  // client can highlight it.
+  // Cross-field rules, so they cannot live on either property. Each path points
+  // back at a field so a client can highlight it.
+  if (!data.email && !data.phone) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['email'],
+      message: 'Enter an email address or a phone number',
+    });
+    return;
+  }
   if (data.role === 'BUYER' && !data.email) {
     ctx.addIssue({
       code: 'custom',
       path: ['email'],
       message: 'Email is required for buyer accounts',
+    });
+  }
+  if (data.role === 'BUYER' && !data.phone) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['phone'],
+      message: 'Phone is required for buyer accounts',
     });
   }
 });

@@ -29,7 +29,7 @@ Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ 
 
 Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
 
-Languages: English, Hindi, Marathi. Sign-in is phone + 6-digit code; passwords exist but are the secondary lane.
+Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. A phone code over WhatsApp survives as the secondary lane (§4).
 
 ## 2. Business facts
 
@@ -119,6 +119,21 @@ Different words on purpose: a path pair differing by one letter gets mixed up at
 Farmers, local shops and wholesalers **apply and are reviewed by a human** before they can list or trade (`PartnerStatus`). Volume buyers too. Households are not gated: a phone number is enough.
 
 `FarmerProfile` is really a *seller* profile; `sellerType` says which kind. Read it that way.
+
+### Signing up: a password, and no code (decided 2026-09-18)
+
+**One form on both surfaces: name, email or phone number (one box), password, confirm password.** Nothing is sent and nothing is verified. The account is made on the spot as a `CONSUMER` and signed in. The user's call: phone verification is to be integrated later, and a new shopper does not wait on it. This reverses the 2026-08-21 decision (#120) that there would be no password anywhere in the UI.
+
+- **Web:** the sign-in window (`AuthModal`) now opens on **password sign-in**, with a **Create an account** lane beside it. `/signup` and a signed-out click on "Apply" at `/partner` open it on create-an-account (`startWith: 'signup'`). A partner applicant made this way is a shopper, and the application form opens straight after, so this door now obeys the rule above.
+- **The code lane stays, as the third option.** Accounts made through it before this date have no password and no other way in. It is also the only recovery for a **phone-only** account, because forgot-password sends an emailed link and such an account has no email.
+- **Server:** `POST /auth/signup` defaults `role` to `CONSUMER`, and `phone` is optional as long as `email` is present. At least one of the two is required, because it is the login identifier. Buyers still give both, and still verify their email with a code first (`startBuyerSignup`). `FARMER`/`BUYER` are still accepted there for old app builds.
+- **App:** `SignupScreen` asks the same four things. The fifteen-country picker is gone, since the product is India only and the server defaults to India and INR.
+
+**Knowingly unverified.** Nothing proves the email or number belongs to the person typing it. A typo'd email means the reset link goes to a stranger, and anyone can claim a number before its owner arrives. That is the price of no code, and it is the thing phone OTP is meant to fix.
+
+**Phone numbers are matched exactly as stored**, and nothing adds a country code. `98220 55667` is stored as `9822055667` and `+91 98220 55667` as `+919822055667`, so an account made one way cannot sign in typed the other way. This predates the sign-up form, but it bites more now that everyone types a number into a password form. Fixing it means choosing one canonical form (probably `+91` on any 10-digit number) and backfilling the column.
+
+**The code lane still makes partners directly.** It passes `intendedRole`, so a signed-out applicant who picks the code lane instead of create-an-account is still made a `FARMER`/`BUYER` before anyone has reviewed them. Only create-an-account follows the rule below.
 
 ### Everyone arrives as a shopper (fixed 2026-09-06)
 

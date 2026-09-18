@@ -7,17 +7,12 @@
 // out. It drops them on the storefront with the sign-in window already open,
 // which is the same place the header button would have taken them.
 //
-// THE PASSWORD ESCAPE HATCH: /login?password=1 still renders the old
-// phone-or-email + password form. New accounts never get a password, but
-// accounts that already have one do — admins created by prisma/createAdmin.ts
-// most of all — and they need a door that does not depend on an SMS provider
-// being configured and reachable.
-//
-// This URL is no longer the only way to that door. The same form is a toggle
-// inside AuthModal now ("Use a password instead"), which is where people will
-// actually find it; the header button opens the dialog, not this route. Keep
-// this page anyway: it is the one password form that still works when the
-// modal cannot mount, and an old bookmark should not break.
+// THE PASSWORD ESCAPE HATCH: /login?password=1 still renders a standalone
+// phone-or-email + password form. Password sign-in is the modal's default lane
+// now, so this is no longer the only way to it. Keep it anyway: it is the one
+// password form that still works when the modal cannot mount, admins made by
+// prisma/createAdmin.ts have bookmarks to it, and an old bookmark should not
+// break.
 // =============================================================================
 
 import { useEffect, useState } from 'react';

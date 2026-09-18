@@ -166,6 +166,28 @@ describe('signup', () => {
     await expect(signup(input)).rejects.toThrow('connection lost');
   });
 
+  it('creates an email-only account without looking up a phone', async () => {
+    existingAccounts({ phone: true }); // would collide IF a phone were checked
+    mockCreate.mockResolvedValue(createdUser);
+
+    const result = await signup({ ...input, phone: undefined, role: 'CONSUMER' });
+
+    expect(result.accessToken).toBeTruthy();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ phone: null, email: input.email, role: 'CONSUMER' }),
+      }),
+    );
+  });
+
+  it('refuses an account with neither an email nor a phone', async () => {
+    await expect(
+      signup({ ...input, phone: undefined, email: undefined, role: 'CONSUMER' }),
+    ).rejects.toMatchObject(new ApiError(400, 'Enter an email address or a phone number'));
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('returns tokens and strips sensitive fields on success', async () => {
     existingAccounts({});
     mockCreate.mockResolvedValue(createdUser);
@@ -219,6 +241,18 @@ describe('startBuyerSignup', () => {
 
     await expect(startBuyerSignup({ ...buyer, email: undefined })).rejects.toMatchObject(
       new ApiError(400, 'Email is required for buyer accounts'),
+    );
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockPendingUpsert).not.toHaveBeenCalled();
+  });
+
+  // Phone went optional for everyone else; the pending row cannot hold a buyer
+  // without one, so the service must refuse rather than write an empty string.
+  it('rejects a buyer with no phone before touching the database', async () => {
+    existingAccounts({});
+
+    await expect(startBuyerSignup({ ...buyer, phone: undefined })).rejects.toMatchObject(
+      new ApiError(400, 'Phone is required for buyer accounts'),
     );
     expect(mockFindUnique).not.toHaveBeenCalled();
     expect(mockPendingUpsert).not.toHaveBeenCalled();
