@@ -40,9 +40,7 @@ interface AuthContextType {
    * `email` is only read when WhatsApp couldn't reach the number: the first
    * attempt fails with NEEDS_EMAIL, and the retry carries an address.
    */
-  startPhoneSignIn: (
-    phone: string, intendedRole?: PhoneSignInRole, email?: string,
-  ) => Promise<PhoneChallenge>;
+  startPhoneSignIn: (phone: string, email?: string) => Promise<PhoneChallenge>;
   /** Passwordless step 2 — check the code; `name` is only read for a new account. */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
@@ -55,19 +53,14 @@ interface AuthContextType {
 interface SignupData {
   name: string;
   // At least one of phone and email: whichever is given is what they sign in
-  // with. Buyers need both.
+  // with. No role: the server makes every new account a shopper.
   phone?: string;
   email?: string;
   password: string;
-  role: 'FARMER' | 'BUYER' | 'CONSUMER';
   country?: string;
   currency?: string;
   language?: string;
 }
-
-// The role a phone sign-in should create if the number is new. ADMIN is
-// deliberately absent — the server refuses it too.
-export type PhoneSignInRole = 'CONSUMER' | 'FARMER' | 'BUYER';
 
 /** Which channel actually carried the code. */
 export type OtpChannel = 'whatsapp' | 'sms' | 'email' | 'console';
@@ -219,12 +212,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Phone sign-in (passwordless)
   // -------------------------------------------------------------------------
   // One flow for signing up and signing in: the code proves the number, and
-  // the account is either found or created. This is the only auth path the
-  // consumer UI offers — see components/auth/AuthModal.tsx.
-  async function startPhoneSignIn(
-    phone: string, intendedRole?: PhoneSignInRole, email?: string,
-  ): Promise<PhoneChallenge> {
-    const { data } = await api.post('/auth/phone/start', { phone, intendedRole, email });
+  // the account is either found or created, always as a shopper. The second
+  // lane since password sign-up arrived; see components/auth/AuthModal.tsx.
+  async function startPhoneSignIn(phone: string, email?: string): Promise<PhoneChallenge> {
+    const { data } = await api.post('/auth/phone/start', { phone, email });
     return data.challenge as PhoneChallenge;
   }
 

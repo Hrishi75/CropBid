@@ -13,7 +13,7 @@
 // two of them could be open at once.
 //
 // openAuth() takes the same options as the modal, so a caller can say what the
-// account should be (intendedRole), where to land afterwards (redirectTo), and
+// person is applying to become (intendedRole), where to land afterwards (redirectTo), and
 // why the window appeared (title) — "Sign in to place this order" reads far
 // better than a bare form appearing over a checkout.
 // =============================================================================

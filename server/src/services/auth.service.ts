@@ -190,15 +190,12 @@ async function createUserAndIssueTokens(data: {
   };
 }
 
-export async function signup(input: SignupInput) {
-  // 0. Buyers verify their email first and are created by verifyBuyerSignup,
-  // not here. The controller routes them to the OTP flow before reaching this,
-  // but the rule is repeated so it holds for every caller of the service — an
-  // unverified buyer must never be reachable through a second door.
-  if (input.role === 'BUYER') {
-    throw new ApiError(400, 'Buyer accounts must verify their email address first');
-  }
-
+// Every account made here is a shopper, whatever the caller asks for. Selling
+// and buying at volume are applied for afterwards from inside that account,
+// and a reviewer's approval is the only thing that grants either role
+// (CLAUDE.md section 4). App builds from before that rule still send a role
+// from their old picker; it is not read.
+export async function signup(input: Omit<SignupInput, 'role'>) {
   const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
   const phone = input.phone ? normalizePhone(input.phone) || undefined : undefined;
 
@@ -219,7 +216,7 @@ export async function signup(input: SignupInput) {
     name: input.name,
     email: email || null,
     hashedPassword,
-    role: input.role,
+    role: 'CONSUMER',
     phone: phone ?? null,
     country: input.country,
     currency: input.currency,
@@ -1356,24 +1353,19 @@ export async function completeBuyerOnboarding(userId: string, input: BuyerOnboar
 }
 
 // ===========================================================================
-// PHONE SIGN-IN — the passwordless front door
+// PHONE SIGN-IN — passwordless, the second lane
 // ===========================================================================
 // One flow covers signing up and signing in, because to the person typing
 // their number there is no difference: the code proves the number, and the
-// account is either found or created. This is the ONLY auth path the consumer
-// UI offers, and the partner flow uses it too (with an intendedRole) so a
-// password is never asked for anywhere.
+// account is either found or created. It was the only way in until
+// 2026-09-18, when password sign-up became the front door. It stays for
+// accounts that have no password, and as the way back in for a phone-only
+// account that has forgotten its password.
 //
-// Passwords are not gone from the codebase: accounts that already have one
-// (admins created by prisma/createAdmin.ts, anyone who signed up before this)
-// can still use /auth/login. New accounts made here simply have none.
-
-// Roles someone may claim for themselves. ADMIN is absent on purpose and must
-// stay that way — it is granted by running createAdmin.ts against the database,
-// never by anything reachable from the internet. FARMER and BUYER are safe to
-// self-assign because both land behind the partner approval gate.
-const SELF_ASSIGNABLE_ROLES = ['CONSUMER', 'FARMER', 'BUYER'] as const;
-export type SelfAssignableRole = (typeof SELF_ASSIGNABLE_ROLES)[number];
+// A new account made here is a shopper, like one made by signup(). It used to
+// take an intendedRole from the partner door and mint a FARMER or BUYER on the
+// spot, before anyone had reviewed them. Approval is the only thing that grants
+// either role now, so there is nothing for a caller to choose.
 
 export async function pruneExpiredPhoneChallenges(): Promise<number> {
   const { count } = await prisma.phoneChallenge.deleteMany({
@@ -1387,7 +1379,6 @@ export async function pruneExpiredPhoneChallenges(): Promise<number> {
 // ---------------------------------------------------------------------------
 export async function startPhoneSignIn(input: {
   phone: string;
-  intendedRole?: SelfAssignableRole;
   /** Where to send the code if WhatsApp cannot reach the number. */
   email?: string;
 }) {
@@ -1396,9 +1387,9 @@ export async function startPhoneSignIn(input: {
     throw new ApiError(400, 'Enter a valid phone number');
   }
 
-  const intendedRole = SELF_ASSIGNABLE_ROLES.includes(input.intendedRole as SelfAssignableRole)
-    ? (input.intendedRole as SelfAssignableRole)
-    : 'CONSUMER';
+  // The column predates the shopper-first rule and is kept only so the row
+  // still says what it will create.
+  const intendedRole = 'CONSUMER';
 
   // A suspended account must not be able to pull a fresh code — the number is
   // checked here rather than at verification so the block is immediate.
@@ -1593,7 +1584,9 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
         // Non-null: the guard above rejects a new account without one.
         name: name!,
         phone: challenge.phone,
-        role: challenge.intendedRole,
+        // Not challenge.intendedRole: a row written before the shopper-first
+        // rule can still hold FARMER or BUYER for the few minutes it lives.
+        role: 'CONSUMER',
         country: 'India',
       },
       include: { farmerProfile: true, buyerProfile: true },

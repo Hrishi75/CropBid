@@ -21,8 +21,9 @@
 // to a product that is India only. The server makes every account India and
 // rupees when the request names neither.
 //
-// A shopper never gets the buyer's emailed-code step: the server only parks a
-// BUYER signup, so signUp() always resolves 'created' from here.
+// No role is sent. The server makes every new account a shopper, and it never
+// asks one for the old buyer's emailed code, so signUp() always resolves
+// 'created' from here.
 
 import React, { useMemo, useState } from 'react';
 import {
@@ -107,8 +108,7 @@ export default function SignupScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      // Not a choice, see the header: every account starts as a shopper.
-      await signUp({ name: name.trim(), ...parsedContact, password, role: 'CONSUMER' });
+      await signUp({ name: name.trim(), ...parsedContact, password });
     } catch (e) {
       setError(errorMessage(e, 'Signup failed'));
     } finally {

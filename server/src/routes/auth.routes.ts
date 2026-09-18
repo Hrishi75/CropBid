@@ -40,11 +40,12 @@ import {
 const router = Router();
 
 // Public routes (no auth required)
-// Signup. Farmers and consumers are created outright; buyers get a 202 and an
-// emailed code, then finish at /signup/verify. All three ride the strict
-// authLimiter mounted on /api/auth in app.ts, which keys on (ip, account) — so
-// guessing a code and requesting codes are both capped per address, not just
-// per IP.
+// Signup. Every account is created outright, as a shopper. /signup/verify and
+// /signup/resend belong to the old buyer path, which emailed a code first; no
+// new signup reaches it, so they only finish ones already in flight. All three
+// ride the strict authLimiter mounted on /api/auth in app.ts, which keys on
+// (ip, account), so guessing a code and requesting codes are both capped per
+// address, not just per IP.
 router.post('/signup', signupHandler);
 router.post('/signup/verify', verifySignupHandler);
 router.post('/signup/resend', resendSignupOtpHandler);
@@ -83,9 +84,9 @@ router.delete('/me', authenticate, deleteAccountHandler);
 // shopper could not apply at all.
 //
 // FARMER/BUYER stay allowed for resubmission after a reviewer sends an
-// application back (NEEDS_INFO), and for anyone who signed up through the
-// logged-out partner door. Approval is still the only thing that grants the
-// role: see reviewPartnerApplication in admin.service.ts.
+// application back (NEEDS_INFO), and for accounts made before sign-up always
+// created a shopper. Approval is the only thing that grants the role: see
+// reviewPartnerApplication in admin.service.ts.
 router.post('/onboarding/farmer', authenticate, requireRole('CONSUMER', 'FARMER'), farmerOnboardingHandler);
 router.post('/onboarding/buyer', authenticate, requireRole('CONSUMER', 'BUYER'), buyerOnboardingHandler);
 

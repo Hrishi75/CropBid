@@ -110,7 +110,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Do I need an email address?',
-        a: 'Not to buy or to sell as a farmer. You can sign up with a phone number instead, because many farmers do not have an email address. Business buyers do need an email, because that is where their application and order paperwork goes. Without an email we cannot send you a password-reset link, so if you forget your password, sign in with a code sent to your phone instead.',
+        a: 'No. You can sign up with a phone number instead, because many farmers do not have an email address. Without an email we cannot send you a password-reset link, so if you forget your password, sign in with a code sent to your phone instead.',
       },
       {
         q: 'How do I delete my account and what happens to my data?',

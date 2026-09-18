@@ -115,9 +115,8 @@ export function PrivacyPolicyPage() {
         <Section title="What we collect">
           <p>
             <strong>Account details.</strong> Your name, the email address or phone number you
-            signed up with, and a password if you set one. Farmers and households can use either one, since
-            many farmers do not have an email address. Business buyers give both, because email
-            is where their application and order paperwork goes. Your password is stored
+            signed up with, and a password if you set one. Either one is enough, since many
+            farmers do not have an email address. Your password is stored
             only as a bcrypt hash; nobody at CropBid can read it. We also hold the sign-in
             tokens that keep you logged in, and, briefly, a hashed one-time code when you sign
             in by phone or reset a password.

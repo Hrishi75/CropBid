@@ -12,8 +12,13 @@
 //
 //   Sign in (the default)  email or phone, and the password they chose
 //   Create an account      name, email or phone, password, confirm password.
-//                          No code: the account is made on the spot, as a
-//                          shopper, and they are signed in.
+//                          No code: the account is made on the spot and they
+//                          are signed in.
+//
+// Every lane makes a new account a SHOPPER, the partner doors included. The
+// server does not take a role at all. Someone who came in to apply is sent to
+// the application form once their account exists, and approval is what makes
+// them a partner.
 //   One-time code          phone → a 6-digit code over WhatsApp → signed in.
 //                          Kept because accounts made through it before
 //                          sign-up existed have no password and no other way
@@ -43,7 +48,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import type { OtpChannel, PhoneChallenge, PhoneSignInRole } from '../../context/AuthContext';
+import type { OtpChannel, PhoneChallenge } from '../../context/AuthContext';
 import type { User } from '../../types';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -57,11 +62,12 @@ const RESEND_COOLDOWN_SECONDS = 30;
 
 export interface AuthModalOptions {
   /**
-   * Set by the partner/business doors. The code lane creates this role for a
-   * new number. Create-an-account always makes a shopper and then opens the
-   * application form, because approval is what grants the role.
+   * What they are applying to become, set by the partner and business doors.
+   * It never decides the account's role: every new account is a shopper, and
+   * a reviewer's approval is what grants the role. It decides where a NEW
+   * account goes next, which is the application form.
    */
-  intendedRole?: PhoneSignInRole;
+  intendedRole?: 'CONSUMER' | 'FARMER' | 'BUYER';
   /** Where to go after a successful sign-in. Defaults to staying put. */
   redirectTo?: string;
   /** Headline override for the lane the window opens on, saying why it opened. */
@@ -233,9 +239,14 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // brand-new partner has an application to fill in; a partner mid-review has
   // a status page. Everyone else stays exactly where they were, which is the
   // whole reason this is a modal and not a page.
-  function routeAfterAuth(user: User) {
-    if (isPendingPartner(user)) navigate('/partner/status');
-    else if ((user.role === 'FARMER' || user.role === 'BUYER') && !user.farmerProfile && !user.buyerProfile) navigate('/onboarding');
+  //
+  // `created` covers the partner doors: a brand-new account there is a shopper
+  // like every other, and the application is the next thing to fill in. The
+  // subtype they clicked is already parked for that form to pick up.
+  function routeAfterAuth(user: User | null, created: boolean) {
+    if (user && isPendingPartner(user)) navigate('/partner/status');
+    else if (user && (user.role === 'FARMER' || user.role === 'BUYER') && !user.farmerProfile && !user.buyerProfile) navigate('/onboarding');
+    else if (created && intendedRole && intendedRole !== 'CONSUMER') navigate('/onboarding');
     else if (redirectTo) navigate(redirectTo);
   }
 
@@ -249,7 +260,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       if (attemptRef.current !== attempt) return; // dialog moved on without us
       toast.success('Welcome back');
       onClose();
-      routeAfterAuth(user);
+      routeAfterAuth(user, false);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
       // Stays in the dialog: a wrong password is a retype, not a dead end.
@@ -277,15 +288,12 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined); setErrorField(undefined);
     try {
-      await signup({ name: name.trim(), ...contact, password, role: 'CONSUMER' });
+      await signup({ name: name.trim(), ...contact, password });
       if (attemptRef.current !== attempt) return;
       toast.success(`Welcome to CropBid, ${name.trim().split(' ')[0]}`);
       onClose();
-      // Came in through a partner door: the account they just made is a
-      // shopper's, and the application is the next thing to fill in. The
-      // subtype they clicked is already parked for that form to pick up.
-      if (intendedRole && intendedRole !== 'CONSUMER') navigate('/onboarding');
-      else if (redirectTo) navigate(redirectTo);
+      // signup() hands back no user; a brand-new shopper needs none to route.
+      routeAfterAuth(null, true);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
       // A taken email or number is about the contact box; anything else is
@@ -329,9 +337,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     if (!emailValid) { setError('Enter a valid email address'); return; }
     setSending(true); setError(undefined);
     try {
-      const ch = await startPhoneSignIn(
-        phone.trim(), intendedRole, needsEmail ? email.trim() : undefined,
-      );
+      const ch = await startPhoneSignIn(phone.trim(), needsEmail ? email.trim() : undefined);
       setChallenge(ch);
       setNeedsEmail(false);
       setCooldown(RESEND_COOLDOWN_SECONDS);
@@ -364,7 +370,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       if (attemptRef.current !== attempt) return;
       toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
       onClose();
-      routeAfterAuth(user);
+      routeAfterAuth(user, created);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
       const message = err.response?.data?.message || 'Could not verify that code';

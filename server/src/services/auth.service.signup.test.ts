@@ -1,8 +1,8 @@
 // =============================================================================
 // auth.service signup tests — duplicate phone/email handling
 // =============================================================================
-// Phone is the primary identifier (required, unique); email is optional but
-// also unique when present. Two signups for the same phone (or email) can both
+// An account signs up with an email, a phone, or both; each is unique when
+// present. Two signups for the same phone (or email) can both
 // pass the findUnique pre-check; the unique index decides the race. Both the
 // pre-check loser and the race loser must see the same 409, never a raw Prisma
 // error surfacing as a 500.
@@ -170,7 +170,7 @@ describe('signup', () => {
     existingAccounts({ phone: true }); // would collide IF a phone were checked
     mockCreate.mockResolvedValue(createdUser);
 
-    const result = await signup({ ...input, phone: undefined, role: 'CONSUMER' });
+    const result = await signup({ ...input, phone: undefined });
 
     expect(result.accessToken).toBeTruthy();
     expect(mockFindUnique).not.toHaveBeenCalled();
@@ -183,7 +183,7 @@ describe('signup', () => {
 
   it('refuses an account with neither an email nor a phone', async () => {
     await expect(
-      signup({ ...input, phone: undefined, email: undefined, role: 'CONSUMER' }),
+      signup({ ...input, phone: undefined, email: undefined }),
     ).rejects.toMatchObject(new ApiError(400, 'Enter an email address or a phone number'));
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -201,32 +201,25 @@ describe('signup', () => {
   });
 });
 
-// Buyers no longer come through signup() at all — they go through
-// startBuyerSignup and are created once the emailed code comes back. The rule
-// is enforced in the service, not just at the controller, so an unverified
-// buyer cannot be created through a second door.
-describe('signup buyer rejection', () => {
-  const buyer = { ...input, role: 'BUYER' as const };
+// Every account signup() makes is a shopper. App builds from before that rule
+// still send FARMER or BUYER from their old role picker, and neither may come
+// out as anything but CONSUMER: a partner role is granted by a reviewer's
+// approval and nothing else. BUYER used to be refused here instead, because it
+// had its own emailed-code path; that path is no longer reachable.
+describe('signup always makes a shopper', () => {
+  for (const role of ['FARMER', 'BUYER'] as const) {
+    it(`creates a CONSUMER when an old client asks for ${role}`, async () => {
+      existingAccounts({});
+      mockCreate.mockResolvedValue(createdUser);
+      const oldClient = { ...input, role };
 
-  it('refuses to create a buyer directly, before touching the database', async () => {
-    existingAccounts({});
+      await signup(oldClient);
 
-    await expect(signup(buyer)).rejects.toMatchObject(
-      new ApiError(400, 'Buyer accounts must verify their email address first'),
-    );
-    expect(mockFindUnique).not.toHaveBeenCalled();
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  it('refuses even when the buyer supplied a perfectly good email', async () => {
-    existingAccounts({});
-    mockCreate.mockResolvedValue(createdUser);
-
-    await expect(signup({ ...buyer, email: 'buyer@cropbid.test' })).rejects.toMatchObject(
-      new ApiError(400, 'Buyer accounts must verify their email address first'),
-    );
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ role: 'CONSUMER' }) }),
+      );
+    });
+  }
 });
 
 // Buyers are the one role that cannot be phone-only: the email is where the

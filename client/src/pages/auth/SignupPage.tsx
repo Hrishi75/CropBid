@@ -15,7 +15,6 @@
 import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthModal } from '../../context/AuthModalContext';
-import type { PhoneSignInRole } from '../../context/AuthContext';
 import { AuthHandoffPanel } from '../../components/auth/AuthHandoffPanel';
 
 // OnboardingPage reads this to preselect the application subtype. Session-
@@ -55,7 +54,7 @@ export function SignupPage() {
 
   useEffect(() => {
     const isPartner = params.get('as') === 'partner';
-    const role: PhoneSignInRole = params.get('role') === 'BUYER' ? 'BUYER'
+    const role: 'CONSUMER' | 'FARMER' | 'BUYER' = params.get('role') === 'BUYER' ? 'BUYER'
       : params.get('role') === 'FARMER' ? 'FARMER'
       : 'CONSUMER';
 
