@@ -86,6 +86,14 @@ export interface RetailOrderInput {
    * rather than charged an amount nobody saw.
    */
   deliveryFee?: number;
+  /**
+   * No delivery fee on this order, whatever it comes to. Set only by the
+   * one-lot direct-purchase path, for clients that predate fees entirely:
+   * their bill says delivery is free, they cannot send what they were shown,
+   * so the guard above cannot protect them. Charging them anyway would be a
+   * fee nobody displayed. See the note on createDirectPurchase.
+   */
+  waiveDeliveryFee?: boolean;
 }
 
 // What every caller gets back, replay or not. A retry has to be
@@ -224,7 +232,7 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
   // Summed in the order the lines arrived, then rounded once: the clients sum
   // the same products in the same order, so both sides land on the same paisa.
   const itemsTotal = toPaise(priced.reduce((sum, p) => sum + p.price * p.line.quantity, 0));
-  const deliveryFee = deliveryFeeFor(itemsTotal);
+  const deliveryFee = input.waiveDeliveryFee ? 0 : deliveryFeeFor(itemsTotal);
   if (input.deliveryFee !== undefined && input.deliveryFee !== deliveryFee) {
     throw new ApiError(
       409,
@@ -339,9 +347,16 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
 // =============================================================================
 // POST /bids/direct-purchase buys a single lot and answers with its Bid. App
 // builds from before shop orders still call it once per lot, so it stays, as a
-// one-item shop order: the same claim, the same fee rule, the same payment
-// path. What it cannot do is add a second item to that order, so a pre-update
-// app ordering two things from one shop gets two orders.
+// one-item shop order: the same claim and the same payment path. What it cannot
+// do is add a second item to that order, so a pre-update app ordering two things
+// from one shop gets two orders.
+//
+// AND IT CARRIES NO DELIVERY FEE. Those builds show "Delivery: Free" on the
+// bill and have no way to send back what they were shown, so the mismatch guard
+// cannot protect them: charging ₹30 here would be a fee the shopper was never
+// told about. The old contract is honoured instead, and it heals as people
+// update. The cost is that this endpoint is a way to avoid the fee, which is
+// accepted: it buys one lot at a time and nothing current calls it.
 // =============================================================================
 
 export interface DirectPurchaseInput {
@@ -383,6 +398,7 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
     }],
     deliveryAddress: input.deliveryAddress,
     contactPhone: input.contactPhone,
+    waiveDeliveryFee: true,
   });
 
   const bid = await prisma.bid.findUniqueOrThrow({

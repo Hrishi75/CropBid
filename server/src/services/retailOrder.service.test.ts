@@ -427,9 +427,17 @@ describe('createDirectPurchase — without a key', () => {
     );
   });
 
-  // The ₹150 floor is gone. A one-lot order under ₹200 is taken, with a fee.
-  it('takes a small order and charges it delivery', async () => {
+  // The ₹150 floor is gone, so a one-lot order under ₹200 is taken. It carries
+  // NO delivery fee: these clients show "Delivery: Free" and cannot send back
+  // what they were shown, so charging them would be a fee nobody displayed.
+  it('takes a small order, and charges the old clients no delivery', async () => {
     await expect(createDirectPurchase(CONSUMER, input({ quantity: 1 }))).resolves.toBeDefined();
+    expect(createdOrder()).toMatchObject({ itemsTotal: 100, deliveryFee: 0, totalAmount: 100 });
+  });
+
+  // The fee lives on the basket endpoint, which every current client uses.
+  it('still charges delivery on the same order placed as a shop order', async () => {
+    await createRetailOrder(CONSUMER, { lines: [{ listingId: 'tomato', quantity: 1 }], ...contact });
     expect(createdOrder()).toMatchObject({ itemsTotal: 100, deliveryFee: 30, totalAmount: 130 });
   });
 });
