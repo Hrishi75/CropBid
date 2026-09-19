@@ -29,11 +29,17 @@ vi.mock('../config', () => ({
 // hoisted, because vi.mock is lifted above every const in this file.
 const { orders, tx } = vi.hoisted(() => ({
   orders: { create: vi.fn() },
-  // The interactive-transaction client capture runs against.
+  // The interactive-transaction client both opening and capturing run against.
+  // Opening one is a transaction too, because looking for an open payment and
+  // creating one has to be atomic (see the lock test below).
   tx: {
-    retailPayment: { updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+    $executeRaw: vi.fn(),
+    retailPayment: {
+      findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn(),
+    },
     retailOrder: { updateMany: vi.fn() },
     transaction: { updateMany: vi.fn() },
+    auditLog: { create: vi.fn() },
   },
 }));
 
@@ -45,16 +51,14 @@ vi.mock('../lib/prisma', () => ({
   prisma: {
     transaction: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
     retailOrder: { findMany: vi.fn() },
-    retailPayment: { findMany: vi.fn(), create: vi.fn(), findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
+    retailPayment: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn() },
     $transaction: vi.fn(),
   },
 }));
 
-vi.mock('./audit.service', () => ({ recordAudit: vi.fn(() => Promise.resolve()) }));
 vi.mock('./notification.helpers', () => ({ notifyAdminsRetailOverpaid: vi.fn(() => Promise.resolve()) }));
 
 import { prisma } from '../lib/prisma';
-import { recordAudit } from './audit.service';
 import { notifyAdminsRetailOverpaid } from './notification.helpers';
 import { createOrder, createRetailPayment, verifyPayment, handleWebhook } from './payment.service';
 
@@ -62,8 +66,8 @@ const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 const txFindUnique = mock(prisma.transaction.findUnique);
 const txUpdate = mock(prisma.transaction.update);
 const ordersFindMany = mock(prisma.retailOrder.findMany);
-const paymentsFindMany = mock(prisma.retailPayment.findMany);
-const paymentCreate = mock(prisma.retailPayment.create);
+const paymentsFindMany = mock(tx.retailPayment.findMany);
+const paymentCreate = mock(tx.retailPayment.create);
 const paymentFindUnique = mock(prisma.retailPayment.findUnique);
 const paymentFindOrThrow = mock(prisma.retailPayment.findUniqueOrThrow);
 const runTransaction = mock(prisma.$transaction);
@@ -110,6 +114,8 @@ beforeEach(() => {
   paymentCreate.mockResolvedValue({});
   paymentFindUnique.mockResolvedValue(BASKET_PAYMENT);
   paymentFindOrThrow.mockResolvedValue(BASKET_PAYMENT);
+  tx.$executeRaw.mockResolvedValue(1);
+  tx.auditLog.create.mockResolvedValue({});
   tx.retailPayment.updateMany.mockResolvedValue({ count: 1 });
   tx.retailPayment.findUniqueOrThrow.mockResolvedValue(BASKET_PAYMENT);
   tx.retailOrder.updateMany.mockResolvedValue({ count: 1 });
@@ -146,6 +152,19 @@ describe('opening a payment for a basket', () => {
     expect(answer).toMatchObject({ retailOrderIds: ['order-a'], transactionId: 'tx-1' });
     // Never a Razorpay order on the lot itself.
     expect(txUpdate).not.toHaveBeenCalled();
+  });
+
+  // Two Pay presses landing together both found nothing and both opened a
+  // payable window, so the shopper could complete both. The lookup and the
+  // creation now share one transaction, which takes a lock on this shopper's
+  // payments first.
+  it('looks and creates under a lock on this shopper', async () => {
+    await createRetailPayment(['order-a', 'order-b'], SHOPPER);
+
+    expect(tx.$executeRaw).toHaveBeenCalled();
+    const lock = tx.$executeRaw.mock.invocationCallOrder[0];
+    expect(lock).toBeLessThan(paymentsFindMany.mock.invocationCallOrder[0]);
+    expect(lock).toBeLessThan(paymentCreate.mock.invocationCallOrder[0]);
   });
 
   it('hands back the open Razorpay order when the same basket is paid again', async () => {
@@ -278,10 +297,15 @@ describe('capturing a basket payment', () => {
     expect(tx.transaction.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { retailOrderId: 'order-b', paymentStatus: 'AWAITING_PAYMENT' },
     }));
-    expect(recordAudit).toHaveBeenCalledWith(expect.objectContaining({
-      action: 'retail_payment.overpaid',
-      metadata: expect.objectContaining({ refundDue: 130, retailOrderIds: ['order-a'] }),
-    }));
+    // Written inside the capture's own transaction, so a lost audit cannot
+    // leave a double charge with no durable trace.
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'retail_payment.overpaid',
+        entityId: 'pay-basket',
+        metadata: expect.objectContaining({ refundDue: 130, retailOrderIds: ['order-a'] }),
+      }),
+    });
     expect(notifyAdminsRetailOverpaid).toHaveBeenCalledWith('Priya', 130, 'INR', 'pay_1', 'pay-basket');
   });
 

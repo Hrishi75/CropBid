@@ -190,7 +190,11 @@ export default function CheckoutScreen() {
   }
 
 
-  if (items.length === 0) return <View style={styles.flex} />;
+  // `placing` matters here, which review caught: a fully successful checkout
+  // empties the basket, and returning early on that would unmount this screen
+  // before the payment window below it ever mounts. The shopper would be left
+  // on a blank screen with orders nobody had asked them to pay for.
+  if (items.length === 0 && !placing) return <View style={styles.flex} />;
 
   const blocked = bill.lines.length - bill.orderable.length;
   // Without the rules there is no honest delivery figure to send, and the

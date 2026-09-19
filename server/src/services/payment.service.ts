@@ -32,7 +32,6 @@ import Razorpay from 'razorpay';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { ApiError } from '../utils/ApiError';
-import { recordAudit } from './audit.service';
 import { notifyAdminsRetailOverpaid } from './notification.helpers';
 
 // Single shared client. Null when keys are not configured so the rest of the app
@@ -159,46 +158,63 @@ export async function createRetailPayment(
     ...(viaTransactionId ? { transactionId: viaTransactionId } : {}),
   });
 
+  // LOOK-THEN-CREATE, UNDER A LOCK ON THIS SHOPPER'S PAYMENTS.
+  //
   // The same set again (the shopper dismissed the modal and pressed Pay again)
-  // gets the same Razorpay order back. A fresh one would leave two open orders
-  // for the same money, and the shopper one tap from paying twice.
-  const open = await prisma.retailPayment.findMany({
-    where: {
-      buyerId: userId,
-      paidAt: null,
-      razorpayOrderId: { not: null },
-      orders: { some: { id: { in: ids } } },
-    },
-    include: { orders: { select: { id: true } } },
-  });
-  const same = open.find((p) =>
-    p.orders.length === ids.length
-    && p.orders.every((o) => ids.includes(o.id))
-    && p.amount === amount);
-  if (same) return answer(same.id, same.razorpayOrderId!);
+  // has to get the same Razorpay order back: a fresh one would leave two open
+  // orders for the same money, and the shopper one tap from paying twice.
+  // Looking and then creating is not atomic on its own, and review caught it:
+  // two Pay presses landing together both find nothing and both open a payable
+  // window. So the whole thing runs inside a transaction that first takes an
+  // advisory lock on this buyer's payments, the same pattern the address book
+  // uses for "exactly one default".
+  //
+  // The Razorpay call sits inside that lock, holding it for a network round
+  // trip. It is per shopper, so the only requests that ever wait on it are that
+  // shopper's own, which is exactly the case being serialised.
+  return prisma.$transaction(async (tx) => {
+    // $executeRaw, not $queryRaw: the function returns void and Prisma cannot
+    // deserialise a void column, so $queryRaw throws on every call.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`retailpay:${userId}`}))`;
 
-  // Razorpay first, then the row, so a failed call to Razorpay leaves nothing
-  // behind: a payment row always has the order it names.
-  const paymentId = randomUUID();
-  const rzp = await client.orders.create({
-    amount: amountInSubunits,
-    currency,
-    receipt: paymentId,
-    notes: { retailPaymentId: paymentId, buyerId: userId },
-  });
+    const open = await tx.retailPayment.findMany({
+      where: {
+        buyerId: userId,
+        paidAt: null,
+        razorpayOrderId: { not: null },
+        orders: { some: { id: { in: ids } } },
+      },
+      include: { orders: { select: { id: true } } },
+    });
+    const same = open.find((p) =>
+      p.orders.length === ids.length
+      && p.orders.every((o) => ids.includes(o.id))
+      && p.amount === amount);
+    if (same) return answer(same.id, same.razorpayOrderId!);
 
-  await prisma.retailPayment.create({
-    data: {
-      id: paymentId,
-      buyerId: userId,
-      amount,
+    // Razorpay first, then the row, so a failed call leaves nothing behind: a
+    // payment row always has the order it names.
+    const paymentId = randomUUID();
+    const rzp = await client.orders.create({
+      amount: amountInSubunits,
       currency,
-      razorpayOrderId: rzp.id,
-      orders: { connect: ids.map((id) => ({ id })) },
-    },
-  });
+      receipt: paymentId,
+      notes: { retailPaymentId: paymentId, buyerId: userId },
+    });
 
-  return answer(paymentId, rzp.id);
+    await tx.retailPayment.create({
+      data: {
+        id: paymentId,
+        buyerId: userId,
+        amount,
+        currency,
+        razorpayOrderId: rzp.id,
+        orders: { connect: ids.map((id) => ({ id })) },
+      },
+    });
+
+    return answer(paymentId, rzp.id);
+  });
 }
 
 // Razorpay signs the handshake as HMAC_SHA256(order_id + "|" + payment_id, secret).
@@ -331,6 +347,12 @@ async function markCaptured(transactionId: string, paymentId: string) {
 // An order can sit in more than one payment. Whichever captures first pays
 // for it; if a later one captures too, its share for that order is money taken
 // twice. It is recorded and the admins are told, because that refund is manual.
+//
+// THE REFUND IS RECORDED INSIDE THE SAME TRANSACTION as the capture, which
+// review caught: written afterwards, a failed audit insert lost the only
+// durable trace while the capture itself stood, and every later callback
+// skipped the branch. The audit row now commits with the payment or neither
+// does. The notification stays best-effort on top of it.
 async function markRetailPaymentCaptured(retailPaymentId: string, razorpayPaymentId: string) {
   const now = new Date();
 
@@ -364,20 +386,32 @@ async function markRetailPaymentCaptured(retailPaymentId: string, razorpayPaymen
         data: { paymentStatus: 'ESCROW', razorpayPaymentId },
       });
     }
-    return { payment, overpaid };
+    const refundDue = Math.round(overpaid.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100;
+    if (overpaid.length > 0) {
+      // Not recordAudit(): that writes through the top-level client and
+      // swallows its own errors, so it could land after this transaction, or
+      // not at all. Written here it stands or falls with the capture.
+      await tx.auditLog.create({
+        data: {
+          actorId: null,
+          actorRole: 'SYSTEM',
+          action: 'retail_payment.overpaid',
+          entityType: 'RetailPayment',
+          entityId: payment.id,
+          metadata: {
+            razorpayPaymentId,
+            refundDue,
+            currency: payment.currency,
+            retailOrderIds: overpaid.map((o) => o.id),
+          },
+        },
+      });
+    }
+    return { payment, overpaid, refundDue };
   });
 
   if (outcome && outcome.overpaid.length > 0) {
-    const { payment, overpaid } = outcome;
-    const refundDue = Math.round(overpaid.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100;
-    await recordAudit({
-      actorId: null,
-      actorRole: 'SYSTEM',
-      action: 'retail_payment.overpaid',
-      entityType: 'RetailPayment',
-      entityId: payment.id,
-      metadata: { razorpayPaymentId, refundDue, currency: payment.currency, retailOrderIds: overpaid.map((o) => o.id) },
-    });
+    const { payment, refundDue } = outcome;
     void notifyAdminsRetailOverpaid(
       payment.buyer.name, refundDue, payment.currency, razorpayPaymentId, payment.id,
     ).catch(() => {});
