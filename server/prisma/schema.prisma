@@ -237,6 +237,8 @@ model User {
   buyerRequirements  BuyerRequirement[] // Demand this buyer has posted
   requirementOffers  RequirementOffer[] // Responses this farmer has sent
   addresses          Address[]
+  retailOrdersPlaced RetailOrder[]      @relation("RetailOrderBuyer") // Shop orders this shopper has placed
+  retailOrdersTaken  RetailOrder[]      @relation("RetailOrderSeller") // Shop orders placed with this seller
 }
 
 // =============================================================================
@@ -775,10 +777,66 @@ model Transaction {
   razorpayOrderId   String? @unique
   razorpayPaymentId String?
 
+  // Retail only: the shop order this lot was bought in (see RetailOrder). A
+  // shop's lots are paid for together, so a Transaction with this set is never
+  // given a Razorpay order of its own; the payment belongs to the RetailOrder.
+  // Null for every trade deal. Restrict, because a line must not lose the
+  // record of what it was paid under.
+  retailOrderId String?
+  retailOrder   RetailOrder? @relation(fields: [retailOrderId], references: [id], onDelete: Restrict)
+
   createdAt DateTime @default(now())
 
   // Logistics
   shipment Shipment?
+
+  @@index([retailOrderId])
+}
+
+// =============================================================================
+// Model 7b: RetailOrder: one shop's share of a household basket
+// =============================================================================
+// A shopper who buys tomatoes, onions and coriander from the same shop gets one
+// delivery from that shop, so that is what they order and what they pay for:
+// one RetailOrder, one payment. Each lot inside it is still its own Bid and
+// Transaction, because stock, escrow release, refunds and the seller's
+// settlement all work per lot, and none of that changes.
+//
+// THE DELIVERY FEE LIVES HERE, NOT ON A TRANSACTION
+// It is charged per trip, and a trip is per shop: under ₹200 of one shop's
+// items the shopper pays ₹30 for the run, and from ₹200 it is free (see
+// RETAIL_DELIVERY in retailOrder.service). CropBid keeps it. It is not part of
+// any lot's price, so it never enters Transaction.totalAmount, the 2% fee basis
+// or what the seller is paid.
+//
+// sellerId and buyerId target User.id, like Transaction.farmerId/buyerId, so an
+// ownership check is a bare comparison rather than a join through the profile.
+model RetailOrder {
+  id String @id @default(uuid())
+
+  buyerId  String
+  buyer    User   @relation("RetailOrderBuyer", fields: [buyerId], references: [id])
+  // Every line's Transaction.farmerId is this. One shop order, one seller.
+  sellerId String
+  seller   User   @relation("RetailOrderSeller", fields: [sellerId], references: [id])
+
+  itemsTotal  Float // Sum of the lots, rounded to paise
+  deliveryFee Float    @default(0) // Kept by CropBid. 0 once itemsTotal reaches the free-delivery threshold
+  totalAmount Float // itemsTotal + deliveryFee: the one amount the shopper pays
+  currency    Currency @default(INR)
+
+  // The shop order's single payment. Unique so one Razorpay order or payment
+  // can never be matched to two shop orders.
+  razorpayOrderId   String?   @unique
+  razorpayPaymentId String?   @unique
+  paidAt            DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([buyerId, createdAt])
 }
 
 // =============================================================================

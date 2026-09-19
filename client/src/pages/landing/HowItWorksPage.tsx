@@ -25,8 +25,9 @@
 //   - "Book a transport partner in-app". Booking became ADMIN-only in #133.
 //     A farmer cannot book, and the seller pays the freight, which this page
 //     did not mention at all.
-//   - "no minimums" for households, next to a server that refuses anything
-//     under MIN_RETAIL_ORDER.
+//   - "no minimums" for households, next to a server that then refused
+//     anything under a ₹150 floor. (The floor has since become a delivery
+//     fee under ₹200 a shop, and this page says so.)
 //   - "16 crops rated & forecast every day". The board carries 30.
 //   - "verifies every lot ourselves" in the mission quote, on the same page as
 //     a Quality section explaining that we do not test lots.
@@ -599,11 +600,12 @@ function BuyDirect() {
             <strong>The small print, up front.</strong> Household delivery runs in
             <strong> Pune and Nagpur</strong> today, and you can only buy from sellers in
             your own city, because a few kilos of vegetables cannot be freighted across the
-            country. Produce is priced by the kilo and sold from 500 g up. Each item in
-            your basket is ordered separately from its seller, and
-            <strong> every one of those orders starts at ₹150</strong>: below that the trip
-            costs more than the order is worth. Signing up takes a name, an email or phone
-            number and a password, and you only need it at checkout.
+            country. Produce is priced by the kilo and sold from 500 g up. Your basket is
+            ordered one shop at a time, because each shop makes its own delivery, and
+            <strong> delivery is free on ₹200 or more from a shop, and ₹30 below that</strong>:
+            a delivery run costs the same whether it carries ₹60 of coriander or ₹600 of
+            groceries. Signing up takes a name, an email or phone number and a password, and
+            you only need it at checkout.
           </p>
         </div>
 
@@ -703,15 +705,15 @@ function Pricing() {
         {/* "No hidden charges" used to sit in the 2% card. It cannot, now that
             freight is billed to the seller: a charge is not hidden only if it
             is written down somewhere the payer reads. */}
-        {/* PER ORDER, and a retail basket becomes one order per lot, so this
-            is per lot too. Not per seller and not per basket: two ₹100 lots
-            from the same seller are two ₹100 orders and both are refused. See
-            the note above MIN_RETAIL_ORDER in bid.service. */}
+        {/* PER SHOP: a retail basket is one order per shop, because each shop is
+            one delivery run. Two ₹120 items from the same shop are one ₹240
+            order and travel free. See RETAIL_DELIVERY in retailOrder.service. */}
         <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
           <strong>What is not in the 2%.</strong> Transport is charged separately and
-          on top, at what the carrier quotes, and it is billed to the seller. Household
-          orders have a ₹150 floor, applied to each item ordered rather than to the
-          basket. Those two are the only other numbers there are.
+          on top, at what the carrier quotes, and it is billed to the seller. Households
+          pay ₹30 for delivery when a shop's items in their order come to less than ₹200,
+          and nothing from ₹200 up; that charge is CropBid's, not the seller's. Those two
+          are the only other numbers there are.
         </p>
       </div>
     </section>

@@ -10,6 +10,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as bidService from '../services/bid.service';
+import { createDirectPurchase as buyOneLot } from '../services/retailOrder.service';
 import { auditFromRequest } from '../services/audit.service';
 
 function paramId(req: Request): string {
@@ -86,7 +87,7 @@ export async function createDirectPurchase(req: Request, res: Response, next: Ne
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
-    const { bid, replayed } = await bidService.createDirectPurchase(req.user!.userId, parsed.data);
+    const { bid, replayed } = await buyOneLot(req.user!.userId, parsed.data);
     await auditFromRequest(req, {
       action: 'bid.direct_purchase',
       entityType: 'Bid',

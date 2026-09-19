@@ -3,17 +3,15 @@
 // =============================================================================
 // The same card on the cart and on the checkout, because the number must not
 // change between the two screens. Every line here is a real line: the money
-// column adds up to the amount the direct-purchase API will charge.
+// column adds up to what the shop orders will charge.
 //
-// WHY DELIVERY AND THE PLATFORM FEE ARE WORDS, NOT ZEROS
-// Neither is charged to the shopper. The seller brings a retail order in on
-// their local round, and CropBid's 2% comes out of the seller's settlement
-// rather than being added on top. A "₹0" against each would read as a
-// placeholder for a fee that lands later; saying who pays it is both shorter
-// and true.
+// DELIVERY IS PER SHOP. Each shop makes its own run: free from ₹200 of that
+// shop's items, ₹30 below. The row is the sum across shops, and says how many
+// are paying so a ₹60 line on a two-shop basket is not a mystery.
 //
-// If a delivery charge is ever levied, it arrives as `deliveryFee` and this
-// card starts showing a number without any other screen having to change.
+// THE PLATFORM FEE IS WORDS, NOT A ZERO. CropBid's 2% comes out of the
+// seller's settlement rather than being added on top, so a "₹0" would read as a
+// placeholder for a fee that lands later. Saying who pays it is shorter and true.
 // =============================================================================
 
 import React from 'react';
@@ -21,16 +19,21 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { money } from '../lib/format';
 import { colors, design, font } from '../theme';
+import type { RetailRules } from '../api/types';
 
 interface Props {
   itemCount: number;
   itemsTotal: number;
-  deliveryFee: number;
-  toPay: number;
+  /** Every shop's delivery fee together. Null when the rules could not be loaded. */
+  deliveryFee: number | null;
+  /** How many shops in this bill pay for delivery. */
+  shopsPayingDelivery: number;
+  toPay: number | null;
   currency: string;
+  rules: RetailRules | null;
   /** Rows the shopper still has in the basket that are not being billed. */
   excludedCount?: number;
-  /** How many separate orders this bill becomes. Omitted on a single-lot bill. */
+  /** How many separate orders this bill becomes: one per shop. */
   orderCount?: number;
 }
 
@@ -44,7 +47,8 @@ function Row({ label, value, muted }: { label: string; value: string; muted?: bo
 }
 
 export function BillDetails({
-  itemCount, itemsTotal, deliveryFee, toPay, currency, excludedCount = 0, orderCount,
+  itemCount, itemsTotal, deliveryFee, shopsPayingDelivery, toPay, currency, rules,
+  excludedCount = 0, orderCount,
 }: Props) {
   return (
     <View style={styles.card}>
@@ -55,15 +59,17 @@ export function BillDetails({
         value={money(itemsTotal, currency)}
       />
       <Row
-        label="Delivery"
-        value={deliveryFee > 0 ? money(deliveryFee, currency) : 'Free'}
+        label={shopsPayingDelivery > 1 ? `Delivery (${shopsPayingDelivery} shops)` : 'Delivery'}
+        value={deliveryFee === null
+          ? 'Could not load'
+          : deliveryFee > 0 ? money(deliveryFee, currency) : 'Free'}
         muted={deliveryFee === 0}
       />
       <Row label="Platform fee" value="Paid by the seller" muted />
 
       <View style={styles.totalRow}>
         <Mono style={styles.totalLabel}>TO PAY</Mono>
-        <Text style={styles.totalValue}>{money(toPay, currency)}</Text>
+        <Text style={styles.totalValue}>{toPay === null ? '—' : money(toPay, currency)}</Text>
       </View>
 
       {excludedCount > 0 ? (
@@ -73,10 +79,17 @@ export function BillDetails({
         </Text>
       ) : null}
 
+      {rules ? (
+        <Text style={styles.note}>
+          Delivery is free on {money(rules.freeDeliveryFrom, currency)} or more from a shop, and{' '}
+          {money(rules.deliveryFee, currency)} per shop below that.
+        </Text>
+      ) : null}
+
       {orderCount != null && orderCount > 1 ? (
         <Text style={styles.note}>
-          Each lot is settled with its own seller, so this becomes {orderCount} orders — one per lot,
-          each tracked separately in Orders.
+          Each shop delivers separately, so this becomes {orderCount} orders: one per shop, each paid
+          for and tracked on its own in Orders.
         </Text>
       ) : null}
 

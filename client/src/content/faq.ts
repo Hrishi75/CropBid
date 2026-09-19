@@ -48,7 +48,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'What is the smallest amount I can buy?',
-        a: 'Half a kilo. Everything on the shop side is priced and sold by the kilogram, and the quantity picker moves in 500 g steps, so you can buy 500 g of chillies without taking on a sack. The quintal and tonne prices you may see elsewhere on CropBid are the wholesale market, which is a different part of the site.',
+        a: 'Half a kilo. Everything on the shop side is priced and sold by the kilogram, and the quantity picker moves in 500 g steps, so you can buy 500 g of chillies without taking on a sack. There is no minimum order: delivery is free on ₹200 or more from a shop, and ₹30 for that shop\u2019s order below ₹200. The quintal and tonne prices you may see elsewhere on CropBid are the wholesale market, which is a different part of the site.',
       },
       {
         q: 'Why does the same vegetable cost different amounts at different shops?',
@@ -88,7 +88,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Does it cost anything to join CropBid?',
-        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. You sign up with your name, an email address or phone number, and a password, and sign in with the same. CropBid is available in English, Hindi and Marathi.',
+        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, an email address or phone number, and a password, and sign in with the same. CropBid is available in English, Hindi and Marathi.',
       },
       {
         q: 'What are live mandi rates and where do they come from?',

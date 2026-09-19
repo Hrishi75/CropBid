@@ -78,14 +78,21 @@ export interface CartItem {
   /** listing.location — the city the produce ships from, and the city rule's input. */
   city: string;
   farmerName: string | null;
+  /**
+   * The seller's profile id (listing.farmerId). The basket is ordered and
+   * delivered one shop at a time, with a delivery fee per shop, so this is what
+   * the cart groups by. Optional because a basket saved before it existed has
+   * none; the live listing fills it in on the next check.
+   */
+  sellerId?: string | null;
   qualityGrade: QualityGrade;
   organic: boolean;
   /** null for a bulk-only crop (cotton, maize), which is stepped by the unit. */
   pack: CartPack | null;
   /**
-   * Reference for the ONE purchase this line intends, sent to
-   * /bids/direct-purchase so a retry after a lost response returns the order
-   * that already exists instead of buying the lot twice.
+   * Reference for the ONE purchase this line intends, sent with the line to
+   * /retail-orders so a retry after a lost response returns the order that
+   * already exists instead of buying the lot twice.
    *
    * It lives on the line, and therefore on disk, on purpose: the case it exists
    * for is a response that never arrived, and the shopper's next move may well
@@ -195,6 +202,7 @@ function rowFrom(listing: Listing, quantity: number, purchaseKey: string): CartI
     currency: listing.currency,
     city: listing.location,
     farmerName: listing.farmer?.user?.name ?? null,
+    sellerId: listing.farmerId,
     qualityGrade: listing.qualityGrade,
     organic: listing.organic,
     pack: packOf(listing),

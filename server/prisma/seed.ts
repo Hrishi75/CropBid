@@ -274,6 +274,7 @@ async function main() {
   await prisma.notification.deleteMany();
   await prisma.negotiation.deleteMany();
   await prisma.transaction.deleteMany();
+  await prisma.retailOrder.deleteMany();
   await prisma.bid.deleteMany();
   await prisma.listing.deleteMany();
   await prisma.agentConfig.deleteMany();

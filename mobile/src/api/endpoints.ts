@@ -15,6 +15,8 @@ import type {
   QualityGrade,
   RequirementFilterOptions,
   RequirementOffer,
+  RetailOrder,
+  RetailRules,
   RetailShop,
   RetailShopDetail,
   SellerType,
@@ -234,15 +236,16 @@ export async function retailCities(): Promise<Array<{ city: string; state: strin
 }
 
 /**
- * The storefront's own rules, chiefly the minimum order value.
+ * The storefront's own rules: free delivery from ₹200 of one shop's items, ₹30
+ * below that.
  *
- * FETCHED, not hardcoded. The server refuses an order under the floor
- * (bid.service `MIN_RETAIL_ORDER`), and a second copy of that number in the app
- * is a copy that eventually disagrees with it. When it does, the shopper is
- * refused at the pay button having been told the basket was fine.
+ * FETCHED, not hardcoded. The server works out the fee on every order
+ * (retailOrder.service `RETAIL_DELIVERY`), and a second copy of those numbers
+ * in the app is a copy that eventually disagrees with it. When it does, the
+ * shopper is charged a fee the basket never showed them.
  */
-export async function retailRules(): Promise<{ minOrderValue: number; currency: string }> {
-  const { data } = await api.get<{ minOrderValue: number; currency: string }>('/browse/retail-rules');
+export async function retailRules(): Promise<RetailRules> {
+  const { data } = await api.get<RetailRules>('/browse/retail-rules');
   return data;
 }
 
@@ -333,23 +336,34 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
 // idempotencyKey identifies the ORDER being intended, not the request. Send the
 // same one on every retry and a purchase that already went through comes back
 // instead of happening twice; see lib/idempotency.ts.
-export async function directPurchase(input: {
-  listingId: string;
-  quantity: number;
-  /**
-   * The unit `quantity` is denominated in. Optional on the wire, but the server
-   * only runs its unit-agreement guard when it is present, so omitting it means
-   * a seller who re-denominates an active listing mid-basket has the order
-   * silently rescaled instead of refused: a number measured in kilograms read
-   * as quintals is a hundredfold order, charged and decremented as such.
-   * Always send it, and send the LIVE unit rather than the cart's snapshot.
-   */
-  unit?: Unit;
+/**
+ * One shop's share of the basket, as one order with one delivery fee.
+ *
+ * `deliveryFee` is the fee the shopper was shown. If a re-price has moved the
+ * shop across ₹200 since, the server refuses rather than charge a different
+ * one. Every line carries its own purchase key, so a retry after a lost
+ * response hands back the order that already exists.
+ */
+export async function placeRetailOrder(input: {
+  lines: {
+    listingId: string;
+    quantity: number;
+    /**
+     * The unit `quantity` is denominated in. Optional on the wire, but the
+     * server only runs its unit-agreement guard when it is present, so
+     * omitting it means a seller who re-denominates an active listing
+     * mid-basket has the order silently rescaled instead of refused: a number
+     * measured in kilograms read as quintals is a hundredfold order. Always
+     * send it, and send the LIVE unit rather than the cart's snapshot.
+     */
+    unit?: Unit;
+    idempotencyKey?: string;
+  }[];
   deliveryAddress?: string;
   contactPhone?: string;
-  idempotencyKey?: string;
-}): Promise<Bid> {
-  const { data } = await api.post<Bid>('/bids/direct-purchase', input);
+  deliveryFee?: number;
+}): Promise<RetailOrder> {
+  const { data } = await api.post<RetailOrder>('/retail-orders', input);
   return data;
 }
 

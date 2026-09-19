@@ -3,30 +3,33 @@
 // =============================================================================
 // The same card on the cart and on the checkout, because the number must not
 // change between the two screens. Every line here is a real line: the money
-// column adds up to the amount the direct-purchase API will charge.
+// column adds up to what the shop orders will charge.
 //
-// WHY DELIVERY AND THE PLATFORM FEE ARE WORDS, NOT ZEROS
-// Neither is charged to the shopper. The grower brings a retail order in on
-// their local round, and CropBid's 2% comes out of the grower's settlement
-// (transaction.service deducts platformFeeAmount from the payout) rather than
-// being added on top. A "₹0" against each would read as a placeholder for a
-// fee that lands later; saying who pays it is both shorter and true.
+// DELIVERY IS PER SHOP. Each shop makes its own run: free from ₹200 of that
+// shop's items, ₹30 below. The row is the sum across shops, and says how many
+// are paying so a ₹60 line on a two-shop basket is not a mystery.
 //
-// If a delivery charge is ever levied, it arrives as `deliveryFee` and this
-// card starts showing a number without any other page having to change.
+// THE PLATFORM FEE IS WORDS, NOT A ZERO. CropBid's 2% comes out of the
+// seller's settlement rather than being added on top, so a "₹0" would read as a
+// placeholder for a fee that lands later. Saying who pays it is shorter and true.
 // =============================================================================
 
 import { formatCurrency } from '../../utils/currency';
+import type { RetailRules } from '../../types';
 
 interface BillDetailsProps {
   itemCount: number;
   itemsTotal: number;
-  deliveryFee: number;
-  toPay: number;
+  /** Every shop's delivery fee together. Null when the rules could not be loaded. */
+  deliveryFee: number | null;
+  /** How many shops in this bill pay for delivery. */
+  shopsPayingDelivery: number;
+  toPay: number | null;
   currency: string;
+  rules: RetailRules | null;
   /** Rows the shopper still has in the basket that are not being billed. */
   excludedCount?: number;
-  /** How many separate orders this bill becomes. Omitted on a single-lot bill. */
+  /** How many separate orders this bill becomes: one per shop. */
   orderCount?: number;
 }
 
@@ -45,8 +48,10 @@ export function BillDetails({
   itemCount,
   itemsTotal,
   deliveryFee,
+  shopsPayingDelivery,
   toPay,
   currency,
+  rules,
   excludedCount = 0,
   orderCount,
 }: BillDetailsProps) {
@@ -59,11 +64,13 @@ export function BillDetails({
         value={formatCurrency(itemsTotal, currency)}
       />
       <Row
-        label="Delivery"
-        value={deliveryFee > 0 ? formatCurrency(deliveryFee, currency) : 'Free'}
+        label={shopsPayingDelivery > 1 ? `Delivery (${shopsPayingDelivery} shops)` : 'Delivery'}
+        value={deliveryFee === null
+          ? 'Could not load'
+          : deliveryFee > 0 ? formatCurrency(deliveryFee, currency) : 'Free'}
         muted={deliveryFee === 0}
       />
-      <Row label="Platform fee" value="Paid by the grower" muted />
+      <Row label="Platform fee" value="Paid by the seller" muted />
 
       <div
         style={{
@@ -73,7 +80,7 @@ export function BillDetails({
       >
         <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>TO PAY</span>
         <span className="cb-mono" style={{ fontSize: 20, fontWeight: 600 }}>
-          {formatCurrency(toPay, currency)}
+          {toPay === null ? '—' : formatCurrency(toPay, currency)}
         </span>
       </div>
 
@@ -84,16 +91,23 @@ export function BillDetails({
         </p>
       )}
 
+      {rules && (
+        <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
+          Delivery is free on {formatCurrency(rules.freeDeliveryFrom, currency)} or more from a
+          shop, and {formatCurrency(rules.deliveryFee, currency)} per shop below that.
+        </p>
+      )}
+
       {orderCount != null && orderCount > 1 && (
         <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
-          Each lot is settled with its own grower, so this becomes {orderCount} orders —
-          one per lot, each tracked separately in Orders.
+          Each shop delivers separately, so this becomes {orderCount} orders: one per shop,
+          each paid for and tracked on its own in Orders.
         </p>
       )}
 
       <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
         You pay after the order is placed. Money is held by CropBid and released to the
-        grower only once you confirm the delivery arrived.
+        seller only once you confirm the delivery arrived.
       </p>
     </div>
   );

@@ -61,6 +61,19 @@ const TRADER_SHIPMENT_SELECT = {
 // settlement breakdown, the payment-released notification and anything else
 // quoting a payout must never disagree about it: two of them did, and the UI
 // was the honest one.
+// The shop order a retail lot belongs to, as a shopper's order screens need
+// it: what the whole shop order costs with its delivery, how many lots share
+// it, and whether it has been paid. The Razorpay ids stay out.
+const RETAIL_ORDER_SUMMARY_SELECT = {
+  id: true,
+  itemsTotal: true,
+  deliveryFee: true,
+  totalAmount: true,
+  currency: true,
+  paidAt: true,
+  _count: { select: { transactions: true } },
+} as const;
+
 export function sellerNetAmount(
   totalAmount: number,
   platformFeeAmount: number,
@@ -77,7 +90,14 @@ export function sellerNetAmount(
 // in the sale rolls back, so does this — a committed sale can never be left
 // without a payable transaction. Defaults to the top-level client for any
 // standalone call.
-export async function createTransaction(bidId: string, client: Prisma.TransactionClient = prisma) {
+//
+// `link.retailOrderId` ties a retail lot to the shop order it was bought in,
+// which is what makes the shop's lots one payment (see RetailOrder).
+export async function createTransaction(
+  bidId: string,
+  client: Prisma.TransactionClient = prisma,
+  link: { retailOrderId?: string } = {},
+) {
   // Check if transaction already exists for this bid
   const existing = await client.transaction.findUnique({
     where: { bidId },
@@ -119,6 +139,7 @@ export async function createTransaction(bidId: string, client: Prisma.Transactio
       // the buyer actually pays (see payment.service.ts). Was 'ESCROW' (simulated).
       paymentStatus: 'AWAITING_PAYMENT',
       deliveryStatus: 'PENDING',
+      retailOrderId: link.retailOrderId ?? null,
     },
     include: {
       // The seller travels with the listing so an order can name the shop it
@@ -171,6 +192,7 @@ export async function getMyTransactions(userId: string, role: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
+      retailOrder: { select: RETAIL_ORDER_SUMMARY_SELECT },
       // The Deliveries page renders shipment state per deal in one request.
       //
       // logisticsPartner is admin-only. CropBid hires the haulier, so the
@@ -221,6 +243,7 @@ export async function getTransaction(transactionId: string, userId: string) {
       farmer: { select: { id: true, name: true, trustScore: true } },
       buyer: { select: { id: true, name: true, trustScore: true, phone: true } },
       bid: true,
+      retailOrder: { select: RETAIL_ORDER_SUMMARY_SELECT },
       // Freight, for the settlement breakdown: the seller pays it, so they
       // need to see the amount alongside the platform fee.
       //

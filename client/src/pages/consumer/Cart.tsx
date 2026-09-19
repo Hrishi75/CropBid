@@ -10,10 +10,11 @@
 //      on screen with the reason, greyed and excluded from the bill, instead of
 //      vanishing or — worse — being billed and then refused at the API.
 //
-//   2. IT SAYS HOW MANY ORDERS THIS IS. One basket is not one order here.
-//      Every lot is a separate grower with a separate escrow settlement, so
-//      four lots means four orders in Orders. Hiding that would make the orders
-//      list look wrong the moment the shopper opened it.
+//   2. IT IS GROUPED BY SHOP. Each shop delivers separately, so each shop is
+//      its own order and pays its own delivery: free from ₹200 of that shop's
+//      items, ₹30 below. Every shop's card says which it is and how much more
+//      would make it free, because "add ₹40 of anything from this shop" is
+//      something a shopper can act on and a basket-wide total is not.
 //
 // The stepper writes straight through to the cart, so quantity changes need no
 // save button and no refetch — the price data is already in hand and only the
@@ -32,11 +33,9 @@ import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { pricePerKg, toKg } from '../../utils/units';
 import { LANES } from '../../utils/delivery';
-import { sellerDisplayName } from '../../utils/partner';
-import type { DeliveryLane } from '../../utils/delivery';
 import { QuantityStepper } from './QuantityStepper';
 import { BillDetails } from './BillDetails';
-import { useCartLines, type CartLine } from './cartLines';
+import { useCartLines, type CartLine, type ShopGroup } from './cartLines';
 
 function CartRow({
   line,
@@ -49,10 +48,6 @@ function CartRow({
 }) {
   const { item, listing, price, problem, repriced } = line;
   const image = item.image || cropImageFor(item.cropName);
-  // Live name wins over the snapshot, exactly as the live price does. A shop
-  // that renamed itself, or a row saved before shop names existed, would
-  // otherwise keep showing a name the shop page no longer uses.
-  const seller = sellerDisplayName(listing?.farmer) ?? item.farmerName;
   // Stock can only be trusted once the live listing has landed; until then the
   // stepper's ceiling is the quantity already chosen, so it never offers more
   // than we know exists. In kilograms, like everything else the shopper sees.
@@ -71,7 +66,6 @@ function CartRow({
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
           {item.cropVariety ? `${item.cropVariety} · ` : ''}
           {item.organic ? 'Organic' : `Grade ${item.qualityGrade}`}
-          {seller ? ` · ${seller}` : ''}
         </div>
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
           {formatCurrency(pricePerKg(price, line.unit), item.currency)}/kg
@@ -82,7 +76,7 @@ function CartRow({
         )}
         {!problem && repriced && (
           <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 4 }}>
-            Price updated by the grower — was {formatCurrency(pricePerKg(item.pricePerUnit, item.unit), item.currency)}/kg.
+            Price updated by the seller. It was {formatCurrency(pricePerKg(item.pricePerUnit, item.unit), item.currency)}/kg.
           </div>
         )}
       </div>
@@ -102,6 +96,21 @@ function CartRow({
   );
 }
 
+// What one shop's delivery comes to, said where the shopper can still do
+// something about it.
+function DeliveryNote({ shop, currency }: { shop: ShopGroup; currency: string }) {
+  if (shop.orderable.length === 0 || shop.deliveryFee === null) return null;
+  if (shop.deliveryFee === 0) {
+    return <span style={{ color: 'var(--cb-forest)' }}>Free delivery</span>;
+  }
+  return (
+    <span style={{ color: 'var(--cb-ember)' }}>
+      {formatCurrency(shop.deliveryFee, currency)} delivery · add {formatCurrency(shop.toFreeDelivery, currency)} more
+      from this shop for free delivery
+    </span>
+  );
+}
+
 export function Cart() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -118,7 +127,7 @@ export function Cart() {
         <div style={{ marginTop: 16 }}>
           <EmptyState
             title="Your cart is empty"
-            description="Add produce from the shop and it collects here — one bill, however many growers it comes from."
+            description="Add produce from the shop and it collects here: one bill, however many shops it comes from."
             actionLabel="Start shopping"
             actionHref="/"
           />
@@ -150,20 +159,25 @@ export function Cart() {
       </div>
 
       <div className="cn-split" style={{ marginTop: 16 }}>
-        {/* Grouped by when it arrives, not by when it was added. A basket
-            spanning both lanes turns up in two deliveries, and a shopper who
-            only finds that out at the door has been misled by the cart. */}
+        {/* Grouped by shop, because each shop is its own delivery and its own
+            delivery fee. Shops arriving today come first; each card says when
+            it arrives, so a basket spanning both lanes reads as two deliveries
+            before the shopper finds that out at the door. */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {(['QUICK', 'NEXT_MORNING'] as DeliveryLane[]).map((laneKey) => {
-            const meta = LANES[laneKey];
-            const rows = bill.lines.filter((l) => l.lane === laneKey);
-            if (rows.length === 0) return null;
+          {bill.shops.map((shop) => {
+            const meta = LANES[shop.lane];
+            const rows = shop.lines;
             return (
-              <div key={laneKey} className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div key={shop.sellerId} className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div className="cn-lane-bar" style={{ ['--lane-color' as string]: meta.color }}>
-                  <strong>{meta.promise}</strong>
+                  <strong>{shop.sellerName ?? 'Seller'} · {meta.promise}</strong>
                   <span>{rows.length} {rows.length === 1 ? 'lot' : 'lots'}</span>
                 </div>
+                {!bill.loading && shop.orderable.length > 0 && (
+                  <div className="cb-tiny" style={{ padding: '8px 16px', borderBottom: '1px solid var(--cb-line)' }}>
+                    <DeliveryNote shop={shop} currency={bill.currency} />
+                  </div>
+                )}
                 {rows.map((line, i) => (
                   <div
                     key={line.item.listingId}
@@ -189,26 +203,36 @@ export function Cart() {
               itemCount={bill.orderable.length}
               itemsTotal={bill.itemsTotal}
               deliveryFee={bill.deliveryFee}
+              shopsPayingDelivery={bill.shopsPayingDelivery}
               toPay={bill.toPay}
               currency={bill.currency}
+              rules={bill.rules}
               excludedCount={blocked}
               orderCount={bill.orderCount}
             />
           )}
 
-          <Button
-            size="lg"
-            style={{ width: '100%' }}
-            disabled={bill.loading || bill.orderable.length === 0}
-            onClick={() => navigate('/checkout')}
-          >
-            {bill.loading
-              ? 'Checking stock…'
-              : bill.orderable.length === 0
-                ? 'Nothing to check out'
-                : `Checkout · ${formatCurrency(bill.toPay, bill.currency)}`}
-            {!bill.loading && bill.orderable.length > 0 && <ArrowIcon />}
-          </Button>
+          {/* Without the rules there is no honest delivery figure, and an order
+              placed on a guess is the unbound charge this exists to prevent. */}
+          {bill.rulesFailed ? (
+            <Button size="lg" variant="ghost" style={{ width: '100%' }} onClick={bill.reload}>
+              Couldn't load delivery charges. Try again
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              style={{ width: '100%' }}
+              disabled={bill.loading || bill.orderable.length === 0}
+              onClick={() => navigate('/checkout')}
+            >
+              {bill.loading
+                ? 'Checking stock…'
+                : bill.orderable.length === 0 || bill.toPay === null
+                  ? 'Nothing to check out'
+                  : `Checkout · ${formatCurrency(bill.toPay, bill.currency)}`}
+              {!bill.loading && bill.orderable.length > 0 && <ArrowIcon />}
+            </Button>
+          )}
 
           <Link to="/" className="cb-btn cb-btn-ghost" style={{ width: '100%', justifyContent: 'center' }}>
             Keep shopping
