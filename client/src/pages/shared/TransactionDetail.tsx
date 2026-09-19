@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
@@ -44,6 +45,9 @@ export function TransactionDetail() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [askCancel, setAskCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     async function fetch() {
@@ -101,6 +105,26 @@ export function TransactionDetail() {
     }
   }
 
+  // A retail order the shop cannot fulfil. It cancels the WHOLE shop order
+  // (one delivery, one fee), puts the stock back and tells the shopper why,
+  // which is why the reason is required rather than optional.
+  async function cancelShopOrder() {
+    const retailOrderId = transaction?.retailOrder?.id;
+    if (!retailOrderId || cancelReason.trim().length === 0) return;
+    setCancelling(true);
+    try {
+      await api.post(`/retail-orders/${retailOrderId}/cancel`, { reason: cancelReason.trim() });
+      const res = await api.get(`/transactions/${id}`);
+      setTransaction(res.data);
+      setAskCancel(false);
+      toast.success('Order cancelled, and the shopper has been told');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not cancel this order');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   async function updateDelivery(status: string) {
     setUpdating(true);
     try {
@@ -149,6 +173,20 @@ export function TransactionDetail() {
     : transaction.paymentStatus === 'ESCROW' ? 1
     : 0;
 
+  // Where the money stands, in one word. A cancelled order is neither due nor
+  // held: either nothing was ever taken, or it is on its way back.
+  const moneyState = transaction.paymentStatus === 'AWAITING_PAYMENT' ? 'due'
+    : transaction.paymentStatus === 'CANCELLED' ? 'not charged'
+      : transaction.paymentStatus === 'REFUNDED' ? 'refunding'
+        : transaction.paymentStatus === 'RELEASED' ? 'released'
+          : 'held';
+
+  // Retail shop orders only: a trade deal has a contract behind it, and
+  // cancelling one is a conversation, not a button.
+  const canCancel = isFarmer
+    && transaction.retailOrder != null
+    && !transaction.retailOrder.cancelledAt
+    && transaction.deliveryStatus === 'PENDING';
   const nextAction = isFarmer && transaction.deliveryStatus === 'PENDING'
     ? { status: 'IN_TRANSIT', label: 'Mark as shipped' }
     : isFarmer && transaction.deliveryStatus === 'IN_TRANSIT'
@@ -170,7 +208,7 @@ export function TransactionDetail() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <span className="cb-chip cb-chip-wheat" style={{ fontSize: 11 }}>● {transaction.paymentStatus}</span>
           <span className="cb-mono" style={{ fontSize: 18, fontWeight: 500 }}>
-            {formatCurrency(transaction.totalAmount, transaction.currency)} {transaction.paymentStatus === 'AWAITING_PAYMENT' ? 'due' : 'held'}
+            {formatCurrency(transaction.totalAmount, transaction.currency)} {moneyState}
           </span>
         </div>
         <h1 className="cb-h3" style={{ fontSize: 22, marginTop: 6 }}>
@@ -209,6 +247,49 @@ export function TransactionDetail() {
               {nextAction.label}
               <ArrowIcon />
             </Button>
+          </div>
+        )}
+
+        {/* A shop that has run out had no way to say so: it could only leave
+            the order sitting. Retail only, and only until it is on the way. */}
+        {canCancel && !askCancel && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
+            <button
+              type="button"
+              className="cb-tiny"
+              onClick={() => setAskCancel(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--cb-ink-3)', textDecoration: 'underline', cursor: 'pointer' }}
+            >
+              Can't fulfil this order?
+            </button>
+          </div>
+        )}
+
+        {canCancel && askCancel && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--cb-line)' }}>
+            <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Cancel this order</div>
+            <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 10 }}>
+              This cancels all {transaction.retailOrder?._count.transactions ?? 1}{' '}
+              {(transaction.retailOrder?._count.transactions ?? 1) === 1 ? 'item' : 'items'} in it,
+              puts the stock back on your shelf and tells the shopper. They see the reason you give.
+            </p>
+            <Input
+              label="Why can't you fulfil it?"
+              placeholder="Sold out this morning"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+              <Button
+                variant="ghost"
+                onClick={cancelShopOrder}
+                loading={cancelling}
+                disabled={cancelReason.trim().length === 0}
+              >
+                Cancel the order
+              </Button>
+              <Button variant="ghost" onClick={() => setAskCancel(false)}>Keep it</Button>
+            </div>
           </div>
         )}
       </div>
@@ -285,7 +366,7 @@ export function TransactionDetail() {
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Payment</div>
           <SpecRow label="Status" value={<span style={{ color: 'var(--cb-wheat)' }}>● {transaction.paymentStatus}</span>} />
-          <SpecRow label={transaction.paymentStatus === 'AWAITING_PAYMENT' ? 'Due' : 'Held'} value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
+          <SpecRow label={moneyState.charAt(0).toUpperCase() + moneyState.slice(1)} value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
           <SpecRow label="Release" value="on delivery confirm" />
           <SpecRow label="Created" value={new Date(transaction.createdAt).toLocaleDateString()} />
           {transaction.razorpayPaymentId && (

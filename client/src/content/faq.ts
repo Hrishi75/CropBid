@@ -55,6 +55,10 @@ export const FAQ_GROUPS: FaqGroup[] = [
         a: 'Because each shop sets its own price on its own stock, exactly as it does on the street. CropBid does not average those into a single price for a product, and you browse by shop rather than by item so you can see the difference and choose. What a shop paid, how fresh the stock is and what it costs them to hold it all show up in that number.',
       },
       {
+        q: 'Can I cancel an order?',
+        a: 'Yes, yourself, until the shop marks it as on the way. Open the order on the website or in the app and cancel it there. It calls off everything you bought from that shop in that order, because it comes as one delivery, and anything you have paid comes back to you including the delivery charge. After the shop has sent it you cannot cancel: the produce has been picked for you. A shop can also cancel before it sends an order if it cannot fulfil it, and has to tell you why.',
+      },
+      {
         q: 'When do I pay, and what if the order never turns up?',
         a: 'You pay after placing the order, and CropBid holds the money rather than passing it straight on. The seller only becomes due their share once you confirm the delivery arrived. If it never arrives, do not confirm it: the money stays held, and you can report the problem to us.',
       },

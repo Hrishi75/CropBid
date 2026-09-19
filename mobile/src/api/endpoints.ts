@@ -344,6 +344,16 @@ export async function incomingBids(status?: string): Promise<Bid[]> {
  * one. Every line carries its own purchase key, so a retry after a lost
  * response hands back the order that already exists.
  */
+/**
+ * Call off a shop order before the shop sends it. Allowed for the shopper who
+ * placed it and for the shop itself, which must say why. It cancels the WHOLE
+ * order, because it is one delivery with one fee.
+ */
+export async function cancelRetailOrder(id: string, reason?: string): Promise<RetailOrder> {
+  const { data } = await api.post<RetailOrder>(`/retail-orders/${id}/cancel`, reason ? { reason } : {});
+  return data;
+}
+
 export async function placeRetailOrder(input: {
   lines: {
     listingId: string;

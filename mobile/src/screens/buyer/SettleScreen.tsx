@@ -29,12 +29,16 @@ const PAYMENT_LABEL: Record<Transaction['paymentStatus'], string> = {
   ESCROW: 'In escrow',
   RELEASED: 'Released',
   REFUNDED: 'Refunded',
+  // Retail only, where a shop order can be called off before dispatch. A trade
+  // deal has a contract behind it and never reaches this state.
+  CANCELLED: 'Cancelled',
 };
 const DELIVERY_LABEL: Record<Transaction['deliveryStatus'], string> = {
   PENDING: 'Awaiting shipment',
   IN_TRANSIT: 'In transit',
   DELIVERED: 'Delivered',
   CONFIRMED: 'Confirmed',
+  CANCELLED: 'Cancelled',
 };
 
 function statusTone(tx: Transaction): 'ember' | 'sage' | 'paper' {

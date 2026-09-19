@@ -282,3 +282,54 @@ export async function notifyAdminsRetailOverpaid(
     ),
   );
 }
+
+// A shop order called off before dispatch. The other side is told: the shop
+// when a shopper cancels, so it stops packing, and the shopper when a shop
+// cannot fulfil, with the reason it gave.
+export async function notifyRetailOrderCancelled(
+  userId: string,
+  cancelledBy: 'shopper' | 'shop',
+  itemCount: number,
+  amount: number,
+  currency: string,
+  reason: string | null,
+  retailOrderId: string,
+) {
+  const items = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+  await createNotification({
+    userId,
+    type: 'RETAIL_ORDER_CANCELLED',
+    title: cancelledBy === 'shopper' ? 'Order cancelled by the shopper' : 'Your order was cancelled',
+    message: cancelledBy === 'shopper'
+      ? `${items}, ${currency} ${amount.toLocaleString('en-IN')}. Nothing to pack.${reason ? ` Reason: ${reason}` : ''}`
+      : `The shop cancelled ${items}, ${currency} ${amount.toLocaleString('en-IN')}.${reason ? ` Reason: ${reason}` : ''}`,
+    data: { retailOrderId },
+  });
+}
+
+// A cancelled order whose money is already held. Releasing it back is a manual
+// bank transfer (CLAUDE.md §6), so a person has to make it.
+export async function notifyAdminsRetailRefundDue(
+  buyerName: string,
+  amount: number,
+  currency: string,
+  retailOrderId: string,
+  reason: string | null,
+) {
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true },
+  });
+
+  await Promise.all(
+    admins.map((admin) =>
+      createNotification({
+        userId: admin.id,
+        type: 'RETAIL_REFUND_DUE',
+        title: `Refund due: ${buyerName} cancelled a paid order`,
+        message: `${currency} ${amount.toLocaleString('en-IN')} is held for an order that is off.${reason ? ` Reason: ${reason}.` : ''} Send it back by hand.`,
+        data: { retailOrderId },
+      }).catch(() => {}),
+    ),
+  );
+}

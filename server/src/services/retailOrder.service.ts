@@ -30,7 +30,11 @@ import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import type { Unit } from '../generated/prisma/enums';
 import { ApiError } from '../utils/ApiError';
-import { notifyDirectPurchase } from './notification.helpers';
+import {
+  notifyAdminsRetailRefundDue,
+  notifyDirectPurchase,
+  notifyRetailOrderCancelled,
+} from './notification.helpers';
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 import { orderContactDefaults } from './bid.service';
@@ -406,4 +410,137 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
     include: DIRECT_PURCHASE_INCLUDE,
   });
   return { bid, replayed };
+}
+
+// =============================================================================
+// CANCEL A SHOP ORDER: called off before the shop sends it
+// =============================================================================
+// WHO. The shopper who placed it, the shop it was placed with, or an admin. A
+// shop has to say why, because it is calling off somebody else's order; the
+// shopper does not owe anyone a reason.
+//
+// UNTIL WHEN. Only while every lot is still PENDING, which is up to the moment
+// the shop marks it on the way. After that the produce has been picked for this
+// order and somebody is out of pocket either way, which is what /terms says.
+//
+// ALL OR NOTHING, ACROSS THE WHOLE SHOP ORDER. It is one delivery with one
+// fee, and half of it is not a thing the rest of the system can price: the fee
+// was worked out on the whole. Every lot goes back on the shelf together.
+//
+// THE MONEY. Nothing was taken from an unpaid order, so its lots end at
+// CANCELLED. A paid one has money held, so its lots go to REFUNDED and the
+// admins are told, because that transfer is made by hand (CLAUDE.md §6). The
+// delivery fee goes back with it: the whole order is off.
+export async function cancelRetailOrder(
+  retailOrderId: string,
+  actor: { userId: string; role: string },
+  reason?: string,
+) {
+  const order = await prisma.retailOrder.findUnique({
+    where: { id: retailOrderId },
+    include: {
+      buyer: { select: { name: true } },
+      transactions: {
+        select: {
+          id: true,
+          listingId: true,
+          deliveryStatus: true,
+          paymentStatus: true,
+          bid: { select: { quantity: true } },
+        },
+      },
+    },
+  });
+
+  if (!order) throw new ApiError(404, 'Order not found');
+
+  const isBuyer = order.buyerId === actor.userId;
+  const isSeller = order.sellerId === actor.userId;
+  if (!isBuyer && !isSeller && actor.role !== 'ADMIN') {
+    throw new ApiError(403, 'You are not part of this order');
+  }
+
+  // Cancelling twice is not an error: the second press of a button, or a
+  // retried request, gets the cancelled order back.
+  if (order.cancelledAt) return loadRetailOrder(order.id);
+
+  if (order.transactions.some((t) => t.deliveryStatus !== 'PENDING')) {
+    throw new ApiError(409, isBuyer
+      ? 'This order is already on its way, so it cannot be cancelled. Tell us if something is wrong with it when it arrives.'
+      : 'This order is already on its way, so it cannot be cancelled.');
+  }
+
+  const note = reason?.trim() || null;
+  if (isSeller && !note) {
+    throw new ApiError(400, 'Say why you cannot fulfil this order, so the shopper is told something.');
+  }
+
+  const wasPaid = order.transactions.some((t) => t.paymentStatus === 'ESCROW');
+
+  const cancelled = await prisma.$transaction(async (tx) => {
+    // Conditional, so two cancels racing each other produce one cancellation
+    // and one no-op rather than returning the stock twice.
+    const claim = await tx.retailOrder.updateMany({
+      where: { id: order.id, cancelledAt: null },
+      data: { cancelledAt: new Date(), cancelledById: actor.userId, cancelReason: note },
+    });
+    if (claim.count === 0) return false;
+
+    // Listing-id order, the same sequence the purchase claimed them in, so a
+    // cancel and a purchase touching the same lots cannot deadlock.
+    const lots = [...order.transactions].sort((a, b) => a.listingId.localeCompare(b.listingId));
+
+    for (const lot of lots) {
+      // PENDING is checked again inside the transaction: the shop may have
+      // pressed "on the way" between the read above and here, and that press
+      // wins. Failing here rolls the whole cancellation back.
+      const moved = await tx.transaction.updateMany({
+        where: { id: lot.id, deliveryStatus: 'PENDING' },
+        data: {
+          deliveryStatus: 'CANCELLED',
+          // Money held goes back to the shopper; money never taken is simply
+          // off. Neither is a payout, so RELEASED never appears here.
+          paymentStatus: lot.paymentStatus === 'ESCROW' ? 'REFUNDED' : 'CANCELLED',
+        },
+      });
+      if (moved.count === 0) {
+        throw new ApiError(409, 'This order is already on its way, so it cannot be cancelled.');
+      }
+
+      // Back on the shelf, and back on sale if selling this order is what
+      // emptied it. A lot marked SOLD by a wholesale deal has no stock to
+      // return here, so the same condition leaves it alone.
+      await tx.listing.update({
+        where: { id: lot.listingId },
+        data: { remainingQuantity: { increment: lot.bid.quantity } },
+      });
+      await tx.listing.updateMany({
+        where: { id: lot.listingId, status: 'SOLD' },
+        data: { status: 'ACTIVE' },
+      });
+    }
+    return true;
+  });
+
+  if (!cancelled) return loadRetailOrder(order.id);
+
+  // Best-effort, after the commit. The cancellation is real whatever happens.
+  const tellTheOtherSide = isBuyer ? order.sellerId : order.buyerId;
+  notifyRetailOrderCancelled(
+    tellTheOtherSide,
+    isBuyer ? 'shopper' : 'shop',
+    order.transactions.length,
+    order.totalAmount,
+    order.currency,
+    note,
+    order.id,
+  ).catch(() => {});
+
+  if (wasPaid) {
+    void notifyAdminsRetailRefundDue(
+      order.buyer.name, order.totalAmount, order.currency, order.id, note,
+    ).catch(() => {});
+  }
+
+  return loadRetailOrder(order.id);
 }

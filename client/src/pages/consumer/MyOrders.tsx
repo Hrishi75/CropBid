@@ -144,10 +144,16 @@ function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: 
 // Several items from one shop: one order, one payment, one delivery fee. The
 // header carries the payment; each item keeps its own row and page, because
 // delivery is still confirmed item by item.
-function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; items: Transaction[] }) {
+function ShopOrderCard({ shopOrder, items, viewerId }: {
+  shopOrder: RetailOrderSummary;
+  items: Transaction[];
+  /** Whose list this is, so a cancellation can say who called it off. */
+  viewerId?: string;
+}) {
   const [first] = items;
   const seller = sellerDisplayName(first.listing?.farmer) ?? 'Shop order';
-  const awaitingPayment = items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT');
+  const cancelled = shopOrder.cancelledAt != null;
+  const awaitingPayment = !cancelled && items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT');
 
   return (
     <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -168,6 +174,13 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
           </div>
           {awaitingPayment && (
             <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 4 }}>● Payment due</div>
+          )}
+          {cancelled && (
+            <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 4 }}>
+              ● Cancelled{shopOrder.cancelledById && shopOrder.cancelledById !== viewerId ? ' by the shop' : ''}
+              {shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}
+              {items.some((o) => o.paymentStatus === 'REFUNDED') ? ' · refund on its way' : ''}
+            </div>
           )}
         </div>
         <div className="cn-order-amt">
@@ -203,8 +216,11 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
               <div style={{ fontSize: 14 }}>{o.listing?.cropName}</div>
               <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
                 {kg != null ? formatWeight(kg) : ''}
-                {/* Payment is the shop order's, said once in the header. */}
-                {!awaitingPayment && <span style={{ color: stage.color }}>{kg != null ? ' · ' : ''}{stage.label}</span>}
+                {/* Payment and cancellation are the shop order's, said once in
+                    the header; an item only carries its own delivery stage. */}
+                {!awaitingPayment && !cancelled && (
+                  <span style={{ color: stage.color }}>{kg != null ? ' · ' : ''}{stage.label}</span>
+                )}
               </div>
             </div>
             <div className="cb-mono cb-tiny">{formatCurrency(o.totalAmount, o.currency)}</div>
@@ -219,7 +235,8 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
 // existed have none, and are paid from their own page as they always were.
 function unpaidShopOrders(groups: OrderGroup[]): RetailOrderSummary[] {
   return groups
-    .filter((g) => g.shopOrder && !g.shopOrder.paidAt && g.items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT'))
+    .filter((g) => g.shopOrder && !g.shopOrder.paidAt && !g.shopOrder.cancelledAt
+      && g.items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT'))
     .map((g) => g.shopOrder!);
 }
 
@@ -304,7 +321,7 @@ export function MyOrders() {
       ) : (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {groups.map((g) => (g.shopOrder && g.items.length > 1
-            ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} />
+            ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} viewerId={user?.id} />
             : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} />))}
         </div>
       )}

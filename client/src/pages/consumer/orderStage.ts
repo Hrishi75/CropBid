@@ -19,11 +19,24 @@ export interface OrderStage {
   label: string;
   color: string;
   // What the shopper can do next, if anything. Null means "wait" — the ball is
-  // with the grower or with CropBid.
+  // with the seller or with CropBid.
   action: string | null;
 }
 
 export function ORDER_STAGE(order: Transaction): OrderStage {
+  // Cancelled wins over everything: an order nobody is sending has no delivery
+  // stage worth reading, and its payment line is either "never taken" or
+  // "coming back".
+  if (order.deliveryStatus === 'CANCELLED') {
+    return {
+      label: order.paymentStatus === 'REFUNDED' ? 'Cancelled, refund on its way' : 'Cancelled',
+      color: 'var(--cb-ink-3)',
+      action: null,
+    };
+  }
+  if (order.paymentStatus === 'CANCELLED') {
+    return { label: 'Cancelled', color: 'var(--cb-ink-3)', action: null };
+  }
   if (order.paymentStatus === 'REFUNDED') {
     return { label: 'Refunded', color: 'var(--cb-ink-3)', action: null };
   }

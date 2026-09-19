@@ -227,6 +227,12 @@ describe('opening a payment for a basket', () => {
     expect(orders.create).not.toHaveBeenCalled();
   });
 
+  it('refuses an order that has been cancelled', async () => {
+    ordersFindMany.mockResolvedValue([SHOP_A, { ...SHOP_B, cancelledAt: new Date() }]);
+    await expect(createRetailPayment(['order-a', 'order-b'], SHOPPER)).rejects.toMatchObject({ statusCode: 400 });
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
   it('refuses when any lot has moved on from awaiting payment', async () => {
     ordersFindMany.mockResolvedValue([SHOP_A, { ...SHOP_B, transactions: [{ paymentStatus: 'REFUNDED' }] }]);
     await expect(createRetailPayment(['order-a', 'order-b'], SHOPPER)).rejects.toMatchObject({ statusCode: 400 });
@@ -257,8 +263,10 @@ describe('capturing a basket payment', () => {
       data: expect.objectContaining({ razorpayPaymentId: 'pay_1' }),
     });
     for (const id of ['order-a', 'order-b']) {
+      // cancelledAt null as well: an order called off while this payment was
+      // open is not paid by it, it is money owed back (see the overpaid test).
       expect(tx.retailOrder.updateMany).toHaveBeenCalledWith({
-        where: { id, paidAt: null },
+        where: { id, paidAt: null, cancelledAt: null },
         data: expect.objectContaining({ paidAt: expect.any(Date) }),
       });
       expect(tx.transaction.updateMany).toHaveBeenCalledWith({
@@ -286,6 +294,18 @@ describe('capturing a basket payment', () => {
   // Shop A was paid on its own in another tab while the basket's checkout was
   // still open, and then the basket was paid too. Shop A must not be paid
   // twice over: its ₹130 is owed back, and a person has to send it.
+  it('does not pay an order cancelled while this payment was open', async () => {
+    // The shopper cancelled shop A, then paid the basket window that was still
+    // open. Its ₹130 was taken and is owed back.
+    tx.retailOrder.updateMany.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      ({ count: where.id === 'order-a' ? 0 : 1 }));
+
+    await verifyPayment(SHOPPER, 'order_rzp_1', 'pay_1', sign('order_rzp_1', 'pay_1'));
+
+    expect(tx.transaction.updateMany).toHaveBeenCalledTimes(1);
+    expect(notifyAdminsRetailOverpaid).toHaveBeenCalledWith('Priya', 130, 'INR', 'pay_1', 'pay-basket');
+  });
+
   it('pays only what is still unpaid, and flags the rest as owed back', async () => {
     tx.retailOrder.updateMany.mockImplementation(async ({ where }: { where: { id: string } }) =>
       ({ count: where.id === 'order-a' ? 0 : 1 }));

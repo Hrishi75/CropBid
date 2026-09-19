@@ -260,16 +260,21 @@ export function TermsPage() {
 
         <Section title="9. Cancellations and refunds">
           <p>
-            <strong>Household orders.</strong> To cancel, write to us at{' '}
-            <a href={`mailto:${CONTACT}`}>{CONTACT}</a> with your order number as soon as you
-            can. If the seller has not yet dispatched it we will cancel the order and return
-            anything you have paid. Once it has been picked or packed for you it cannot be
-            cancelled — fresh produce put aside for one order cannot always be sold to someone
-            else.
+            <strong>Household orders.</strong> You can cancel an order yourself, from that order
+            on the website or in the app, until the shop marks it as on the way. Cancelling calls
+            off everything you bought from that shop in that order: it comes as one delivery, so
+            it is cancelled as one. Anything you have already paid, the delivery charge included,
+            comes back to you.
           </p>
           <p>
-            There is no self-service cancel button in the app today. We would rather say that
-            here than describe a right you would go looking for and not find.
+            Once the shop has marked it on the way it can no longer be cancelled, because fresh
+            produce put aside for one order cannot always be sold to someone else. If something
+            is wrong with it when it arrives, do not confirm the delivery, and tell us.
+          </p>
+          <p>
+            <strong>A shop can cancel too</strong>, up to the same point, where it cannot fulfil
+            what you ordered. It has to give a reason, you are shown that reason, and anything
+            you paid comes back to you the same way.
           </p>
           <p>
             <strong>If it does not arrive, or arrives wrong.</strong> Do not confirm the

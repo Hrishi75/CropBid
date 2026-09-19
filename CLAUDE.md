@@ -119,6 +119,17 @@ How it holds together:
 - **"Did it arrive?"** sits on app orders that the seller has marked delivered, and only those: one tap confirms every delivered item on that card, which is the step that marks the seller due their money. The website's order page already had it.
 - **`RazorpayCheckout` still has no web implementation** (§9), so the app's payment window can only be exercised on a phone.
 
+### 3d. Cancelling a shop order (decided 2026-09-20)
+
+**Either side can call a shop order off until the shop marks it on the way.** `POST /api/retail-orders/:id/cancel`, open to the shopper who placed it, the shop it was placed with, and admins.
+
+- **Whole order, never part of it.** It is one delivery with one fee, and the fee was worked out on the whole; half an order is not something the rest of the system can price. Every lot goes back on the shelf together, and a lot whose listing had sold out goes back on sale.
+- **The cut-off is the only one the data supports.** `PENDING → IN_TRANSIT` is the shop saying it has gone. `/terms` promises cancellation "until the shop marks it as on the way" for that reason, and the check is repeated inside the write transaction, so a shop pressing "on the way" at the same moment wins and the cancellation rolls back whole.
+- **A shop must give a reason, a shopper need not.** The shop is calling off somebody else's order, and the shopper is shown what it said.
+- **Unpaid lots end `CANCELLED`, paid lots end `REFUNDED`** and every admin gets a `RETAIL_REFUND_DUE` notification, because that transfer is manual (§6). Both are new enum values; `CANCELLED` means no money ever moved.
+- **A cancelled order cannot be paid for.** Opening a payment refuses it, and if one was already open and is somehow paid, capture treats it exactly like an order already paid: the money is recorded as owed back and the admins are told (§3c).
+- **Where it lives:** the shopper's order page and the app's order card; the shop uses the "Can't fulfil this order?" form on `/transactions/:id`, which is where it already marks orders on the way. The app has no seller delivery screen at all, so a shop on a phone cannot cancel there either.
+
 ### 3a. One app, and its front page is the shops (decided 2026-09-13)
 
 **There is one phone app, `mobile/`.** PRs #136 and #137 would have made two: a separate `cropbid-daily/` Expo project for households, and a trade-only `mobile/`. Both are closed, branches kept. The argument for splitting was that a farmer wants quintals and a household wants grams; the argument against is the user's, and it wins: everyone signs in to the same shelf, and trading is applied for on top. One install, one brand, and the partner pitch lands in front of every shopper rather than only those who already found the seller app.
@@ -279,7 +290,7 @@ It is invisible in the UI: an order reads "Released" and looks finished. **Never
 
 **The delivery fee is not refunded with the lots.** Refunds are per lot and only flip a column (above); refunding every lot of a shop order leaves its `RetailOrder.deliveryFee` untouched, so whoever makes the manual refund has to add the ₹30 by hand. The admin panel does not show delivery fees at all, so CropBid's own share of retail revenue is only in the database.
 
-**No cancellation path.** Not in the consumer UI, transaction routes, or the order state machine. Only an admin refund undoes an order, which is why the terms say there is no cancel button.
+**Cancelling is retail only.** A shop order can be called off before dispatch, by either side (§3d). A trade deal cannot: an accepted bid is undone only by an admin refund, and the terms say so.
 
 **Credits cannot buy anything yet.** The wallet (§9) takes real money in and the credits exist, but `spend()` on the server has no caller: paying with credits changes escrow, refunds and the fee basis. `GET /wallet` returns `canSpend: false` and the app reads that rather than hardcoding it, so wiring checkout flips one flag. Until then the wallet screen says so in plain words above the top-up button.
 

@@ -214,8 +214,10 @@ export interface Paginated<T> {
 }
 
 // --- Transactions ---
-export type PaymentStatus = 'AWAITING_PAYMENT' | 'ESCROW' | 'RELEASED' | 'REFUNDED';
-export type DeliveryStatus = 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | 'CONFIRMED';
+export type PaymentStatus = 'AWAITING_PAYMENT' | 'ESCROW' | 'RELEASED' | 'REFUNDED' | 'CANCELLED';
+// CANCELLED: called off before dispatch. A paid order that is called off goes
+// to REFUNDED on the payment side instead, since money has to come back.
+export type DeliveryStatus = 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | 'CONFIRMED' | 'CANCELLED';
 
 export interface Transaction {
   id: string;
@@ -250,6 +252,11 @@ export interface RetailOrderSummary {
   totalAmount: number;
   currency: string;
   paidAt: string | null;
+  /** Set when the order was called off before the shop sent it. */
+  cancelledAt: string | null;
+  /** Who called it off: compare with your own id to say "you cancelled this". */
+  cancelledById: string | null;
+  cancelReason: string | null;
   _count: { transactions: number };
 }
 
