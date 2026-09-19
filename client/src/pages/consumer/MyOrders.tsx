@@ -14,18 +14,28 @@
 //
 // The card leads with whatever the shopper has to DO next: pay for it, or
 // confirm it arrived. Everything else is status text.
+//
+// EVERYTHING STILL OWED IS ONE PAYMENT. Checkout opens payment straight away,
+// so an unpaid order here is one whose payment window was closed. The banner at
+// the top pays every unpaid shop order together, the same single approval the
+// shopper would have made at checkout.
 // =============================================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
+import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { ArrowIcon } from '../../components/ui/Brand';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
 import { cropImageFor } from '../../utils/cropImages';
 import { formatWeight, toKg } from '../../utils/units';
 import { sellerDisplayName } from '../../utils/partner';
 import { ORDER_STAGE } from './orderStage';
+import { payRetailOrders } from './payRetailOrders';
 import api from '../../lib/axios';
 import type { RetailOrderSummary, Transaction } from '../../types';
 
@@ -205,16 +215,45 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
   );
 }
 
+// Shop orders nothing has paid for yet. Orders from before shop orders
+// existed have none, and are paid from their own page as they always were.
+function unpaidShopOrders(groups: OrderGroup[]): RetailOrderSummary[] {
+  return groups
+    .filter((g) => g.shopOrder && !g.shopOrder.paidAt && g.items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT'))
+    .map((g) => g.shopOrder!);
+}
+
 export function MyOrders() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => (
     api.get('/transactions')
       .then(({ data }) => setOrders(data))
       .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setLoading(false))
+  ), []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const groups = groupOrders(orders);
+  const owed = unpaidShopOrders(groups);
+  const owedTotal = Math.round(owed.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100;
+
+  async function payAll() {
+    setPaying(true);
+    const { outcome, message } = await payRetailOrders(
+      owed.map((o) => o.id),
+      user,
+      owed.length === 1 ? 'Your order' : `${owed.length} orders`,
+    );
+    if (outcome === 'paid') toast.success('Paid. Your order is on its way');
+    if (outcome === 'failed') toast.error(message ?? 'Payment did not go through');
+    await load();
+    setPaying(false);
+  }
 
   if (loading) {
     return (
@@ -234,6 +273,25 @@ export function MyOrders() {
         <div className="cb-page-eyebrow">Orders</div>
       </div>
 
+      {owed.length > 0 && (
+        <div className="cb-card" style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontWeight: 600 }}>
+              {formatCurrency(owedTotal, owed[0].currency)} to pay
+            </div>
+            <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
+              {owed.length === 1 ? '1 order is' : `${owed.length} orders are`} waiting for payment
+              {owed.length > 1 ? ', paid together in one go' : ''}. The shop only gets your address
+              and number once it is paid.
+            </div>
+          </div>
+          <Button loading={paying} onClick={payAll}>
+            Pay {formatCurrency(owedTotal, owed[0].currency)}
+            <ArrowIcon />
+          </Button>
+        </div>
+      )}
+
       {orders.length === 0 ? (
         <div style={{ marginTop: 16 }}>
           <EmptyState
@@ -245,7 +303,7 @@ export function MyOrders() {
         </div>
       ) : (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {groupOrders(orders).map((g) => (g.shopOrder && g.items.length > 1
+          {groups.map((g) => (g.shopOrder && g.items.length > 1
             ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} />
             : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} />))}
         </div>

@@ -7,14 +7,15 @@ import { z } from 'zod';
 import * as paymentService from '../services/payment.service';
 import { auditFromRequest } from '../services/audit.service';
 
-// POST /api/payments/order: the buyer opens a Razorpay order for a transaction,
-// or for a retail shop order. A retail lot's transactionId pays its whole shop
-// order either way; retailOrderId is for a client that holds the order itself.
+// POST /api/payments/order: the buyer opens a Razorpay order for a trade deal,
+// or for one or more retail shop orders paid together. A retail lot's
+// transactionId pays its whole shop order; retailOrderIds is how a basket, or
+// everything still owed, is paid in one go.
 const createOrderSchema = z.object({
   transactionId: z.string().min(1).optional(),
-  retailOrderId: z.string().min(1).optional(),
-}).refine((b) => !!b.transactionId !== !!b.retailOrderId, {
-  message: 'Send a transactionId or a retailOrderId',
+  retailOrderIds: z.array(z.string().min(1)).min(1).max(20).optional(),
+}).refine((b) => !!b.transactionId !== !!b.retailOrderIds, {
+  message: 'Send a transactionId or retailOrderIds',
 });
 
 export async function createOrder(req: Request, res: Response, next: NextFunction) {
@@ -24,8 +25,8 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
 
-    const order = parsed.data.retailOrderId
-      ? await paymentService.createRetailOrderPayment(parsed.data.retailOrderId, req.user!.userId)
+    const order = parsed.data.retailOrderIds
+      ? await paymentService.createRetailPayment(parsed.data.retailOrderIds, req.user!.userId)
       : await paymentService.createOrder(parsed.data.transactionId!, req.user!.userId);
     res.status(201).json(order);
   } catch (error) {
@@ -54,25 +55,24 @@ export async function verifyPayment(req: Request, res: Response, next: NextFunct
       parsed.data.razorpay_signature
     );
 
-    // A retail shop order answers with the order, lots included. Every client
-    // that pays one re-reads what it is showing afterwards, so nothing expects
-    // a Transaction back from this path.
-    if (result.kind === 'retailOrder') {
-      const { retailOrder } = result;
+    // A retail payment answers with the payment and the shop orders it
+    // covered. Every client that pays one re-reads what it is showing
+    // afterwards, so nothing expects a Transaction back from this path.
+    if (result.kind === 'retailPayment') {
+      const { retailPayment } = result;
       await auditFromRequest(req, {
-        action: 'retail_order.payment.captured',
-        entityType: 'RetailOrder',
-        entityId: retailOrder.id,
+        action: 'retail_payment.captured',
+        entityType: 'RetailPayment',
+        entityId: retailPayment.id,
         metadata: {
           razorpayOrderId: parsed.data.razorpay_order_id,
           razorpayPaymentId: parsed.data.razorpay_payment_id,
-          amount: retailOrder.totalAmount,
-          deliveryFee: retailOrder.deliveryFee,
-          currency: retailOrder.currency,
-          transactionIds: retailOrder.transactions.map((t) => t.id),
+          amount: retailPayment.amount,
+          currency: retailPayment.currency,
+          retailOrderIds: retailPayment.orders.map((o) => o.id),
         },
       });
-      return res.json(retailOrder);
+      return res.json(retailPayment);
     }
 
     const { transaction } = result;

@@ -18,18 +18,22 @@
 // Amounts: Razorpay works in the smallest currency sub-unit (paise for INR), so we
 // multiply by 100 and round.
 //
-// RETAIL LOTS ARE PAID PER SHOP. A household's lots from one shop form a
-// RetailOrder with one delivery fee, and that shop order is what gets a
-// Razorpay order: one payment moves all of its lots into ESCROW together.
-// Asking to pay for a single retail lot pays for its whole shop order, so there
-// is no request that can pay a shop's items piecemeal and skip the fee.
+// RETAIL IS PAID BY THE BASKET. A household's lots from one shop form a
+// RetailOrder with one delivery fee, and a RetailPayment covers one or more of
+// those orders with one Razorpay order: the whole basket straight after
+// checkout, or whatever is still owed from the Orders screen. Capturing it
+// moves every lot of every order it covers into ESCROW. The smallest thing a
+// shopper can pay for is a whole shop order, so there is no request that pays
+// a shop's items piecemeal and skips its delivery fee.
 // =============================================================================
 
-import crypto from 'crypto';
+import crypto, { randomUUID } from 'crypto';
 import Razorpay from 'razorpay';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { ApiError } from '../utils/ApiError';
+import { recordAudit } from './audit.service';
+import { notifyAdminsRetailOverpaid } from './notification.helpers';
 
 // Single shared client. Null when keys are not configured so the rest of the app
 // still boots (payments simply return 503).
@@ -59,7 +63,7 @@ export async function createOrder(transactionId: string, userId: string) {
     throw new ApiError(403, 'Only the buyer can pay for this transaction');
   }
   if (transaction.retailOrderId) {
-    return createRetailOrderPayment(transaction.retailOrderId, userId, transaction.id);
+    return createRetailPayment([transaction.retailOrderId], userId, transaction.id);
   }
   if (transaction.paymentStatus !== 'AWAITING_PAYMENT') {
     throw new ApiError(400, `Transaction is not awaiting payment (status: ${transaction.paymentStatus})`);
@@ -103,64 +107,98 @@ export async function createOrder(transactionId: string, userId: string) {
 }
 
 // =============================================================================
-// CREATE RETAIL ORDER PAYMENT: one Razorpay order for one shop's lots
+// CREATE RETAIL PAYMENT: one Razorpay order for one or more shop orders
 // =============================================================================
-// `viaTransactionId` is echoed back when the request came in through one of
-// the shop order's lots, so a client that asked about a lot can find its way
-// back to it.
-export async function createRetailOrderPayment(
-  retailOrderId: string,
+// `viaTransactionId` is echoed back when the request came in through one of a
+// shop order's lots, so a client that asked about a lot can find its way back.
+
+// A basket spans a handful of shops. The cap keeps one payment from covering an
+// unbounded list of orders.
+const MAX_ORDERS_PER_PAYMENT = 20;
+
+export async function createRetailPayment(
+  retailOrderIds: string[],
   userId: string,
   viaTransactionId?: string,
 ) {
   const client = requireRazorpay();
 
-  const order = await prisma.retailOrder.findUnique({
-    where: { id: retailOrderId },
+  const ids = [...new Set(retailOrderIds)];
+  if (ids.length === 0) throw new ApiError(400, 'Nothing to pay for');
+  if (ids.length > MAX_ORDERS_PER_PAYMENT) {
+    throw new ApiError(400, `One payment can cover at most ${MAX_ORDERS_PER_PAYMENT} orders`);
+  }
+
+  const orders = await prisma.retailOrder.findMany({
+    where: { id: { in: ids } },
     include: { transactions: { select: { paymentStatus: true } } },
   });
 
-  if (!order) throw new ApiError(404, 'Order not found');
-  if (order.buyerId !== userId) {
-    throw new ApiError(403, 'Only the buyer can pay for this order');
+  if (orders.length !== ids.length) throw new ApiError(404, 'Order not found');
+  if (orders.some((o) => o.buyerId !== userId)) {
+    throw new ApiError(403, 'Only the buyer can pay for these orders');
   }
-  if (order.paidAt || !order.transactions.every((t) => t.paymentStatus === 'AWAITING_PAYMENT')) {
-    throw new ApiError(400, 'This order is not awaiting payment');
+  if (orders.some((o) => o.paidAt || !o.transactions.every((t) => t.paymentStatus === 'AWAITING_PAYMENT'))) {
+    throw new ApiError(400, 'One of these orders is not awaiting payment. Refresh your orders and try again.');
+  }
+  const currency = orders[0].currency;
+  if (orders.some((o) => o.currency !== currency)) {
+    throw new ApiError(400, 'Orders in different currencies cannot be paid together');
   }
 
-  const amountInSubunits = Math.round(order.totalAmount * 100);
-  const answer = (orderId: string) => ({
-    orderId,
+  // Money is a Float across the schema; round the sum to paise once.
+  const amount = Math.round(orders.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100;
+  const amountInSubunits = Math.round(amount * 100);
+  const answer = (paymentId: string, razorpayOrderId: string) => ({
+    orderId: razorpayOrderId,
     amount: amountInSubunits,
-    currency: order.currency,
+    currency,
     keyId: config.razorpay.keyId,
-    retailOrderId: order.id,
+    retailPaymentId: paymentId,
+    retailOrderIds: ids,
     ...(viaTransactionId ? { transactionId: viaTransactionId } : {}),
   });
 
-  // Reuse an order already opened (the shopper dismissed the modal and pressed
-  // Pay again). A fresh one would orphan the first, and a webhook for it could
-  // no longer be matched back to this shop order.
-  if (order.razorpayOrderId) return answer(order.razorpayOrderId);
+  // The same set again (the shopper dismissed the modal and pressed Pay again)
+  // gets the same Razorpay order back. A fresh one would leave two open orders
+  // for the same money, and the shopper one tap from paying twice.
+  const open = await prisma.retailPayment.findMany({
+    where: {
+      buyerId: userId,
+      paidAt: null,
+      razorpayOrderId: { not: null },
+      orders: { some: { id: { in: ids } } },
+    },
+    include: { orders: { select: { id: true } } },
+  });
+  const same = open.find((p) =>
+    p.orders.length === ids.length
+    && p.orders.every((o) => ids.includes(o.id))
+    && p.amount === amount);
+  if (same) return answer(same.id, same.razorpayOrderId!);
 
+  // Razorpay first, then the row, so a failed call to Razorpay leaves nothing
+  // behind: a payment row always has the order it names.
+  const paymentId = randomUUID();
   const rzp = await client.orders.create({
     amount: amountInSubunits,
-    currency: order.currency,
-    receipt: order.id,
-    notes: { retailOrderId: order.id, buyerId: order.buyerId },
+    currency,
+    receipt: paymentId,
+    notes: { retailPaymentId: paymentId, buyerId: userId },
   });
 
-  // Conditional, so two Pay presses racing each other cannot both store an
-  // order: the loser hands back the winner's, and its own is never used.
-  const stored = await prisma.retailOrder.updateMany({
-    where: { id: order.id, razorpayOrderId: null },
-    data: { razorpayOrderId: rzp.id },
+  await prisma.retailPayment.create({
+    data: {
+      id: paymentId,
+      buyerId: userId,
+      amount,
+      currency,
+      razorpayOrderId: rzp.id,
+      orders: { connect: ids.map((id) => ({ id })) },
+    },
   });
-  if (stored.count === 0) {
-    const winner = await prisma.retailOrder.findUniqueOrThrow({ where: { id: order.id } });
-    return answer(winner.razorpayOrderId!);
-  }
-  return answer(rzp.id);
+
+  return answer(paymentId, rzp.id);
 }
 
 // Razorpay signs the handshake as HMAC_SHA256(order_id + "|" + payment_id, secret).
@@ -202,17 +240,20 @@ export async function verifyPayment(
     return { kind: 'transaction' as const, transaction: await markCaptured(transaction.id, paymentId) };
   }
 
-  const retailOrder = await prisma.retailOrder.findUnique({
+  const retailPayment = await prisma.retailPayment.findUnique({
     where: { razorpayOrderId: orderId },
   });
-  if (!retailOrder) throw new ApiError(404, 'No order found for this payment');
-  if (retailOrder.buyerId !== userId) {
+  if (!retailPayment) throw new ApiError(404, 'No order found for this payment');
+  if (retailPayment.buyerId !== userId) {
     throw new ApiError(403, 'Only the buyer can confirm this payment');
   }
   if (!checkoutSignatureValid(orderId, paymentId, signature)) {
     throw new ApiError(400, 'Payment signature verification failed');
   }
-  return { kind: 'retailOrder' as const, retailOrder: await markRetailOrderCaptured(retailOrder.id, paymentId) };
+  return {
+    kind: 'retailPayment' as const,
+    retailPayment: await markRetailPaymentCaptured(retailPayment.id, paymentId),
+  };
 }
 
 // =============================================================================
@@ -248,10 +289,10 @@ export async function handleWebhook(rawBody: Buffer, signature: string | undefin
     if (transaction) {
       await markCaptured(transaction.id, payment.id);
     } else {
-      const retailOrder = await prisma.retailOrder.findUnique({
+      const retailPayment = await prisma.retailPayment.findUnique({
         where: { razorpayOrderId: payment.order_id },
       });
-      if (retailOrder) await markRetailOrderCaptured(retailOrder.id, payment.id);
+      if (retailPayment) await markRetailPaymentCaptured(retailPayment.id, payment.id);
     }
   }
 
@@ -280,26 +321,74 @@ async function markCaptured(transactionId: string, paymentId: string) {
 }
 
 // =============================================================================
-// markRetailOrderCaptured: idempotent flip of a whole shop order into ESCROW
+// markRetailPaymentCaptured: idempotent flip of every order a payment covers
 // =============================================================================
-// Both writes are conditional and share one database transaction, so the
-// browser callback and the webhook can both arrive and only the first does
-// anything: the shop order is stamped paid once, and every lot still awaiting
-// payment moves to ESCROW with it, never some of them.
-async function markRetailOrderCaptured(retailOrderId: string, paymentId: string) {
-  await prisma.$transaction([
-    prisma.retailOrder.updateMany({
-      where: { id: retailOrderId, paidAt: null },
-      data: { razorpayPaymentId: paymentId, paidAt: new Date() },
-    }),
-    prisma.transaction.updateMany({
-      where: { retailOrderId, paymentStatus: 'AWAITING_PAYMENT' },
-      data: { paymentStatus: 'ESCROW', razorpayPaymentId: paymentId },
-    }),
-  ]);
+// One database transaction, so a payment is never recorded with only some of
+// its orders paid. Each write is conditional, which is what makes the browser
+// callback and the webhook safe to arrive in either order, or both: the second
+// finds the payment already stamped and does nothing.
+//
+// An order can sit in more than one payment. Whichever captures first pays
+// for it; if a later one captures too, its share for that order is money taken
+// twice. It is recorded and the admins are told, because that refund is manual.
+async function markRetailPaymentCaptured(retailPaymentId: string, razorpayPaymentId: string) {
+  const now = new Date();
 
-  return prisma.retailOrder.findUniqueOrThrow({
-    where: { id: retailOrderId },
-    include: { transactions: { select: { id: true, paymentStatus: true } } },
+  const outcome = await prisma.$transaction(async (tx) => {
+    const claim = await tx.retailPayment.updateMany({
+      where: { id: retailPaymentId, paidAt: null },
+      data: { paidAt: now, razorpayPaymentId },
+    });
+    if (claim.count === 0) return null; // already recorded
+
+    const payment = await tx.retailPayment.findUniqueOrThrow({
+      where: { id: retailPaymentId },
+      include: {
+        orders: { select: { id: true, totalAmount: true } },
+        buyer: { select: { name: true } },
+      },
+    });
+
+    const overpaid: { id: string; totalAmount: number }[] = [];
+    for (const order of payment.orders) {
+      const paid = await tx.retailOrder.updateMany({
+        where: { id: order.id, paidAt: null },
+        data: { paidAt: now },
+      });
+      if (paid.count === 0) {
+        overpaid.push(order);
+        continue;
+      }
+      await tx.transaction.updateMany({
+        where: { retailOrderId: order.id, paymentStatus: 'AWAITING_PAYMENT' },
+        data: { paymentStatus: 'ESCROW', razorpayPaymentId },
+      });
+    }
+    return { payment, overpaid };
+  });
+
+  if (outcome && outcome.overpaid.length > 0) {
+    const { payment, overpaid } = outcome;
+    const refundDue = Math.round(overpaid.reduce((sum, o) => sum + o.totalAmount, 0) * 100) / 100;
+    await recordAudit({
+      actorId: null,
+      actorRole: 'SYSTEM',
+      action: 'retail_payment.overpaid',
+      entityType: 'RetailPayment',
+      entityId: payment.id,
+      metadata: { razorpayPaymentId, refundDue, currency: payment.currency, retailOrderIds: overpaid.map((o) => o.id) },
+    });
+    void notifyAdminsRetailOverpaid(
+      payment.buyer.name, refundDue, payment.currency, razorpayPaymentId, payment.id,
+    ).catch(() => {});
+  }
+
+  return prisma.retailPayment.findUniqueOrThrow({
+    where: { id: retailPaymentId },
+    include: {
+      orders: {
+        select: { id: true, totalAmount: true, transactions: { select: { id: true, paymentStatus: true } } },
+      },
+    },
   });
 }

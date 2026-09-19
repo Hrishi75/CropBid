@@ -580,6 +580,32 @@ export async function createPaymentOrder(transactionId: string): Promise<Payment
   return data;
 }
 
+/**
+ * One Razorpay order for one or more retail shop orders, paid together: the
+ * basket straight after checkout, or everything still owed. Asking again for
+ * the same set hands back the same Razorpay order. Verify through
+ * verifyRetailPayment, not verifyPayment, since the answer is not a Transaction.
+ */
+export interface RetailPaymentOrder {
+  orderId: string;
+  amount: number; // smallest currency subunit (paise for INR)
+  currency: string;
+  keyId: string;
+  retailPaymentId: string;
+  retailOrderIds: string[];
+}
+
+export async function createRetailPayment(retailOrderIds: string[]): Promise<RetailPaymentOrder> {
+  const { data } = await api.post<RetailPaymentOrder>('/payments/order', { retailOrderIds });
+  return data;
+}
+
+/** Same endpoint as verifyPayment; a retail payment answers with itself. */
+export async function verifyRetailPayment(handshake: PaymentHandshake): Promise<{ id: string; paidAt: string | null }> {
+  const { data } = await api.post<{ id: string; paidAt: string | null }>('/payments/verify', handshake);
+  return data;
+}
+
 export async function verifyPayment(handshake: PaymentHandshake): Promise<Transaction> {
   const { data } = await api.post<Transaction>('/payments/verify', handshake);
   return data;
