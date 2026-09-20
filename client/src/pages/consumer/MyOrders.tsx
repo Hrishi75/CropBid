@@ -73,11 +73,18 @@ function groupOrders(orders: Transaction[]): OrderGroup[] {
  *
  * Shared by both cards, because a cancellation reads the same either way and
  * the one-item card used to leave it out.
+ *
+ * THREE ANSWERS, NOT TWO. The shopper, the shop, or CropBid: admins can cancel
+ * too, and "anyone but me" read every one of those as the shop's doing, which
+ * blamed a shop for a cancellation it had nothing to do with.
  */
 function cancelledNote(shopOrder: RetailOrderSummary | null, viewerId?: string): string {
   if (!shopOrder?.cancelledAt) return '';
-  const byShop = shopOrder.cancelledById != null && shopOrder.cancelledById !== viewerId;
-  return `${byShop ? ' by the shop' : ''}${shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}`;
+  const by = shopOrder.cancelledById;
+  const who = by == null || by === viewerId ? ''
+    : by === shopOrder.sellerId ? ' by the shop'
+      : ' by CropBid';
+  return `${who}${shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}`;
 }
 
 // The order comes back denominated in the lot's unit; a shopper reads it in

@@ -252,6 +252,8 @@ export interface RetailOrderSummary {
   totalAmount: number;
   currency: string;
   paidAt: string | null;
+  /** The shop this order was placed with, so a cancellation can name who made it. */
+  sellerId: string;
   /** Set when the order was called off before the shop sent it. */
   cancelledAt: string | null;
   /** Who called it off: compare with your own id to say "you cancelled this". */

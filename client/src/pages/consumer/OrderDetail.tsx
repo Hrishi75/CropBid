@@ -202,7 +202,12 @@ export function OrderDetail() {
   // Until the shop marks it on the way. After that the produce has been picked
   // for this order, which is what /terms says and what the server enforces.
   const canCancel = !cancelled && shopOrder != null && order.deliveryStatus === 'PENDING';
-  const cancelledByShop = shopOrder?.cancelledById != null && shopOrder.cancelledById !== user?.id;
+  // Who called it off: the shopper reading this, the shop, or CropBid. Admins
+  // can cancel too, so "anyone but me" would blame the shop for their doing.
+  const cancelledBy = shopOrder?.cancelledById == null ? null
+    : shopOrder.cancelledById === user?.id ? 'you'
+      : shopOrder.cancelledById === shopOrder.sellerId ? 'shop'
+        : 'cropbid';
   const itemsInOrder = shopOrder?._count.transactions ?? 1;
   // A cancelled order was either never charged or is being refunded, so
   // neither "To pay" nor "Paid" is true of it.
@@ -239,9 +244,9 @@ export function OrderDetail() {
         <div className="cb-card" style={{ marginTop: 16 }}>
           <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Cancelled</div>
           <p className="cb-small" style={{ color: 'var(--cb-ink-3)' }}>
-            {cancelledByShop
-              ? `${seller ?? 'The shop'} cancelled this order.`
-              : 'You cancelled this order.'}
+            {cancelledBy === 'shop' ? `${seller ?? 'The shop'} cancelled this order.`
+              : cancelledBy === 'cropbid' ? 'CropBid cancelled this order.'
+                : 'You cancelled this order.'}
             {shopOrder?.cancelReason ? ` Reason: ${shopOrder.cancelReason}.` : ''}
             {order.paymentStatus === 'REFUNDED'
               ? ' You had paid, so the money is coming back to you. We make that transfer by hand, so allow a few working days.'

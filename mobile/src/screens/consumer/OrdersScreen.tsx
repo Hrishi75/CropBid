@@ -281,7 +281,12 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
   const unpaid = !cancelled && awaitingPayment(group);
   // Until the shop marks it on the way. The server enforces the same rule.
   const canCancel = !cancelled && shopOrder != null && items.every((o) => o.deliveryStatus === 'PENDING');
-  const cancelledByShop = shopOrder?.cancelledById != null && shopOrder.cancelledById !== first.buyerId;
+  // Three answers, not two: the shopper, the shop, or CropBid, whose admins can
+  // also cancel. Treating "not the shopper" as the shop blamed the wrong one.
+  const cancelledBy = shopOrder?.cancelledById == null ? null
+    : shopOrder.cancelledById === first.buyerId ? 'you'
+      : shopOrder.cancelledById === shopOrder.sellerId ? 'shop'
+        : 'cropbid';
   const amount = shopOrder ? shopOrder.totalAmount : first.totalAmount;
   const delivered = items.filter((o) => o.deliveryStatus === 'DELIVERED');
 
@@ -357,7 +362,9 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
         <View style={styles.stageRow}>
           <View style={[styles.dot, { backgroundColor: design.ink3 }]} />
           <Text style={[styles.stage, { color: design.ink3 }]} numberOfLines={2}>
-            {cancelledByShop ? t('Cancelled by the shop') : t('Cancelled')}
+            {cancelledBy === 'shop' ? t('Cancelled by the shop')
+              : cancelledBy === 'cropbid' ? t('Cancelled by CropBid')
+                : t('Cancelled')}
             {shopOrder?.cancelReason ? `: ${shopOrder.cancelReason}` : ''}
             {items.some((o) => o.paymentStatus === 'REFUNDED') ? ` · ${t('refund on its way')}` : ''}
           </Text>
