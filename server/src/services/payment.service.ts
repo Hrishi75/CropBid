@@ -172,6 +172,18 @@ export async function createRetailPayment(
   // The Razorpay call sits inside that lock, holding it for a network round
   // trip. It is per shopper, so the only requests that ever wait on it are that
   // shopper's own, which is exactly the case being serialised.
+  //
+  // WHY THE EXTERNAL CALL IS IN HERE, AND WHY THE TIMEOUT IS GENEROUS.
+  // Review asked for it outside, which would mean committing the row first and
+  // calling Razorpay after. That releases the lock before the call and puts
+  // back the bug the lock exists for: two presses, two payable orders. Keeping
+  // it inside costs a transaction held open for one HTTP round trip, so the
+  // timeout is raised well past Razorpay's own: on the default 5s a slow reply
+  // would roll the row back while Razorpay kept a live order.
+  //
+  // If it does abort, the caller gets an error and never learns the order id,
+  // so what is left behind is an order nobody can pay rather than money nobody
+  // can match. Razorpay expires those on its own.
   return prisma.$transaction(async (tx) => {
     // $executeRaw, not $queryRaw: the function returns void and Prisma cannot
     // deserialise a void column, so $queryRaw throws on every call.
@@ -214,6 +226,11 @@ export async function createRetailPayment(
     });
 
     return answer(paymentId, rzp.id);
+  }, {
+    // Razorpay's client gives up long before this; the room is for a slow
+    // reply, not for a hung one.
+    timeout: 20_000,
+    maxWait: 10_000,
   });
 }
 
