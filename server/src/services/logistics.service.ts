@@ -8,9 +8,16 @@
 //
 // WHO DOES WHAT (changed: CropBid now arranges the freight itself)
 //   Choosing a carrier, booking it, and driving the status are ops functions,
-//   gated to ADMIN at the route. We book it because we inspect the goods on the
-//   way through, and an inspection we do not control is not an inspection.
-//   The farmer and buyer read the status and nothing else.
+//   gated to ADMIN at the route. The farmer and buyer read the status and
+//   nothing else.
+//
+//   We took the booking because an inspection carried out by a truck the seller
+//   hired is not an inspection, so owning it is what would let us check the
+//   goods at pickup and settle on what we find. That is the INTENT and it is
+//   unbuilt: VALID_TRANSITIONS below has no inspection step, there is no field
+//   for a result, and nothing here can move an amount off the agreed price.
+//   Building it touches escrow, the fee basis and both sides' numbers, so it is
+//   a design job. Until then no user-facing string may claim we check goods.
 //
 // THE SELLER PAYS. `paidBy` is no longer an input: bookShipment writes FARMER
 // unconditionally, so no request can shift freight onto the buyer. Callers that

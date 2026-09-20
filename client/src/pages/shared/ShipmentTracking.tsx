@@ -230,9 +230,25 @@ export function ShipmentTracking() {
             );
           })}
         </div>
+        {/* Two audiences, two instructions. "Contact carrier" is only an
+            action for ops, who have the Carrier panel below with a name and a
+            phone on it. A farmer or buyer is never told who the haulier is
+            (forShipmentViewer strips it), so sending them to the carrier is an
+            instruction they cannot carry out, and it contradicts the Transport
+            panel telling them the delivery is ours to answer for. We booked it,
+            so a failure is ours to chase. */}
         {failed && (
           <div className="cb-small" style={{ marginTop: 12, padding: 10, background: 'rgba(200,96,43,0.08)', color: 'var(--cb-ember)', borderRadius: 6 }}>
-            ⚠ Shipment failed. Contact carrier.
+            {isOps ? (
+              <>⚠ Shipment failed. Contact the carrier.</>
+            ) : (
+              <>
+                ⚠ Shipment failed. CropBid booked this delivery, so we are
+                chasing it. Write to{' '}
+                <a href="mailto:info@cropbid.in" style={{ color: 'inherit' }}>info@cropbid.in</a>
+                {' '}if you need an update.
+              </>
+            )}
           </div>
         )}
 
@@ -323,9 +339,12 @@ export function ShipmentTracking() {
           </Section>
         ) : (
           <Section title="Transport">
+            {/* Answers the question the missing Carrier panel raises, without
+                claiming an inspection nobody carried out. See the note on
+                TransactionDetail's settlement breakdown. */}
             <p className="cb-small" style={{ margin: 0 }}>
-              CropBid arranged this delivery and checked the goods before they
-              travelled. The freight charge is settled with the seller.
+              CropBid booked this delivery, so it is ours to answer for. The
+              freight charge is settled with the seller.
             </p>
           </Section>
         )}

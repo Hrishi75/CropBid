@@ -1,11 +1,15 @@
 // =============================================================================
 // Logistics Routes — /api/logistics
 // =============================================================================
-// CropBid arranges the freight. We pick the carrier, we book it, and we inspect
-// the goods on the way through, which is the whole reason the booking is ours
-// and not the trader's. So every route that chooses, prices or drives a carrier
-// is ADMIN-only, and the two sides of the deal get read access to the status
-// and nothing else.
+// CropBid arranges the freight: we pick the carrier and we book it. So every
+// route that chooses, prices or drives a carrier is ADMIN-only, and the two
+// sides of the deal get read access to the status and nothing else.
+//
+// WHY WE OWN IT, and what is not true yet. The point of holding the booking is
+// that it is what would let us check the goods at pickup and pay the seller on
+// inspected rather than listed quality. None of that exists: ShipmentStatus has
+// no inspection step, there is no result to record, and no settlement can
+// differ from the agreed price. Keep it out of anything a user reads.
 //
 // The seller pays. `paidBy` is therefore not an input any more: bookShipment
 // writes FARMER unconditionally, so there is no request that can bill the buyer

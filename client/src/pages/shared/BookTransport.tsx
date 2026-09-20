@@ -2,10 +2,14 @@
 // BookTransport — Arrange shipping for a closed deal (OPS)
 // =============================================================================
 // Admin-only, reached at /admin/logistics/book/:transactionId. CropBid books
-// the carrier because CropBid inspects the goods on the way through, so this is
-// an ops console, not something the two sides of the deal ever see. The three
-// endpoints it drives (/logistics/partners/:id, /quote, /book) are all
-// requireRole('ADMIN').
+// the carrier itself, so this is an ops console, not something the two sides of
+// the deal ever see. The three endpoints it drives (/logistics/partners/:id,
+// /quote, /book) are all requireRole('ADMIN').
+//
+// The reason for taking the booking is that it is what would let us inspect the
+// goods at pickup and settle on what we find. That is the intent (CLAUDE.md
+// §2b) and it is unbuilt: no inspection step, no result, no way for a
+// settlement to differ from the agreed price. Do not describe it as shipped.
 //
 // Loads available logistics partners and the cargo info (weight, perishable,
 // origin), lets ops pick a partner, fetch a price quote, set pickup/delivery
