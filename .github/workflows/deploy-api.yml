@@ -41,8 +41,23 @@ jobs:
             cd server
             npm install --include=dev
             npx prisma generate
+
+            # BUILD BEFORE MIGRATE, and build with esbuild rather than tsc.
+            #
+            # Both halves of that come from one deploy failing on 2026-09-20.
+            # tsc peaks near 750 MB type-checking this project; this box caps
+            # V8's old space near 460 MB, so it died with "heap out of memory".
+            # Because migrate ran first, the database was left three migrations
+            # ahead of the process still serving traffic, one of which had
+            # dropped columns that process still read. See server/scripts/build.js
+            # for why transpiling here is safe: CI type-checks every change with
+            # tsc on a runner that has the memory for it.
+            #
+            # In this order a failed build changes nothing: the old code keeps
+            # serving the schema it was written against, and the deploy simply
+            # has not happened.
+            npm run build:deploy
             npx prisma migrate deploy
-            npm run build
 
             sudo systemctl restart cropbid-api
 
