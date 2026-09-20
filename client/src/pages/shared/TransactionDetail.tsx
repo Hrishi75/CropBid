@@ -346,10 +346,22 @@ export function TransactionDetail() {
               value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(transaction.totalAmount - transaction.platformFeeAmount - freightCost, transaction.currency)}</span>}
             />
           </div>
+          {/*
+            Who books, and who pays. It stops there on purpose.
+
+            DO NOT say we check the goods. Inspecting at pickup and settling on
+            what we find is the INTENT behind owning the booking (CLAUDE.md
+            §2b), not a thing that happens: ShipmentStatus has no inspection
+            step, no result field, and no settlement can differ from the agreed
+            price. The honest claim is that we book the carrier, so the
+            delivery is ours to answer for.
+
+            The same sentence is the lede on Deliveries. Change both.
+          */}
           {isFarmer && (
             <p className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
-              CropBid books the transport and checks the goods before they
-              travel. The freight charge is payable by you and is deducted from
+              CropBid books the transport, so the delivery is ours to answer
+              for. The freight charge is payable by you and is deducted from
               your settlement.
             </p>
           )}

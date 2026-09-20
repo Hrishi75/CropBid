@@ -6,11 +6,14 @@
 // booked (tracking status from the shipment), and links each booked row into
 // live tracking (/logistics/shipment/transaction/:transactionId).
 //
-// It is a board to READ, not to act on. CropBid books the carrier, because we
-// inspect the goods on the way through, so there is no booking flow to link to
-// from here any more and the API no longer sends this page a carrier name.
-// What the seller does owe is the freight charge, which is why the lede says so
-// before any row does.
+// It is a board to READ, not to act on. CropBid books the carrier, so there is
+// no booking flow to link to from here any more and the API no longer sends
+// this page a carrier name. What the seller does owe is the freight charge,
+// which is why the lede says so before any row does.
+//
+// Owning the booking is what would make a quality check at pickup possible, and
+// that is the point of it, but the check is not built (CLAUDE.md §2b). Do not
+// write it onto this page as though it were.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -86,9 +89,13 @@ export function Deliveries() {
         learns about the freight charge from a deduction later has been
         surprised by it. The same sentence appears on the settlement breakdown
         in TransactionDetail; if one changes, change the other.
+
+        DO NOT say we check the goods. Inspecting at pickup is the INTENT
+        behind owning the booking (CLAUDE.md §2b) and nothing is built: no
+        inspection step, no result field, nobody doing it.
       */}
       <p className="cb-page-lede" style={{ marginTop: 12 }}>
-        CropBid books the transport and checks the goods before they travel.
+        CropBid books the transport, so the delivery is ours to answer for.
         The freight charge is payable by you and comes out of your settlement.
       </p>
 

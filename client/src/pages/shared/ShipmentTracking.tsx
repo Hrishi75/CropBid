@@ -323,9 +323,12 @@ export function ShipmentTracking() {
           </Section>
         ) : (
           <Section title="Transport">
+            {/* Answers the question the missing Carrier panel raises, without
+                claiming an inspection nobody carried out. See the note on
+                TransactionDetail's settlement breakdown. */}
             <p className="cb-small" style={{ margin: 0 }}>
-              CropBid arranged this delivery and checked the goods before they
-              travelled. The freight charge is settled with the seller.
+              CropBid booked this delivery, so it is ours to answer for. The
+              freight charge is settled with the seller.
             </p>
           </Section>
         )}

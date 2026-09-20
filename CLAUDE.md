@@ -44,7 +44,7 @@ Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number,
 
 **CropBid books the carrier. The seller pays for it. Neither side learns who the carrier is.**
 
-The reason for all three is quality: we inspect the goods on the way through, and an inspection carried out by a truck the seller hired is not an inspection. Owning the booking is what makes the check real.
+The reason for all three is quality, and **read §2b before repeating that anywhere a user can see it.** Owning the booking is what would make a real check possible, because an inspection carried out by a truck the seller hired is not an inspection. The check itself is not built. What is true today is that we book the carrier, so the delivery is ours to answer for.
 
 - **Booking is ADMIN-only** on the server: `/logistics/partners/:transactionId`, `/quote`, `/book`, and the status and driver updates. The farmer and buyer keep two GETs and proof-of-delivery upload. `BookTransport` moved to `/admin/logistics/book/:transactionId`.
 - **A closed deal pages ops.** `createTransaction` fires `notifyAdminsDealClosed` to every ADMIN account (`DEAL_NEEDS_TRANSPORT`), and the bell deep-links it to the booking form rather than `/transactions/:id`, which would 403 an admin because `getTransaction` authorises on `farmerId`/`buyerId` only. It is not awaited: `createTransaction` may be running inside an interactive `Prisma.TransactionClient`, and a notification must never roll back a settled deal.
@@ -55,6 +55,20 @@ The reason for all three is quality: we inspect the goods on the way through, an
 - **The seller is told twice, before the money moves**: a lede on Deliveries, and a `Delivery (paid by seller)` line in the settlement breakdown on `TransactionDetail`. The breakdown shows an amount only once a shipment exists, and says "on booking" before that, because a placeholder on a settlement screen reads as a real figure.
 
 **Unresolved, and worth resolving before this scales:** flat 2% now has to cover software, escrow, freight booking *and* a person driving out to look at the goods. That may want a wholesale-tier fee. It is a decision nobody has taken, not a detail.
+
+### 2b. Quality check at pickup (intended, nothing built)
+
+**The model:** once a deal is made, CropBid visits the farm and checks the quality, ships according to what it finds, and **the farmer is paid on the inspected quality rather than the listed quality**. That is the real reason the freight booking is ours (§2a).
+
+**None of it exists in code.** `ShipmentStatus` runs `PENDING_PICKUP → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED`: no inspection step, no field for a result, and no path by which a settlement can differ from the agreed price.
+
+**It is a design job, not a field.** Paying on inspected quality moves the amount after both sides have agreed, so it touches escrow, the 2% fee basis, the seller's settlement and what the buyer is told. It also needs a record of who checked, when and what they found, and a way for the seller to disagree with it. Nobody has designed any of that.
+
+**Until it is built and actually happening, nothing a user reads may say CropBid checks the goods.** The honest line is that **we book the transport, so the delivery is ours to answer for.**
+
+That claim is the one this file keeps having to take back. §5 records it twice on `/how-it-works` alone ("verifies every lot ourselves", then "the load gets checked on the way through", introduced by the rewrite that was fixing the first). It was still live on three signed-in screens until **2026-09-20**: the settlement breakdown on `TransactionDetail`, the `Deliveries` lede, and the Transport panel on `ShipmentTracking` ("checked the goods before they travelled"). The failure is always the same shape, which is why it recurs: **the rationale is easier to write than the feature, and on screen it reads as a promise.**
+
+The comment above each of those strings asserted the inspection too, which is where the next string comes from, so they were corrected with them, as were the header comments on `BookTransport`, `routes/index.tsx`, `logistics.routes.ts` and `logistics.service.ts`, all of which stated it as a fact about the system.
 
 ## 3. The consumer model (shipped 2026-09-02, #127)
 
@@ -291,6 +305,8 @@ It is invisible in the UI: an order reads "Released" and looks finished. **Never
 **Price is unbound at checkout.** Web and mobile send listing + quantity; the server recomputes `totalAmount` from the live `retailPricePerUnit`. A seller re-pricing between the bill and the request charges an amount the shopper never approved. Fix is the same shape as the unit guard and the delivery-fee guard that already ship: send the agreed price, refuse a mismatch. **The delivery fee is bound** (§3b); the item price is not.
 
 **The delivery fee is not refunded with the lots.** Refunds are per lot and only flip a column (above); refunding every lot of a shop order leaves its `RetailOrder.deliveryFee` untouched, so whoever makes the manual refund has to add the ₹30 by hand. The admin panel does not show delivery fees at all, so CropBid's own share of retail revenue is only in the database.
+
+**Nothing checks the goods.** The inspection that the freight arrangement exists to enable is unbuilt and undesigned (§2b), so a settlement can only ever be the agreed price. Never write copy saying we check, test, inspect or grade a lot.
 
 **Cancelling is retail only.** A shop order can be called off before dispatch, by either side (§3d). A trade deal cannot: an accepted bid is undone only by an admin refund, and the terms say so.
 

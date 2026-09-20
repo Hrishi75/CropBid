@@ -470,11 +470,14 @@ export function AppRoutes() {
         }
       />
       {/*
-        Booking is ops, not self-service. CropBid picks the carrier because
-        CropBid inspects the goods, so this page moved out of the farmer/buyer
-        routes and into admin. The server agrees: /logistics/book, /quote and
-        /partners/:transactionId are all requireRole('ADMIN') now, so a stale
-        bookmark gets a 403 rather than a broken form.
+        Booking is ops, not self-service. CropBid picks the carrier itself, so
+        this page moved out of the farmer/buyer routes and into admin. The
+        server agrees: /logistics/book, /quote and /partners/:transactionId are
+        all requireRole('ADMIN') now, so a stale bookmark gets a 403 rather
+        than a broken form.
+
+        The reason for owning the booking is the quality check at pickup, which
+        is intent rather than code: see CLAUDE.md §2b.
       */}
       <Route
         path="/admin/logistics/book/:transactionId"
