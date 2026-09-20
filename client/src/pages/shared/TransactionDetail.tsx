@@ -187,11 +187,15 @@ export function TransactionDetail() {
     && transaction.retailOrder != null
     && !transaction.retailOrder.cancelledAt
     && transaction.deliveryStatus === 'PENDING';
-  const nextAction = isFarmer && transaction.deliveryStatus === 'PENDING'
+  // A cancelled order has no journey left: the steps below would otherwise read
+  // it as PENDING and reset the lifecycle to MATCH, telling the shop the
+  // opposite of what just happened.
+  const cancelled = transaction.deliveryStatus === 'CANCELLED';
+  const nextAction = !cancelled && isFarmer && transaction.deliveryStatus === 'PENDING'
     ? { status: 'IN_TRANSIT', label: 'Mark as shipped' }
-    : isFarmer && transaction.deliveryStatus === 'IN_TRANSIT'
+    : !cancelled && isFarmer && transaction.deliveryStatus === 'IN_TRANSIT'
       ? { status: 'DELIVERED', label: 'Mark as delivered' }
-      : isBuyer && transaction.deliveryStatus === 'DELIVERED'
+      : !cancelled && isBuyer && transaction.deliveryStatus === 'DELIVERED'
         ? { status: 'CONFIRMED', label: 'Confirm receipt' }
         : null;
 
@@ -223,6 +227,22 @@ export function TransactionDetail() {
         </div>
       </div>
 
+      {cancelled && (
+        <div className="cb-card" style={{ marginBottom: 16 }}>
+          <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Cancelled</div>
+          <p className="cb-small" style={{ color: 'var(--cb-ink-3)' }}>
+            {transaction.retailOrder?.cancelReason
+              ? `Called off before dispatch. Reason given: ${transaction.retailOrder.cancelReason}.`
+              : 'Called off before dispatch.'}
+            {' '}The stock went back on the shelf.
+            {transaction.paymentStatus === 'REFUNDED'
+              ? ' The shopper had paid, so that money is going back to them by hand.'
+              : ' Nothing was charged.'}
+          </p>
+        </div>
+      )}
+
+      {!cancelled && (
       <div className="cb-card" style={{ marginBottom: 16 }}>
         <div className="cb-eyebrow" style={{ marginBottom: 18 }}>Lifecycle timeline</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
@@ -293,6 +313,7 @@ export function TransactionDetail() {
           </div>
         )}
       </div>
+      )}
 
       <div className="cb-cols-2" style={{ gap: 16, marginBottom: 16 }}>
         <div className="cb-card">

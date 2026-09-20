@@ -79,7 +79,8 @@ const tx = {
   retailOrder: { create: vi.fn(), updateMany: vi.fn() },
   listing: { updateMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
   bid: { create: vi.fn() },
-  transaction: { updateMany: vi.fn() },
+  transaction: { updateMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() },
+  auditLog: { create: vi.fn() },
 };
 
 const CONSUMER = 'consumer-1';
@@ -136,7 +137,15 @@ beforeEach(() => {
   }));
   runTransaction.mockImplementation(async (fn: any) => fn(tx));
   tx.retailOrder.updateMany.mockResolvedValue({ count: 1 });
-  tx.transaction.updateMany.mockResolvedValue({ count: 1 });
+  // Cancelling claims each lot by its CURRENT payment state, one conditional
+  // update per state, so the mock answers by which state the call asks for.
+  // Default: an unpaid order, so only the AWAITING_PAYMENT claim matches.
+  tx.transaction.updateMany.mockImplementation(async ({ where }: any) =>
+    ({ count: where.paymentStatus === 'AWAITING_PAYMENT' ? 1 : 0 }));
+  // No wholesale deal on these listings, so a sold-out lot may go back on sale.
+  tx.transaction.count.mockResolvedValue(0);
+  tx.transaction.findUnique.mockResolvedValue({ deliveryStatus: 'IN_TRANSIT' });
+  tx.auditLog.create.mockResolvedValue({});
   tx.listing.update.mockResolvedValue({});
   orderFindUnique.mockResolvedValue(placedOrder());
 });
@@ -538,7 +547,7 @@ describe('cancelling a shop order', () => {
     });
     for (const [id, listingId, qty] of [['tx-1', 'tomato', 2], ['tx-2', 'onion', 1]] as const) {
       expect(tx.transaction.updateMany).toHaveBeenCalledWith({
-        where: { id, deliveryStatus: 'PENDING' },
+        where: { id, deliveryStatus: 'PENDING', paymentStatus: 'AWAITING_PAYMENT' },
         data: { deliveryStatus: 'CANCELLED', paymentStatus: 'CANCELLED' },
       });
       expect(tx.listing.update).toHaveBeenCalledWith({
@@ -551,6 +560,22 @@ describe('cancelling a shop order', () => {
       where: { id: 'tomato', status: 'SOLD' },
       data: { status: 'ACTIVE' },
     });
+  });
+
+  // A lot marked SOLD because a wholesale deal took it is spoken for. Returning
+  // a few retail kilos to the shelf must not put the whole lot back on sale.
+  it('does not reopen a listing that a wholesale deal closed', async () => {
+    tx.transaction.count.mockResolvedValue(1);
+
+    await cancelRetailOrder('order-1', shopper);
+
+    // The stock still goes back...
+    expect(tx.listing.update).toHaveBeenCalledWith({
+      where: { id: 'tomato' },
+      data: { remainingQuantity: { increment: 2 } },
+    });
+    // ...but nothing is put back on sale.
+    expect(tx.listing.updateMany).not.toHaveBeenCalled();
   });
 
   it('tells the shop, and does not call a refund due when nothing was paid', async () => {
@@ -569,14 +594,64 @@ describe('cancelling a shop order', () => {
         { id: 'tx-1', listingId: 'tomato', deliveryStatus: 'PENDING', paymentStatus: 'ESCROW', bid: { quantity: 2 } },
       ],
     }));
+    tx.transaction.updateMany.mockImplementation(async ({ where }: any) =>
+      ({ count: where.paymentStatus === 'ESCROW' ? 1 : 0 }));
 
     await cancelRetailOrder('order-1', shopper);
 
     expect(tx.transaction.updateMany).toHaveBeenCalledWith({
-      where: { id: 'tx-1', deliveryStatus: 'PENDING' },
+      where: { id: 'tx-1', deliveryStatus: 'PENDING', paymentStatus: 'ESCROW' },
       data: { deliveryStatus: 'CANCELLED', paymentStatus: 'REFUNDED' },
     });
     expect(notifyAdminsRetailRefundDue).toHaveBeenCalledWith('Anita', 130, 'INR', 'order-1', null);
+  });
+
+  // Money owed back is recorded WITH the cancellation. The admin notification
+  // is best-effort, and losing it used to lose the only trace of the refund.
+  it('writes the refund to the audit log inside the same transaction', async () => {
+    orderFindUnique.mockResolvedValue(placedOrder({
+      paidAt: new Date(),
+      transactions: [
+        { id: 'tx-1', listingId: 'tomato', deliveryStatus: 'PENDING', paymentStatus: 'ESCROW', bid: { quantity: 2 } },
+      ],
+    }));
+    tx.transaction.updateMany.mockImplementation(async ({ where }: any) =>
+      ({ count: where.paymentStatus === 'ESCROW' ? 1 : 0 }));
+
+    await cancelRetailOrder('order-1', shopper);
+
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'retail_order.refund_due',
+        entityId: 'order-1',
+        metadata: expect.objectContaining({ amount: 130, lots: 1 }),
+      }),
+    });
+  });
+
+  // THE RACE REVIEW CAUGHT. A capture commits between the read at the top of
+  // cancelRetailOrder and its writes. The snapshot still says AWAITING_PAYMENT;
+  // the row says ESCROW. Writing from the snapshot would stamp CANCELLED over
+  // captured money and tell nobody to refund it.
+  it('claims each lot by its payment state at write time, not the snapshot', async () => {
+    // Snapshot: unpaid. Reality when the writes run: paid.
+    orderFindUnique.mockResolvedValue(placedOrder({
+      transactions: [
+        { id: 'tx-1', listingId: 'tomato', deliveryStatus: 'PENDING', paymentStatus: 'AWAITING_PAYMENT', bid: { quantity: 2 } },
+      ],
+    }));
+    tx.transaction.updateMany.mockImplementation(async ({ where }: any) =>
+      ({ count: where.paymentStatus === 'ESCROW' ? 1 : 0 }));
+
+    await cancelRetailOrder('order-1', shopper);
+
+    // It went to REFUNDED, not CANCELLED, and the refund was raised.
+    expect(tx.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: 'tx-1', deliveryStatus: 'PENDING', paymentStatus: 'ESCROW' },
+      data: { deliveryStatus: 'CANCELLED', paymentStatus: 'REFUNDED' },
+    });
+    expect(notifyAdminsRetailRefundDue).toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalled();
   });
 
   it('refuses once the shop has marked it on the way, and returns no stock', async () => {
@@ -595,6 +670,7 @@ describe('cancelling a shop order', () => {
   // stock for an order already in a van.
   it('refuses when a lot ships underneath it, mid-transaction', async () => {
     tx.transaction.updateMany.mockResolvedValue({ count: 0 });
+    tx.transaction.findUnique.mockResolvedValue({ deliveryStatus: 'IN_TRANSIT' });
 
     await expect(cancelRetailOrder('order-1', shopper)).rejects.toMatchObject({ statusCode: 409 });
   });

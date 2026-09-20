@@ -475,8 +475,6 @@ export async function cancelRetailOrder(
     throw new ApiError(400, 'Say why you cannot fulfil this order, so the shopper is told something.');
   }
 
-  const wasPaid = order.transactions.some((t) => t.paymentStatus === 'ESCROW');
-
   const cancelled = await prisma.$transaction(async (tx) => {
     // Conditional, so two cancels racing each other produce one cancellation
     // and one no-op rather than returning the stock twice.
@@ -484,42 +482,94 @@ export async function cancelRetailOrder(
       where: { id: order.id, cancelledAt: null },
       data: { cancelledAt: new Date(), cancelledById: actor.userId, cancelReason: note },
     });
-    if (claim.count === 0) return false;
+    if (claim.count === 0) return null;
 
     // Listing-id order, the same sequence the purchase claimed them in, so a
     // cancel and a purchase touching the same lots cannot deadlock.
     const lots = [...order.transactions].sort((a, b) => a.listingId.localeCompare(b.listingId));
 
-    for (const lot of lots) {
-      // PENDING is checked again inside the transaction: the shop may have
-      // pressed "on the way" between the read above and here, and that press
-      // wins. Failing here rolls the whole cancellation back.
-      const moved = await tx.transaction.updateMany({
-        where: { id: lot.id, deliveryStatus: 'PENDING' },
-        data: {
-          deliveryStatus: 'CANCELLED',
-          // Money held goes back to the shopper; money never taken is simply
-          // off. Neither is a payout, so RELEASED never appears here.
-          paymentStatus: lot.paymentStatus === 'ESCROW' ? 'REFUNDED' : 'CANCELLED',
-        },
-      });
-      if (moved.count === 0) {
-        throw new ApiError(409, 'This order is already on its way, so it cannot be cancelled.');
-      }
+    // How many lots had money held when this actually ran. Counted from the
+    // writes below, never from the snapshot above.
+    let heldForRefund = 0;
 
-      // Back on the shelf, and back on sale if selling this order is what
-      // emptied it. A lot marked SOLD by a wholesale deal has no stock to
-      // return here, so the same condition leaves it alone.
+    for (const lot of lots) {
+      // THE PAYMENT STATE IS READ IN THE WRITE, NOT FROM THE SNAPSHOT.
+      // A capture can commit between the read at the top of this function and
+      // here. Writing `lot.paymentStatus === 'ESCROW' ? ... : ...` from the
+      // stale copy would then stamp CANCELLED over ESCROW: money taken, marked
+      // as never charged, and nobody told to send it back. So each state is
+      // claimed by its own conditional update, and whichever matches is the
+      // truth at write time.
+      //
+      // PENDING is part of both conditions, so a shop pressing "on the way" in
+      // the same moment wins and the whole cancellation rolls back.
+      const refunded = await tx.transaction.updateMany({
+        where: { id: lot.id, deliveryStatus: 'PENDING', paymentStatus: 'ESCROW' },
+        data: { deliveryStatus: 'CANCELLED', paymentStatus: 'REFUNDED' },
+      });
+      const unpaid = refunded.count > 0
+        ? { count: 0 }
+        : await tx.transaction.updateMany({
+          where: { id: lot.id, deliveryStatus: 'PENDING', paymentStatus: 'AWAITING_PAYMENT' },
+          data: { deliveryStatus: 'CANCELLED', paymentStatus: 'CANCELLED' },
+        });
+
+      if (refunded.count + unpaid.count === 0) {
+        // Nothing matched: it shipped, or its money moved somewhere neither
+        // branch covers (an admin refund while it sat PENDING). Say which.
+        const current = await tx.transaction.findUnique({
+          where: { id: lot.id },
+          select: { deliveryStatus: true },
+        });
+        throw new ApiError(409, current?.deliveryStatus === 'PENDING'
+          ? 'This order has just changed. Open it again to see where it stands.'
+          : 'This order is already on its way, so it cannot be cancelled.');
+      }
+      heldForRefund += refunded.count;
+
+      // Back on the shelf.
       await tx.listing.update({
         where: { id: lot.listingId },
         data: { remainingQuantity: { increment: lot.bid.quantity } },
       });
-      await tx.listing.updateMany({
-        where: { id: lot.listingId, status: 'SOLD' },
-        data: { status: 'ACTIVE' },
+
+      // And back on sale, but only where this retail channel is the only thing
+      // that ever closed it. A lot marked SOLD because a wholesale deal took
+      // it is spoken for: returning a few kilos to the shelf must not put the
+      // whole lot back on the market for someone else to buy.
+      const wholesaleDeals = await tx.transaction.count({
+        where: { listingId: lot.listingId, bid: { isDirectPurchase: false } },
+      });
+      if (wholesaleDeals === 0) {
+        await tx.listing.updateMany({
+          where: { id: lot.listingId, status: 'SOLD' },
+          data: { status: 'ACTIVE' },
+        });
+      }
+    }
+
+    // The refund is recorded with the cancellation, not after it. The admin
+    // notification below is best-effort by nature (§6 refunds are manual), and
+    // losing it used to mean losing the only trace that money was owed back.
+    if (heldForRefund > 0) {
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          actorRole: actor.role,
+          action: 'retail_order.refund_due',
+          entityType: 'RetailOrder',
+          entityId: order.id,
+          metadata: {
+            amount: order.totalAmount,
+            currency: order.currency,
+            lots: heldForRefund,
+            reason: note,
+          },
+        },
       });
     }
-    return true;
+
+    return { heldForRefund };
   });
 
   if (!cancelled) return loadRetailOrder(order.id);
@@ -536,7 +586,7 @@ export async function cancelRetailOrder(
     order.id,
   ).catch(() => {});
 
-  if (wasPaid) {
+  if (cancelled.heldForRefund > 0) {
     void notifyAdminsRetailRefundDue(
       order.buyer.name, order.totalAmount, order.currency, order.id, note,
     ).catch(() => {});

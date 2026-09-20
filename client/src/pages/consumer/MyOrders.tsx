@@ -68,6 +68,18 @@ function groupOrders(orders: Transaction[]): OrderGroup[] {
   return groups;
 }
 
+/**
+ * " by the shop: sold out this morning", or nothing at all.
+ *
+ * Shared by both cards, because a cancellation reads the same either way and
+ * the one-item card used to leave it out.
+ */
+function cancelledNote(shopOrder: RetailOrderSummary | null, viewerId?: string): string {
+  if (!shopOrder?.cancelledAt) return '';
+  const byShop = shopOrder.cancelledById != null && shopOrder.cancelledById !== viewerId;
+  return `${byShop ? ' by the shop' : ''}${shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}`;
+}
+
 // The order comes back denominated in the lot's unit; a shopper reads it in
 // the kilograms they bought it in.
 const orderedKg = (o: Transaction) => (o.listing?.unit ? toKg(o.bid?.quantity ?? 0, o.listing.unit) : null);
@@ -88,7 +100,12 @@ function Thumb({ order, size }: { order: Transaction; size: number }) {
 
 // One item on its own: an order from before shop orders, or a shop order that
 // holds a single item. The amount is what was paid for it, delivery included.
-function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: RetailOrderSummary | null }) {
+function SingleOrderCard({ order, shopOrder, viewerId }: {
+  order: Transaction;
+  shopOrder: RetailOrderSummary | null;
+  /** Whose list this is, so a cancellation can say who called it off. */
+  viewerId?: string;
+}) {
   const stage = ORDER_STAGE(order);
   const kg = orderedKg(order);
   // Which shop it came from. The storefront is organised by shop, so an order
@@ -119,6 +136,10 @@ function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: 
         </div>
         <div className="cb-tiny" style={{ color: stage.color, marginTop: 4 }}>
           ● {stage.label}
+          {/* Who called it off and why, on a one-item order too: it is the
+              whole explanation, and a bare "Cancelled" leaves the shopper
+              wondering whether they did it themselves. */}
+          {cancelledNote(shopOrder, viewerId)}
         </div>
       </div>
 
@@ -177,8 +198,7 @@ function ShopOrderCard({ shopOrder, items, viewerId }: {
           )}
           {cancelled && (
             <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 4 }}>
-              ● Cancelled{shopOrder.cancelledById && shopOrder.cancelledById !== viewerId ? ' by the shop' : ''}
-              {shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}
+              ● Cancelled{cancelledNote(shopOrder, viewerId)}
               {items.some((o) => o.paymentStatus === 'REFUNDED') ? ' · refund on its way' : ''}
             </div>
           )}
@@ -322,7 +342,7 @@ export function MyOrders() {
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {groups.map((g) => (g.shopOrder && g.items.length > 1
             ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} viewerId={user?.id} />
-            : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} />))}
+            : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} viewerId={user?.id} />))}
         </div>
       )}
     </DashboardLayout>
