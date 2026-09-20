@@ -252,3 +252,33 @@ export async function notifyAdminsDealClosed(
     ),
   );
 }
+
+// A shop order that two different payments both paid for. Only the first
+// payment paid it; the second one's share is the shopper's money, taken twice,
+// and refunds are manual (CLAUDE.md §6), so a person has to send it back.
+// Deliberately carries no transactionId: the admin needs the amount and the
+// payment reference, not a trader's order page they cannot open.
+export async function notifyAdminsRetailOverpaid(
+  buyerName: string,
+  amount: number,
+  currency: string,
+  razorpayPaymentId: string,
+  retailPaymentId: string,
+) {
+  const admins = await prisma.user.findMany({
+    where: { role: 'ADMIN' },
+    select: { id: true },
+  });
+
+  await Promise.all(
+    admins.map((admin) =>
+      createNotification({
+        userId: admin.id,
+        type: 'RETAIL_OVERPAID',
+        title: `Refund due: ${buyerName} paid twice`,
+        message: `${currency} ${amount.toLocaleString('en-IN')} of Razorpay payment ${razorpayPaymentId} was for orders already paid. Refund it by hand.`,
+        data: { retailPaymentId },
+      }).catch(() => {}),
+    ),
+  );
+}

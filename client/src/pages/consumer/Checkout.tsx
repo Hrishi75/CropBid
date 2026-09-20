@@ -1,12 +1,17 @@
 // =============================================================================
 // Checkout — turn the basket into real orders
 // =============================================================================
-// ONE BASKET, ONE ORDER PER SHOP
+// ONE BASKET, ONE ORDER PER SHOP, ONE PAYMENT
 // Each shop delivers separately, so POST /retail-orders takes one shop's lines
-// at a time: it claims their stock, works out that shop's delivery fee (free
-// from ₹200, ₹30 below), and opens one payment for the lot. Inside it every lot
-// is still its own settlement, released when that lot arrives. A basket from
-// three shops is three orders, and the page says so before the shopper commits.
+// at a time: it claims their stock and works out that shop's delivery fee (free
+// from ₹200, ₹30 below). Inside it every lot is still its own settlement,
+// released when that lot arrives. A basket from three shops is three orders,
+// and the page says so before the shopper commits.
+//
+// But it is ONE payment, opened the moment the orders exist, like any grocery
+// app: sending a shopper off to find a pay button is a lost payment, and two
+// approvals in a row for one basket is another. Closing the payment window
+// leaves the orders waiting in Orders, which has a button for exactly that.
 //
 // A SHOP'S ORDER IS ALL OR NOTHING, THE BASKET IS NOT
 // If one of a shop's lots has sold out underneath the basket, that shop's whole
@@ -50,6 +55,7 @@ import { LANES } from '../../utils/delivery';
 import { cropImageFor } from '../../utils/cropImages';
 import { BillDetails } from './BillDetails';
 import { useCartLines } from './cartLines';
+import { payRetailOrders } from './payRetailOrders';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { Listing, RetailOrder } from '../../types';
@@ -145,16 +151,25 @@ export function Checkout() {
         'The rest is still in your cart.',
         { duration: 8000 },
       );
-    } else {
-      toast.success(placedOrders.length === 1 ? 'Order placed' : `${placedOrders.length} orders placed`);
     }
 
-    // A single shop order can be paid straight away, from any of its lots'
-    // pages: paying there pays the whole shop order.
-    const [only] = placedOrders;
-    navigate(placedOrders.length === 1 && only.transactions[0]
-      ? `/orders/${only.transactions[0].id}`
-      : '/orders');
+    // Pay for everything that was placed, in one go. `placing` stays true
+    // throughout: the placed lots have left the basket, and the guard at the
+    // top would otherwise bounce an emptied checkout back to the cart behind
+    // the payment window.
+    const { outcome, message } = await payRetailOrders(
+      placedOrders.map((o) => o.id),
+      user,
+      placedOrders.length === 1 ? 'Your order' : `${placedOrders.length} orders`,
+    );
+    if (outcome === 'paid') {
+      toast.success('Paid. Your order is on its way');
+    } else if (outcome === 'closed') {
+      toast('Your order is placed. You can pay for it from Orders.');
+    } else {
+      toast.error(`${message} Your order is placed; you can pay from Orders.`, { duration: 8000 });
+    }
+    navigate('/orders');
   }
 
   if (items.length === 0) return null;
@@ -297,7 +312,8 @@ export function Checkout() {
               disabled={bill.loading || bill.orderable.length === 0}
               onClick={handlePlaceOrder}
             >
-              {bill.orderCount > 1 ? `Place ${bill.orderCount} orders` : 'Place order'}
+              {bill.orderCount > 1 ? `Place ${bill.orderCount} orders and pay` : 'Place order and pay'}
+              {bill.toPay !== null ? ` · ${formatCurrency(bill.toPay, bill.currency)}` : ''}
               <ArrowIcon />
             </Button>
           )}

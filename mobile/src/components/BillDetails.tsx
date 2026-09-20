@@ -88,14 +88,14 @@ export function BillDetails({
 
       {orderCount != null && orderCount > 1 ? (
         <Text style={styles.note}>
-          Each shop delivers separately, so this becomes {orderCount} orders: one per shop, each paid
-          for and tracked on its own in Orders.
+          Each shop delivers separately, so this becomes {orderCount} orders, one per shop, paid for
+          together in one payment and tracked on their own in Orders.
         </Text>
       ) : null}
 
       <Text style={styles.note}>
-        You pay after the order is placed. Money is held by CropBid and released to the seller only
-        once you confirm the delivery arrived.
+        You pay as soon as the order is placed. Money is held by CropBid and released to the seller
+        only once you confirm the delivery arrived.
       </Text>
     </View>
   );

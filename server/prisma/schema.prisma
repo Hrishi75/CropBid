@@ -239,6 +239,7 @@ model User {
   addresses          Address[]
   retailOrdersPlaced RetailOrder[]      @relation("RetailOrderBuyer") // Shop orders this shopper has placed
   retailOrdersTaken  RetailOrder[]      @relation("RetailOrderSeller") // Shop orders placed with this seller
+  retailPayments     RetailPayment[] // Payments this shopper has opened for their shop orders
 }
 
 // =============================================================================
@@ -811,6 +812,10 @@ model Transaction {
 //
 // sellerId and buyerId target User.id, like Transaction.farmerId/buyerId, so an
 // ownership check is a bare comparison rather than a join through the profile.
+//
+// PAYING IS NOT DONE HERE. A shopper pays for a whole basket at once, which can
+// be several shop orders, so the Razorpay order lives on RetailPayment. This
+// row only records THAT it has been paid (paidAt).
 model RetailOrder {
   id String @id @default(uuid())
 
@@ -825,8 +830,50 @@ model RetailOrder {
   totalAmount Float // itemsTotal + deliveryFee: the one amount the shopper pays
   currency    Currency @default(INR)
 
-  // The shop order's single payment. Unique so one Razorpay order or payment
-  // can never be matched to two shop orders.
+  // Set once, by whichever RetailPayment captured first. Its lots move into
+  // ESCROW in the same database transaction.
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  // Every attempt to pay for this order: usually one, the basket it was placed
+  // in. Another appears if the shopper later pays for it on its own.
+  payments     RetailPayment[]
+
+  @@index([buyerId, createdAt])
+}
+
+// =============================================================================
+// Model 7c: RetailPayment: one payment covering one or more shop orders
+// =============================================================================
+// A basket from two shops is two orders with two delivery fees, but ONE
+// payment (decided 2026-09-20): two UPI approvals in a row for one basket is
+// how a shopper gets lost. This row is that payment: the shop orders it covers,
+// the amount, and its Razorpay order.
+//
+// CREATED WHEN THE SHOPPER PRESSES PAY, not when the basket is placed. Placing
+// stays one shop at a time, and a payment is whichever unpaid orders the shopper
+// is paying for: the basket right after checkout, or everything still owed from
+// the Orders screen. Asking again for the same set hands back the same Razorpay
+// order rather than opening a second one.
+//
+// An order can sit in more than one payment (the basket was opened and closed,
+// then it was paid on its own), and only the first to capture pays for it. If
+// a second one is somehow paid too, capture records the overpayment and tells
+// the admins, because that money has to go back by hand.
+model RetailPayment {
+  id String @id @default(uuid())
+
+  buyerId String
+  buyer   User   @relation(fields: [buyerId], references: [id])
+
+  // The sum of its orders' totals when it was opened, delivery included.
+  amount   Float
+  currency Currency @default(INR)
+
+  // Unique so one Razorpay order or payment can never settle two payments.
   razorpayOrderId   String?   @unique
   razorpayPaymentId String?   @unique
   paidAt            DateTime?
@@ -834,9 +881,9 @@ model RetailOrder {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  transactions Transaction[]
+  orders RetailOrder[]
 
-  @@index([buyerId, createdAt])
+  @@index([buyerId, paidAt])
 }
 
 // =============================================================================

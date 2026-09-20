@@ -339,10 +339,10 @@ export async function deleteUser(userId: string, actingAdminId: string) {
 // =============================================================================
 // PURGE DEMO DATA — One-shot cleanup of seeded/test data
 // =============================================================================
-// Deletes ALL marketplace activity (shipments, transactions, retail orders,
-// negotiations, bids, listings, notifications) plus every user whose email ends in
-// "@cropbid.test" — except the calling admin — and any extra emails passed
-// explicitly. Real user ACCOUNTS survive; their listings/deals do not.
+// Deletes ALL marketplace activity (shipments, transactions, retail orders and
+// their payments, negotiations, bids, listings, notifications) plus every user
+// whose email ends in "@cropbid.test" — except the calling admin — and any
+// extra emails passed explicitly. Real user ACCOUNTS survive; their listings/deals do not.
 // Logistics partners and the waitlist are left untouched.
 // Ordering matters: transactions restrict-FK onto listings/users, so activity
 // rows go first, users last.
@@ -355,11 +355,13 @@ export async function purgeDemoData(actingAdminId: string, extraEmails: string[]
     ],
   };
 
-  const [shipments, transactions, retailOrders, negotiations, bids, listings, notifications, users] =
+  const [shipments, transactions, retailPayments, retailOrders, negotiations, bids, listings, notifications, users] =
     await prisma.$transaction([
       prisma.shipment.deleteMany(),
       prisma.transaction.deleteMany(),
       // After the lots that point at them, before the users they point at.
+      // Payments first: they point at users too.
+      prisma.retailPayment.deleteMany(),
       prisma.retailOrder.deleteMany(),
       prisma.negotiation.deleteMany(),
       prisma.bid.deleteMany(),
@@ -372,6 +374,7 @@ export async function purgeDemoData(actingAdminId: string, extraEmails: string[]
     deleted: {
       shipments: shipments.count,
       transactions: transactions.count,
+      retailPayments: retailPayments.count,
       retailOrders: retailOrders.count,
       negotiations: negotiations.count,
       bids: bids.count,

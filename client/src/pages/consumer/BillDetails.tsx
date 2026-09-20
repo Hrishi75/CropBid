@@ -100,13 +100,13 @@ export function BillDetails({
 
       {orderCount != null && orderCount > 1 && (
         <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
-          Each shop delivers separately, so this becomes {orderCount} orders: one per shop,
-          each paid for and tracked on its own in Orders.
+          Each shop delivers separately, so this becomes {orderCount} orders, one per shop,
+          paid for together in one payment and tracked on their own in Orders.
         </p>
       )}
 
       <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
-        You pay after the order is placed. Money is held by CropBid and released to the
+        You pay as soon as the order is placed. Money is held by CropBid and released to the
         seller only once you confirm the delivery arrived.
       </p>
     </div>

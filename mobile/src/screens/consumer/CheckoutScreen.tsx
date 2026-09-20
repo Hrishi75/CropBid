@@ -1,13 +1,17 @@
 // =============================================================================
 // CheckoutScreen — turn the basket into real orders
 // =============================================================================
-// ONE BASKET, ONE ORDER PER SHOP
+// ONE BASKET, ONE ORDER PER SHOP, ONE PAYMENT
 // Each shop delivers separately, so POST /retail-orders takes one shop's lines
-// at a time: it claims their stock, works out that shop's delivery fee (free
-// from ₹200, ₹30 below), and opens one payment for the lot. Inside it every lot
-// is still its own settlement, released when that lot arrives. A basket from
-// three shops is three orders, and the screen says so before the shopper
-// commits. Same as the web checkout.
+// at a time: it claims their stock and works out that shop's delivery fee (free
+// from ₹200, ₹30 below). Inside it every lot is still its own settlement,
+// released when that lot arrives. A basket from three shops is three orders,
+// and the screen says so before the shopper commits. Same as the web checkout.
+//
+// Then ONE payment for all of them, opened the moment they exist. This screen
+// used to end with "Pay from the Orders tab", on a tab that had no pay button,
+// so every order placed in the app sat unpaid. Closing the payment window now
+// leaves the orders waiting in Orders, which does have one.
 //
 // A SHOP'S ORDER IS ALL OR NOTHING, THE BASKET IS NOT
 // If one of a shop's lots has sold out underneath the basket, that shop's whole
@@ -36,7 +40,7 @@
 // here, prefilled from the profile, means that error never fires.
 // =============================================================================
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -54,7 +58,13 @@ import { FadeInImage, PressScale } from '../../components/motion';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useCartLines } from '../../lib/cartLines';
-import { placeRetailOrder } from '../../api/endpoints';
+import {
+  createRetailPayment,
+  placeRetailOrder,
+  verifyRetailPayment,
+  type RetailPaymentOrder,
+} from '../../api/endpoints';
+import RazorpayCheckout from '../../components/RazorpayCheckout';
 import { errorMessage, mediaUrl } from '../../api/client';
 import { cropImageFor } from '../../utils/cropImages';
 import { money, unitLabel } from '../../lib/format';
@@ -68,6 +78,10 @@ export default function CheckoutScreen() {
   const bill = useCartLines(items, city);
 
   const [placing, setPlacing] = useState(false);
+  // Non-null while the payment window is open for what was just placed.
+  const [payment, setPayment] = useState<RetailPaymentOrder | null>(null);
+  // Which shops failed to order, told after the payment rather than on top of it.
+  const failureNote = useRef<string | null>(null);
   const [address, setAddress] = useState(user?.location ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [touched, setTouched] = useState(false);
@@ -94,7 +108,7 @@ export default function CheckoutScreen() {
     setPlacing(true);
 
     const placedLots: string[] = [];
-    let placedShops = 0;
+    const placedOrderIds: string[] = [];
     const failures: { name: string; message: string }[] = [];
 
     // Sequential, not Promise.all: each call decrements stock, and a seller
@@ -102,7 +116,7 @@ export default function CheckoutScreen() {
     // burst of parallel writes racing each other's stock claims.
     for (const shop of shops) {
       try {
-        await placeRetailOrder({
+        const order = await placeRetailOrder({
           lines: shop.orderable.map((line) => ({
             listingId: line.item.listingId,
             quantity: line.quantity,
@@ -125,7 +139,7 @@ export default function CheckoutScreen() {
           contactPhone: phone.trim(),
           deliveryFee: shop.deliveryFee ?? undefined,
         });
-        placedShops += 1;
+        placedOrderIds.push(order.id);
         placedLots.push(...shop.orderable.map((line) => line.item.listingId));
       } catch (e) {
         failures.push({
@@ -138,41 +152,49 @@ export default function CheckoutScreen() {
     // Only what actually became an order leaves the basket.
     if (placedLots.length > 0) removeMany(placedLots);
 
-    if (placedShops === 0) {
+    if (placedOrderIds.length === 0) {
       setPlacing(false);
       Alert.alert('Order not placed', failures[0]?.message ?? 'Could not place your order');
       return;
     }
 
-    // Orders is a SIBLING of this screen on the consumer stack now, not a tab
-    // under it, so navigating to it by name replaces the checkout rather than
-    // switching a tab underneath and leaving the shopper staring at the
-    // checkout they just finished.
-    //
-    // `replace`, not `navigate`: backing out of a fresh order list should not
-    // return to a checkout for a basket that has already been paid for.
-    const done = () => nav.replace('Orders');
+    failureNote.current = failures.length > 0
+      ? `${failures.length} of ${placedOrderIds.length + failures.length} shops could not be ordered.\n` +
+        `${failures.map((f) => `${f.name}: ${f.message}`).join('\n')}\n\nThose items are still in your cart.`
+      : null;
 
-    if (failures.length > 0) {
-      Alert.alert(
-        `${placedShops} of ${placedShops + failures.length} shops ordered`,
-        `${failures.map((f) => `${f.name}: ${f.message}`).join('\n')}\n\nThe rest is still in your cart.`,
-        [{ text: 'OK', onPress: done }],
-      );
-    } else {
-      Alert.alert(
-        placedShops === 1 ? 'Order placed' : `${placedShops} orders placed`,
-        'Pay from the Orders tab to move the money into escrow.',
-        [{ text: 'OK', onPress: done }],
-      );
+    // One payment for everything that was placed. `placing` stays true: the
+    // placed lots have left the basket, and the guard at the top would
+    // otherwise send an emptied checkout back to the cart behind the window.
+    try {
+      setPayment(await createRetailPayment(placedOrderIds));
+    } catch (e) {
+      finish('Order placed', `${errorMessage(e, 'Could not start the payment.')} You can pay from Orders.`);
     }
-    // `placing` deliberately stays true here. Everything that became an order
-    // has just left the basket, and the guard at the top of this component
-    // sends an empty basket back to the cart — which would fire behind the
-    // alert and undo the navigation the alert is about to make.
   }
 
-  if (items.length === 0) return <View style={styles.flex} />;
+  // Where every path out of checkout ends: say what happened, then go to
+  // Orders, where anything still unpaid has a Pay button.
+  function finish(title: string, body: string) {
+    const note = failureNote.current;
+    Alert.alert(title, note ? `${body}\n\n${note}` : body, [{ text: 'OK', onPress: done }]);
+  }
+
+  // Orders is a SIBLING of this screen on the consumer stack, not a tab under
+  // it, so navigating to it by name replaces the checkout rather than switching
+  // a tab underneath and leaving the shopper staring at the checkout they just
+  // finished. `replace`, not `navigate`: backing out of a fresh order list
+  // should not return to a checkout for a basket that has already been placed.
+  function done() {
+    nav.replace('Orders');
+  }
+
+
+  // `placing` matters here, which review caught: a fully successful checkout
+  // empties the basket, and returning early on that would unmount this screen
+  // before the payment window below it ever mounts. The shopper would be left
+  // on a blank screen with orders nobody had asked them to pay for.
+  if (items.length === 0 && !placing) return <View style={styles.flex} />;
 
   const blocked = bill.lines.length - bill.orderable.length;
   // Without the rules there is no honest delivery figure to send, and the
@@ -299,11 +321,25 @@ export default function CheckoutScreen() {
               : bill.toPay === null
                 ? bill.rulesFailed ? "Couldn't load delivery charges" : 'Checking…'
                 : bill.orderCount > 1
-                  ? `Place ${bill.orderCount} orders · ${money(bill.toPay, bill.currency)}`
-                  : `Place order · ${money(bill.toPay, bill.currency)}`}
+                  ? `Place ${bill.orderCount} orders and pay · ${money(bill.toPay, bill.currency)}`
+                  : `Place order and pay · ${money(bill.toPay, bill.currency)}`}
           </Text>
         </PressScale>
       </View>
+
+      <RazorpayCheckout<{ id: string; paidAt: string | null }>
+        order={payment}
+        prefill={{ name: user?.name, email: user?.email ?? undefined, contact: user?.phone ?? undefined }}
+        verify={verifyRetailPayment}
+        onPaid={() => {
+          setPayment(null);
+          finish('Paid', 'Your order is on its way.');
+        }}
+        onClose={(err) => {
+          setPayment(null);
+          finish('Order placed', err ? `${err} You can pay from Orders.` : 'You can pay for it from Orders.');
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
