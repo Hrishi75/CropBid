@@ -10,6 +10,19 @@ on:
     types: [completed]
     branches: [main]
 
+# One deploy at a time. Every run works on the same ~/app checkout on the box:
+# it resets the working tree, rebuilds dist/ in place and restarts the unit, so
+# two overlapping runs can have one deleting dist/ while the other is restarting
+# from it, or reset the checkout out from under a build. Queue them instead.
+#
+# NOT cancel-in-progress: a deploy that is halfway through is a build that has
+# started or a migration that has run. Cancelling it mid-SSH leaves exactly the
+# half-applied state this workflow is being changed to avoid; the second run
+# waits and then deploys the newer commit over the top.
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
 jobs:
   deploy:
     if: github.event.workflow_run.conclusion == 'success'
@@ -41,8 +54,23 @@ jobs:
             cd server
             npm install --include=dev
             npx prisma generate
+
+            # BUILD BEFORE MIGRATE, and build with esbuild rather than tsc.
+            #
+            # Both halves of that come from one deploy failing on 2026-09-20.
+            # tsc peaks near 750 MB type-checking this project; this box caps
+            # V8's old space near 460 MB, so it died with "heap out of memory".
+            # Because migrate ran first, the database was left three migrations
+            # ahead of the process still serving traffic, one of which had
+            # dropped columns that process still read. See server/scripts/build.js
+            # for why transpiling here is safe: CI type-checks every change with
+            # tsc on a runner that has the memory for it.
+            #
+            # In this order a failed build changes nothing: the old code keeps
+            # serving the schema it was written against, and the deploy simply
+            # has not happened.
+            npm run build:deploy
             npx prisma migrate deploy
-            npm run build
 
             sudo systemctl restart cropbid-api
 
