@@ -216,8 +216,13 @@ model User {
   /// always zero is a row that only exists to be joined against.
   wallet Wallet?
 
-  // Refresh token for JWT auth — stored hashed, null when logged out
-  // WHY STORE THIS? So we can invalidate sessions on logout (set to null)
+  // The SHA-256 of the session's refresh token, null when logged out.
+  // WHY STORE IT AT ALL? So logout, suspension and a password reset can end a
+  // session that is otherwise valid until it expires.
+  // WHY ONLY THE HASH? Holding the token itself is holding a live session: a
+  // backup or a dump would hand over every signed-in account. See
+  // utils/refreshToken.ts. It held raw tokens until 2026-09-20, and the
+  // migration that changed it cleared them.
   refreshToken String?
 
   // Password reset — we store only the SHA-256 hash of the emailed token, so a
@@ -1450,18 +1455,18 @@ model EquipmentEnquiry {
 // spurious-seed liability when a crop fails. It does neither.
 
 model InputSupplier {
-  id            String   @id @default(uuid())
-  name          String
-  location      String   // City/town
-  state         String
-  country       String   @default("India")
+  id       String @id @default(uuid())
+  name     String
+  location String // City/town
+  state    String
+  country  String @default("India")
 
-  contactPhone  String   // Revealed to a farmer only once they raise an enquiry
-  contactEmail  String?
+  contactPhone String // Revealed to a farmer only once they raise an enquiry
+  contactEmail String?
 
   // Curated trust signals — CropBid vouches for verified suppliers.
-  verified      Boolean  @default(false)
-  rating        Float    @default(4.0)
+  verified Boolean @default(false)
+  rating   Float   @default(4.0)
 
   // --- Statutory licences (see the note above) ---
   // Nullable because a shop may hold one and not the others: plenty sell seed
@@ -1472,7 +1477,7 @@ model InputSupplier {
   fertiliserLicence String? // Fertiliser (Control) Order 1985
   pesticideLicence  String? // Insecticides Act 1968
 
-  active        Boolean  @default(true)
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1494,32 +1499,32 @@ model InputSupplier {
 // actually pays.
 
 enum AgriInputCategory {
-  SEED            // Certified and hybrid seed
-  FERTILISER      // Straight and complex fertilisers (urea, DAP, NPK blends)
-  ORGANIC         // Vermicompost, bio-fertilisers, soil conditioners
+  SEED // Certified and hybrid seed
+  FERTILISER // Straight and complex fertilisers (urea, DAP, NPK blends)
+  ORGANIC // Vermicompost, bio-fertilisers, soil conditioners
   CROP_PROTECTION // Pesticides, herbicides, fungicides
-  MICRONUTRIENT   // Zinc, boron, sulphur supplements
-  SEEDLING        // Nursery saplings and grafted planting material
+  MICRONUTRIENT // Zinc, boron, sulphur supplements
+  SEEDLING // Nursery saplings and grafted planting material
 }
 
 model AgriInput {
-  id          String            @id @default(uuid())
+  id String @id @default(uuid())
 
-  supplierId  String
-  supplier    InputSupplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   InputSupplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
-  title       String            // e.g., "Mahyco Bt Cotton MRC 7351"
-  category    AgriInputCategory
-  brand       String?
+  title    String // e.g., "Mahyco Bt Cotton MRC 7351"
+  category AgriInputCategory
+  brand    String?
 
   // Which crops this is for. Drives the "for your crop" filter — the question a
   // farmer asks first is "what do I sow in cotton", not "show me seeds".
-  cropNames   String[]
+  cropNames String[]
 
   // --- Pack economics ---
-  packSize     String  // Free text: "1 kg", "45 kg bag", "500 ml". Units vary
-                       // wildly by category and a numeric column would force a
-                       // second "unit" column and a join in every read.
+  packSize     String // Free text: "1 kg", "45 kg bag", "500 ml". Units vary
+  // wildly by category and a numeric column would force a
+  // second "unit" column and a join in every read.
   pricePerPack Float
   currency     Currency @default(INR)
 
@@ -1527,35 +1532,34 @@ model AgriInput {
   // Order — the price is set by government, not the shop. Flagging it stops a
   // farmer reading a controlled price as this supplier undercutting the market,
   // and stops us appearing to compete on a number nobody can move.
-  subsidised   Boolean @default(false)
+  subsidised Boolean @default(false)
 
   // --- Category-specific facts, all optional ---
   composition    String? // "NPK 10:26:26" for fertiliser, "Bt Cotton hybrid" for seed
-  germinationPct Float?  // SEED only — the germination guarantee on the label
+  germinationPct Float? // SEED only — the germination guarantee on the label
   seedTreatment  String? // SEED only — e.g. "Thiram treated"
   dosagePerAcre  String? // "2 bags / acre", "500 ml / acre"
 
-  specs       String[]  // Anything else worth a chip on the card
+  specs       String[] // Anything else worth a chip on the card
   description String?
   images      String[]
 
-  location    String
-  state       String
+  location String
+  state    String
 
-  active      Boolean   @default(true)
+  active Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   enquiries AgriInputEnquiry[]
 
-  // Browse is always filtered by these — index the hot paths, same as Equipment.
-  @@index([category, active])
-  @@index([state, active])
-
   // The catalogue loader's identity for a product, enforced here so two
   // concurrent runs cannot both decide a row is missing and insert it.
   @@unique([supplierId, title])
+  // Browse is always filtered by these — index the hot paths, same as Equipment.
+  @@index([category, active])
+  @@index([state, active])
 }
 
 // =============================================================================
@@ -1566,13 +1570,13 @@ model AgriInput {
 // lead instead of letting the catalogue be scraped for contacts.
 
 model AgriInputEnquiry {
-  id           String        @id @default(uuid())
+  id String @id @default(uuid())
 
-  agriInputId  String
-  agriInput    AgriInput     @relation(fields: [agriInputId], references: [id], onDelete: Cascade)
+  agriInputId String
+  agriInput   AgriInput @relation(fields: [agriInputId], references: [id], onDelete: Cascade)
 
-  userId       String        // Whoever raised it — usually a FARMER
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String // Whoever raised it — usually a FARMER
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // How many packs they want. Advisory: the supplier confirms stock on the
   // call, since we hold no inventory count.
@@ -1582,13 +1586,13 @@ model AgriInputEnquiry {
   acres        Float?
   message      String?
 
-  status       EnquiryStatus @default(NEW)
+  status EnquiryStatus @default(NEW)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId, createdAt])
   // One lead per account per product. A repeat enquiry gets the existing row
   // back (agriInput.service.ts createEnquiry) instead of writing a copy.
   @@unique([userId, agriInputId])
+  @@index([userId, createdAt])
 }

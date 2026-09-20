@@ -32,6 +32,7 @@ vi.mock('./audit.service', () => ({
 import { prisma } from '../lib/prisma';
 import { refresh } from './auth.service';
 import { generateTokens } from '../utils/jwt';
+import { hashRefreshToken } from '../utils/refreshToken';
 import { ApiError } from '../utils/ApiError';
 import { config } from '../config';
 
@@ -51,13 +52,15 @@ function refreshTokenIssuedMinutesAgo(minutesAgo: number): string {
   return refreshToken;
 }
 
+// The row holds the HASH of the session's token, never the token itself
+// (utils/refreshToken), so the fixture stores what the database would.
 function farmerRow(refreshToken: string) {
   return {
     id: 'user-1',
     name: 'Asha',
     role: 'FARMER',
     suspended: false,
-    refreshToken,
+    refreshToken: hashRefreshToken(refreshToken),
     password: 'hashed',
     passwordResetToken: null,
     passwordResetExpires: null,
@@ -125,13 +128,13 @@ describe('refresh — inactivity timeout', () => {
 
     const result = await refresh(nearlyStale);
 
-    // Rotated: the stored token is replaced with a brand new one, which is what
-    // restarts the 15-minute clock.
+    // Rotated: the stored hash is replaced with the one for a brand new token,
+    // which is what restarts the 15-minute clock.
     expect(result.refreshToken).not.toBe(nearlyStale);
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'user-1' },
-        data: { refreshToken: result.refreshToken },
+        data: { refreshToken: hashRefreshToken(result.refreshToken) },
       }),
     );
   });

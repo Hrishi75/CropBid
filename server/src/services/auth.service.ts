@@ -18,6 +18,7 @@ import type { PartnerStatus } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../utils/jwt';
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
+import { hashRefreshToken, refreshTokenMatches } from '../utils/refreshToken';
 import { ApiError } from '../utils/ApiError';
 import { sendPasswordResetEmail, sendSignupOtpEmail } from './email.service';
 import {
@@ -171,7 +172,8 @@ async function createUserAndIssueTokens(data: {
   // Save the refresh token so we can invalidate it on logout (set to null).
   await prisma.user.update({
     where: { id: user.id },
-    data: { refreshToken: tokens.refreshToken },
+    // The HASH, never the token: see utils/refreshToken.
+    data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
 
   // Return user data WITHOUT password or any token material.
@@ -526,7 +528,8 @@ export async function login(input: LoginInput) {
   // 4. Save refresh token
   await prisma.user.update({
     where: { id: user.id },
-    data: { refreshToken: tokens.refreshToken },
+    // The HASH, never the token: see utils/refreshToken.
+    data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
 
   const {
@@ -589,7 +592,12 @@ export async function refresh(refreshToken: string) {
     throw new ApiError(403, 'This account has been suspended. Please contact support.');
   }
 
-  if (user.refreshToken !== refreshToken) {
+  // The stored value is a SHA-256 of the token, so this hashes what was
+  // presented and compares digests in constant time. A token from before
+  // tokens were hashed no longer matches anything, which signs that session
+  // out once: the migration that shipped this cleared those rows for the same
+  // reason, so nothing readable is left behind.
+  if (!refreshTokenMatches(refreshToken, user.refreshToken)) {
     throw new ApiError(401, 'Refresh token has been revoked');
   }
 
@@ -600,7 +608,8 @@ export async function refresh(refreshToken: string) {
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { refreshToken: tokens.refreshToken },
+    // The HASH, never the token: see utils/refreshToken.
+    data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
 
   const {
@@ -753,7 +762,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
     where: { id: userId },
     data: {
       password: hashedPassword,
-      refreshToken: tokens.refreshToken,
+      refreshToken: hashRefreshToken(tokens.refreshToken),
       passwordResetToken: null,
       passwordResetExpires: null,
     },
@@ -1565,7 +1574,10 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
     }
 
     const tokens = generateTokens(existing.id, existing.role);
-    await prisma.user.update({ where: { id: existing.id }, data: { refreshToken: tokens.refreshToken } });
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
+    });
 
     const {
       password: _, refreshToken: __, passwordResetToken: ___, passwordResetExpires: ____,
@@ -1601,7 +1613,10 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
     });
 
   const tokens = generateTokens(created.id, created.role);
-  await prisma.user.update({ where: { id: created.id }, data: { refreshToken: tokens.refreshToken } });
+  await prisma.user.update({
+    where: { id: created.id },
+    data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
+  });
 
   await recordAudit({
     actorId: created.id,
