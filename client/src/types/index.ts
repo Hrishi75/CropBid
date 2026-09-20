@@ -303,7 +303,41 @@ export interface Transaction {
   // buyer.phone and bid.contactPhone/deliveryAddress all come back null. True
   // for the buyer's own rows and for admins.
   contactReleased?: boolean;
+  // Retail only: the shop order this lot was bought in, which is what the
+  // shopper pays for (every lot from one shop, plus its delivery fee). Null
+  // for trade deals and for retail orders placed before shop orders existed.
+  retailOrder?: RetailOrderSummary | null;
   createdAt: string;
+}
+
+export interface RetailOrderSummary {
+  id: string;
+  /** The shop's lots together, before delivery. */
+  itemsTotal: number;
+  /** Charged once per shop order under the free-delivery threshold. Kept by CropBid. */
+  deliveryFee: number;
+  /** itemsTotal + deliveryFee: the one amount the shopper pays. */
+  totalAmount: number;
+  currency: Currency;
+  paidAt: string | null;
+  _count: { transactions: number };
+}
+
+/** What POST /retail-orders answers with. */
+export interface RetailOrder {
+  id: string;
+  itemsTotal: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: Currency;
+  transactions: { id: string; bidId: string; listingId: string; totalAmount: number }[];
+}
+
+/** GET /browse/retail-rules: the numbers the basket has to agree with the server on. */
+export interface RetailRules {
+  freeDeliveryFrom: number;
+  deliveryFee: number;
+  currency: string;
 }
 
 export interface NegotiationRound {

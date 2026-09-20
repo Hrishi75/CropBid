@@ -8,7 +8,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import * as browseService from '../services/browse.service';
-import { MIN_RETAIL_ORDER } from '../services/bid.service';
+import { RETAIL_DELIVERY } from '../services/retailOrder.service';
 
 // GET /api/browse — Browse listings with filters
 export async function browseListings(req: Request, res: Response, next: NextFunction) {
@@ -76,12 +76,21 @@ export async function getFilters(req: Request, res: Response, next: NextFunction
 // GET /api/browse/cities — cities with live retail stock (consumer city picker)
 // GET /api/browse/retail-rules — the numbers the storefront has to agree with
 //
-// Served rather than hardcoded in each client, because a minimum order value
-// that the app and the server disagree about is a shopper being refused at the
-// pay button with no warning. One source, read at runtime.
+// Served rather than hardcoded in each client, because a delivery charge the
+// basket and the server disagree about is a shopper charged an amount they
+// were never shown. One source, read at runtime.
+//
+// minOrderValue is 0 for app builds from before the delivery fee, which read
+// it as a per-lot floor and refuse checkout below it. There is no floor now,
+// so 0 turns that gate off rather than refusing orders the server would take.
 export async function getRetailRules(_req: Request, res: Response, next: NextFunction) {
   try {
-    res.json({ minOrderValue: MIN_RETAIL_ORDER, currency: 'INR' });
+    res.json({
+      freeDeliveryFrom: RETAIL_DELIVERY.freeFrom,
+      deliveryFee: RETAIL_DELIVERY.fee,
+      currency: 'INR',
+      minOrderValue: 0,
+    });
   } catch (error) {
     next(error);
   }

@@ -10,8 +10,14 @@
 // path on the client:
 //   POST /payments/order + /payments/verify  → escrow (lib/razorpay)
 //   PATCH /transactions/:id/delivery         → CONFIRMED, which releases escrow
-//                                              to the grower and lifts both
+//                                              to the seller and lifts both
 //                                              trust scores by 2
+//
+// A LOT IS PAID FOR WITH ITS SHOP. Everything bought from one shop is one
+// order with one delivery fee, so paying from any of its lots pays the whole
+// shop order: the server answers /payments/order for a lot with the shop
+// order's amount. The button says the full amount and what it covers, since a
+// ₹60 lot with a ₹130 Pay button would otherwise read as an overcharge.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -66,6 +72,17 @@ export function OrderDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Re-read after a payment rather than trusting its response: a shop order's
+  // payment answers with the shop order, not with this lot.
+  async function refresh() {
+    try {
+      const { data } = await api.get(`/transactions/${id}`);
+      setOrder(data);
+    } catch {
+      // The payment went through either way; the page catches up on reload.
+    }
+  }
+
   async function handlePay() {
     if (!order) return;
     setPaying(true);
@@ -78,7 +95,9 @@ export function OrderDetail() {
         currency: rzp.currency,
         order_id: rzp.orderId,
         name: 'CropBid',
-        description: `${order.listing?.cropName ?? 'Order'} — CropBid`,
+        description: order.retailOrder && order.retailOrder._count.transactions > 1
+          ? `${order.retailOrder._count.transactions} items, CropBid`
+          : `${order.listing?.cropName ?? 'Order'}, CropBid`,
         prefill: {
           name: user?.name,
           email: user?.email ?? undefined,
@@ -87,8 +106,8 @@ export function OrderDetail() {
         theme: { color: '#2f6b3a' },
         handler: async (resp) => {
           try {
-            const { data: updated } = await api.post('/payments/verify', resp);
-            setOrder(updated);
+            await api.post('/payments/verify', resp);
+            await refresh();
             toast.success('Paid — your order is on its way');
           } catch (err: any) {
             toast.error(err.response?.data?.message || 'Payment verification failed');
@@ -109,7 +128,7 @@ export function OrderDetail() {
     try {
       const { data } = await api.patch(`/transactions/${id}/delivery`, { status: 'CONFIRMED' });
       setOrder(data);
-      toast.success('Thanks — the grower has been paid');
+      toast.success('Thanks for confirming');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Could not confirm the delivery');
     } finally {
@@ -137,6 +156,10 @@ export function OrderDetail() {
     );
   }
 
+  // The shop order this lot was bought in, when it has one. Orders placed
+  // before shop orders existed are paid for on their own, as they always were.
+  const shopOrder = order.retailOrder ?? null;
+  const payAmount = shopOrder ? shopOrder.totalAmount : order.totalAmount;
   const stage = ORDER_STAGE(order);
   // Orders come back in the lot's unit. The shopper bought kilograms, so that
   // is what the receipt shows, price included.
@@ -187,10 +210,20 @@ export function OrderDetail() {
             <>
               <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Payment</div>
               <p className="cb-small" style={{ color: 'var(--cb-ink-3)', marginBottom: 14 }}>
+                {shopOrder && (
+                  <>
+                    {shopOrder._count.transactions > 1
+                      ? `This pays for all ${shopOrder._count.transactions} items from ${seller ?? 'this shop'}`
+                      : 'This pays for this item'}
+                    {shopOrder.deliveryFee > 0
+                      ? `, plus ${formatCurrency(shopOrder.deliveryFee, shopOrder.currency)} delivery. `
+                      : ', with free delivery. '}
+                  </>
+                )}
                 CropBid holds your money until you confirm the order arrived.
               </p>
               <Button size="lg" style={{ width: '100%' }} loading={paying} onClick={handlePay}>
-                Pay {formatCurrency(order.totalAmount, order.currency)}
+                Pay {formatCurrency(payAmount, order.currency)}
                 <ArrowIcon />
               </Button>
             </>
@@ -198,7 +231,7 @@ export function OrderDetail() {
             <>
               <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Did it arrive?</div>
               <p className="cb-small" style={{ color: 'var(--cb-ink-3)', marginBottom: 14 }}>
-                Confirming releases the payment to the grower. Only do this once you have the goods.
+                Confirming tells CropBid the seller can be paid for this item. Only do this once you have the goods.
               </p>
               <Button size="lg" style={{ width: '100%' }} loading={confirming} onClick={handleConfirm}>
                 Yes, it arrived
@@ -235,9 +268,32 @@ export function OrderDetail() {
           <Row label="Item" value={order.listing?.cropName} />
           <Row label="Quantity" value={orderedKg != null ? formatWeight(orderedKg) : '—'} />
           <Row label="Price" value={<span className="cb-mono">{perKg != null ? `${formatCurrency(perKg, order.currency)}/kg` : '—'}</span>} />
-          <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
-            <Row label="Paid" value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(order.totalAmount, order.currency)}</span>} />
-          </div>
+          {shopOrder ? (
+            <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
+              <Row label="This item" value={<span className="cb-mono">{formatCurrency(order.totalAmount, order.currency)}</span>} />
+              {shopOrder._count.transactions > 1 && (
+                <Row
+                  label={`All ${shopOrder._count.transactions} items`}
+                  value={<span className="cb-mono">{formatCurrency(shopOrder.itemsTotal, shopOrder.currency)}</span>}
+                />
+              )}
+              <Row
+                label="Delivery"
+                value={<span className="cb-mono">{shopOrder.deliveryFee > 0 ? formatCurrency(shopOrder.deliveryFee, shopOrder.currency) : 'Free'}</span>}
+              />
+              <Row
+                label={awaitingPayment ? 'To pay' : 'Paid'}
+                value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(shopOrder.totalAmount, shopOrder.currency)}</span>}
+              />
+            </div>
+          ) : (
+            <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
+              <Row
+                label={awaitingPayment ? 'To pay' : 'Paid'}
+                value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(order.totalAmount, order.currency)}</span>}
+              />
+            </div>
+          )}
           <Row label="Ordered" value={new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} />
         </div>
 

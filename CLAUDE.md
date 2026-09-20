@@ -36,8 +36,8 @@ Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number,
 - **India only.** Governing law India, jurisdiction Pune, Maharashtra *(unconfirmed, so confirm it before it matters)*.
 - **Not yet incorporated.** Incorporation in progress. `/terms` and `/privacy` say so outright rather than naming a company that does not exist. Wired to an `OPERATOR` constant in `client/src/pages/TermsPage.tsx`. **Fill it the day the certificate arrives** and the interim wording disappears on its own.
 - The footer must not say "CropBid, **Inc.**", a US suffix on an unincorporated Indian business. It did for a long time.
-- **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a.
-- **Minimum retail order: ₹150** (`MIN_RETAIL_ORDER`, `bid.service.ts`). **The web cart does not know about it**: only the app calls `/browse/retail-rules`, so a shopper on the site fills a ₹80 basket, is told nothing, and is refused at checkout. Same bug the app had until it was fixed; the fix has not been ported. Below it a delivery run costs more than the order is worth, and 2% of a ₹40 basket is 80 paise. Enforced on the server, and served to clients at `GET /browse/retail-rules` so the app reads the number rather than keeping a second copy that drifts. **It is per ORDER, not per basket**, and retail checkout places one order per lot. The cart therefore checks each line against the floor and names the ones that are short: comparing the basket TOTAL was worse than no gate at all, because two ₹100 lots passed as a ₹200 basket and were then both refused at the till. It compares the **unrounded** `price * quantity`, the server's own basis, not the paise-rounded `lineTotal` the row displays, or ₹149.995 shows as ₹150 and passes a gate the server then fails. Making it genuinely a basket rule means telling the server about the basket, which it is never told.
+- **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a. Households also pay a delivery fee on small shop orders, see §3b; the 2% is never taken on it.
+- **Household delivery: free from ₹200 of one shop's items, ₹30 below that** (`RETAIL_DELIVERY`, `retailOrder.service.ts`). There is **no minimum order** any more. §3b has the whole of it.
 - **Retail footprint: Pune and Nagpur.** Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
 
 ### 2a. Freight is ours (shipped 2026-09-06)
@@ -83,7 +83,29 @@ Shown on the storefront, shop page, cards, cart (grouped, so a two-delivery bask
 
 The retail surface is kg end to end, showing grams below 1 kg. A picker opens at **1 kg** (`Math.min(1, stock)`), steps by 500 g, and **500 g is the floor** (`STEP_KG`), where the minus button becomes a remove.
 
-**The cart stores kilograms, not the seller's unit.** Half a kilo of a quintal lot is `0.005`, and 2dp rounding turns that into `0.01`, ordering double. Conversion back to the seller's unit happens in exactly one place, `Checkout.tsx`, at 6dp, using the **live** listing unit rather than the cart snapshot.
+**The cart stores kilograms, not the seller's unit.** Half a kilo of a quintal lot is `0.005`, and 2dp rounding turns that into `0.01`, ordering double. Conversion back to the seller's unit happens in exactly one place, `orderQuantity` in `cartLines.ts`, at 6dp, using the **live** listing unit rather than the cart snapshot; checkout sends that number and the shop's delivery fee is worked out on it.
+
+### 3b. Delivery is per shop: free from ₹200, ₹30 below (decided 2026-09-20)
+
+**A household basket is ordered one shop at a time, and each shop order pays for its own delivery run.** From ₹200 of that shop's items it is free; below ₹200 the shopper pays ₹30 and the order still goes through. **CropBid keeps the ₹30.** It replaced a hard ₹150 floor that refused small orders outright and that the web cart never even warned about.
+
+The user's calls, and the argument for each:
+
+- **A fee, not a floor.** Nobody is turned away; a small order pays towards its trip.
+- **Per shop, not per lot and not per basket.** Per lot punished buying two things from one counter (two ₹120 items were two short orders). Per basket let ₹200 spread over three shops pass as one, when it is still three trips.
+- **CropBid keeps it**, although sellers do the retail delivery today. It is not part of any lot's price, so it never enters `Transaction.totalAmount`, the 2% basis or what the seller is paid.
+- **One payment per shop.** A shop order is a `RetailOrder` row holding the fee and the single Razorpay order; each lot inside it is still its own `Bid` and `Transaction`, because stock, escrow release, refunds and settlement all stay per lot.
+
+How it holds together:
+
+- **`POST /api/retail-orders`** takes one shop's lines. It refuses lines from two sellers, claims the stock of every line or none (a fee worked out on four items is wrong for three), and replays an order whose every line key it already holds. A basket only partly ordered is refused with a 409 rather than completed, for the same reason.
+- **The fee the shopper saw travels with the order** (`deliveryFee`), and a different answer is a 409, not a charge. A re-price across ₹200 between basket and request is the case. The item price is still unbound, see §6.
+- **Both sides compute the shop total the same way**: live price times the quantity checkout sends, summed in send order, rounded to paise once. Rounding each row first could land a paisa either side of ₹200 and show "Free" on an order charged ₹30.
+- **Paying for any retail lot pays its whole shop order.** `createOrder` redirects a lot with a `retailOrderId` to the shop order, and capture moves every lot into ESCROW in one database transaction, from the callback or the webhook. There is no request that pays a shop's lots piecemeal.
+- **The numbers are served** at `GET /browse/retail-rules` (`freeDeliveryFrom`, `deliveryFee`). The web and the app read them; neither keeps a copy. If the fetch fails the bill says so and checkout waits, rather than guessing. `minOrderValue` is still sent, as `0`, because app builds from before this read it as a floor and would otherwise refuse orders the server now takes.
+- **`/bids/direct-purchase` still works** for those older builds, as a one-item shop order **with no delivery fee**. Their bill says "Delivery: Free" and they cannot send back what they were shown, so the mismatch guard cannot protect them and charging ₹30 would be a fee nobody displayed. The old contract is honoured, and it heals as people update. It does leave that endpoint as a way to avoid the fee, which is accepted: one lot at a time, and nothing current calls it. They also cannot put two items in one shop order, so an old app ordering twice from one shop gets two orders.
+- **Web:** the cart is grouped by shop with "add ₹X more from this shop for free delivery" on each; the orders page shows one card per shop order with delivery in the total; the order page's Pay button pays the shop order and says what it covers. **App:** cart and checkout do the same; its Orders screen is not grouped yet.
+- **Public pages say it**: `/how-it-works`, `/terms` §6 and §8, and two FAQ answers.
 
 ### 3a. One app, and its front page is the shops (decided 2026-09-13)
 
@@ -215,7 +237,7 @@ The marketing page is held to the same rule as the legal ones and it is the one 
 |---|---|
 | "the agent watches lots and bids for you" | `agent.service` exports get-config, set-config, toggle. No scheduler exists. What ships is two-sided: with BOTH agents active, either party hands one bid over and they negotiate it out |
 | "Book a transport partner in-app" | Booking went ADMIN-only in #133, and the seller pays |
-| households have "no minimums" | `MIN_RETAIL_ORDER` refuses anything under ₹150 |
+| households have "no minimums" | a ₹150 floor refused small orders (since 2026-09-20, a ₹30 delivery fee under ₹200 a shop instead, §3b) |
 | "16 crops rated & forecast" | The board carries 30, and the forecast maps over the same list |
 | "verifies every lot ourselves" | We do not test lots, which the Quality section on that same page said in as many words |
 | "No passwords, ever" | Password sign-in is a real second lane |
@@ -225,7 +247,7 @@ Review then caught **three more that the rewrite introduced**, which is the same
 - "the load gets checked on the way through". Owning the booking is what would MAKE an inspection possible and that is the whole argument in §2a, but `ShipmentStatus` runs `PENDING_PICKUP → PICKED_UP → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED` with no inspection step, no result field, and §2a itself says nobody does it today. **Writing the rationale as though it were the feature** is how this one gets made; the honest line is that we book the carrier so the delivery is ours to answer for.
 - "the app counts down to the nightly cutoff". True of `mobile/lib/freshWindow`, wrong to put on the website, where the reader has no such clock and no server refuses a late order either.
 - **"grower" is not a synonym for "seller".** Fixing the scope word above, I reached for "ordered separately from its grower", on the very page arguing that a kirana is not a farm. The whole retail flow had it: the cart's reprice line, its empty state, the phone-number hint on checkout, and three lines of `BillDetails` including "Paid by the grower". The comments above those strings said grower too, which is where each new one came from, so they were changed with them. `grower` is now correct only where the subject really is a farm (the mission quote, the agent looking for growers, "no farm is selling direct"). See §9.
-- "₹150 per seller". **It is per LOT.** Checkout posts one `directPurchase` per line, so two ₹100 lots from the SAME grower are two ₹100 orders and both are refused. The app's cart note and its checkout button said "seller" too, three elements above a `BillDetails` line already saying "one per lot", and the server's own error said "this seller's items". All four fixed together.
+- "₹150 per seller". **It was per LOT** at the time: checkout posted one purchase per line, so two ₹100 lots from the SAME grower were two ₹100 orders and both refused. The app's cart note and its checkout button said "seller" too, three elements above a `BillDetails` line already saying "one per lot", and the server's own error said "this seller's items". All four were fixed together. The floor itself is gone now (§3b), and the unit really is the shop, so check which word the page uses against `retailOrder.service` before trusting either.
 
 Two of those had a working contradiction elsewhere on the same page, which is the tell: **when a page argues with itself, one half is stale.** Also added, because they were simply missing: the household shelf (shop-first, the two lanes, Pune and Nagpur, 500 g, the ₹150 floor), the three seller kinds and their licences, and the fact that **freight is billed to the seller**, which an applicant could previously not learn from any public page.
 
@@ -241,7 +263,11 @@ Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery 
 
 It is invisible in the UI: an order reads "Released" and looks finished. **Never write copy promising an automatic payout.**
 
-**Price is unbound at checkout.** Web and mobile send listing + quantity; the server recomputes `totalAmount` from the live `retailPricePerUnit`. A seller re-pricing between the bill and the request charges an amount the shopper never approved. Fix is the same shape as the unit guard that already ships: send the agreed price, refuse a mismatch.
+**Price is unbound at checkout.** Web and mobile send listing + quantity; the server recomputes `totalAmount` from the live `retailPricePerUnit`. A seller re-pricing between the bill and the request charges an amount the shopper never approved. Fix is the same shape as the unit guard and the delivery-fee guard that already ship: send the agreed price, refuse a mismatch. **The delivery fee is bound** (§3b); the item price is not.
+
+**The app cannot pay for a retail order.** Its checkout ends with "Pay from the Orders tab", and the Orders screen is a history with no button, so every app order sits at AWAITING_PAYMENT. The website's order page can pay it. Next on the shopper list, together with grouping the app's Orders by shop order.
+
+**The delivery fee is not refunded with the lots.** Refunds are per lot and only flip a column (above); refunding every lot of a shop order leaves its `RetailOrder.deliveryFee` untouched, so whoever makes the manual refund has to add the ₹30 by hand. The admin panel does not show delivery fees at all, so CropBid's own share of retail revenue is only in the database.
 
 **No cancellation path.** Not in the consumer UI, transaction routes, or the order state machine. Only an admin refund undoes an order, which is why the terms say there is no cancel button.
 

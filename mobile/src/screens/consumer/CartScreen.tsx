@@ -10,17 +10,18 @@
 //      on screen with the reason, dimmed and excluded from the bill, instead of
 //      vanishing or — worse — being billed and then refused at the API.
 //
-//   2. IT SAYS HOW MANY ORDERS THIS IS. One basket is not one order here. Every
-//      lot is a separate seller with a separate escrow settlement, so four lots
-//      means four orders in Orders. Hiding that would make the orders list look
-//      wrong the moment the shopper opened it.
+//   2. IT IS GROUPED BY SHOP. Each shop delivers separately, so each shop is
+//      its own order and pays its own delivery: free from ₹200 of that shop's
+//      items, ₹30 below. Every shop's block says which it is and how much more
+//      would make it free, because "add ₹40 of anything from this shop" is
+//      something a shopper can act on and a basket-wide total is not.
 //
 // The stepper writes straight through to the cart, so quantity changes need no
 // save button and no refetch — the price data is already in hand and only the
 // arithmetic moves.
 // =============================================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import {
   Pressable,
   ScrollView,
@@ -34,11 +35,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BillDetails } from '../../components/BillDetails';
 import { QuantityStepper } from '../../components/QuantityStepper';
 import { Mono } from '../../components/buyerKit';
-import { retailRules } from '../../api/endpoints';
 import { FadeInImage, PressScale } from '../../components/motion';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
-import { useCartLines, type CartLine } from '../../lib/cartLines';
+import { useCartLines, type CartLine, type ShopGroup } from '../../lib/cartLines';
 import { mediaUrl } from '../../api/client';
 import { cropImageFor } from '../../utils/cropImages';
 import { money, unitLabel } from '../../lib/format';
@@ -77,7 +77,6 @@ function CartRow({
         <Text style={styles.rowMeta} numberOfLines={1}>
           {item.cropVariety ? `${item.cropVariety} · ` : ''}
           {item.organic ? 'Organic' : `Grade ${item.qualityGrade}`}
-          {item.farmerName ? ` · ${item.farmerName}` : ''}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
           {money(price, item.currency)}/{unit}
@@ -113,6 +112,21 @@ function CartRow({
   );
 }
 
+// What one shop's delivery comes to, said where the shopper can still do
+// something about it.
+function DeliveryNote({ shop, currency }: { shop: ShopGroup; currency: string }) {
+  if (shop.orderable.length === 0 || shop.deliveryFee === null) return null;
+  if (shop.deliveryFee === 0) {
+    return <Text style={[styles.shopNote, styles.shopNoteFree]}>Free delivery</Text>;
+  }
+  return (
+    <Text style={styles.shopNote}>
+      {money(shop.deliveryFee, currency)} delivery · add {money(shop.toFreeDelivery, currency)} more
+      from this shop for free delivery
+    </Text>
+  );
+}
+
 export default function CartScreen() {
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -121,48 +135,9 @@ export default function CartScreen() {
   const city = user?.location?.trim() || '';
   const bill = useCartLines(items, city);
 
-  // The floor, from the server. Null until it lands, and the gate stays open
-  // while it is null: refusing checkout because a rules fetch was slow would be
-  // a worse failure than letting the server do the refusing.
-  const [minOrder, setMinOrder] = useState<number | null>(null);
-  useEffect(() => {
-    let on = true;
-    retailRules()
-      .then((r) => { if (on) setMinOrder(r.minOrderValue); })
-      .catch(() => {});
-    return () => { on = false; };
-  }, []);
-
-  // THE FLOOR IS PER ORDER, AND CHECKOUT PLACES ONE ORDER PER LOT.
-  //
-  // Comparing ₹150 against the basket TOTAL was worse than having no gate at
-  // all: two ₹100 lots passed as a ₹200 basket, and then both orders were
-  // refused at the till and stayed in the cart. The shopper was told they were
-  // fine and then contradicted, which is exactly what the gate exists to
-  // prevent.
-  //
-  // So each orderable line is checked against the floor on its own, the way the
-  // server will. PER LOT, not per seller: checkout posts one order per line, so
-  // two ₹100 lots from the SAME seller are two ₹100 orders and both are refused.
-  // Named rather than counted, because "add ₹50 more" is useless when the shopper
-  // cannot tell which of four rows is short.
-  //
-  // AGAINST THE UNROUNDED PRODUCT, not `lineTotal`. `lineTotal` is rounded to
-  // paise for display, and the server compares `price * quantity` raw, so
-  // ₹149.995 shows as ₹150, passes here, and is refused there. Checkout sends
-  // these same two numbers, so multiplying them is exactly the server's basis.
-  const shortLines = useMemo(() => {
-    if (minOrder == null) return [];
-    return bill.orderable
-      .map((l) => ({ line: l, raw: l.price * l.quantity }))
-      .filter(({ raw }) => raw < minOrder)
-      .map(({ line, raw }) => ({
-        name: line.item.cropName,
-        shortBy: Math.ceil(minOrder - raw),
-      }));
-  }, [bill.orderable, minOrder]);
-
-  const blockCheckout = bill.loading || bill.orderable.length === 0 || shortLines.length > 0;
+  // Without the rules there is no honest delivery figure, so checkout waits:
+  // an order placed on a guessed fee is a charge the shopper never saw.
+  const blockCheckout = bill.loading || bill.orderable.length === 0 || bill.toPay === null;
 
   if (items.length === 0) {
     return (
@@ -176,7 +151,7 @@ export default function CartScreen() {
             {hydrated ? 'Your cart is empty' : 'Fetching your cart…'}
           </Text>
           <Text style={styles.emptyBody}>
-            Add produce from the shop and it collects here — one bill, however many sellers it
+            Add produce from the shop and it collects here: one bill, however many shops it
             comes from.
           </Text>
           <PressScale onPress={() => nav.navigate('Home')} cardStyle={styles.emptyBtn}>
@@ -213,67 +188,61 @@ export default function CartScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <View style={styles.list}>
-          {bill.lines.map((line, i) => (
-            <View key={line.item.listingId} style={i > 0 ? styles.divided : undefined}>
-              <CartRow
-                line={line}
-                onQuantity={(qty) => setQuantity(line.item.listingId, qty)}
-                onRemove={() => remove(line.item.listingId)}
-                onOpen={() => nav.navigate('ListingDetail', { id: line.item.listingId })}
-              />
+        {/* One block per shop, because each is its own delivery and its own
+            fee. The fee and the nudge sit on the shop they belong to, BEFORE the
+            pay button, so the charge is never discovered after it. */}
+        {bill.shops.map((shop) => (
+          <View key={shop.sellerId} style={styles.list}>
+            <View style={styles.shopHead}>
+              <Text style={styles.shopName} numberOfLines={1}>{shop.sellerName ?? 'Seller'}</Text>
+              {!bill.loading ? <DeliveryNote shop={shop} currency={bill.currency} /> : null}
             </View>
-          ))}
-        </View>
-
-        {/* THE FLOOR, SHOWN BEFORE THE PAY BUTTON, not discovered at it. The
-            server refuses anything under it, so a shopper who only finds out
-            after tapping Checkout has been told their basket was fine and then
-            contradicted. The number comes from the API rather than a constant
-            here, so the two can never disagree. */}
-        {shortLines.length > 0 && minOrder != null ? (
-          <View style={styles.minNote}>
-            <Text style={styles.minNoteText}>
-              Each item is ordered separately from its seller, and an order starts at{' '}
-              {money(minOrder, bill.currency)}.
-            </Text>
-            {shortLines.map((l) => (
-              <Text key={l.name} style={styles.minNoteLine}>
-                · {l.name}: add {money(l.shortBy, bill.currency)} more
-              </Text>
+            {shop.lines.map((line) => (
+              <View key={line.item.listingId} style={styles.divided}>
+                <CartRow
+                  line={line}
+                  onQuantity={(qty) => setQuantity(line.item.listingId, qty)}
+                  onRemove={() => remove(line.item.listingId)}
+                  onOpen={() => nav.navigate('ListingDetail', { id: line.item.listingId })}
+                />
+              </View>
             ))}
           </View>
-        ) : null}
+        ))}
 
         <BillDetails
           itemCount={bill.orderable.length}
           itemsTotal={bill.itemsTotal}
           deliveryFee={bill.deliveryFee}
+          shopsPayingDelivery={bill.shopsPayingDelivery}
           toPay={bill.toPay}
           currency={bill.currency}
+          rules={bill.rules}
           excludedCount={blocked}
           orderCount={bill.orderCount}
         />
       </ScrollView>
 
       <View style={[styles.foot, { paddingBottom: 12 }]}>
-        <PressScale
-          onPress={blockCheckout ? undefined : () => nav.navigate('Checkout')}
-          scaleTo={0.98}
-          cardStyle={[styles.checkoutBtn, blockCheckout && styles.checkoutBtnDim]}
-        >
-          <Text style={styles.checkoutText}>
-            {bill.loading
-              ? 'Checking stock…'
-              : bill.orderable.length === 0
-                ? 'Nothing to check out'
-                : shortLines.length > 0
-                  ? shortLines.length === 1
-                    ? `Add ${money(shortLines[0].shortBy, bill.currency)} of ${shortLines[0].name}`
-                    : `${shortLines.length} items are under the minimum`
+        {bill.rulesFailed ? (
+          <PressScale onPress={bill.reload} scaleTo={0.98} cardStyle={[styles.checkoutBtn, styles.checkoutBtnDim]}>
+            <Text style={styles.checkoutText}>Couldn't load delivery charges. Try again</Text>
+          </PressScale>
+        ) : (
+          <PressScale
+            onPress={blockCheckout ? undefined : () => nav.navigate('Checkout')}
+            scaleTo={0.98}
+            cardStyle={[styles.checkoutBtn, blockCheckout && styles.checkoutBtnDim]}
+          >
+            <Text style={styles.checkoutText}>
+              {bill.loading
+                ? 'Checking stock…'
+                : bill.orderable.length === 0 || bill.toPay === null
+                  ? 'Nothing to check out'
                   : `Checkout · ${money(bill.toPay, bill.currency)}`}
-          </Text>
-        </PressScale>
+            </Text>
+          </PressScale>
+        )}
       </View>
     </View>
   );
@@ -281,16 +250,10 @@ export default function CartScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
-  minNote: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: '#f6e4d9',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  minNoteText: { fontFamily: font.sansMed, fontSize: 13, lineHeight: 19, color: colors.ember },
-  minNoteLine: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: colors.ember, marginTop: 3 },
+  shopHead: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, gap: 3 },
+  shopName: { fontFamily: font.sansBold, fontSize: 14.5, color: design.ink },
+  shopNote: { fontFamily: font.sansMed, fontSize: 12, lineHeight: 17, color: colors.ember },
+  shopNoteFree: { color: colors.forest },
   head: {
     flexDirection: 'row',
     alignItems: 'flex-end',

@@ -37,7 +37,7 @@ import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '2 September 2026';
+const UPDATED = '20 September 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -201,6 +201,13 @@ export function TermsPage() {
             partner's charge is shown before you book and is separate from this fee.
           </p>
           <p>
+            <strong>Household delivery.</strong> A household basket is ordered one shop at a
+            time. Delivery is free when a shop's items in your order come to ₹200 or more, and
+            costs ₹30 for that shop's order below ₹200. The charge is shown in your basket
+            before you order, is paid with the order, and is kept by CropBid rather than passed
+            to the seller.
+          </p>
+          <p>
             Weights are as declared by the seller. Fresh produce loses a little weight in
             transit, and small differences between the weight ordered and the weight delivered
             are normal.
@@ -235,8 +242,8 @@ export function TermsPage() {
           <p>
             <strong>Local shops</strong> already hold the stock near you and deliver the same
             day. <strong>Farms</strong> pick your order after you place it and send it in
-            overnight, for delivery the next morning. A basket containing both arrives as two
-            separate deliveries, and the basket says so before you pay.
+            overnight, for delivery the next morning. Each shop in your basket is a separate
+            order and a separate delivery, and the basket says so before you pay.
           </p>
           <p>
             These are the seller's commitments, and delivery is arranged between you and them

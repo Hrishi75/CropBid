@@ -1,33 +1,34 @@
 // =============================================================================
 // CheckoutScreen — turn the basket into real orders
 // =============================================================================
-// ONE BASKET, SEVERAL ORDERS — AND WHY THAT IS NOT A BUG
-// POST /bids/direct-purchase claims one lot's stock, mints a pre-ACCEPTED bid
-// and opens a Transaction in the same DB transaction. That pairing is the whole
-// escrow model: one lot, one seller, one settlement the shopper releases when
-// that seller's produce arrives. Four lots genuinely are four settlements, so
-// this screen places four purchases and says so before the shopper commits,
-// rather than inventing a basket-level order the rest of the system has no
-// concept of.
+// ONE BASKET, ONE ORDER PER SHOP
+// Each shop delivers separately, so POST /retail-orders takes one shop's lines
+// at a time: it claims their stock, works out that shop's delivery fee (free
+// from ₹200, ₹30 below), and opens one payment for the lot. Inside it every lot
+// is still its own settlement, released when that lot arrives. A basket from
+// three shops is three orders, and the screen says so before the shopper
+// commits. Same as the web checkout.
 //
-// PARTIAL SUCCESS IS A REAL OUTCOME, SO IT IS HANDLED
-// The calls go one at a time. If the third fails — someone else took the last
-// two kilos in the seconds since the cart was priced — the first two orders
-// already exist and cannot be unwound by a client. So the successful lots are
-// removed from the cart, the failed ones are LEFT in it with the reason, and
-// the shopper is told exactly which is which. Clearing the whole basket there
-// would hide an order they still want; retrying the whole basket would
-// double-order the two that worked.
+// A SHOP'S ORDER IS ALL OR NOTHING, THE BASKET IS NOT
+// If one of a shop's lots has sold out underneath the basket, that shop's whole
+// order fails, because a delivery fee worked out on four items is wrong for
+// three. Other shops are separate requests and may already have succeeded, and
+// a client cannot unwind those. So the shops that worked leave the cart, the
+// ones that failed STAY in it with the reason, and the shopper is told which.
 //
 // AND A FAILURE IS NOT ALWAYS A FAILURE
 // A request whose response is lost on the way back is indistinguishable here
-// from one the server rejected: both land in the catch, and both leave the lot
-// sitting in the cart looking unbought. Retrying would buy it a second time.
-// Every line therefore carries a purchaseKey (see context/CartContext.tsx),
-// sent as the request's idempotencyKey, and a retry with the same key returns
-// the order that already exists instead of claiming the stock again. The key
-// lives in the stored cart rather than in this component, because a shopper
-// whose request vanished may well kill the app before trying again.
+// from one the server rejected: both land in the catch, and both leave the
+// shop's lots sitting in the cart looking unbought. Every line therefore
+// carries a purchaseKey (see context/CartContext.tsx), sent as that line's
+// idempotencyKey, and a retry with the same keys returns the order that already
+// exists instead of claiming the stock again. The keys live in the stored cart
+// rather than in this component, because a shopper whose request vanished may
+// well kill the app before trying again.
+//
+// THE FEE THE SHOPPER SAW IS SENT WITH THE ORDER
+// If a re-price has moved a shop across ₹200 since the bill was drawn, the
+// server refuses rather than charge a fee nobody was shown.
 //
 // WHY THE ADDRESS AND PHONE ARE COLLECTED HERE
 // The API treats both as optional and falls back to the buyer's profile, but
@@ -53,7 +54,7 @@ import { FadeInImage, PressScale } from '../../components/motion';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useCartLines } from '../../lib/cartLines';
-import { directPurchase } from '../../api/endpoints';
+import { placeRetailOrder } from '../../api/endpoints';
 import { errorMessage, mediaUrl } from '../../api/client';
 import { cropImageFor } from '../../utils/cropImages';
 import { money, unitLabel } from '../../lib/format';
@@ -87,51 +88,57 @@ export default function CheckoutScreen() {
 
   async function placeOrder() {
     setTouched(true);
-    if (!addressValid || !phoneValid || bill.orderable.length === 0) return;
+    const shops = bill.shops.filter((shop) => shop.orderable.length > 0);
+    if (!addressValid || !phoneValid || shops.length === 0 || bill.deliveryFee === null) return;
 
     setPlacing(true);
 
-    const placed: string[] = [];
+    const placedLots: string[] = [];
+    let placedShops = 0;
     const failures: { name: string; message: string }[] = [];
 
-    // Sequential, not Promise.all: each call decrements stock, and a farmer
+    // Sequential, not Promise.all: each call decrements stock, and a seller
     // watching their listings should see orders arrive as orders, not as a
     // burst of parallel writes racing each other's stock claims.
-    for (const line of bill.orderable) {
+    for (const shop of shops) {
       try {
-        await directPurchase({
-          listingId: line.item.listingId,
-          quantity: line.quantity,
-          // The LIVE denomination, not the snapshot on line.item taken when the
-          // row went into the basket. A seller can re-denominate an active
-          // listing while it sits there, and sending the unit is what lets the
-          // server refuse the mismatch rather than reading the same number in a
-          // different unit. Same reasoning as the web checkout.
-          //
-          // Non-null on every orderable line: a lot that could not be fetched
-          // fails problemWith() and never reaches this loop.
-          unit: line.listing!.unit,
+        await placeRetailOrder({
+          lines: shop.orderable.map((line) => ({
+            listingId: line.item.listingId,
+            quantity: line.quantity,
+            // The LIVE denomination, not the snapshot on line.item taken when
+            // the row went into the basket. A seller can re-denominate an
+            // active listing while it sits there, and sending the unit is what
+            // lets the server refuse the mismatch rather than reading the same
+            // number in a different unit. Same reasoning as the web checkout.
+            //
+            // Non-null on every orderable line: a lot that could not be fetched
+            // fails problemWith() and never reaches this loop.
+            unit: line.listing!.unit,
+            // The line's own key, minted when it was added and re-minted
+            // whenever its quantity moved. A failure leaves the shop in the
+            // cart carrying them, so pressing Place order again replays THIS
+            // order rather than making a second one.
+            idempotencyKey: line.item.purchaseKey,
+          })),
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
-          // The line's own key, minted when it was added and re-minted whenever
-          // its quantity moved. A failure leaves the line in the cart carrying
-          // it, so pressing Place order again replays THIS purchase rather than
-          // making a second one.
-          idempotencyKey: line.item.purchaseKey,
+          deliveryFee: shop.deliveryFee ?? undefined,
         });
-        placed.push(line.item.listingId);
+        placedShops += 1;
+        placedLots.push(...shop.orderable.map((line) => line.item.listingId));
       } catch (e) {
         failures.push({
-          name: line.item.cropName,
+          name: shop.sellerName ?? 'One shop',
           message: errorMessage(e, 'Could not be ordered'),
         });
       }
     }
 
     // Only what actually became an order leaves the basket.
-    if (placed.length > 0) removeMany(placed);
+    if (placedLots.length > 0) removeMany(placedLots);
 
-    if (placed.length === 0) {
+    if (placedShops === 0) {
       setPlacing(false);
       Alert.alert('Order not placed', failures[0]?.message ?? 'Could not place your order');
       return;
@@ -148,13 +155,13 @@ export default function CheckoutScreen() {
 
     if (failures.length > 0) {
       Alert.alert(
-        `${placed.length} of ${placed.length + failures.length} ordered`,
+        `${placedShops} of ${placedShops + failures.length} shops ordered`,
         `${failures.map((f) => `${f.name}: ${f.message}`).join('\n')}\n\nThe rest is still in your cart.`,
         [{ text: 'OK', onPress: done }],
       );
     } else {
       Alert.alert(
-        placed.length === 1 ? 'Order placed' : `${placed.length} orders placed`,
+        placedShops === 1 ? 'Order placed' : `${placedShops} orders placed`,
         'Pay from the Orders tab to move the money into escrow.',
         [{ text: 'OK', onPress: done }],
       );
@@ -168,7 +175,9 @@ export default function CheckoutScreen() {
   if (items.length === 0) return <View style={styles.flex} />;
 
   const blocked = bill.lines.length - bill.orderable.length;
-  const canPlace = !bill.loading && bill.orderable.length > 0 && !placing;
+  // Without the rules there is no honest delivery figure to send, and the
+  // server would otherwise work one out that the shopper never saw.
+  const canPlace = !bill.loading && bill.orderable.length > 0 && bill.toPay !== null && !placing;
 
   return (
     <KeyboardAvoidingView
@@ -207,7 +216,7 @@ export default function CheckoutScreen() {
           <Text style={touched && !phoneValid ? styles.fieldError : styles.hint}>
             {touched && !phoneValid
               ? 'Enter a valid phone number'
-              : 'Every seller in this order uses this to arrange delivery.'}
+              : 'Every shop in this order uses this to arrange delivery.'}
           </Text>
         </View>
 
@@ -216,46 +225,63 @@ export default function CheckoutScreen() {
             {bill.orderCount > 1 ? `YOUR ORDERS · ${bill.orderCount}` : 'YOUR ORDER'}
           </Mono>
 
-          {bill.lines.map((line) => {
-            const unit = unitLabel(line.item.unit);
-            const img = (line.item.image ? mediaUrl(line.item.image) : null)
-              ?? cropImageFor(line.item.cropName);
-            return (
-              <View
-                key={line.item.listingId}
-                style={[styles.line, line.problem ? styles.lineDim : null]}
-              >
-                <View style={styles.thumb}>
-                  {img ? (
-                    <FadeInImage uri={img} style={styles.thumbImg} />
-                  ) : (
-                    <Text style={styles.thumbEmoji}>🌾</Text>
-                  )}
-                </View>
-                <View style={styles.lineMain}>
-                  <Text style={styles.lineName} numberOfLines={1}>{line.item.cropName}</Text>
-                  <Text style={styles.lineMeta} numberOfLines={1}>
-                    {line.quantity.toLocaleString('en-IN', { maximumFractionDigits: 6 })} {unit} ·{' '}
-                    {money(line.price, line.item.currency)}/{unit}
+          {/* One block per shop, because each is its own order: what its
+              delivery costs is stated here, the last screen before money
+              moves, not discovered after. */}
+          {bill.shops.map((shop) => (
+            <View key={shop.sellerId} style={styles.shop}>
+              <View style={styles.shopHead}>
+                <Text style={styles.shopName} numberOfLines={1}>{shop.sellerName ?? 'Seller'}</Text>
+                {shop.orderable.length > 0 && shop.deliveryFee !== null ? (
+                  <Text style={[styles.shopFee, shop.deliveryFee === 0 && styles.shopFeeFree]}>
+                    Delivery {shop.deliveryFee > 0 ? money(shop.deliveryFee, bill.currency) : 'free'}
                   </Text>
-                  {line.problem ? (
-                    <Text style={styles.lineProblem}>{line.problem} Fix it in your cart.</Text>
-                  ) : null}
-                </View>
-                <Text style={styles.lineAmount}>
-                  {line.problem ? '—' : money(line.lineTotal, line.item.currency)}
-                </Text>
+                ) : null}
               </View>
-            );
-          })}
+              {shop.lines.map((line) => {
+                const unit = unitLabel(line.item.unit);
+                const img = (line.item.image ? mediaUrl(line.item.image) : null)
+                  ?? cropImageFor(line.item.cropName);
+                return (
+                  <View
+                    key={line.item.listingId}
+                    style={[styles.line, line.problem ? styles.lineDim : null]}
+                  >
+                    <View style={styles.thumb}>
+                      {img ? (
+                        <FadeInImage uri={img} style={styles.thumbImg} />
+                      ) : (
+                        <Text style={styles.thumbEmoji}>🌾</Text>
+                      )}
+                    </View>
+                    <View style={styles.lineMain}>
+                      <Text style={styles.lineName} numberOfLines={1}>{line.item.cropName}</Text>
+                      <Text style={styles.lineMeta} numberOfLines={1}>
+                        {line.quantity.toLocaleString('en-IN', { maximumFractionDigits: 6 })} {unit} ·{' '}
+                        {money(line.price, line.item.currency)}/{unit}
+                      </Text>
+                      {line.problem ? (
+                        <Text style={styles.lineProblem}>{line.problem} Fix it in your cart.</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.lineAmount}>
+                      {line.problem ? '—' : money(line.lineTotal, line.item.currency)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
         </View>
 
         <BillDetails
           itemCount={bill.orderable.length}
           itemsTotal={bill.itemsTotal}
           deliveryFee={bill.deliveryFee}
+          shopsPayingDelivery={bill.shopsPayingDelivery}
           toPay={bill.toPay}
           currency={bill.currency}
+          rules={bill.rules}
           excludedCount={blocked}
           orderCount={bill.orderCount}
         />
@@ -270,9 +296,11 @@ export default function CheckoutScreen() {
           <Text style={styles.placeText}>
             {placing
               ? 'Placing…'
-              : bill.orderable.length > 1
-                ? `Place ${bill.orderable.length} orders · ${money(bill.toPay, bill.currency)}`
-                : `Place order · ${money(bill.toPay, bill.currency)}`}
+              : bill.toPay === null
+                ? bill.rulesFailed ? "Couldn't load delivery charges" : 'Checking…'
+                : bill.orderCount > 1
+                  ? `Place ${bill.orderCount} orders · ${money(bill.toPay, bill.currency)}`
+                  : `Place order · ${money(bill.toPay, bill.currency)}`}
           </Text>
         </PressScale>
       </View>
@@ -307,6 +335,17 @@ const styles = StyleSheet.create({
   fieldError: { fontFamily: font.sansMed, fontSize: 11.5, color: colors.ember, marginTop: 5 },
   hint: { fontFamily: font.sans, fontSize: 11.5, color: design.ink3, marginTop: 5 },
 
+  shop: { marginTop: 4 },
+  shopHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    gap: 10,
+    marginTop: 10,
+  },
+  shopName: { flex: 1, fontFamily: font.sansBold, fontSize: 13.5, color: design.ink },
+  shopFee: { fontFamily: font.monoMed, fontSize: 12, color: design.ink2 },
+  shopFeeFree: { color: colors.forest },
   line: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 12 },
   lineDim: { opacity: 0.55 },
   thumb: {

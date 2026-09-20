@@ -1,33 +1,33 @@
 // =============================================================================
 // Checkout — turn the basket into real orders
 // =============================================================================
-// ONE BASKET, SEVERAL ORDERS — AND WHY THAT IS NOT A BUG
-// POST /bids/direct-purchase claims one lot's stock, mints a pre-ACCEPTED bid
-// and opens a Transaction in the same DB transaction. That pairing is the whole
-// escrow model: one lot, one grower, one settlement the shopper releases when
-// that grower's produce arrives. Four lots genuinely are four settlements, so
-// this page places four purchases and says so before the shopper commits,
-// rather than inventing a basket-level order the rest of the system has no
-// concept of.
+// ONE BASKET, ONE ORDER PER SHOP
+// Each shop delivers separately, so POST /retail-orders takes one shop's lines
+// at a time: it claims their stock, works out that shop's delivery fee (free
+// from ₹200, ₹30 below), and opens one payment for the lot. Inside it every lot
+// is still its own settlement, released when that lot arrives. A basket from
+// three shops is three orders, and the page says so before the shopper commits.
 //
-// PARTIAL SUCCESS IS A REAL OUTCOME, SO IT IS HANDLED
-// The calls go one at a time. If the third fails — someone else took the last
-// two kilos in the seconds since the cart was priced — the first two orders
-// already exist and cannot be unwound by a client. So the successful lots are
-// removed from the cart, the failed ones are LEFT in it with the reason, and
-// the shopper is told exactly which is which. Clearing the whole basket there
-// would hide an order they still want; retrying the whole basket would
-// double-order the two that worked.
+// A SHOP'S ORDER IS ALL OR NOTHING, THE BASKET IS NOT
+// If one of a shop's lots has sold out underneath the basket, that shop's whole
+// order fails, because a delivery fee worked out on four items is wrong for
+// three. Other shops are separate requests and may already have succeeded, and
+// a client cannot unwind those. So the shops that worked leave the cart, the
+// ones that failed STAY in it with the reason, and the shopper is told which.
 //
 // AND A FAILURE IS NOT ALWAYS A FAILURE
 // A request whose response is lost on the way back is indistinguishable here
-// from one the server rejected: both land in the catch, and both leave the lot
-// sitting in the cart looking unbought. Retrying used to buy it a second time.
-// Every line therefore carries a purchaseKey (see CartContext), sent as the
-// request's idempotencyKey, and a retry with the same key returns the order
-// that already exists instead of claiming the stock again. The key lives in the
-// stored cart rather than in this component, because a shopper whose request
-// vanished may well reload the page before trying again.
+// from one the server rejected: both land in the catch, and both leave the
+// shop's lots sitting in the cart looking unbought. Every line therefore
+// carries a purchaseKey (see CartContext), sent as that line's idempotencyKey,
+// and a retry with the same keys returns the order that already exists instead
+// of claiming the stock again. The keys live in the stored cart rather than in
+// this component, because a shopper whose request vanished may well reload the
+// page before trying again.
+//
+// THE FEE THE SHOPPER SAW IS SENT WITH THE ORDER
+// If a re-price has moved a shop across ₹200 since the bill was drawn, the
+// server refuses rather than charge a fee nobody was shown.
 //
 // WHY THE ADDRESS AND PHONE ARE COLLECTED HERE
 // The API treats both as optional and falls back to the buyer's profile, but
@@ -45,14 +45,14 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
-import { formatWeight, fromKg, pricePerKg, toKg } from '../../utils/units';
+import { formatWeight, pricePerKg, toKg } from '../../utils/units';
 import { LANES } from '../../utils/delivery';
 import { cropImageFor } from '../../utils/cropImages';
 import { BillDetails } from './BillDetails';
 import { useCartLines } from './cartLines';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
-import type { Listing, Transaction } from '../../types';
+import type { Listing, RetailOrder } from '../../types';
 
 export function Checkout() {
   const { user } = useAuth();
@@ -83,60 +83,56 @@ export function Checkout() {
 
   async function handlePlaceOrder() {
     setTouched(true);
-    if (!addressValid || !phoneValid || bill.orderable.length === 0) return;
+    const shops = bill.shops.filter((shop) => shop.orderable.length > 0);
+    if (!addressValid || !phoneValid || shops.length === 0 || bill.deliveryFee === null) return;
 
     setPlacing(true);
 
-    const placed: string[] = [];
+    const placedLots: string[] = [];
+    const placedOrders: RetailOrder[] = [];
     const failures: { name: string; message: string }[] = [];
-    let lastBidId: string | null = null;
 
-    // Sequential, not Promise.all: each call decrements stock, and a farmer
+    // Sequential, not Promise.all: each call decrements stock, and a seller
     // watching their listings should see orders arrive as orders, not as a
     // burst of parallel writes racing each other's stock claims.
-    for (const line of bill.orderable) {
+    for (const shop of shops) {
       try {
-        const { data: bid } = await api.post('/bids/direct-purchase', {
-          listingId: line.item.listingId,
-          // The one place kilograms turn back into the lot's own unit. The
-          // whole retail surface is denominated in kg; the API is denominated
-          // in whatever the farmer listed in, and this is the seam.
-          //
-          // line.unit, NOT line.item.unit: the second is the snapshot taken
-          // when the row went into the basket, and a seller can change an
-          // active listing's denomination while it sits there. Converting with
-          // the stale one sends a number the server reads in a different unit
-          // — a 1 kg order arriving as 1 quintal, charged and decremented as
-          // such. The line carries the live unit for exactly this call.
-          quantity: fromKg(line.quantity, line.unit),
-          // The unit that conversion used. Reading the live listing narrows the
-          // window where a seller re-denominates mid-basket; it cannot close it,
-          // because the seller can change it between our last fetch and this
-          // request landing. Sending the unit lets the server refuse the
-          // mismatch instead of silently rescaling the order by a hundred.
-          unit: line.unit,
+        const { data: order } = await api.post<RetailOrder>('/retail-orders', {
+          lines: shop.orderable.map((line) => ({
+            listingId: line.item.listingId,
+            // The one place kilograms turn back into the lot's own unit, worked
+            // out in cartLines with the LIVE unit rather than the snapshot on
+            // line.item: a seller can change an active listing's denomination
+            // while it sits in the basket, and converting with the stale one
+            // sends a 1 kg order the server reads as 1 quintal.
+            quantity: line.orderQuantity,
+            // The unit that conversion used, so the server can refuse the
+            // mismatch instead of silently rescaling the order by a hundred.
+            unit: line.unit,
+            // The line's own key, minted when it was added and re-minted
+            // whenever its quantity moved. A failure leaves the shop in the
+            // cart carrying them, so pressing Place order again replays THIS
+            // order rather than making a second one.
+            idempotencyKey: line.item.purchaseKey,
+          })),
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
-          // The line's own key, minted when it was added and re-minted whenever
-          // its quantity moved. A failure leaves the line in the cart carrying
-          // it, so pressing Place order again replays THIS purchase rather than
-          // making a second one.
-          idempotencyKey: line.item.purchaseKey,
+          deliveryFee: shop.deliveryFee,
         });
-        placed.push(line.item.listingId);
-        lastBidId = bid.id;
+        placedOrders.push(order);
+        placedLots.push(...shop.orderable.map((line) => line.item.listingId));
       } catch (err: any) {
         failures.push({
-          name: line.item.cropName,
+          name: shop.sellerName ?? 'One shop',
           message: err.response?.data?.message || 'Could not be ordered',
         });
       }
     }
 
     // Only what actually became an order leaves the basket.
-    if (placed.length > 0) removeMany(placed);
+    if (placedLots.length > 0) removeMany(placedLots);
 
-    if (placed.length === 0) {
+    if (placedOrders.length === 0) {
       toast.error(failures[0]?.message || 'Could not place your order');
       setPlacing(false);
       return;
@@ -144,31 +140,21 @@ export function Checkout() {
 
     if (failures.length > 0) {
       toast.error(
-        `${placed.length} of ${placed.length + failures.length} ordered. ` +
+        `${placedOrders.length} of ${placedOrders.length + failures.length} shops ordered. ` +
         `${failures.map((f) => `${f.name}: ${f.message}`).join(' ')} ` +
         'The rest is still in your cart.',
         { duration: 8000 },
       );
     } else {
-      toast.success(placed.length === 1 ? 'Order placed' : `${placed.length} orders placed`);
+      toast.success(placedOrders.length === 1 ? 'Order placed' : `${placedOrders.length} orders placed`);
     }
 
-    // A single order can be opened straight away, which is where the shopper
-    // pays. The endpoint returns the Bid rather than the Transaction created
-    // alongside it, so the order is found by its bid. Any failure in that
-    // lookup is cosmetic — the order exists either way — so it falls back to
-    // the list rather than implying something went wrong.
-    if (placed.length === 1 && lastBidId) {
-      try {
-        const { data: orders } = await api.get('/transactions');
-        const match = (orders as Transaction[]).find((o) => o.bidId === lastBidId);
-        navigate(match ? `/orders/${match.id}` : '/orders');
-        return;
-      } catch {
-        // falls through to the list
-      }
-    }
-    navigate('/orders');
+    // A single shop order can be paid straight away, from any of its lots'
+    // pages: paying there pays the whole shop order.
+    const [only] = placedOrders;
+    navigate(placedOrders.length === 1 && only.transactions[0]
+      ? `/orders/${only.transactions[0].id}`
+      : '/orders');
   }
 
   if (items.length === 0) return null;
@@ -202,7 +188,7 @@ export function Checkout() {
                 onChange={(e) => setPhone(e.target.value)}
                 onBlur={() => setTouched(true)}
                 error={touched && !phoneValid ? 'Enter a valid phone number' : undefined}
-                hint="Every grower in this order uses this to arrange delivery."
+                hint="Every shop in this order uses this to arrange delivery."
               />
             </div>
           </div>
@@ -216,47 +202,67 @@ export function Checkout() {
               <Skeleton height={64} />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* The order summary states the delivery day per line, because
-                    this is the last screen before money moves and "when does
-                    it come?" must not be a surprise after it does. */}
-                {bill.lines.map((line) => {
-                  const image = line.item.image || cropImageFor(line.item.cropName);
-                  const lane = LANES[line.lane];
-                  return (
-                    <div
-                      key={line.item.listingId}
-                      style={{
-                        display: 'flex', gap: 12, alignItems: 'center',
-                        opacity: line.problem ? 0.55 : 1,
-                      }}
-                    >
-                      <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)', flexShrink: 0 }}>
-                        {image
-                          ? <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 20 }}>🌾</div>}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, fontSize: 14 }}>{line.item.cropName}</div>
-                        <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
-                          {formatWeight(line.quantity)} · {formatCurrency(pricePerKg(line.price, line.unit), line.item.currency)}/kg
+                {/* One block per shop, because each is its own order: when it
+                    arrives and what its delivery costs are stated here, the
+                    last screen before money moves, not discovered after. */}
+                {bill.shops.map((shop, si) => (
+                  <div
+                    key={shop.sellerId}
+                    style={{
+                      display: 'flex', flexDirection: 'column', gap: 12,
+                      ...(si > 0 ? { paddingTop: 12, borderTop: '1px solid var(--cb-line)' } : {}),
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{shop.sellerName ?? 'Seller'}</div>
+                        <div className="cb-tiny" style={{ color: LANES[shop.lane].color }}>
+                          {LANES[shop.lane].promise}
                         </div>
-                        {!line.problem && (
-                          <div className="cb-tiny" style={{ color: lane.color, marginTop: 2 }}>
-                            {lane.promise}
-                          </div>
-                        )}
-                        {line.problem && (
-                          <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 2 }}>
-                            {line.problem} <Link to="/cart" style={{ color: 'inherit' }}>Fix in cart</Link>
-                          </div>
-                        )}
                       </div>
-                      <div className="cb-mono" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
-                        {line.problem ? '—' : formatCurrency(line.lineTotal, line.item.currency)}
-                      </div>
+                      {shop.orderable.length > 0 && shop.deliveryFee !== null && (
+                        <div className="cb-tiny" style={{ textAlign: 'right', color: 'var(--cb-ink-3)' }}>
+                          Delivery{' '}
+                          <span className="cb-mono" style={{ color: shop.deliveryFee > 0 ? 'var(--cb-ink)' : 'var(--cb-forest)' }}>
+                            {shop.deliveryFee > 0 ? formatCurrency(shop.deliveryFee, bill.currency) : 'Free'}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
+                    {shop.lines.map((line) => {
+                      const image = line.item.image || cropImageFor(line.item.cropName);
+                      return (
+                        <div
+                          key={line.item.listingId}
+                          style={{
+                            display: 'flex', gap: 12, alignItems: 'center',
+                            opacity: line.problem ? 0.55 : 1,
+                          }}
+                        >
+                          <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: 'var(--cb-paper-2)', flexShrink: 0 }}>
+                            {image
+                              ? <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 20 }}>🌾</div>}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 500, fontSize: 14 }}>{line.item.cropName}</div>
+                            <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
+                              {formatWeight(line.quantity)} · {formatCurrency(pricePerKg(line.price, line.unit), line.item.currency)}/kg
+                            </div>
+                            {line.problem && (
+                              <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 2 }}>
+                                {line.problem} <Link to="/cart" style={{ color: 'inherit' }}>Fix in cart</Link>
+                              </div>
+                            )}
+                          </div>
+                          <div className="cb-mono" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+                            {line.problem ? '—' : formatCurrency(line.lineTotal, line.item.currency)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -270,23 +276,31 @@ export function Checkout() {
               itemCount={bill.orderable.length}
               itemsTotal={bill.itemsTotal}
               deliveryFee={bill.deliveryFee}
+              shopsPayingDelivery={bill.shopsPayingDelivery}
               toPay={bill.toPay}
               currency={bill.currency}
+              rules={bill.rules}
               excludedCount={blocked}
               orderCount={bill.orderCount}
             />
           )}
 
-          <Button
-            size="lg"
-            style={{ width: '100%' }}
-            loading={placing}
-            disabled={bill.loading || bill.orderable.length === 0}
-            onClick={handlePlaceOrder}
-          >
-            {bill.orderable.length > 1 ? `Place ${bill.orderable.length} orders` : 'Place order'}
-            <ArrowIcon />
-          </Button>
+          {bill.rulesFailed ? (
+            <Button size="lg" variant="ghost" style={{ width: '100%' }} onClick={bill.reload}>
+              Couldn't load delivery charges. Try again
+            </Button>
+          ) : (
+            <Button
+              size="lg"
+              style={{ width: '100%' }}
+              loading={placing}
+              disabled={bill.loading || bill.orderable.length === 0}
+              onClick={handlePlaceOrder}
+            >
+              {bill.orderCount > 1 ? `Place ${bill.orderCount} orders` : 'Place order'}
+              <ArrowIcon />
+            </Button>
+          )}
         </aside>
       </div>
     </DashboardLayout>

@@ -64,6 +64,13 @@ export interface CartItem {
    */
   farmerName: string | null;
   /**
+   * The seller's profile id (listing.farmerId). The basket is ordered and
+   * delivered one shop at a time, and the delivery fee is worked out per shop,
+   * so this is what the cart groups by. Optional because a basket stored
+   * before it existed has none; the live listing fills it in on the next check.
+   */
+  sellerId?: string | null;
+  /**
    * Who is selling, which is what the delivery lane is derived from (see
    * utils/delivery). Snapshotted so the cart bar and the first paint of the
    * cart can promise a delivery day without waiting on the live re-fetch.
@@ -75,9 +82,9 @@ export interface CartItem {
   qualityGrade: QualityGrade;
   organic: boolean;
   /**
-   * Reference for the ONE purchase this line intends, sent to
-   * /bids/direct-purchase so a retry after a lost response returns the order
-   * that already exists instead of buying the lot twice.
+   * Reference for the ONE purchase this line intends, sent with the line to
+   * /retail-orders so a retry after a lost response returns the order that
+   * already exists instead of buying the lot twice.
    *
    * It lives on the line, and therefore in localStorage, on purpose: the case
    * it exists for is a response that never arrived, and the shopper's next move
@@ -249,6 +256,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         currency: listing.currency,
         city: listing.location,
         farmerName: sellerDisplayName(listing.farmer),
+        sellerId: listing.farmerId,
         sellerType: listing.farmer?.sellerType ?? null,
         qualityGrade: listing.qualityGrade,
         organic: listing.organic,

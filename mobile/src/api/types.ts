@@ -234,7 +234,40 @@ export interface Transaction {
   platformFeeAmount: number;
   paymentStatus: PaymentStatus;
   deliveryStatus: DeliveryStatus;
+  // Retail only: the shop order this lot was bought in, which is what the
+  // shopper pays for. Null for trade deals and for retail orders placed
+  // before shop orders existed.
+  retailOrder?: RetailOrderSummary | null;
   createdAt: string;
+}
+
+export interface RetailOrderSummary {
+  id: string;
+  itemsTotal: number;
+  /** Charged once per shop order under the free-delivery threshold. Kept by CropBid. */
+  deliveryFee: number;
+  /** itemsTotal + deliveryFee: the one amount the shopper pays. */
+  totalAmount: number;
+  currency: string;
+  paidAt: string | null;
+  _count: { transactions: number };
+}
+
+/** What POST /retail-orders answers with: one shop's order, lots included. */
+export interface RetailOrder {
+  id: string;
+  itemsTotal: number;
+  deliveryFee: number;
+  totalAmount: number;
+  currency: string;
+  transactions: { id: string; bidId: string; listingId: string; totalAmount: number }[];
+}
+
+/** GET /browse/retail-rules: the numbers the basket has to agree with the server on. */
+export interface RetailRules {
+  freeDeliveryFrom: number;
+  deliveryFee: number;
+  currency: string;
 }
 
 export interface TransactionStats {
