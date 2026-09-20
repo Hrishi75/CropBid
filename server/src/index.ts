@@ -14,6 +14,7 @@ import http from 'http';
 import app from './app';
 import { config } from './config';
 import { initializeSocket } from './socket';
+import { clearPlaintextRefreshTokens } from './utils/refreshToken';
 
 const PORT = config.port;
 
@@ -26,6 +27,19 @@ const server = http.createServer(app);
 // app.ts exports the Express app (for middleware/routes).
 // index.ts creates the HTTP server and attaches both Express and Socket.io to it.
 initializeSocket(server);
+
+// Refresh tokens are stored hashed (utils/refreshToken). A deploy applies
+// migrations before swapping the API, so the old code can write a raw token
+// into the column the migration cleared; this runs after the swap and clears
+// whatever landed in that window. It matches nothing on an ordinary boot.
+//
+// Not awaited, and never fatal: the server must come up either way, and a
+// leftover token is refused by the comparison regardless.
+void clearPlaintextRefreshTokens()
+  .then((cleared) => {
+    if (cleared > 0) console.log(`🔑 Cleared ${cleared} refresh token(s) that were stored in the clear`);
+  })
+  .catch((err) => console.error('Could not sweep plaintext refresh tokens:', err));
 
 server.listen(PORT, () => {
   console.log(`

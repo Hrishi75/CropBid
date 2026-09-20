@@ -1,0 +1,11 @@
+-- Refresh tokens are stored as a SHA-256 hash from here on (utils/refreshToken).
+--
+-- Every value already in this column is a live credential in the clear, which
+-- is the thing being fixed, so they are cleared rather than left to age out.
+-- Nothing can be migrated in place: a hash cannot be derived into a session
+-- anyone holds, and the raw values should not survive this deploy.
+--
+-- The cost is one sign-out. Everyone signed in at deploy time is asked to sign
+-- in again the next time their access token expires, which is the same thing
+-- that would have happened anyway once their stored token stopped matching.
+UPDATE "User" SET "refreshToken" = NULL WHERE "refreshToken" IS NOT NULL;
