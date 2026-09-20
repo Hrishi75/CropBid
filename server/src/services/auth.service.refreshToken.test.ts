@@ -18,7 +18,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../lib/prisma', () => ({
   prisma: {
     user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    phoneChallenge: { findUnique: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
+    auditLog: { create: vi.fn() },
   },
+}));
+
+vi.mock('./otpDelivery.service', () => ({
+  deliverOtp: vi.fn(() => Promise.resolve({ channel: 'whatsapp' })),
+  OtpDeliveryError: class extends Error {},
 }));
 
 vi.mock('./notification.helpers', () => ({}));
@@ -26,13 +33,17 @@ vi.mock('./notification.helpers', () => ({}));
 import { prisma } from '../lib/prisma';
 import { generateTokens } from '../utils/jwt';
 import { hashRefreshToken } from '../utils/refreshToken';
-import { login, logout, refresh, signup } from './auth.service';
+import { changePassword, login, logout, refresh, signup, verifyPhoneSignIn } from './auth.service';
+import { generatePhoneOtp } from '../utils/phoneOtp';
 import bcrypt from 'bcryptjs';
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>;
 const userFindUnique = mock(prisma.user.findUnique);
 const userFindFirst = mock(prisma.user.findFirst);
 const userCreate = mock(prisma.user.create);
+const challengeFindUnique = mock(prisma.phoneChallenge.findUnique);
+const challengeUpdateMany = mock(prisma.phoneChallenge.updateMany);
+const challengeDeleteMany = mock(prisma.phoneChallenge.deleteMany);
 const userUpdate = mock(prisma.user.update);
 
 const USER_ID = 'user-1';
@@ -57,6 +68,9 @@ async function userRow(extra: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   userUpdate.mockResolvedValue({});
+  challengeUpdateMany.mockResolvedValue({ count: 1 });
+  challengeDeleteMany.mockResolvedValue({ count: 1 });
+  mock(prisma.auditLog.create).mockResolvedValue({});
 });
 
 // login() finds the account by email or phone; refresh() by the id in the
@@ -104,6 +118,60 @@ describe('signing up', () => {
 
     expect(stored()).toBe(hashRefreshToken(result.refreshToken));
     expect(stored()).not.toBe(result.refreshToken);
+  });
+});
+
+// Every other path that issues a session. Each one writes through its own
+// prisma.user.update, so each is checked rather than assumed: review pointed
+// out that a regression in any of them would have passed the suite.
+describe('the other ways a session is issued', () => {
+  it('stores the hash when a password is changed', async () => {
+    const row = await userRow({ password: await bcrypt.hash('oldpassword1', 4) });
+    await accountIs(row);
+
+    const result = await changePassword(USER_ID, 'oldpassword1', 'Newpassword123');
+
+    expect(stored()).toBe(hashRefreshToken(result.refreshToken));
+    expect(stored()).not.toBe(result.refreshToken);
+  });
+
+  it('stores the hash when a returning phone signs in', async () => {
+    const { code, codeHash } = generatePhoneOtp();
+    challengeFindUnique.mockResolvedValue({
+      id: 'challenge-1',
+      phone: '+919822055667',
+      codeHash,
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      intendedRole: 'CONSUMER',
+      email: null,
+    });
+    userFindUnique.mockResolvedValue(await userRow({ phone: '+919822055667' }));
+
+    const result = await verifyPhoneSignIn({ challengeId: 'challenge-1', code });
+
+    expect(result.created).toBe(false);
+    expect(stored()).toBe(hashRefreshToken(result.refreshToken));
+  });
+
+  it('stores the hash when a new phone signs up', async () => {
+    const { code, codeHash } = generatePhoneOtp();
+    challengeFindUnique.mockResolvedValue({
+      id: 'challenge-2',
+      phone: '+919822055668',
+      codeHash,
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+      intendedRole: 'CONSUMER',
+      email: null,
+    });
+    userFindUnique.mockResolvedValue(null);
+    userCreate.mockResolvedValue(await userRow({ id: 'phone-user', phone: '+919822055668' }));
+
+    const result = await verifyPhoneSignIn({ challengeId: 'challenge-2', code, name: 'Anita' });
+
+    expect(result.created).toBe(true);
+    expect(stored()).toBe(hashRefreshToken(result.refreshToken));
   });
 });
 

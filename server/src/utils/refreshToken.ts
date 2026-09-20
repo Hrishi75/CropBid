@@ -24,6 +24,7 @@
 // =============================================================================
 
 import crypto from 'crypto';
+import { prisma } from '../lib/prisma';
 
 /** What goes in the database for a given refresh token. */
 export function hashRefreshToken(token: string): string {
@@ -42,4 +43,28 @@ export function refreshTokenMatches(token: string, storedHash: string | null): b
   const presented = Buffer.from(hashRefreshToken(token));
   const stored = Buffer.from(storedHash);
   return presented.length === stored.length && crypto.timingSafeEqual(presented, stored);
+}
+
+/**
+ * Clear any refresh token still stored in the clear.
+ *
+ * WHY THIS EXISTS ON TOP OF THE MIGRATION. Deploys apply migrations and then
+ * swap the API, so between the two the OLD code is still serving: a sign-in in
+ * that window writes a raw token into the column the migration just cleared.
+ * The new code refuses it, because it compares digests, but the plaintext sits
+ * there until that session happens to refresh.
+ *
+ * So the new code sweeps on boot, which is after the swap by definition. A
+ * stored value that is not 64 hex characters cannot be one of our digests, so
+ * it is a leftover and is cleared. Idempotent: once there are none, it matches
+ * nothing, which is the steady state on every boot after the first.
+ *
+ * The only cost is the same one the migration already carries: a session
+ * written during that window is signed out.
+ */
+export async function clearPlaintextRefreshTokens(): Promise<number> {
+  return prisma.$executeRaw`
+    UPDATE "User" SET "refreshToken" = NULL
+    WHERE "refreshToken" IS NOT NULL AND "refreshToken" !~ '^[a-f0-9]{64}$'
+  `;
 }
