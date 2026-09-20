@@ -20,6 +20,11 @@
 //   window was closed, and the banner at the top pays everything owed in one go,
 //   the same single approval checkout would have asked for.
 //
+//   CANCELLING. Until the shop marks it on the way, a shopper can call the
+//   whole order off: it is one delivery with one fee, so half of it is not
+//   something the rest of the system can price. The stock goes back on the
+//   shelf, and a paid order's money comes back by hand (CLAUDE.md §6).
+//
 //   SAYING IT ARRIVED. Delivery runs PENDING -> IN_TRANSIT -> DELIVERED, all
 //   moved by the seller, then DELIVERED -> CONFIRMED by the shopper, which is
 //   what marks the seller as due their money. An earlier version put a confirm
@@ -46,6 +51,7 @@ import { IconSprout } from '../../components/icons';
 import RazorpayCheckout from '../../components/RazorpayCheckout';
 import { useAuth } from '../../context/AuthContext';
 import {
+  cancelRetailOrder,
   createRetailPayment,
   myTransactions,
   updateDeliveryStatus,
@@ -72,6 +78,7 @@ const STAGE: Record<DeliveryStatus, { label: string; tone: string }> = {
   DELIVERED: { label: 'Delivered', tone: colors.sage },
   // CONFIRMED once the shopper says it arrived. To them it is simply done.
   CONFIRMED: { label: 'Arrived', tone: colors.sage },
+  CANCELLED: { label: 'Cancelled', tone: design.ink3 },
 };
 
 interface OrderGroup {
@@ -265,13 +272,48 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
   const { shopOrder, items } = group;
   const [first] = items;
   const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Who is bringing it: the shop's trading name, which is what the storefront
   // showed them, or the person's own name when there is none.
   const seller = first.listing?.farmer?.businessName?.trim() || first.farmer?.name || null;
-  const unpaid = awaitingPayment(group);
+  const cancelled = shopOrder?.cancelledAt != null || items.every((o) => o.deliveryStatus === 'CANCELLED');
+  const unpaid = !cancelled && awaitingPayment(group);
+  // Until the shop marks it on the way. The server enforces the same rule.
+  const canCancel = !cancelled && shopOrder != null && items.every((o) => o.deliveryStatus === 'PENDING');
+  // Three answers, not two: the shopper, the shop, or CropBid, whose admins can
+  // also cancel. Treating "not the shopper" as the shop blamed the wrong one.
+  const cancelledBy = shopOrder?.cancelledById == null ? null
+    : shopOrder.cancelledById === first.buyerId ? 'you'
+      : shopOrder.cancelledById === shopOrder.sellerId ? 'shop'
+        : 'cropbid';
   const amount = shopOrder ? shopOrder.totalAmount : first.totalAmount;
   const delivered = items.filter((o) => o.deliveryStatus === 'DELIVERED');
+
+  function askToCancel() {
+    Alert.alert(
+      t('Cancel this order?'),
+      items.length > 1
+        ? `${t('This cancels all')} ${items.length} ${t('items in it, not just one: they come in one delivery.')}`
+        : t('The shop is told, and the stock goes back on their shelf.'),
+      [
+        { text: t('Keep it'), style: 'cancel' },
+        { text: t('Cancel order'), style: 'destructive', onPress: () => void doCancel() },
+      ],
+    );
+  }
+
+  async function doCancel() {
+    setCancelling(true);
+    try {
+      await cancelRetailOrder(shopOrder!.id);
+    } catch (e) {
+      Alert.alert(t('Could not cancel'), errorMessage(e, 'Try again in a moment.'));
+    } finally {
+      setCancelling(false);
+      onChanged();
+    }
+  }
 
   // One tap for everything that has been handed over. Each item is still
   // confirmed on its own on the server, because escrow is per item.
@@ -316,6 +358,19 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
         </View>
       ) : null}
 
+      {cancelled ? (
+        <View style={styles.stageRow}>
+          <View style={[styles.dot, { backgroundColor: design.ink3 }]} />
+          <Text style={[styles.stage, { color: design.ink3 }]} numberOfLines={2}>
+            {cancelledBy === 'shop' ? t('Cancelled by the shop')
+              : cancelledBy === 'cropbid' ? t('Cancelled by CropBid')
+                : t('Cancelled')}
+            {shopOrder?.cancelReason ? `: ${shopOrder.cancelReason}` : ''}
+            {items.some((o) => o.paymentStatus === 'REFUNDED') ? ` · ${t('refund on its way')}` : ''}
+          </Text>
+        </View>
+      ) : null}
+
       <View style={styles.items}>
         {items.map((o) => {
           const stage = STAGE[o.deliveryStatus];
@@ -343,6 +398,18 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
           );
         })}
       </View>
+
+      {canCancel ? (
+        <PressScale
+          onPress={cancelling ? undefined : askToCancel}
+          scaleTo={0.98}
+          cardStyle={[styles.cancelBtn, cancelling && { opacity: 0.6 }]}
+        >
+          <Text style={styles.cancelText}>
+            {cancelling ? t('Cancelling…') : t('Cancel order')}
+          </Text>
+        </PressScale>
+      ) : null}
 
       {delivered.length > 0 ? (
         <View style={styles.arrived}>
@@ -448,6 +515,16 @@ const styles = StyleSheet.create({
   itemQty: { fontFamily: font.sans, fontSize: 13, color: design.ink3 },
   itemStage: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   itemAmount: { fontFamily: font.monoMed, fontSize: 13, color: design.ink2 },
+
+  cancelBtn: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: design.line,
+    borderRadius: 11,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  cancelText: { fontFamily: font.sansMed, fontSize: 13.5, color: design.ink3 },
 
   arrived: {
     marginTop: spacing.md,

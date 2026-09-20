@@ -137,6 +137,9 @@ export async function createRetailPayment(
   if (orders.some((o) => o.buyerId !== userId)) {
     throw new ApiError(403, 'Only the buyer can pay for these orders');
   }
+  if (orders.some((o) => o.cancelledAt)) {
+    throw new ApiError(400, 'One of these orders has been cancelled. Refresh your orders and try again.');
+  }
   if (orders.some((o) => o.paidAt || !o.transactions.every((t) => t.paymentStatus === 'AWAITING_PAYMENT'))) {
     throw new ApiError(400, 'One of these orders is not awaiting payment. Refresh your orders and try again.');
   }
@@ -363,7 +366,9 @@ async function markCaptured(transactionId: string, paymentId: string) {
 //
 // An order can sit in more than one payment. Whichever captures first pays
 // for it; if a later one captures too, its share for that order is money taken
-// twice. It is recorded and the admins are told, because that refund is manual.
+// twice. The same goes for an order cancelled while one of its payments was
+// still open and then paid anyway. Either way it is recorded and the admins are
+// told, because that refund is manual.
 //
 // THE REFUND IS RECORDED INSIDE THE SAME TRANSACTION as the capture, which
 // review caught: written afterwards, a failed audit insert lost the only
@@ -383,15 +388,17 @@ async function markRetailPaymentCaptured(retailPaymentId: string, razorpayPaymen
     const payment = await tx.retailPayment.findUniqueOrThrow({
       where: { id: retailPaymentId },
       include: {
-        orders: { select: { id: true, totalAmount: true } },
+        orders: { select: { id: true, totalAmount: true, cancelledAt: true } },
         buyer: { select: { name: true } },
       },
     });
 
+    // Orders this payment did not buy: already paid by another payment, or
+    // cancelled before it landed. Their share was still taken.
     const overpaid: { id: string; totalAmount: number }[] = [];
     for (const order of payment.orders) {
       const paid = await tx.retailOrder.updateMany({
-        where: { id: order.id, paidAt: null },
+        where: { id: order.id, paidAt: null, cancelledAt: null },
         data: { paidAt: now },
       });
       if (paid.count === 0) {

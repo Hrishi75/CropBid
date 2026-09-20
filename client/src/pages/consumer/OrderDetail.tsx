@@ -24,6 +24,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
+import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
@@ -64,6 +65,8 @@ export function OrderDetail() {
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [askCancel, setAskCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     api.get(`/transactions/${id}`)
@@ -123,6 +126,24 @@ export function OrderDetail() {
     }
   }
 
+  // Cancelling is per SHOP ORDER, not per item: it is one delivery with one
+  // fee, and half of it is not something the rest of the system can price. The
+  // confirm text says so, because this page is showing one item of it.
+  async function handleCancel() {
+    if (!order?.retailOrder) return;
+    setCancelling(true);
+    try {
+      await api.post(`/retail-orders/${order.retailOrder.id}/cancel`);
+      await refresh();
+      toast.success('Order cancelled');
+      setAskCancel(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not cancel this order');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   async function handleConfirm() {
     setConfirming(true);
     try {
@@ -175,8 +196,24 @@ export function OrderDetail() {
   const lane = laneMeta(sellerType);
   const image = order.listing?.images?.[0] || cropImageFor(order.listing?.cropName ?? '');
   const stepIndex = STEPS.findIndex((s) => s.key === order.deliveryStatus);
-  const awaitingPayment = order.paymentStatus === 'AWAITING_PAYMENT';
+  const cancelled = order.deliveryStatus === 'CANCELLED';
+  const awaitingPayment = !cancelled && order.paymentStatus === 'AWAITING_PAYMENT';
   const canConfirm = order.deliveryStatus === 'DELIVERED';
+  // Until the shop marks it on the way. After that the produce has been picked
+  // for this order, which is what /terms says and what the server enforces.
+  const canCancel = !cancelled && shopOrder != null && order.deliveryStatus === 'PENDING';
+  // Who called it off: the shopper reading this, the shop, or CropBid. Admins
+  // can cancel too, so "anyone but me" would blame the shop for their doing.
+  const cancelledBy = shopOrder?.cancelledById == null ? null
+    : shopOrder.cancelledById === user?.id ? 'you'
+      : shopOrder.cancelledById === shopOrder.sellerId ? 'shop'
+        : 'cropbid';
+  const itemsInOrder = shopOrder?._count.transactions ?? 1;
+  // A cancelled order was either never charged or is being refunded, so
+  // neither "To pay" nor "Paid" is true of it.
+  const totalLabel = cancelled
+    ? (order.paymentStatus === 'REFUNDED' ? 'Refunding' : 'Order total')
+    : awaitingPayment ? 'To pay' : 'Paid';
 
   return (
     <DashboardLayout>
@@ -202,6 +239,21 @@ export function OrderDetail() {
           <div className="cb-tiny" style={{ color: stage.color, marginTop: 4 }}>● {stage.label}</div>
         </div>
       </div>
+
+      {cancelled && (
+        <div className="cb-card" style={{ marginTop: 16 }}>
+          <div className="cb-eyebrow" style={{ marginBottom: 6 }}>Cancelled</div>
+          <p className="cb-small" style={{ color: 'var(--cb-ink-3)' }}>
+            {cancelledBy === 'shop' ? `${seller ?? 'The shop'} cancelled this order.`
+              : cancelledBy === 'cropbid' ? 'CropBid cancelled this order.'
+                : 'You cancelled this order.'}
+            {shopOrder?.cancelReason ? ` Reason: ${shopOrder.cancelReason}.` : ''}
+            {order.paymentStatus === 'REFUNDED'
+              ? ' You had paid, so the money is coming back to you. We make that transfer by hand, so allow a few working days.'
+              : ' Nothing was charged.'}
+          </p>
+        </div>
+      )}
 
       {/* The one thing to do next, if there is one — full width, hard to miss. */}
       {(awaitingPayment || canConfirm) && (
@@ -242,6 +294,32 @@ export function OrderDetail() {
         </div>
       )}
 
+      {canCancel && (
+        <div className="cb-card" style={{ marginTop: 16, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 500 }}>Changed your mind?</div>
+            <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
+              You can cancel until {seller ?? 'the shop'} marks it on the way.
+            </div>
+          </div>
+          <Button variant="ghost" onClick={() => setAskCancel(true)}>Cancel order</Button>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={askCancel}
+        title="Cancel this order?"
+        message={itemsInOrder > 1
+          ? `This cancels all ${itemsInOrder} items from ${seller ?? 'this shop'}, not just this one: they are one delivery.${order.paymentStatus === 'ESCROW' ? ' You have paid, so the money comes back to you by hand over a few working days.' : ''}`
+          : `${seller ?? 'The shop'} will be told, and the stock goes back on their shelf.${order.paymentStatus === 'ESCROW' ? ' You have paid, so the money comes back to you by hand over a few working days.' : ''}`}
+        confirmLabel="Yes, cancel it"
+        cancelLabel="Keep it"
+        loading={cancelling}
+        onConfirm={handleCancel}
+        onCancel={() => setAskCancel(false)}
+      />
+
+      {!cancelled && (
       <div className="cb-card" style={{ marginTop: 16 }}>
         <div className="cb-eyebrow" style={{ marginBottom: 18 }}>Tracking</div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -261,6 +339,7 @@ export function OrderDetail() {
           })}
         </div>
       </div>
+      )}
 
       <div className="cn-pair" style={{ marginTop: 16 }}>
         <div className="cb-card">
@@ -282,14 +361,14 @@ export function OrderDetail() {
                 value={<span className="cb-mono">{shopOrder.deliveryFee > 0 ? formatCurrency(shopOrder.deliveryFee, shopOrder.currency) : 'Free'}</span>}
               />
               <Row
-                label={awaitingPayment ? 'To pay' : 'Paid'}
+                label={totalLabel}
                 value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(shopOrder.totalAmount, shopOrder.currency)}</span>}
               />
             </div>
           ) : (
             <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
               <Row
-                label={awaitingPayment ? 'To pay' : 'Paid'}
+                label={totalLabel}
                 value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(order.totalAmount, order.currency)}</span>}
               />
             </div>

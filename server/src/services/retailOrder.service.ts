@@ -30,7 +30,11 @@ import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import type { Unit } from '../generated/prisma/enums';
 import { ApiError } from '../utils/ApiError';
-import { notifyDirectPurchase } from './notification.helpers';
+import {
+  notifyAdminsRetailRefundDue,
+  notifyDirectPurchase,
+  notifyRetailOrderCancelled,
+} from './notification.helpers';
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 import { orderContactDefaults } from './bid.service';
@@ -406,4 +410,187 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
     include: DIRECT_PURCHASE_INCLUDE,
   });
   return { bid, replayed };
+}
+
+// =============================================================================
+// CANCEL A SHOP ORDER: called off before the shop sends it
+// =============================================================================
+// WHO. The shopper who placed it, the shop it was placed with, or an admin. A
+// shop has to say why, because it is calling off somebody else's order; the
+// shopper does not owe anyone a reason.
+//
+// UNTIL WHEN. Only while every lot is still PENDING, which is up to the moment
+// the shop marks it on the way. After that the produce has been picked for this
+// order and somebody is out of pocket either way, which is what /terms says.
+//
+// ALL OR NOTHING, ACROSS THE WHOLE SHOP ORDER. It is one delivery with one
+// fee, and half of it is not a thing the rest of the system can price: the fee
+// was worked out on the whole. Every lot goes back on the shelf together.
+//
+// THE MONEY. Nothing was taken from an unpaid order, so its lots end at
+// CANCELLED. A paid one has money held, so its lots go to REFUNDED and the
+// admins are told, because that transfer is made by hand (CLAUDE.md §6). The
+// delivery fee goes back with it: the whole order is off.
+export async function cancelRetailOrder(
+  retailOrderId: string,
+  actor: { userId: string; role: string },
+  reason?: string,
+) {
+  const order = await prisma.retailOrder.findUnique({
+    where: { id: retailOrderId },
+    include: {
+      buyer: { select: { name: true } },
+      transactions: {
+        select: {
+          id: true,
+          listingId: true,
+          deliveryStatus: true,
+          paymentStatus: true,
+          bid: { select: { quantity: true } },
+        },
+      },
+    },
+  });
+
+  if (!order) throw new ApiError(404, 'Order not found');
+
+  const isBuyer = order.buyerId === actor.userId;
+  const isSeller = order.sellerId === actor.userId;
+  if (!isBuyer && !isSeller && actor.role !== 'ADMIN') {
+    throw new ApiError(403, 'You are not part of this order');
+  }
+
+  // Cancelling twice is not an error: the second press of a button, or a
+  // retried request, gets the cancelled order back.
+  if (order.cancelledAt) return loadRetailOrder(order.id);
+
+  if (order.transactions.some((t) => t.deliveryStatus !== 'PENDING')) {
+    throw new ApiError(409, isBuyer
+      ? 'This order is already on its way, so it cannot be cancelled. Tell us if something is wrong with it when it arrives.'
+      : 'This order is already on its way, so it cannot be cancelled.');
+  }
+
+  const note = reason?.trim() || null;
+  if (isSeller && !note) {
+    throw new ApiError(400, 'Say why you cannot fulfil this order, so the shopper is told something.');
+  }
+
+  const cancelled = await prisma.$transaction(async (tx) => {
+    // Conditional, so two cancels racing each other produce one cancellation
+    // and one no-op rather than returning the stock twice.
+    const claim = await tx.retailOrder.updateMany({
+      where: { id: order.id, cancelledAt: null },
+      data: { cancelledAt: new Date(), cancelledById: actor.userId, cancelReason: note },
+    });
+    if (claim.count === 0) return null;
+
+    // Listing-id order, the same sequence the purchase claimed them in, so a
+    // cancel and a purchase touching the same lots cannot deadlock.
+    const lots = [...order.transactions].sort((a, b) => a.listingId.localeCompare(b.listingId));
+
+    // How many lots had money held when this actually ran. Counted from the
+    // writes below, never from the snapshot above.
+    let heldForRefund = 0;
+
+    for (const lot of lots) {
+      // THE PAYMENT STATE IS READ IN THE WRITE, NOT FROM THE SNAPSHOT.
+      // A capture can commit between the read at the top of this function and
+      // here. Writing `lot.paymentStatus === 'ESCROW' ? ... : ...` from the
+      // stale copy would then stamp CANCELLED over ESCROW: money taken, marked
+      // as never charged, and nobody told to send it back. So each state is
+      // claimed by its own conditional update, and whichever matches is the
+      // truth at write time.
+      //
+      // PENDING is part of both conditions, so a shop pressing "on the way" in
+      // the same moment wins and the whole cancellation rolls back.
+      const refunded = await tx.transaction.updateMany({
+        where: { id: lot.id, deliveryStatus: 'PENDING', paymentStatus: 'ESCROW' },
+        data: { deliveryStatus: 'CANCELLED', paymentStatus: 'REFUNDED' },
+      });
+      const unpaid = refunded.count > 0
+        ? { count: 0 }
+        : await tx.transaction.updateMany({
+          where: { id: lot.id, deliveryStatus: 'PENDING', paymentStatus: 'AWAITING_PAYMENT' },
+          data: { deliveryStatus: 'CANCELLED', paymentStatus: 'CANCELLED' },
+        });
+
+      if (refunded.count + unpaid.count === 0) {
+        // Nothing matched: it shipped, or its money moved somewhere neither
+        // branch covers (an admin refund while it sat PENDING). Say which.
+        const current = await tx.transaction.findUnique({
+          where: { id: lot.id },
+          select: { deliveryStatus: true },
+        });
+        throw new ApiError(409, current?.deliveryStatus === 'PENDING'
+          ? 'This order has just changed. Open it again to see where it stands.'
+          : 'This order is already on its way, so it cannot be cancelled.');
+      }
+      heldForRefund += refunded.count;
+
+      // Back on the shelf.
+      await tx.listing.update({
+        where: { id: lot.listingId },
+        data: { remainingQuantity: { increment: lot.bid.quantity } },
+      });
+
+      // And back on sale, but only where this retail channel is the only thing
+      // that ever closed it. A lot marked SOLD because a wholesale deal took
+      // it is spoken for: returning a few kilos to the shelf must not put the
+      // whole lot back on the market for someone else to buy.
+      const wholesaleDeals = await tx.transaction.count({
+        where: { listingId: lot.listingId, bid: { isDirectPurchase: false } },
+      });
+      if (wholesaleDeals === 0) {
+        await tx.listing.updateMany({
+          where: { id: lot.listingId, status: 'SOLD' },
+          data: { status: 'ACTIVE' },
+        });
+      }
+    }
+
+    // The refund is recorded with the cancellation, not after it. The admin
+    // notification below is best-effort by nature (§6 refunds are manual), and
+    // losing it used to mean losing the only trace that money was owed back.
+    if (heldForRefund > 0) {
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.userId,
+          actorRole: actor.role,
+          action: 'retail_order.refund_due',
+          entityType: 'RetailOrder',
+          entityId: order.id,
+          metadata: {
+            amount: order.totalAmount,
+            currency: order.currency,
+            lots: heldForRefund,
+            reason: note,
+          },
+        },
+      });
+    }
+
+    return { heldForRefund };
+  });
+
+  if (!cancelled) return loadRetailOrder(order.id);
+
+  // Best-effort, after the commit. The cancellation is real whatever happens.
+  const tellTheOtherSide = isBuyer ? order.sellerId : order.buyerId;
+  notifyRetailOrderCancelled(
+    tellTheOtherSide,
+    isBuyer ? 'shopper' : 'shop',
+    order.transactions.length,
+    order.totalAmount,
+    order.currency,
+    note,
+    order.id,
+  ).catch(() => {});
+
+  if (cancelled.heldForRefund > 0) {
+    void notifyAdminsRetailRefundDue(
+      order.buyer.name, order.totalAmount, order.currency, order.id, note,
+    ).catch(() => {});
+  }
+
+  return loadRetailOrder(order.id);
 }

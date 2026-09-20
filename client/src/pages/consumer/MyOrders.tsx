@@ -68,6 +68,25 @@ function groupOrders(orders: Transaction[]): OrderGroup[] {
   return groups;
 }
 
+/**
+ * " by the shop: sold out this morning", or nothing at all.
+ *
+ * Shared by both cards, because a cancellation reads the same either way and
+ * the one-item card used to leave it out.
+ *
+ * THREE ANSWERS, NOT TWO. The shopper, the shop, or CropBid: admins can cancel
+ * too, and "anyone but me" read every one of those as the shop's doing, which
+ * blamed a shop for a cancellation it had nothing to do with.
+ */
+function cancelledNote(shopOrder: RetailOrderSummary | null, viewerId?: string): string {
+  if (!shopOrder?.cancelledAt) return '';
+  const by = shopOrder.cancelledById;
+  const who = by == null || by === viewerId ? ''
+    : by === shopOrder.sellerId ? ' by the shop'
+      : ' by CropBid';
+  return `${who}${shopOrder.cancelReason ? `: ${shopOrder.cancelReason}` : ''}`;
+}
+
 // The order comes back denominated in the lot's unit; a shopper reads it in
 // the kilograms they bought it in.
 const orderedKg = (o: Transaction) => (o.listing?.unit ? toKg(o.bid?.quantity ?? 0, o.listing.unit) : null);
@@ -88,7 +107,12 @@ function Thumb({ order, size }: { order: Transaction; size: number }) {
 
 // One item on its own: an order from before shop orders, or a shop order that
 // holds a single item. The amount is what was paid for it, delivery included.
-function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: RetailOrderSummary | null }) {
+function SingleOrderCard({ order, shopOrder, viewerId }: {
+  order: Transaction;
+  shopOrder: RetailOrderSummary | null;
+  /** Whose list this is, so a cancellation can say who called it off. */
+  viewerId?: string;
+}) {
   const stage = ORDER_STAGE(order);
   const kg = orderedKg(order);
   // Which shop it came from. The storefront is organised by shop, so an order
@@ -119,6 +143,10 @@ function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: 
         </div>
         <div className="cb-tiny" style={{ color: stage.color, marginTop: 4 }}>
           ● {stage.label}
+          {/* Who called it off and why, on a one-item order too: it is the
+              whole explanation, and a bare "Cancelled" leaves the shopper
+              wondering whether they did it themselves. */}
+          {cancelledNote(shopOrder, viewerId)}
         </div>
       </div>
 
@@ -144,10 +172,16 @@ function SingleOrderCard({ order, shopOrder }: { order: Transaction; shopOrder: 
 // Several items from one shop: one order, one payment, one delivery fee. The
 // header carries the payment; each item keeps its own row and page, because
 // delivery is still confirmed item by item.
-function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; items: Transaction[] }) {
+function ShopOrderCard({ shopOrder, items, viewerId }: {
+  shopOrder: RetailOrderSummary;
+  items: Transaction[];
+  /** Whose list this is, so a cancellation can say who called it off. */
+  viewerId?: string;
+}) {
   const [first] = items;
   const seller = sellerDisplayName(first.listing?.farmer) ?? 'Shop order';
-  const awaitingPayment = items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT');
+  const cancelled = shopOrder.cancelledAt != null;
+  const awaitingPayment = !cancelled && items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT');
 
   return (
     <div className="cb-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -168,6 +202,12 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
           </div>
           {awaitingPayment && (
             <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 4 }}>● Payment due</div>
+          )}
+          {cancelled && (
+            <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 4 }}>
+              ● Cancelled{cancelledNote(shopOrder, viewerId)}
+              {items.some((o) => o.paymentStatus === 'REFUNDED') ? ' · refund on its way' : ''}
+            </div>
           )}
         </div>
         <div className="cn-order-amt">
@@ -203,8 +243,11 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
               <div style={{ fontSize: 14 }}>{o.listing?.cropName}</div>
               <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
                 {kg != null ? formatWeight(kg) : ''}
-                {/* Payment is the shop order's, said once in the header. */}
-                {!awaitingPayment && <span style={{ color: stage.color }}>{kg != null ? ' · ' : ''}{stage.label}</span>}
+                {/* Payment and cancellation are the shop order's, said once in
+                    the header; an item only carries its own delivery stage. */}
+                {!awaitingPayment && !cancelled && (
+                  <span style={{ color: stage.color }}>{kg != null ? ' · ' : ''}{stage.label}</span>
+                )}
               </div>
             </div>
             <div className="cb-mono cb-tiny">{formatCurrency(o.totalAmount, o.currency)}</div>
@@ -219,7 +262,8 @@ function ShopOrderCard({ shopOrder, items }: { shopOrder: RetailOrderSummary; it
 // existed have none, and are paid from their own page as they always were.
 function unpaidShopOrders(groups: OrderGroup[]): RetailOrderSummary[] {
   return groups
-    .filter((g) => g.shopOrder && !g.shopOrder.paidAt && g.items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT'))
+    .filter((g) => g.shopOrder && !g.shopOrder.paidAt && !g.shopOrder.cancelledAt
+      && g.items.some((o) => o.paymentStatus === 'AWAITING_PAYMENT'))
     .map((g) => g.shopOrder!);
 }
 
@@ -304,8 +348,8 @@ export function MyOrders() {
       ) : (
         <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {groups.map((g) => (g.shopOrder && g.items.length > 1
-            ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} />
-            : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} />))}
+            ? <ShopOrderCard key={g.key} shopOrder={g.shopOrder} items={g.items} viewerId={user?.id} />
+            : <SingleOrderCard key={g.key} order={g.items[0]} shopOrder={g.shopOrder} viewerId={user?.id} />))}
         </div>
       )}
     </DashboardLayout>

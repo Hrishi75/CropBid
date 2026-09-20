@@ -132,6 +132,7 @@ enum PaymentStatus {
   ESCROW // Money captured & held by platform
   RELEASED // Paid to farmer
   REFUNDED // Returned to buyer
+  CANCELLED // Called off before anyone paid, so no money ever moved
 }
 
 enum DeliveryStatus {
@@ -139,6 +140,10 @@ enum DeliveryStatus {
   IN_TRANSIT // On the way
   DELIVERED // Reached buyer
   CONFIRMED // Buyer confirmed receipt
+  // Called off before dispatch, by the shopper or by the shop (see
+  // RetailOrder.cancelledAt). Nothing is coming, and the stock went back on
+  // the shelf. Only reachable from PENDING.
+  CANCELLED
 }
 
 enum NegotiationOutcome {
@@ -833,6 +838,18 @@ model RetailOrder {
   // Set once, by whichever RetailPayment captured first. Its lots move into
   // ESCROW in the same database transaction.
   paidAt DateTime?
+
+  // Called off before the shop dispatched it, by the shopper or by the shop
+  // itself. Cancelling puts every lot back on the shelf, so it is all or
+  // nothing across the order and only possible while every lot is PENDING.
+  cancelledAt DateTime?
+  // The User who cancelled it. A plain id, not a relation: it is read to say
+  // "you cancelled this" or "the shop cancelled this", which is a comparison
+  // with buyerId and sellerId, and the row should outlive that account.
+  cancelledById String?
+  // Why. Required of a shop, which is cancelling on somebody else's behalf;
+  // optional for the shopper, who does not owe anyone a reason.
+  cancelReason  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

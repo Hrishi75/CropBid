@@ -8,7 +8,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { createRetailOrder } from '../services/retailOrder.service';
+import { cancelRetailOrder, createRetailOrder } from '../services/retailOrder.service';
 import { auditFromRequest } from '../services/audit.service';
 
 const lineSchema = z.object({
@@ -30,6 +30,40 @@ const createSchema = z.object({
   // The delivery fee the shopper was shown. A different answer is refused.
   deliveryFee: z.number().min(0).optional(),
 });
+
+const cancelSchema = z.object({
+  // A shop must say why (enforced in the service, which knows who is asking);
+  // a shopper may.
+  reason: z.string().max(300).optional(),
+});
+
+// POST /api/retail-orders/:id/cancel: call off a shop order before dispatch
+export async function cancel(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = cancelSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    }
+    const order = await cancelRetailOrder(
+      req.params.id as string,
+      { userId: req.user!.userId, role: req.user!.role },
+      parsed.data.reason,
+    );
+    await auditFromRequest(req, {
+      action: 'retail_order.cancel',
+      entityType: 'RetailOrder',
+      entityId: order.id,
+      metadata: {
+        reason: parsed.data.reason ?? null,
+        totalAmount: order.totalAmount,
+        lots: order.transactions.length,
+      },
+    });
+    res.json(order);
+  } catch (error) {
+    next(error);
+  }
+}
 
 // POST /api/retail-orders: place one shop's share of the basket
 export async function create(req: Request, res: Response, next: NextFunction) {

@@ -71,6 +71,14 @@ const RETAIL_ORDER_SUMMARY_SELECT = {
   totalAmount: true,
   currency: true,
   paidAt: true,
+  sellerId: true,
+  // A cancelled order still shows in the history, saying who called it off and
+  // why. cancelledById is compared with the viewer's own id and with sellerId,
+  // never displayed: the three answers are "you", "the shop" and "CropBid",
+  // and an admin cancellation used to read as the shop's doing.
+  cancelledAt: true,
+  cancelledById: true,
+  cancelReason: true,
   _count: { select: { transactions: true } },
 } as const;
 
