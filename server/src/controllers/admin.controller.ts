@@ -27,8 +27,14 @@ const enquiryIdParamSchema = z.object({
   id: z.string().uuid('Invalid enquiry id'),
 });
 
+// Which catalogue a lead belongs to. Defaults to EQUIPMENT because that is
+// the only kind this endpoint served before inputs had an admin view, so an
+// older admin page still in someone's browser keeps working.
+const enquiryKindSchema = z.enum(['EQUIPMENT', 'AGRI_INPUT']).default('EQUIPMENT');
+
 const updateEnquirySchema = z.object({
   status: z.enum(['NEW', 'CONTACTED', 'CLOSED']),
+  kind: enquiryKindSchema,
 });
 
 // GET /api/admin/stats — Platform-wide statistics
@@ -208,10 +214,17 @@ export async function purgeDemoData(req: Request, res: Response, next: NextFunct
 }
 
 // GET /api/admin/enquiries — Inbound equipment leads
-export async function getEquipmentEnquiries(req: Request, res: Response, next: NextFunction) {
+export async function getEnquiries(req: Request, res: Response, next: NextFunction) {
   try {
     const { status, limit, offset } = req.query;
-    const result = await adminService.getEquipmentEnquiries(
+    const kind = enquiryKindSchema.safeParse(req.query.kind);
+    if (!kind.success) {
+      return res.status(400).json({ message: 'kind must be EQUIPMENT or AGRI_INPUT' });
+    }
+    const list = kind.data === 'AGRI_INPUT'
+      ? adminService.getAgriInputEnquiries
+      : adminService.getEquipmentEnquiries;
+    const result = await list(
       status as string,
       parseInt(limit as string) || 20,
       parseInt(offset as string) || 0
@@ -235,11 +248,11 @@ export async function updateEnquiryStatus(req: Request, res: Response, next: Nex
       return res.status(400).json({ message: 'Status must be NEW, CONTACTED, or CLOSED' });
     }
 
-    const result = await adminService.updateEnquiryStatus(params.data.id, body.data.status);
+    const result = await adminService.updateEnquiryStatus(params.data.id, body.data.status, body.data.kind);
 
     await auditFromRequest(req, {
       action: 'admin.enquiry.update_status',
-      entityType: 'EquipmentEnquiry',
+      entityType: body.data.kind === 'AGRI_INPUT' ? 'AgriInputEnquiry' : 'EquipmentEnquiry',
       entityId: params.data.id,
       metadata: { status: body.data.status },
     });

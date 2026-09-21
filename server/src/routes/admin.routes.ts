@@ -40,10 +40,12 @@ router.get('/attention', adminController.getAttentionItems);
 // GET /api/admin/transactions — Transaction oversight
 router.get('/transactions', adminController.getAllTransactions);
 
-// GET /api/admin/enquiries — Inbound equipment leads
-router.get('/enquiries', adminController.getEquipmentEnquiries);
+// GET /api/admin/enquiries?kind=EQUIPMENT|AGRI_INPUT — Inbound leads from
+// either catalogue. kind defaults to EQUIPMENT.
+router.get('/enquiries', adminController.getEnquiries);
 
-// PATCH /api/admin/enquiries/:id — Move a lead through the triage queue
+// PATCH /api/admin/enquiries/:id — Move a lead through the triage queue.
+// Body carries { status, kind }, kind defaulting to EQUIPMENT.
 router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
 
 // --- Seeds & fertiliser: the /inputs catalogue, including what the licence

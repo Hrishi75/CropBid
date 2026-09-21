@@ -86,7 +86,8 @@ export async function createEnquiry(req: Request, res: Response, next: NextFunct
       parsed.data
     );
 
-    res.status(201).json(result);
+    // 200 on a repeat: nothing was created, the lead already on file came back.
+    res.status(result.created ? 201 : 200).json(result);
   } catch (error) {
     next(error);
   }
