@@ -10,6 +10,7 @@ import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
 import { sendPartnerStatusEmail } from './email.service';
 import { recordAudit } from './audit.service';
+import { hasPayoutDetails } from './payoutDetails';
 
 // =============================================================================
 // PLATFORM STATS — Top-level numbers for the dashboard
@@ -431,7 +432,15 @@ export async function listPartnerApplications(status?: string, kind?: string, li
   ]);
 
   const rows = [
-    ...sellers.map((p) => ({ kind: 'SELLER' as const, ...p })),
+    // The queue says WHETHER a seller can be paid, never how. A reviewer
+    // works through a list of applications and has no business reading forty
+    // account numbers to decide one application; the one they are actually
+    // paying is fetched on its own, and that read is audited.
+    ...sellers.map(({ payoutUpiId, payoutAccountName, payoutAccountNumber, payoutIfsc, ...p }) => ({
+      kind: 'SELLER' as const,
+      ...p,
+      hasPayoutDetails: hasPayoutDetails({ payoutUpiId, payoutAccountName, payoutAccountNumber, payoutIfsc }),
+    })),
     ...buyers.map((p) => ({ kind: 'BUYER' as const, ...p })),
   ].sort((a, b) => a.submittedAt.getTime() - b.submittedAt.getTime());
 
@@ -495,6 +504,65 @@ const DECISION_COPY: Record<PartnerStatusValue, { title: string; message: (note?
   SUBMITTED: { title: '', message: () => '' },     // never sent
   UNDER_REVIEW: { title: '', message: () => '' },  // never sent
 };
+
+// =============================================================================
+// getSellerPayoutDetails — the one way these columns leave the server
+// =============================================================================
+// Payouts are manual (CLAUDE.md §6), so somebody with an admin account opens a
+// banking app and types this in. That is a legitimate need and a standing
+// temptation both, which is why it is one endpoint rather than a field on a
+// list, and why every call leaves a row saying who looked at whose account.
+//
+// THE AUDIT ROW IS WRITTEN FIRST, AND NOT THROUGH recordAudit. recordAudit
+// swallows its own failures by design, so a logging outage would quietly turn
+// this into an unlogged read of everybody's bank details. Here the log IS the
+// control: if it cannot be written, the details are not shown.
+export async function getSellerPayoutDetails(adminId: string, profileId: string) {
+  const profile = await prisma.farmerProfile.findUnique({
+    where: { id: profileId },
+    select: {
+      id: true,
+      userId: true,
+      sellerType: true,
+      businessName: true,
+      payoutUpiId: true,
+      payoutAccountName: true,
+      payoutAccountNumber: true,
+      payoutIfsc: true,
+      user: { select: { name: true } },
+    },
+  });
+
+  if (!profile) throw new ApiError(404, 'Seller not found');
+
+  await prisma.auditLog.create({
+    data: {
+      actorId: adminId,
+      actorRole: 'ADMIN',
+      action: 'seller.payout_details.viewed',
+      entityType: 'FarmerProfile',
+      entityId: profile.id,
+      metadata: {
+        sellerUserId: profile.userId,
+        // What was on file when it was read, so a later dispute about which
+        // account the money went to has both halves of the story. The values
+        // themselves stay out of it: an audit table that copies every account
+        // number is a second place to steal them from.
+        hasPayoutDetails: hasPayoutDetails(profile),
+      },
+    },
+  });
+
+  return {
+    id: profile.id,
+    sellerName: profile.businessName || profile.user.name,
+    payoutUpiId: profile.payoutUpiId,
+    payoutAccountName: profile.payoutAccountName,
+    payoutAccountNumber: profile.payoutAccountNumber,
+    payoutIfsc: profile.payoutIfsc,
+    hasPayoutDetails: hasPayoutDetails(profile),
+  };
+}
 
 export async function reviewPartnerApplication(input: ReviewInput) {
   const rule = ACTION_RULES[input.action];

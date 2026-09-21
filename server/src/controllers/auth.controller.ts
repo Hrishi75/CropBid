@@ -128,6 +128,13 @@ const updateFarmerProfileSchema = z.object({
   farmSizeAcres: z.number().positive('Farm size must be greater than zero').optional(),
   cropsGrown: z.array(z.string().min(1)).min(1, 'Pick at least one crop').optional(),
   state: z.string().min(1, 'Enter your state / region').max(60).optional(),
+  // Payout details. Optional everywhere: see payoutDetails.ts for why a blank
+  // does not block an application, and for the rules the service applies to
+  // whatever gets through this shape check.
+  payoutUpiId: z.string().max(256).nullable().optional(),
+  payoutAccountName: z.string().max(120).nullable().optional(),
+  payoutAccountNumber: z.string().max(34).nullable().optional(),
+  payoutIfsc: z.string().max(20).nullable().optional(),
 });
 
 const updateBuyerProfileSchema = z.object({
@@ -599,6 +606,13 @@ const sellerApplicationSchema = z.object({
   gstin: z.string().max(20).optional(),
   minOrderValue: z.number().positive().optional(),
   leadTimeDays: z.number().int().min(0).max(60).optional(),
+  // Payout details. Optional everywhere: see payoutDetails.ts for why a blank
+  // does not block an application, and for the rules the service applies to
+  // whatever gets through this shape check.
+  payoutUpiId: z.string().max(256).optional(),
+  payoutAccountName: z.string().max(120).optional(),
+  payoutAccountNumber: z.string().max(34).optional(),
+  payoutIfsc: z.string().max(20).optional(),
 });
 
 export async function farmerOnboardingHandler(req: Request, res: Response) {

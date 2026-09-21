@@ -15,6 +15,7 @@ import { useAuth } from '../../context/AuthContext';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { Kpi, Section, EmptyState, AgentCard, MarketRates } from '../../components/dashboard/DashboardPieces';
+import { PayoutCard } from '../../components/PayoutCard';
 import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
 import { timeAgo, greeting } from '../../utils/time';
@@ -112,6 +113,10 @@ export function FarmerDashboard() {
                   }.`}
         </p>
       </div>
+
+      {/* Above the agent card on purpose: a seller with no payout details on
+          file cannot be paid for anything the rest of this page is about. */}
+      <PayoutCard />
 
       <AgentCard role="FARMER" watching={activeListings} />
 

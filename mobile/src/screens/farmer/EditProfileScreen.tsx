@@ -1,6 +1,19 @@
-// Edit profile — lets a farmer update their contact + farm details after
-// onboarding. Pre-fills from the signed-in user, PATCHes /auth/me, and swaps the
-// returned user straight into AuthContext (no extra /auth/me round-trip).
+// Edit profile — where a seller changes their contact details, their farm
+// details and the account their money is paid into. Pre-fills from the
+// signed-in user, PATCHes /auth/me, and swaps the returned user straight into
+// AuthContext (no extra /auth/me round-trip).
+//
+// EVERY SELLER KIND USES THIS SCREEN, not only farms, so the farm questions
+// are asked of farms only. They used to be asked of everybody and required of
+// everybody, which meant a kirana store could not save this form at all
+// without inventing an acreage: the same mistake CLAUDE.md section 9 records
+// in the tab bar and the trust score, one screen further along. It matters
+// more now than it did, because this is also where a shop adds the bank
+// account we owe them money into.
+//
+// THE PAYOUT BOXES START EMPTY, even when an account is on file. What
+// /auth/me returns is masked, so prefilling them would post the mask back
+// into the column. See components/PayoutFields.
 
 import React, { useState } from 'react';
 import {
@@ -20,6 +33,8 @@ import { errorMessage } from '../../api/client';
 import { updateFarmerProfile } from '../../api/endpoints';
 import { Button } from '../../components/ui';
 import { colors, radius, spacing } from '../../theme';
+import { EMPTY_PAYOUT, PayoutFields, isPayoutUntouched, type PayoutValues } from '../../components/PayoutFields';
+import { Alert } from '../../lib/alert';
 import type { FarmerStackParamList } from '../../navigation/types';
 
 // Compact crop set for the picker (server accepts any string[]). Any crop the
@@ -44,6 +59,11 @@ export default function EditProfileScreen() {
   );
   const [state, setState] = useState(profile?.state ?? '');
   const [crops, setCrops] = useState<string[]>(profile?.cropsGrown ?? []);
+  const [payout, setPayout] = useState<PayoutValues>(EMPTY_PAYOUT);
+
+  // A farm is asked about its land and its crops; a shop and a wholesaler are
+  // not. The column has always said which this is (CLAUDE.md section 9).
+  const isGrower = (profile?.sellerType ?? 'FARMER') === 'FARMER';
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -60,11 +80,13 @@ export default function EditProfileScreen() {
     // Reject anything that isn't a plain decimal before converting — Number()
     // would otherwise silently transform pasted values like "1e3" -> 1000,
     // "0x10" -> 16, or truncate "1.5.2"/"1abc".
-    const normalizedFarmSize = farmSize.trim();
-    if (!/^\d+(?:\.\d+)?$/.test(normalizedFarmSize)) return 'Enter a valid farm size';
-    if (Number(normalizedFarmSize) <= 0) return 'Enter a valid farm size';
+    if (isGrower) {
+      const normalizedFarmSize = farmSize.trim();
+      if (!/^\d+(?:\.\d+)?$/.test(normalizedFarmSize)) return 'Enter a valid farm size';
+      if (Number(normalizedFarmSize) <= 0) return 'Enter a valid farm size';
+      if (crops.length === 0) return 'Pick at least one crop';
+    }
     if (!state.trim()) return 'Enter your state / region';
-    if (crops.length === 0) return 'Pick at least one crop';
     return null;
   }
 
@@ -81,10 +103,13 @@ export default function EditProfileScreen() {
         name: name.trim(),
         phone: phone.trim() || null,
         location: location.trim() || null,
-        farmSizeAcres: Number(farmSize.trim()),
-        cropsGrown: crops,
+        ...(isGrower ? { farmSizeAcres: Number(farmSize.trim()), cropsGrown: crops } : {}),
         state: state.trim(),
+        // Omitted when untouched, which keeps what is on file. Sending blanks
+        // would clear the account we are meant to pay into.
+        ...(isPayoutUntouched(payout) ? {} : payout),
       });
+      setPayout(EMPTY_PAYOUT);
       applyUser(updated);
       navigation.goBack();
     } catch (e) {
@@ -92,6 +117,39 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Sending all four blank is how the server is told to forget an account,
+  // and nothing could send it: every form leaves these fields out when they
+  // are empty, so the only way off a stale account was to type a different
+  // one. A seller who has closed that account does not have one to type.
+  //
+  // Alert from lib/alert, never react-native's: the platform one is a no-op
+  // in a browser (CLAUDE.md section 9), which would make this button look
+  // broken on the web build rather than do nothing visibly.
+  function onRemovePayout() {
+    Alert.alert(
+      'Remove payout details?',
+      'We will have nowhere to send money from a sale until you add new ones.',
+      [
+        { text: 'Keep them', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              applyUser(await updateFarmerProfile({ ...EMPTY_PAYOUT }));
+              setPayout(EMPTY_PAYOUT);
+            } catch (e) {
+              setError(errorMessage(e, 'Could not remove those details'));
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (!user) return null;
@@ -132,17 +190,21 @@ export default function EditProfileScreen() {
             autoCapitalize="words"
           />
 
-          <Text style={[styles.section, styles.sectionGap]}>Farm</Text>
+          <Text style={[styles.section, styles.sectionGap]}>{isGrower ? 'Farm' : 'Business'}</Text>
 
-          <Text style={styles.label}>Farm size (acres)</Text>
-          <TextInput
-            style={styles.input}
-            value={farmSize}
-            onChangeText={setFarmSize}
-            keyboardType="numeric"
-            placeholder="e.g., 15"
-            placeholderTextColor={colors.textMuted}
-          />
+          {isGrower ? (
+            <>
+              <Text style={styles.label}>Farm size (acres)</Text>
+              <TextInput
+                style={styles.input}
+                value={farmSize}
+                onChangeText={setFarmSize}
+                keyboardType="numeric"
+                placeholder="e.g., 15"
+                placeholderTextColor={colors.textMuted}
+              />
+            </>
+          ) : null}
 
           <Text style={styles.label}>State / region</Text>
           <TextInput
@@ -154,19 +216,35 @@ export default function EditProfileScreen() {
             autoCapitalize="words"
           />
 
-          <Text style={styles.label}>Crops grown · {crops.length} selected</Text>
-          <View style={styles.chips}>
-            {cropOptions.map((crop) => {
-              const sel = crops.includes(crop);
-              return (
-                <Pressable key={crop} onPress={() => toggleCrop(crop)} style={[styles.chip, sel && styles.chipActive]}>
-                  <Text style={[styles.chipText, sel && styles.chipTextActive]}>
-                    {sel ? '✓ ' : ''}{crop}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          {isGrower ? (
+            <>
+              <Text style={styles.label}>Crops grown · {crops.length} selected</Text>
+              <View style={styles.chips}>
+                {cropOptions.map((crop) => {
+                  const sel = crops.includes(crop);
+                  return (
+                    <Pressable key={crop} onPress={() => toggleCrop(crop)} style={[styles.chip, sel && styles.chipActive]}>
+                      <Text style={[styles.chipText, sel && styles.chipTextActive]}>
+                        {sel ? '✓ ' : ''}{crop}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={[styles.section, styles.sectionGap]}>Getting paid</Text>
+          <Text style={styles.payoutLede}>
+            Where we send your money after a sale. Buyers never see it.
+          </Text>
+          <PayoutFields values={payout} onChange={setPayout} onFile={profile} />
+
+          {profile?.payoutUpiId || profile?.payoutAccountNumber ? (
+            <Pressable onPress={onRemovePayout} disabled={saving} style={styles.removeRow}>
+              <Text style={styles.removeText}>Remove payout details</Text>
+            </Pressable>
+          ) : null}
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -180,6 +258,9 @@ export default function EditProfileScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
+  payoutLede: { fontSize: 12.5, lineHeight: 18, color: colors.textMuted, marginBottom: spacing.md },
+  removeRow: { paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  removeText: { fontSize: 13, fontWeight: '600', color: colors.error },
   container: { padding: spacing.xl, paddingBottom: spacing.xxl },
   card: {
     backgroundColor: colors.surface,

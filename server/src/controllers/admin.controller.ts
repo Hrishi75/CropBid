@@ -289,6 +289,25 @@ const partnerIdParamSchema = z.object({
   id: z.string().uuid('Invalid application id'),
 });
 
+// GET /api/admin/partners/:id/payout — the seller's account, in full
+//
+// Separate from the application list on purpose: the list says whether a
+// seller can be paid, this says how, and only this one writes an audit row
+// (admin.service.getSellerPayoutDetails).
+export async function getSellerPayoutDetails(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = partnerIdParamSchema.safeParse(req.params);
+    if (!param.success) {
+      res.status(400).json({ error: true, message: 'Invalid application id' });
+      return;
+    }
+    const payout = await adminService.getSellerPayoutDetails(req.user!.userId, param.data.id);
+    res.json({ payout });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // POST /api/admin/partners/:id/review — one endpoint, every decision.
 // The service enforces which transitions are legal from which status.
 export async function reviewPartnerApplication(req: Request, res: Response, next: NextFunction) {

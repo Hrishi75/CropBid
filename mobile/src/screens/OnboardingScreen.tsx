@@ -35,6 +35,7 @@ import { partnerApplication } from '../lib/partner';
 import type { SellerType } from '../api/types';
 import { COMPANY_LABEL, COMPANY_TYPES as COMPANY_TYPE_ORDER, wordsFor } from '../lib/sellerType';
 import { colors, radius, spacing } from '../theme';
+import { EMPTY_PAYOUT, PayoutFields, isPayoutUntouched, type PayoutValues } from '../components/PayoutFields';
 
 // Compact crop set for the farmer picker (server accepts any string[]).
 const CROPS = [
@@ -139,6 +140,10 @@ export default function OnboardingScreen({
   const [fssai, setFssai] = useState('');
   const [gstin, setGstin] = useState('');
 
+  // Starts empty even on a resubmission: what the server sends back is masked,
+  // so prefilling from the profile would post the mask back. See PayoutFields.
+  const [payout, setPayout] = useState<PayoutValues>(EMPTY_PAYOUT);
+
   const isShop = isFarmer && sellerType === 'LOCAL_SHOP';
   const isWholesaler = isFarmer && sellerType === 'WHOLESALER';
   const isGrower = isFarmer && sellerType === 'FARMER';
@@ -210,6 +215,9 @@ export default function OnboardingScreen({
           sellerType,
           state: state.trim(),
           organicCertified: organic,
+          // Left out entirely when untouched, which keeps whatever is already
+          // on file rather than clearing it.
+          ...(isPayoutUntouched(payout) ? {} : payout),
           ...(isGrower
             ? {
                 farmSizeAcres: parseFloat(farmSize),
@@ -420,6 +428,17 @@ export default function OnboardingScreen({
               ) : null}
                 </>
               ) : null}
+
+              {/* Every seller kind, after whatever their kind asked for. Not
+                  required to apply: a reviewer approves people, not bank
+                  accounts, and the nag at first payment is what makes sure it
+                  is there before it is needed. */}
+              <Text style={styles.sectionTitle}>Getting paid</Text>
+              <Text style={styles.hint}>
+                You can apply without this and add it later. We need it before we can send you money
+                for a sale.
+              </Text>
+              <PayoutFields values={payout} onChange={setPayout} onFile={user?.farmerProfile} />
             </>
           ) : (
             <>
@@ -505,6 +524,7 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   backBtn: { marginLeft: -4 },
   eyebrow: { fontSize: 12, fontWeight: '700', letterSpacing: 1, color: colors.sage, textTransform: 'uppercase' },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.forest, marginTop: spacing.md, marginBottom: spacing.xs },
   logout: { fontSize: 13, color: colors.ember, fontWeight: '600' },
   title: { fontSize: 26, fontWeight: '800', color: colors.forest, marginTop: spacing.sm },
   sub: { fontSize: 14, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: spacing.xl, lineHeight: 20 },

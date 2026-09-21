@@ -47,6 +47,12 @@ interface ApplicationRow {
   fpoName?: string | null;
   apmcLicense?: string | null;
   organicCertified?: boolean;
+  /**
+   * WHETHER this seller can be paid, never how. The queue deliberately does
+   * not carry account numbers: they are fetched one seller at a time, and
+   * that read is audited. See PayoutReveal below.
+   */
+  hasPayoutDetails?: boolean;
   // Buyer fields
   companyName?: string;
   companyType?: string;
@@ -102,6 +108,70 @@ function Field({ label, value, mono }: { label: string; value: React.ReactNode; 
     <div>
       <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>{label}</div>
       <div className={mono ? 'cb-mono' : ''} style={{ fontSize: 13.5 }}>{value}</div>
+    </div>
+  );
+}
+
+interface PayoutDetails {
+  payoutUpiId: string | null;
+  payoutAccountName: string | null;
+  payoutAccountNumber: string | null;
+  payoutIfsc: string | null;
+}
+
+// Where this seller's money goes, behind a deliberate second click.
+//
+// Payouts are manual (CLAUDE.md §6), so an admin genuinely needs to read an
+// account number and type it into a banking app. What they do not need is
+// forty of them on screen while working through a review queue, so the queue
+// carries a yes/no and this fetches the one they are actually paying. The
+// server writes an audit row for every fetch, which is the real control; this
+// button is what makes that row mean something, because it marks a read as a
+// decision somebody took rather than a side effect of opening a page.
+function PayoutReveal({ profileId, hasDetails }: { profileId: string; hasDetails?: boolean }) {
+  const [details, setDetails] = useState<PayoutDetails | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  if (!hasDetails) {
+    return (
+      <div style={{ marginTop: 12 }}>
+        <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>PAYOUT</div>
+        <div className="cb-tiny" style={{ color: 'var(--cb-ember)' }}>
+          Nothing on file. This seller cannot be paid until they add a UPI id or bank account.
+        </div>
+      </div>
+    );
+  }
+
+  async function reveal() {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/admin/partners/${profileId}/payout`);
+      setDetails(data.payout);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not load payout details');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>PAYOUT</div>
+      {details ? (
+        <div className="cb-mono" style={{ fontSize: 13.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {details.payoutUpiId && <span>UPI · {details.payoutUpiId}</span>}
+          {details.payoutAccountNumber && (
+            <span>
+              {details.payoutAccountName} · {details.payoutAccountNumber} · {details.payoutIfsc}
+            </span>
+          )}
+        </div>
+      ) : (
+        <button type="button" className="cb-btn cb-btn-ghost cb-btn-sm" onClick={reveal} disabled={loading}>
+          {loading ? 'Loading…' : 'Show bank details'}
+        </button>
+      )}
     </div>
   );
 }
@@ -229,6 +299,8 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
               </>
             )}
           </div>
+
+          {app.kind === 'SELLER' && <PayoutReveal profileId={app.id} hasDetails={app.hasPayoutDetails} />}
 
           {app.kind === 'SELLER' && (app.cropsGrown?.length || 0) > 0 && (
             <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>

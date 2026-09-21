@@ -32,7 +32,7 @@ import Razorpay from 'razorpay';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { ApiError } from '../utils/ApiError';
-import { notifyAdminsRetailOverpaid } from './notification.helpers';
+import { notifyAdminsRetailOverpaid, notifySellersMissingPayoutDetails } from './notification.helpers';
 
 // Single shared client. Null when keys are not configured so the rest of the app
 // still boots (payments simply return 503).
@@ -353,7 +353,16 @@ async function markCaptured(transactionId: string, paymentId: string) {
     return tx;
   }
 
-  return prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
+  const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
+
+  // The money is now ours to pass on, and nobody has checked there is anywhere
+  // to pass it to. Fired here rather than at settlement because the seller
+  // should be asked while the order is being packed, not when the buyer is
+  // waiting on a transfer. Best-effort: a notification must never undo a
+  // capture that has already happened at the bank.
+  void notifySellersMissingPayoutDetails([transaction.farmerId]).catch(() => {});
+
+  return transaction;
 }
 
 // =============================================================================
@@ -441,12 +450,26 @@ async function markRetailPaymentCaptured(retailPaymentId: string, razorpayPaymen
     ).catch(() => {});
   }
 
-  return prisma.retailPayment.findUniqueOrThrow({
+  const captured = await prisma.retailPayment.findUniqueOrThrow({
     where: { id: retailPaymentId },
     include: {
       orders: {
-        select: { id: true, totalAmount: true, transactions: { select: { id: true, paymentStatus: true } } },
+        select: {
+          id: true,
+          totalAmount: true,
+          transactions: { select: { id: true, paymentStatus: true, farmerId: true } },
+        },
       },
     },
   });
+
+  // Same as the trade path: every shop that now has money waiting is asked for
+  // somewhere to send it, once. Reading it off the rows we just wrote rather
+  // than tracking sellers through the transaction above, because a payment
+  // covering two shops has to reach both of them.
+  void notifySellersMissingPayoutDetails(
+    captured.orders.flatMap((o) => o.transactions.map((t) => t.farmerId)),
+  ).catch(() => {});
+
+  return captured;
 }

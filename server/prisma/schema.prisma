@@ -393,6 +393,25 @@ model FarmerProfile {
   organicCertified  Boolean @default(false)
   certificationBody String? // "NPOP" (India), "USDA Organic" (US), "EU Organic" (Europe)
 
+  // --- Where a settled deal's money goes ---
+  // A seller gives a UPI id, or a bank account, or both: at least one before
+  // anything can be paid out. Structured columns rather than the loose
+  // bankDetails JSON below, because these are validated on the way in and the
+  // admin making the transfer has to read them under pressure.
+  //
+  // NOT PUBLIC, and not the counterparty's business either. PUBLIC_SELLER_SELECT
+  // is an allow-list, so these cannot leak by simply existing; the only way out
+  // is the admin endpoint that reads them, which writes an audit row every time.
+  // The seller themselves gets them back masked.
+  payoutUpiId        String? // "ramesh@okhdfc"
+  payoutAccountName  String? // The name the bank holds, which need not be the account holder's display name
+  payoutAccountNumber String?
+  payoutIfsc         String? // "HDFC0001234"
+
+  // Superseded by the four columns above, and never written: the only code that
+  // ever touched it cleared it on account deletion. Left in place rather than
+  // dropped because dropping a column is a destructive migration and this one
+  // costs nothing to keep; drop it in a cleanup once nothing references it.
   bankDetails Json? // Flexible JSON for bank info (varies by country)
   verified    Boolean @default(false) // Admin-verified (legacy badge; the gate is `status`)
 

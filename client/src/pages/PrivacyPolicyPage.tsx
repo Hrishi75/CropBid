@@ -24,7 +24,7 @@ import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '3 September 2026';
+const UPDATED = '21 September 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -131,9 +131,18 @@ export function PrivacyPolicyPage() {
             what your trade requires: whether you are a farmer, a local shop or a wholesaler,
             your business or shop name and type, your address, your state, farm size and crops
             grown, an FSSAI licence number for a shop, a GSTIN, an APMC licence, an FPO name,
-            organic certification details, minimum order value and lead time for a wholesaler,
-            and bank details for settlement. We keep the outcome of the review and any note the
-            reviewer wrote.
+            organic certification details, and minimum order value and lead time for a
+            wholesaler. We keep the outcome of the review and any note the reviewer wrote.
+          </p>
+          <p>
+            <strong>If you sell, we ask where to pay you:</strong> a UPI id, or the name on your
+            bank account with its account number and IFSC code. You can apply without them and
+            add them later, but we cannot send you money for a sale until they are there.{' '}
+            <strong>Buyers never see them.</strong> When you look at your own details we show
+            them back to you partly hidden, as the last four digits, so they cannot be read off
+            your screen. The only people who see them in full are CropBid staff making a
+            payment to you, and every time one of them looks we record who looked, whose
+            account it was, and when.
           </p>
           <p>
             <strong>If you apply to buy at volume,</strong> we collect your company name and
