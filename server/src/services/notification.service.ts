@@ -51,24 +51,36 @@ export async function createNotification(input: CreateNotificationInput) {
     },
   });
 
-  // Try to push via Socket.io. Push is best-effort: the DB row is the
-  // source of truth and the client will pick it up on next fetch.
+  pushNotification(notification);
+  return notification;
+}
+
+/**
+ * Tell a connected client about a row that has already been written.
+ *
+ * Its own function because a caller that has to write the row itself still
+ * wants the push: notification.helpers writes the payout nag inside a
+ * transaction, to claim it under a lock, and cannot go through
+ * createNotification to do it.
+ *
+ * Best-effort by contract: the row is the source of truth and the client
+ * picks it up on its next fetch, so this never throws at its caller.
+ */
+export function pushNotification(notification: { id: string; userId: string; type: string }) {
   try {
     const io = getIO();
     if (io) {
       // Emit to the user's personal room (they join on connect)
-      io.to(`user:${input.userId}`).emit('notification:new', notification);
+      io.to(`user:${notification.userId}`).emit('notification:new', notification);
     }
   } catch (err) {
     console.error('[notification] socket push failed', {
       notificationId: notification.id,
-      userId: input.userId,
-      type: input.type,
+      userId: notification.userId,
+      type: notification.type,
       error: err instanceof Error ? err.message : String(err),
     });
   }
-
-  return notification;
 }
 
 // =============================================================================

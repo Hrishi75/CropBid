@@ -5,7 +5,7 @@
 // to send contextual notifications at key lifecycle events.
 // =============================================================================
 
-import { createNotification } from './notification.service';
+import { createNotification, pushNotification } from './notification.service';
 import { prisma } from '../lib/prisma';
 import { hasPayoutDetails } from './payoutDetails';
 
@@ -347,6 +347,17 @@ export async function notifyAdminsRetailRefundDue(
 // get six identical notifications, which is how a bell stops being read. An
 // unread one already saying this is left to do its job; it is marked read when
 // the seller acts, and the next order after that asks again.
+//
+// LOOKING IS NOT CLAIMING, which review caught. Two captures landing together
+// both find no unread nag and both write one, and the rule above is then a
+// sentence in a comment rather than something the code holds. Each seller's
+// check and write therefore happen inside one transaction that takes an
+// advisory lock on that seller's nags first, the same pattern and the same
+// reasoning as the address book (address.service.lockAddressBook): the row
+// being claimed does not exist yet, so there is nothing to SELECT FOR UPDATE.
+//
+// Per seller rather than one lock for the batch, because two captures for two
+// different shops have no reason to wait on each other.
 export async function notifySellersMissingPayoutDetails(sellerIds: string[]) {
   const unique = [...new Set(sellerIds)].filter(Boolean);
   if (unique.length === 0) return;
@@ -359,23 +370,39 @@ export async function notifySellersMissingPayoutDetails(sellerIds: string[]) {
   const unpayable = profiles.filter((p) => !hasPayoutDetails(p)).map((p) => p.userId);
   if (unpayable.length === 0) return;
 
-  const alreadyAsked = await prisma.notification.findMany({
-    where: { userId: { in: unpayable }, type: 'PAYOUT_DETAILS_MISSING', read: false },
-    select: { userId: true },
-  });
-  const asked = new Set(alreadyAsked.map((n) => n.userId));
-
   await Promise.all(
-    unpayable
-      .filter((userId) => !asked.has(userId))
-      .map((userId) =>
-        createNotification({
-          userId,
-          type: 'PAYOUT_DETAILS_MISSING',
-          title: 'Add your bank or UPI details',
-          message: 'A buyer has paid for your order. We need a UPI id or bank account to send your money to.',
-          data: {},
-        }).catch(() => {}),
-      ),
+    unpayable.map(async (userId) => {
+      // Best-effort as a whole: a notification must never undo a capture that
+      // has already happened at the bank.
+      try {
+        const claimed = await prisma.$transaction(async (tx) => {
+          // $executeRaw, not $queryRaw: the function returns void and Prisma
+          // cannot deserialise that.
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`payoutnag:${userId}`}))`;
+
+          const open = await tx.notification.count({
+            where: { userId, type: 'PAYOUT_DETAILS_MISSING', read: false },
+          });
+          if (open > 0) return null;
+
+          // Written through the client that holds the lock, so the row is
+          // visible to whoever is waiting on it the moment they get in.
+          return tx.notification.create({
+            data: {
+              userId,
+              type: 'PAYOUT_DETAILS_MISSING',
+              title: 'Add your bank or UPI details',
+              message: 'A buyer has paid for your order. We need a UPI id or bank account to send your money to.',
+            },
+          });
+        });
+
+        // The push is outside the lock: it is best-effort either way, and the
+        // row is the source of truth (notification.service).
+        if (claimed) pushNotification(claimed);
+      } catch {
+        // Swallowed on purpose, as above.
+      }
+    }),
   );
 }

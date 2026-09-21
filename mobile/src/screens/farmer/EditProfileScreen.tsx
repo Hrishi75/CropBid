@@ -34,6 +34,7 @@ import { updateFarmerProfile } from '../../api/endpoints';
 import { Button } from '../../components/ui';
 import { colors, radius, spacing } from '../../theme';
 import { EMPTY_PAYOUT, PayoutFields, isPayoutUntouched, type PayoutValues } from '../../components/PayoutFields';
+import { Alert } from '../../lib/alert';
 import type { FarmerStackParamList } from '../../navigation/types';
 
 // Compact crop set for the picker (server accepts any string[]). Any crop the
@@ -116,6 +117,39 @@ export default function EditProfileScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Sending all four blank is how the server is told to forget an account,
+  // and nothing could send it: every form leaves these fields out when they
+  // are empty, so the only way off a stale account was to type a different
+  // one. A seller who has closed that account does not have one to type.
+  //
+  // Alert from lib/alert, never react-native's: the platform one is a no-op
+  // in a browser (CLAUDE.md section 9), which would make this button look
+  // broken on the web build rather than do nothing visibly.
+  function onRemovePayout() {
+    Alert.alert(
+      'Remove payout details?',
+      'We will have nowhere to send money from a sale until you add new ones.',
+      [
+        { text: 'Keep them', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              applyUser(await updateFarmerProfile({ ...EMPTY_PAYOUT }));
+              setPayout(EMPTY_PAYOUT);
+            } catch (e) {
+              setError(errorMessage(e, 'Could not remove those details'));
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (!user) return null;
@@ -206,6 +240,12 @@ export default function EditProfileScreen() {
           </Text>
           <PayoutFields values={payout} onChange={setPayout} onFile={profile} />
 
+          {profile?.payoutUpiId || profile?.payoutAccountNumber ? (
+            <Pressable onPress={onRemovePayout} disabled={saving} style={styles.removeRow}>
+              <Text style={styles.removeText}>Remove payout details</Text>
+            </Pressable>
+          ) : null}
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <View style={styles.spacer} />
@@ -219,6 +259,8 @@ export default function EditProfileScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
   payoutLede: { fontSize: 12.5, lineHeight: 18, color: colors.textMuted, marginBottom: spacing.md },
+  removeRow: { paddingVertical: spacing.sm, marginBottom: spacing.sm },
+  removeText: { fontSize: 13, fontWeight: '600', color: colors.error },
   container: { padding: spacing.xl, paddingBottom: spacing.xxl },
   card: {
     backgroundColor: colors.surface,
