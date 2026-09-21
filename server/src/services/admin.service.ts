@@ -182,9 +182,14 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
 // Enquiries are leads, not deals: they never become a Transaction, so they're
 // invisible on every other admin screen. The dealer's phone is included
 // because working a lead means calling both sides.
+// The statuses a lead moves through, shared by both catalogues, and which
+// catalogue a lead id belongs to: the two tables have separate id spaces.
+const ENQUIRY_STATUSES = ['NEW', 'CONTACTED', 'CLOSED'];
+export type EnquiryKind = 'EQUIPMENT' | 'AGRI_INPUT';
+
 export async function getEquipmentEnquiries(status?: string, limit = 20, offset = 0) {
   const where: any = {};
-  if (status && ['NEW', 'CONTACTED', 'CLOSED'].includes(status)) {
+  if (status && ENQUIRY_STATUSES.includes(status)) {
     where.status = status;
   }
 
@@ -213,11 +218,74 @@ export async function getEquipmentEnquiries(status?: string, limit = 20, offset 
 }
 
 // =============================================================================
+// LIST INPUT ENQUIRIES — Admin view of seed, fertiliser and crop-protection leads
+// =============================================================================
+// These were invisible to everybody but the farmer who raised them: the only
+// read path was getMyEnquiries, scoped to that farmer. So a lead /inputs
+// produced could not be followed up, counted, or used to tell whether that
+// marketplace works at all. Same shape as the equipment list above, so one
+// page serves both.
+//
+// NOT FILTERED BY SELLABLE, on purpose. That gate decides what a farmer may
+// browse and enquire about (CLAUDE.md section 10). A lead already raised is a
+// fact about the past, and an admin needs to see it even if the shop's
+// licence has since lapsed, which is exactly when somebody should be calling.
+//
+// The supplier's phone is included for the reason the dealer's is above:
+// working a lead means calling both sides. Licence NUMBERS are not: they
+// never leave the server, and nobody needs one to follow up a lead.
+export async function getAgriInputEnquiries(status?: string, limit = 20, offset = 0) {
+  const where: any = {};
+  if (status && ENQUIRY_STATUSES.includes(status)) {
+    where.status = status;
+  }
+
+  const [enquiries, total] = await Promise.all([
+    prisma.agriInputEnquiry.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      skip: offset,
+      include: {
+        agriInput: {
+          select: {
+            id: true,
+            title: true,
+            category: true,
+            packSize: true,
+            pricePerPack: true,
+            subsidised: true,
+            supplier: { select: { name: true, contactPhone: true, location: true, state: true } },
+          },
+        },
+        user: { select: { id: true, name: true, phone: true, email: true, location: true } },
+      },
+    }),
+    prisma.agriInputEnquiry.count({ where }),
+  ]);
+
+  return { enquiries, total };
+}
+
+// =============================================================================
 // UPDATE ENQUIRY STATUS — Move a lead through the triage queue
 // =============================================================================
-export async function updateEnquiryStatus(enquiryId: string, status: string) {
-  if (!['NEW', 'CONTACTED', 'CLOSED'].includes(status)) {
+// One function for both catalogues, told which by `kind`, the way the partner
+// review takes SELLER or BUYER. The two tables have separate id spaces, so the
+// kind is what makes an id mean one row rather than possibly two.
+export async function updateEnquiryStatus(enquiryId: string, status: string, kind: EnquiryKind = 'EQUIPMENT') {
+  if (!ENQUIRY_STATUSES.includes(status)) {
     throw new ApiError(400, 'Status must be NEW, CONTACTED, or CLOSED');
+  }
+
+  if (kind === 'AGRI_INPUT') {
+    const enquiry = await prisma.agriInputEnquiry.findUnique({ where: { id: enquiryId } });
+    if (!enquiry) throw new ApiError(404, 'Enquiry not found');
+    return prisma.agriInputEnquiry.update({
+      where: { id: enquiryId },
+      data: { status: status as any },
+      select: { id: true, status: true },
+    });
   }
 
   const enquiry = await prisma.equipmentEnquiry.findUnique({ where: { id: enquiryId } });

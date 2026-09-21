@@ -23,6 +23,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import * as equipmentController from '../controllers/equipment.controller';
+import { equipmentEnquiryLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
@@ -36,6 +37,9 @@ router.get('/:id', equipmentController.getEquipmentById);
 
 // Lead capture — any signed-in account may enquire. Not farmer-gated: a buyer
 // running a pack-house has as much reason to hire a thresher as a farmer does.
-router.post('/:id/enquiry', authenticate, equipmentController.createEnquiry);
+// equipmentEnquiryLimiter goes AFTER authenticate so it can key on the account
+// rather than the IP: what is being rationed is what one account may collect,
+// and an IP in the key hands a fresh allowance to anyone who changes network.
+router.post('/:id/enquiry', authenticate, equipmentEnquiryLimiter, equipmentController.createEnquiry);
 
 export default router;
