@@ -89,7 +89,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   SEEDLING: '🌿',
 };
 
-// Which licence a category needs. Mirrors requiredLicence in the service — the
+// Which licence a category needs. Mirrors REQUIRED_LICENCE in the service — the
 // client uses it only to word the badge, the server uses it to decide whether
 // the row exists at all.
 const CATEGORY_LICENCE: Record<string, keyof Licences | null> = {

@@ -5,6 +5,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as adminService from '../services/admin.service';
+import * as agriInputService from '../services/agriInput.service';
+import { INDIAN_STATES } from '../utils/indianStates';
 import { prisma } from '../lib/prisma';
 import { auditFromRequest } from '../services/audit.service';
 
@@ -257,6 +259,266 @@ export async function updateEnquiryStatus(req: Request, res: Response, next: Nex
     });
 
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// =============================================================================
+// SEEDS & FERTILISER — the /inputs catalogue as ops see it
+// =============================================================================
+// What is loaded, what a farmer can see of it, and what the rest is waiting on;
+// plus adding shops and products, and entering a shop's licences. The rules a
+// product must satisfy, and the one about who may vouch for a licence, live in
+// agriInput.service so they bind every caller, not just this one.
+
+const agriInputListQuerySchema = z.object({
+  category: z.enum(agriInputService.CATEGORIES).optional(),
+  visibility: z.enum(['live', 'hidden']).optional(),
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+// GET /api/admin/agri-inputs — every product, gated or not, and why
+export async function getAgriInputCatalogue(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = agriInputListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: true, message: 'Invalid query' });
+      return;
+    }
+    res.json(await agriInputService.listCatalogueForAdmin(parsed.data));
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/admin/agri-inputs/suppliers — the shops, and which licences are on file.
+// Carries the list of states too, so the add-shop picker offers exactly what
+// the server will accept instead of keeping its own copy.
+export async function getAgriInputSuppliers(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ ...(await agriInputService.listSuppliersForAdmin()), states: INDIAN_STATES });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function invalid(res: Response, error: z.ZodError) {
+  res.status(400).json({ error: true, message: error.issues[0]?.message || 'Invalid input' });
+}
+
+const text = (max: number) => z.string().trim().max(max);
+
+// On an edit, absent means "leave it" and '' or null means "clear it".
+const clearable = (max: number) =>
+  text(max).nullable().optional().transform((v) => (v === '' ? null : v));
+
+const productShape = {
+  title: text(120).min(2, 'Give the product a name'),
+  category: z.enum(agriInputService.CATEGORIES),
+  brand: clearable(80),
+  cropNames: z.array(text(40)).max(20),
+  packSize: text(40).min(1, 'Say what one pack is, e.g. "45 kg bag"'),
+  pricePerPack: z.number().positive('The price must be more than zero').max(1_000_000),
+  subsidised: z.boolean(),
+  composition: clearable(120),
+  germinationPct: z.number().min(0).max(100).nullable().optional(),
+  seedTreatment: clearable(80),
+  dosagePerAcre: clearable(80),
+  specs: z.array(text(60).min(1)).max(10),
+  description: clearable(1000),
+};
+
+export const createProductSchema = z.object({
+  supplierId: z.string().uuid('Pick a shop'),
+  ...productShape,
+  subsidised: productShape.subsidised.default(false),
+  cropNames: productShape.cropNames.default([]),
+  specs: productShape.specs.default([]),
+});
+
+export const updateProductSchema = z.object(productShape).partial().extend({
+  active: z.boolean().optional(),
+});
+
+const idParamSchema = z.object({ id: z.string().uuid('Invalid id') });
+
+// POST /api/admin/agri-inputs — add a product to a shop
+export async function createAgriInput(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = createProductSchema.safeParse(req.body);
+    if (!parsed.success) return invalid(res, parsed.error);
+
+    const { supplierId, ...f } = parsed.data;
+    const product = await agriInputService.createAgriInput(supplierId, {
+      ...f,
+      brand: f.brand ?? null,
+      composition: f.composition ?? null,
+      germinationPct: f.germinationPct ?? null,
+      seedTreatment: f.seedTreatment ?? null,
+      dosagePerAcre: f.dosagePerAcre ?? null,
+      description: f.description ?? null,
+    });
+
+    await auditFromRequest(req, {
+      action: 'admin.agri_input.create',
+      entityType: 'AgriInput',
+      entityId: product.id,
+      metadata: { supplierId, title: product.title, category: product.category, pricePerPack: product.pricePerPack },
+    });
+
+    res.status(201).json(product);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /api/admin/agri-inputs/:id — edit a product, or take it off / put it back
+export async function updateAgriInput(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+    const body = updateProductSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+    if (Object.keys(body.data).length === 0) {
+      res.status(400).json({ error: true, message: 'Nothing to change' });
+      return;
+    }
+
+    const product = await agriInputService.updateAgriInput(param.data.id, body.data);
+
+    await auditFromRequest(req, {
+      action: 'admin.agri_input.update',
+      entityType: 'AgriInput',
+      entityId: product.id,
+      metadata: { changes: body.data },
+    });
+
+    res.json(product);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const phone = text(20).regex(/^\+?\d[\d\s-]{8,16}\d$/, 'Enter a phone number farmers can call');
+
+const emailField = text(120)
+  .refine((v) => v === '' || z.email().safeParse(v).success, 'That email address does not look right')
+  .nullable()
+  .optional()
+  .transform((v) => (v === '' ? null : v));
+
+export const createSupplierSchema = z.object({
+  name: text(120).min(2, 'Give the shop a name'),
+  location: text(80).min(2, 'Which town is the shop in?'),
+  state: text(60).min(2, 'Which state is the shop in?'),
+  contactPhone: phone,
+  contactEmail: emailField,
+});
+
+const updateSupplierSchema = z.object({
+  name: text(120).min(2, 'Give the shop a name').optional(),
+  contactPhone: phone.optional(),
+  contactEmail: emailField,
+  active: z.boolean().optional(),
+});
+
+// POST /api/admin/agri-inputs/suppliers — add a shop (unlicensed until licences are entered)
+export async function createAgriInputSupplier(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = createSupplierSchema.safeParse(req.body);
+    if (!parsed.success) return invalid(res, parsed.error);
+
+    const shop = await agriInputService.createSupplier({
+      ...parsed.data,
+      contactEmail: parsed.data.contactEmail ?? null,
+    });
+
+    // The phone number stays out of the log, as it stays out of every read.
+    await auditFromRequest(req, {
+      action: 'admin.input_supplier.create',
+      entityType: 'InputSupplier',
+      entityId: shop.id,
+      metadata: { name: shop.name, state: shop.state },
+    });
+
+    res.status(201).json(shop);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /api/admin/agri-inputs/suppliers/:id — rename, new phone, take off / put back
+export async function updateAgriInputSupplier(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+
+    // Said out loud rather than silently dropped by the schema: an admin who
+    // sent a new state would otherwise think the shop had moved.
+    if (req.body && ('location' in req.body || 'state' in req.body)) {
+      res.status(400).json({
+        error: true,
+        message: "A shop's town and state cannot change: a licence covers one premises in one state. Add it as a new shop.",
+      });
+      return;
+    }
+
+    const body = updateSupplierSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+    if (Object.keys(body.data).length === 0) {
+      res.status(400).json({ error: true, message: 'Nothing to change' });
+      return;
+    }
+
+    const shop = await agriInputService.updateSupplier(param.data.id, body.data);
+
+    await auditFromRequest(req, {
+      action: 'admin.input_supplier.update',
+      entityType: 'InputSupplier',
+      entityId: shop.id,
+      metadata: { changed: Object.keys(body.data), ...(body.data.active !== undefined && { active: body.data.active }) },
+    });
+
+    res.json(shop);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Licence numbers as printed on the certificate: MH/PUN/SEED/2019/4471 and the
+// like. Loose on purpose, because every state formats them differently; the
+// check that matters is the admin having seen the document.
+const licenceNumber = text(60)
+  .min(4, 'That is too short to be a licence number')
+  .regex(/^[A-Za-z0-9][A-Za-z0-9 /.-]*$/, 'Type the number as printed: letters, digits, / - and .');
+
+export const licenceSchema = z.object({
+  seed: licenceNumber.nullable().optional(),
+  fertiliser: licenceNumber.nullable().optional(),
+  pesticide: licenceNumber.nullable().optional(),
+  paperworkSeen: z.boolean().default(false),
+});
+
+// PUT /api/admin/agri-inputs/suppliers/:id/licences — enter or clear licences.
+// Audited inside the service, in the same transaction as the write.
+export async function setAgriInputSupplierLicences(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+    const body = licenceSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+
+    const { paperworkSeen, ...licences } = body.data;
+    const shop = await agriInputService.setSupplierLicences(
+      req.user!.userId,
+      param.data.id,
+      licences,
+      paperworkSeen
+    );
+    res.json(shop);
   } catch (error) {
     next(error);
   }

@@ -48,6 +48,23 @@ router.get('/enquiries', adminController.getEnquiries);
 // Body carries { status, kind }, kind defaulting to EQUIPMENT.
 router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
 
+// --- Seeds & fertiliser: the /inputs catalogue, including what the licence
+// gate hides from farmers, and adding to it. ---
+// GET   /api/admin/agri-inputs                          — products, live or hidden and why
+// POST  /api/admin/agri-inputs                          — add a product to a shop
+// PATCH /api/admin/agri-inputs/:id                      — edit, take off, put back
+// GET   /api/admin/agri-inputs/suppliers                — shops and the licences on file
+// POST  /api/admin/agri-inputs/suppliers                — add a shop
+// PATCH /api/admin/agri-inputs/suppliers/:id            — rename, phone, take off, put back
+// PUT   /api/admin/agri-inputs/suppliers/:id/licences   — enter or clear licences (audited)
+router.get('/agri-inputs', adminController.getAgriInputCatalogue);
+router.post('/agri-inputs', adminController.createAgriInput);
+router.get('/agri-inputs/suppliers', adminController.getAgriInputSuppliers);
+router.post('/agri-inputs/suppliers', adminController.createAgriInputSupplier);
+router.patch('/agri-inputs/suppliers/:id', adminController.updateAgriInputSupplier);
+router.put('/agri-inputs/suppliers/:id/licences', adminController.setAgriInputSupplierLicences);
+router.patch('/agri-inputs/:id', adminController.updateAgriInput);
+
 // --- Partner applications: the approval queue ---
 // GET  /api/admin/partners            — list applications (+ per-status counts)
 // POST /api/admin/partners/:id/review — approve / request info / reject / suspend
