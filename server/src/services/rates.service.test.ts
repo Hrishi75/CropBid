@@ -1,13 +1,12 @@
 // =============================================================================
-// rates.service tests — the storefront must not flicker
+// rates.service tests: what the numbers on /rates and the board are made of
 // =============================================================================
-// The hero chips and the price ticker read `source` to decide whether to show
-// a real day-over-day move or a flat "ref". So an intermittent upstream — one
-// 429 out of the burst getBoard fires, one 8s timeout — used to change what the
-// homepage SAYS between two loads a minute apart: live price with a move, then
-// reference with none, then back. These tests pin the two behaviours that stop
-// that: a failed fetch reuses the last real records, and a crop that has been
-// silent past the staleness bound is allowed to fall back to reference.
+// Every case here is something the live board got wrong on 2026-09-21 while
+// it asked data.gov.in one crop at a time: spring onion averaged into onion,
+// paddy missing a state that spells it differently, "Kerala" finding nothing,
+// a ₹0 low end from one mandi's typo, and 230 commodities the feed reported
+// that no page showed. The feed itself (paging, completeness, retries) is
+// covered in mandiFeed.test.ts.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,131 +15,164 @@ vi.mock('../config', () => ({
   config: { dataGov: { apiKey: 'test-key', resourceId: 'test-resource', usingDemoKey: false } },
 }));
 
-import { getRateForCrop } from './rates.service';
+import { fakeFeed, rec } from './mandiFeed.fake';
+import { commodityFor } from './mandiCommodities';
 
-function recordsResponse(records: unknown[]) {
-  return { ok: true, status: 200, json: async () => ({ records }) } as unknown as Response;
-}
-
-// Wheat, because the board carries a QUINTAL reference of 2480 for it — a feed
-// modal of 2600 is an unmistakable +4.8%.
-const WHEAT = [{
-  state: 'Madhya Pradesh', district: 'Sehore', market: 'Sehore APMC',
-  commodity: 'Wheat', variety: 'Sharbati', grade: 'FAQ', arrival_date: '05/08/2026',
-  min_price: 2500, max_price: 2700, modal_price: 2600,
-}];
-
+type Rates = typeof import('./rates.service');
+let rates: Rates;
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
-beforeEach(() => {
+beforeEach(async () => {
+  // A fresh module per test, so each one downloads its own feed.
+  vi.resetModules();
+  rates = await import('./rates.service');
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
   warnSpy.mockRestore();
   vi.unstubAllGlobals();
-  vi.useRealTimers();
 });
 
-describe('feed failure after a good fetch', () => {
-  it('reuses the last real records instead of dropping to reference', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+describe('matching names exactly', () => {
+  it('does not average spring onion into onion', async () => {
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Onion', 'Maharashtra', 2000), rec('Onion', 'Punjab', 2000), rec('Onion', 'Gujarat', 2000),
+      rec('Onion Green', 'Maharashtra', 8500), rec('Onion Green', 'Punjab', 8500),
+    ]));
 
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
-    const first = await getRateForCrop('Wheat');
-    expect(first?.source).toBe('national');
-    expect(first?.modal).toBe(2600);
-
-    // Next day the daily cache resets and the feed is rate-limited. The rate
-    // must still read live — this is the flicker the storefront reported.
-    vi.setSystemTime(new Date('2026-08-06T06:00:00Z'));
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
-
-    const second = await getRateForCrop('Wheat');
-    expect(second?.source).toBe('national');
-    expect(second?.modal).toBe(2600);
-    expect(second?.changePct).toBe(first?.changePct);
+    expect((await rates.getRateForCrop('Onion'))?.modal).toBe(20);
+    expect((await rates.getMarketBreakdown('Onion'))?.count).toBe(3);
   });
 
-  it('ages the reused records out once the crop has been silent for days', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+  it('counts a crop the feed files under two names once, under either', async () => {
+    // Most states report paddy as "Paddy(Common)"; the board's id is the
+    // older "Paddy(Dhan)(Common)". Basmati is a different price and stays out.
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Paddy(Common)', 'Maharashtra', 2400),
+      rec('Paddy(Dhan)(Common)', 'Punjab', 2400),
+      rec('Paddy(Basmati)', 'Punjab', 3900),
+    ]));
 
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
-    expect((await getRateForCrop('Wheat'))?.source).toBe('national');
-
-    // Four days on, still nothing from the feed: a stale number stops being a
-    // fair anchor, so the board says "reference" out loud.
-    vi.setSystemTime(new Date('2026-08-09T06:00:00Z'));
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
-
-    const aged = await getRateForCrop('Wheat');
-    expect(aged?.source).toBe('reference');
-    expect(aged?.changePct).toBe(0);
+    const paddy = await rates.getRateForCrop('Paddy(Dhan)(Common)', { state: 'Maharashtra' });
+    expect(paddy?.source).toBe('state');
+    expect(paddy?.modal).toBe(2400);
+    expect((await rates.getMarketBreakdown('Paddy(Common)'))?.count).toBe(2);
   });
-});
 
-describe('a page walk that breaks halfway', () => {
-  it('serves the partial page but does not let it become the snapshot', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+  it('finds Kerala under the feed\'s "Keralam", and a Pradesh is only itself', async () => {
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Wheat', 'Keralam', 3000),
+      rec('Wheat', 'Andhra Pradesh', 2500),
+      rec('Wheat', 'Madhya Pradesh', 2400),
+    ]));
 
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
-
-    // Next day: a full first page (so the walk continues) and then a failure.
-    // 200 mandis is a slice of the country, not the country — worth serving
-    // today, not worth quoting for the rest of the week.
-    vi.setSystemTime(new Date('2026-08-06T06:00:00Z'));
-    const slice = Array.from({ length: 200 }, () => ({ ...WHEAT[0], modal_price: 3000 }));
-    let page = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      page += 1;
-      if (page === 1) return recordsResponse(slice);
-      throw new Error('data.gov.in 503');
-    }));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(3000);
-
-    // Day after, feed fully down: the reused number must be the complete
-    // sweep from the 5th, not the biased slice from the 6th.
-    vi.setSystemTime(new Date('2026-08-07T06:00:00Z'));
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+    const kerala = await rates.getRateForCrop('Wheat', { state: 'Kerala' });
+    expect(kerala?.source).toBe('state');
+    expect(kerala?.modal).toBe(3000);
+    const ap = await rates.getMarketBreakdown('Wheat', 'Andhra Pradesh');
+    expect(ap?.records.map((r) => r.state)).toEqual(['Andhra Pradesh']);
   });
 });
 
-describe('a page walk that hits the page cap', () => {
-  it('does not let a truncated prefix become the snapshot', async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-08-05T06:00:00Z'));
+describe('the price band', () => {
+  it('leaves a typo out of every figure, and says it did', async () => {
+    // Patti APMC reported onion at ₹0.07 a quintal on 2026-09-21. Taken at
+    // face value it made the card read "₹0 – ₹120".
+    vi.stubGlobal('fetch', fakeFeed([
+      ...[2000, 2200, 2400, 2600, 2800, 3000].map((m, i) => rec('Onion', 'Maharashtra', m, { market: `M${i}` })),
+      rec('Onion', 'Punjab', 0.07, { market: 'Patti APMC', min_price: 0.07, max_price: 0.07 }),
+    ]));
 
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(WHEAT)));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+    const onion = await rates.getRateForCrop('Onion');
+    expect(onion?.min).toBeGreaterThan(15);
+    const breakdown = await rates.getMarketBreakdown('Onion');
+    expect(breakdown?.count).toBe(6);
+    expect(breakdown?.excluded).toBe(1);
+  });
 
-    // Next day every page comes back FULL, so the walk runs out of page budget
-    // instead of ever seeing the short page that proves the result set ended.
-    // That looks identical to success from inside the loop and means the
-    // opposite: 5,000 records is a prefix of the country, not the country.
-    vi.setSystemTime(new Date('2026-08-06T06:00:00Z'));
-    const fullPage = Array.from({ length: 200 }, () => ({ ...WHEAT[0], modal_price: 3000 }));
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse(fullPage)));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(3000);
+  it('is where most mandis sat, not the single lowest and highest report', async () => {
+    const modals = Array.from({ length: 11 }, (_, i) => 2000 + i * 100); // 2000..3000
+    vi.stubGlobal('fetch', fakeFeed([
+      ...modals.map((m, i) => rec('Wheat', 'Punjab', m, { market: `M${i}` })),
+      // One mandi's own low is a fifth of everyone's modal: real, but not the band.
+      rec('Wheat', 'Punjab', 2500, { market: 'Outlier', min_price: 400, max_price: 9000 }),
+    ]));
 
-    // Day after, feed fully down. The reused number must be the complete sweep
-    // from the 5th — not the capped prefix from the 6th.
-    vi.setSystemTime(new Date('2026-08-07T06:00:00Z'));
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 429 } as unknown as Response)));
-    expect((await getRateForCrop('Wheat'))?.modal).toBe(2600);
+    const wheat = await rates.getRateForCrop('Wheat');
+    expect(wheat?.min).toBeGreaterThanOrEqual(2100);
+    expect(wheat?.max).toBeLessThanOrEqual(2900);
+    expect(wheat!.min).toBeLessThanOrEqual(wheat!.modal);
+    expect(wheat!.max).toBeGreaterThanOrEqual(wheat!.modal);
   });
 });
 
 describe('a crop the feed never answered for', () => {
   it('falls back to the reference price rather than returning null', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => recordsResponse([])));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
 
-    const rate = await getRateForCrop('Cocoa');
+    const rate = await rates.getRateForCrop('Cocoa');
     expect(rate?.source).toBe('reference');
     expect(rate?.modal).toBe(14800);
+  });
+});
+
+describe('getAllRates, the whole /rates page', () => {
+  it('lists every food commodity, leaves out livestock and flowers, and keeps the board\'s 30', async () => {
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Tomato', 'Maharashtra', 2500),
+      rec('Bitter gourd', 'Maharashtra', 3500),
+      rec('Ox', 'Rajasthan', 45000),
+      rec('Marigold(Calcutta)', 'Delhi', 6000),
+      rec('Dragon Fruit', 'Gujarat', 12000),
+    ]));
+
+    const all = await rates.getAllRates();
+    const ids = all.rates.map((r) => r.commodity);
+    expect(ids).toContain('Bitter gourd');
+    expect(all.rates.find((r) => r.commodity === 'Bitter gourd')?.group).toBe('vegetables');
+    expect(ids).not.toContain('Ox');
+    expect(ids).not.toContain('Marigold(Calcutta)');
+    // A name the table has never seen is shown, not dropped.
+    expect(all.rates.find((r) => r.commodity === 'Dragon Fruit')?.group).toBe('other');
+    // All 30 board crops, reported or not; unreported ones say so.
+    const board = (await rates.getBoard()).rates.map((r) => r.commodity);
+    expect(board.every((id) => ids.includes(id))).toBe(true);
+    expect(all.rates.find((r) => r.commodity === 'Milk')?.source).toBe('reference');
+    expect(all.rates.find((r) => r.commodity === 'Bitter gourd')?.usual).toBeNull();
+  });
+
+  it('for a state, lists what that state reported, plus the board through its fallback', async () => {
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Bitter gourd', 'Maharashtra', 3500),
+      rec('Pumpkin', 'Punjab', 1500),
+      rec('Tomato', 'Punjab', 2500),
+    ]));
+
+    const mh = await rates.getAllRates('Maharashtra');
+    const ids = mh.rates.map((r) => r.commodity);
+    expect(ids).toContain('Bitter gourd');
+    expect(ids).not.toContain('Pumpkin');
+    expect(mh.rates.find((r) => r.commodity === 'Tomato')?.source).toBe('national');
+    expect(mh.states).toEqual(['Maharashtra', 'Punjab']);
+  });
+
+  it('opens the mandi table for a commodity that is not on the board', async () => {
+    vi.stubGlobal('fetch', fakeFeed([rec('Bitter gourd', 'Maharashtra', 3500)]));
+
+    const b = await rates.getMarketBreakdown('Bitter gourd');
+    expect(b?.count).toBe(1);
+    expect(b?.unit).toBe('KG');
+    expect(b?.records[0].modal).toBe(35);
+  });
+});
+
+describe('the board', () => {
+  it('names every crop by its id in the commodity table, so the aliases apply', async () => {
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
+
+    const board = await rates.getBoard();
+    expect(board.rates).toHaveLength(30);
+    for (const r of board.rates) expect(commodityFor(r.commodity)?.id).toBe(r.commodity);
   });
 });

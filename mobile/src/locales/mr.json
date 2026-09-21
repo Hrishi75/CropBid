@@ -40,7 +40,6 @@
   "No mandi reported this crop in {{state}} today — the price above is the reference level.": "आज {{state}} मधील कोणत्याही मंडीने या पिकाचा अहवाल दिला नाही — वरचा भाव संदर्भ पातळी आहे.",
   "{{n}} MANDIS REPORTING": "{{n}} मंड्यांचा अहवाल",
   "Show {{n}} more mandis": "आणखी {{n}} मंड्या पहा",
-  "Wholesale ₹ as reported by each market committee. “vs usual” compares today's modal price with the crop's typical level — a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. “नेहमीपेक्षा” म्हणजे आजच्या मोडल भावाची पिकाच्या नेहमीच्या पातळीशी तुलना — हा संकेत आहे, भाकीत नाही.",
 
   "Set to rise": "वाढण्याची चिन्हे",
   "Set to ease": "उतरण्याची चिन्हे",
@@ -142,5 +141,21 @@
   "Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.": "तुमची प्रोफाइल, लिस्टिंग, ऑफर आणि सूचना कायमच्या काढून टाकल्या जातील. पूर्ण झालेले व्यवहार तुमच्या वैयक्तिक माहितीशिवाय नोंदीत राहतील. हे परत करता येणार नाही.",
   "Continue": "पुढे जा",
   "Enter your password to confirm. Everything is removed for good.": "खात्रीसाठी तुमचा पासवर्ड टाका. सर्व काही कायमचे काढून टाकले जाईल.",
-  "Delete forever": "कायमचे हटवा"
+  "Delete forever": "कायमचे हटवा",
+
+  "Vegetables": "भाज्या",
+  "Leafy greens & herbs": "पालेभाज्या आणि औषधी वनस्पती",
+  "Fruits": "फळे",
+  "Cereals & millets": "तृणधान्ये आणि भरडधान्ये",
+  "Pulses": "कडधान्ये",
+  "Oilseeds": "तेलबिया",
+  "Spices": "मसाले",
+  "Dry fruits & nuts": "सुका मेवा",
+  "Other farm produce": "इतर शेतमाल",
+  "{{n}} mandi": "{{n}} मंडी",
+  "{{n}} mandis": "{{n}} मंड्या",
+  "{{n}} implausible reports left out: a typo or a per-piece price.": "{{n}} अविश्वसनीय अहवाल वगळले: टंकलेखनातील चूक किंवा नगाचा भाव.",
+  "Find a crop: onion, tur, karela…": "पीक शोधा: कांदा, तूर, कारले…",
+  "Nothing matches “{{q}}” today.": "आज “{{q}}” शी काहीही जुळले नाही.",
+  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares today's price with the crop's typical level, for the 30 crops we keep one for: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे आजच्या भावाची पिकाच्या नेहमीच्या पातळीशी तुलना, ज्या 30 पिकांची नेहमीची पातळी आम्ही ठेवतो त्यांच्यासाठी: हा संकेत आहे, भाकीत नाही."
 }

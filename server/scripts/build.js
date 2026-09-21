@@ -20,7 +20,8 @@
 // anything loaded dynamically: no reason to take that on here.
 //
 // Tests are left out on purpose: they are not shipped, and vitest's imports
-// would pull devDependencies into the output.
+// would pull devDependencies into the output. The same goes for `*.fake.ts`,
+// stand-ins that exist only for tests to import (mandiFeed.fake.ts).
 // =============================================================================
 
 const { readdirSync, statSync } = require('fs');
@@ -31,7 +32,8 @@ function typescriptFiles(dir) {
   return readdirSync(dir).flatMap((entry) => {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) return typescriptFiles(path);
-    return path.endsWith('.ts') && !path.endsWith('.test.ts') ? [path] : [];
+    const testOnly = path.endsWith('.test.ts') || path.endsWith('.fake.ts');
+    return path.endsWith('.ts') && !testOnly ? [path] : [];
   });
 }
 

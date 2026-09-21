@@ -1,16 +1,18 @@
 // =============================================================================
 // Rates Page — /rates · today's live mandi rates, in full detail
 // =============================================================================
-// The dedicated public page behind the storefront rates strip: every crop on
-// the board, grouped by category, with today's modal price, the min–max
-// wholesale band, the vs-usual signal, and how local the number is. Clicking
-// a crop opens the market-wise breakdown — every reporting mandi with market,
-// district, state, variety, grade and price band, straight from the
-// Government of India's Agmarknet feed. Prices are ₹-native (the feed is
-// India-only), so no FX conversion happens here.
+// The dedicated public page behind the storefront rates strip: every
+// commodity the Government of India's Agmarknet feed reported today (about
+// 220 of them, where the storefront strip carries 30), grouped the way a
+// buyer looks for them, with today's modal price, the range most mandis sat
+// in, and how local the number is. The 30 board crops also carry a vs-usual
+// signal; nothing else has a reference price to compare with. Clicking a
+// crop opens the market-wise breakdown: every reporting mandi with market,
+// district, state, variety, grade and price band. Prices are ₹-native (the
+// feed is India-only), so no FX conversion happens here.
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
@@ -20,26 +22,34 @@ import { SignInLink } from '../components/auth/SignInLink';
 // Data shapes (mirror server/src/services/rates.service.ts)
 // -----------------------------------------------------------------------------
 
-type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+type Group =
+  | 'vegetables' | 'greens' | 'fruits' | 'cereals' | 'pulses'
+  | 'oilseeds' | 'spices' | 'dryfruits' | 'dairy' | 'other';
 
 interface LiveRate {
   commodity: string;
   label: string;
   emoji: string;
+  group: Group;
   unit: 'KG' | 'QUINTAL' | 'LITRE';
-  cat: Cat;
   modal: number;
   min: number;
   max: number;
-  usual: number;
-  changePct: number;
-  market: string | null;
+  usual: number | null;      // only the 30 board crops have a reference price
+  changePct: number | null;
+  mandis: number;
   state: string | null;
   source: 'market' | 'state' | 'national' | 'reference';
   date: string;
 }
 
-interface Board { date: string; live: boolean; rates: LiveRate[]; }
+interface AllRates {
+  date: string;
+  live: boolean;
+  states: string[];
+  groups: Array<{ id: Group; title: string }>;
+  rates: LiveRate[];
+}
 
 interface MarketRow {
   market: string;
@@ -60,15 +70,23 @@ interface Breakdown {
   unit: 'KG' | 'QUINTAL' | 'LITRE';
   count: number;
   records: MarketRow[];
+  excluded: number;
 }
 
-const CATS: Array<{ id: Cat; title: string; eyebrow: string }> = [
-  { id: 'veg',    title: 'Fresh Vegetables',  eyebrow: 'Daily wholesale · ₹/kg' },
-  { id: 'dairy',  title: 'Milk & Dairy',      eyebrow: 'Daily prices · ₹/L & ₹/kg' },
-  { id: 'fruits', title: 'Seasonal Fruits',   eyebrow: 'Daily wholesale · ₹/kg' },
-  { id: 'grains', title: 'Grains & Pulses',   eyebrow: 'Daily wholesale · ₹/quintal' },
-  { id: 'spices', title: 'Spices & Oilseeds', eyebrow: 'Daily wholesale · ₹/quintal' },
-];
+// The eyebrow above each group. Fresh produce is bought by the kilo and
+// everything else trades by the quintal; the server picks the same units.
+const GROUP_EYEBROW: Record<Group, string> = {
+  vegetables: 'Daily wholesale · ₹/kg',
+  greens: 'Daily wholesale · ₹/kg',
+  fruits: 'Daily wholesale · ₹/kg',
+  cereals: 'Daily wholesale · ₹/quintal',
+  pulses: 'Daily wholesale · ₹/quintal',
+  oilseeds: 'Daily wholesale · ₹/quintal',
+  spices: 'Daily wholesale · ₹/quintal',
+  dryfruits: 'Daily wholesale · ₹/quintal',
+  dairy: 'Daily prices · ₹/L & ₹/kg',
+  other: 'Daily wholesale · ₹/quintal',
+};
 
 const SOURCE_LABEL: Record<LiveRate['source'], string> = {
   market: 'MANDI',
@@ -77,19 +95,15 @@ const SOURCE_LABEL: Record<LiveRate['source'], string> = {
   reference: 'REFERENCE',
 };
 
-const INDIAN_STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
-  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
-  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
-];
-
 const inr = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const unitLabel = (u: 'KG' | 'QUINTAL' | 'LITRE') => (u === 'KG' ? 'kg' : u === 'LITRE' ? 'L' : 'qtl');
 
 function Signal({ r }: { r: LiveRate }) {
   if (r.source === 'reference') return <span className="rp-sig flat">ref</span>;
+  // No reference price to compare with, so say how many mandis it rests on.
+  if (r.usual === null || r.changePct === null) {
+    return <span className="rp-sig flat">{r.mandis} {r.mandis === 1 ? 'mandi' : 'mandis'}</span>;
+  }
   if (Math.abs(r.changePct) < 0.1) return <span className="rp-sig flat">steady</span>;
   const up = r.changePct >= 0;
   return (
@@ -135,6 +149,12 @@ function MarketTable({ crop, state }: { crop: LiveRate; state: string }) {
         <span className="cb-eyebrow">{data.count} mandis reporting {data.label} today{state ? ` · ${state}` : ' · all India'}</span>
         <span className="cb-mono rp-src">₹/{unitLabel(data.unit)} · GOVT. AGMARKNET</span>
       </div>
+      {data.excluded > 0 && (
+        <p className="rp-excluded">
+          {data.excluded} {data.excluded === 1 ? 'report is' : 'reports are'} left out as implausible: a price
+          under a tenth or over ten times the typical one, usually a typo or a per-piece price.
+        </p>
+      )}
       <div className="rp-table-scroll">
         <table className="rp-table">
           <thead>
@@ -176,20 +196,35 @@ function MarketTable({ crop, state }: { crop: LiveRate; state: string }) {
 // -----------------------------------------------------------------------------
 
 export function RatesPage() {
-  const [board, setBoard] = useState<Board | null>(null);
+  const [board, setBoard] = useState<AllRates | null>(null);
   const [failed, setFailed] = useState(false);
   const [state, setState] = useState('');
+  const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     let on = true;
-    api.get(`/rates/board${state ? `?state=${encodeURIComponent(state)}` : ''}`)
+    api.get(`/rates/all${state ? `?state=${encodeURIComponent(state)}` : ''}`)
       .then(({ data }) => { if (on) { setBoard(data); setFailed(false); } })
       .catch(() => { if (on) { setBoard(null); setFailed(true); } });
     return () => { on = false; };
   }, [state]);
 
-  const selectedRate = board?.rates.find((r) => r.commodity === selected) ?? null;
+  // Search matches the label and the feed's own name, so "karela", "bitter"
+  // and "Bitter gourd" all find it.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!board || !q) return board?.rates ?? [];
+    return board.rates.filter((r) => r.label.toLowerCase().includes(q) || r.commodity.toLowerCase().includes(q));
+  }, [board, query]);
+
+  const selectedRate = shown.find((r) => r.commodity === selected) ?? null;
+  // The picker offers the states that reported today, plus whichever one is
+  // picked, so a choice never vanishes from under the person who made it.
+  const states = board ? [...new Set([...board.states, ...(state ? [state] : [])])].sort() : [];
+  // With a state picked, the board crops it did not report fall back to the
+  // national figure; they are on the page but not counted as its reports.
+  const reported = board?.rates.filter((r) => (state ? r.source === 'state' : r.source !== 'reference')).length ?? 0;
 
   return (
     <div className="cb-landing rp">
@@ -219,19 +254,37 @@ export function RatesPage() {
             </span>
             <h1 className="cb-h1">Today's mandi rates{board ? ` · ${board.date}` : ''}</h1>
             <p className="cb-body rp-lede">
-              The same wholesale numbers the trade reads — modal price, the min–max band, and
-              where today sits against the usual. Pick a crop to see every reporting mandi,
+              Every crop the government's mandi report carried today
+              {reported > 0 ? `, ${reported} of them${state ? ` from ${state}` : ''}` : ''}: the modal
+              price and the range most mandis sat in. Pick a crop to see every reporting mandi,
               market by market.
             </p>
           </div>
-          <label className="rp-state">
-            <span className="cb-eyebrow">Show rates for</span>
-            <select value={state} onChange={(e) => { setState(e.target.value); setSelected(null); }}>
-              <option value="">All India</option>
-              {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </label>
+          <div className="rp-controls">
+            <label className="rp-state">
+              <span className="cb-eyebrow">Find a crop</span>
+              <input
+                type="search"
+                value={query}
+                placeholder="Onion, tur, karela…"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <label className="rp-state">
+              <span className="cb-eyebrow">Show rates for</span>
+              <select value={state} onChange={(e) => { setState(e.target.value); setSelected(null); }}>
+                <option value="">All India</option>
+                {states.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+          </div>
         </div>
+
+        {board && query.trim() && shown.length === 0 && (
+          <div className="rp-detail-note">
+            Nothing matches "{query.trim()}"{state ? ` in ${state}` : ''} today.
+          </div>
+        )}
 
         {failed && (
           <div className="rp-detail-note">Could not reach the rates service — check your connection and refresh.</div>
@@ -239,15 +292,15 @@ export function RatesPage() {
 
         {!board && !failed && <div className="rp-detail-note">Loading today's rates…</div>}
 
-        {board && CATS.map((cat) => {
-          const rates = board.rates.filter((r) => r.cat === cat.id);
+        {board && board.groups.map((group) => {
+          const rates = shown.filter((r) => r.group === group.id);
           if (rates.length === 0) return null;
-          const detail = selectedRate && selectedRate.cat === cat.id ? selectedRate : null;
+          const detail = selectedRate && selectedRate.group === group.id ? selectedRate : null;
           return (
-            <section key={cat.id} className="rp-cat">
+            <section key={group.id} className="rp-cat">
               <div className="rp-cat-head">
-                <span className="cb-eyebrow">{cat.eyebrow}</span>
-                <h2 className="rp-cat-title">{cat.title}</h2>
+                <span className="cb-eyebrow">{GROUP_EYEBROW[group.id]} · {rates.length}</span>
+                <h2 className="rp-cat-title">{group.title}</h2>
               </div>
               <div className="rp-grid">
                 {rates.map((r) => (
@@ -256,7 +309,7 @@ export function RatesPage() {
                     type="button"
                     className={`rp-card${selected === r.commodity ? ' active' : ''}`}
                     onClick={() => setSelected(selected === r.commodity ? null : r.commodity)}
-                    title={r.market ? `${r.market}${r.state ? ', ' + r.state : ''}` : r.state ?? 'National average'}
+                    title={r.state ?? 'National'}
                   >
                     <div className="rp-card-top">
                       <span className="rp-emoji" aria-hidden="true">{r.emoji}</span>
@@ -280,8 +333,10 @@ export function RatesPage() {
 
         <p className="cb-small rp-foot">
           Source: Government of India, Agmarknet daily mandi feed (data.gov.in). Prices are wholesale
-          ₹ per {`kg / quintal`} as reported by each market committee. "vs usual" compares today's
-          modal price with the crop's typical reference level — a signal, not a forecast.
+          ₹ per kg or quintal as reported by each market committee. The price on each card is the
+          middle of what the mandis reported, and the range beneath it is where most of them sat.
+          "vs usual" compares today's price with the crop's typical level, and is shown for the 30
+          crops we keep a reference price for. It is a signal, not a forecast.
         </p>
       </main>
 

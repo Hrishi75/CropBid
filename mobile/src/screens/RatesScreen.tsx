@@ -1,15 +1,18 @@
 // =============================================================================
 // Rates screen — today's live mandi rates, in full detail
 // =============================================================================
-// The dedicated mobile page behind the storefront rates rail (mirrors the
-// web's /rates): every crop on the board grouped by category, with today's
-// modal price, min–max band, the vs-usual signal and how local the number is.
-// Tapping a crop expands the market-wise breakdown — every reporting mandi
-// with market, district, state, variety and price band, straight from the
-// Government of India's Agmarknet feed. Prices are ₹-native.
+// The dedicated mobile page behind the storefront rates rail, the same as the
+// web's /rates: every commodity the Government of India's Agmarknet feed
+// reported today (about 220; the storefront rail carries 30), grouped, with
+// today's modal price, the range most mandis sat in and how local the number
+// is. The 30 board crops also carry a vs-usual signal; nothing else has a
+// reference price to compare with. A search box finds a crop by name, and
+// the state chips are the states that actually reported today.
+// Tapping a crop expands the market-wise breakdown: every reporting mandi
+// with market, district, state, variety and price band. Prices are ₹-native.
 
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
@@ -19,7 +22,9 @@ import { money, unitLabel } from '../lib/format';
 
 // --- data shapes (mirror server/src/services/rates.service.ts) ---
 
-type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+type Group =
+  | 'vegetables' | 'greens' | 'fruits' | 'cereals' | 'pulses'
+  | 'oilseeds' | 'spices' | 'dryfruits' | 'dairy' | 'other';
 type Unit = 'KG' | 'QUINTAL' | 'LITRE';
 
 interface LiveRate {
@@ -27,18 +32,24 @@ interface LiveRate {
   label: string;
   emoji: string;
   unit: Unit;
-  cat: Cat;
+  group: Group;
   modal: number;
   min: number;
   max: number;
-  usual: number;
-  changePct: number;
-  market: string | null;
+  usual: number | null;      // only the 30 board crops have a reference price
+  changePct: number | null;
+  mandis: number;
   state: string | null;
   source: 'market' | 'state' | 'national' | 'reference';
 }
 
-interface Board { date: string; live: boolean; rates: LiveRate[]; }
+interface AllRates {
+  date: string;
+  live: boolean;
+  states: string[];
+  groups: Array<{ id: Group; title: string }>;
+  rates: LiveRate[];
+}
 
 interface MarketRow {
   market: string;
@@ -52,15 +63,24 @@ interface MarketRow {
   max: number;
 }
 
-interface Breakdown { count: number; unit: Unit; records: MarketRow[]; }
+interface Breakdown { count: number; unit: Unit; records: MarketRow[]; excluded: number; }
 
-const CATS: Array<{ id: Cat; title: string }> = [
-  { id: 'veg',    title: 'Fresh Vegetables' },
-  { id: 'dairy',  title: 'Milk & Dairy' },
-  { id: 'fruits', title: 'Seasonal Fruits' },
-  { id: 'grains', title: 'Grains & Pulses' },
-  { id: 'spices', title: 'Spices & Oilseeds' },
-];
+// Titles live here rather than coming from the server so they can be
+// translated: the English text is the key in hi.json and mr.json. The server
+// still decides the order, and a group this map has not heard of falls back
+// to the server's own title.
+const GROUP_TITLE: Record<Group, string> = {
+  vegetables: 'Vegetables',
+  greens: 'Leafy greens & herbs',
+  fruits: 'Fruits',
+  cereals: 'Cereals & millets',
+  pulses: 'Pulses',
+  oilseeds: 'Oilseeds',
+  spices: 'Spices',
+  dryfruits: 'Dry fruits & nuts',
+  dairy: 'Milk & Dairy',
+  other: 'Other farm produce',
+};
 
 const SOURCE_LABEL: Record<LiveRate['source'], string> = {
   market: 'MANDI',
@@ -68,15 +88,6 @@ const SOURCE_LABEL: Record<LiveRate['source'], string> = {
   national: 'INDIA AVG',
   reference: 'REFERENCE',
 };
-
-// Complete state set accepted by the rates endpoint, ordered for a compact rail.
-const STATES = [
-  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
-  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
-  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
-];
 
 // How many mandi rows to render in an expanded crop before truncating.
 const MAX_ROWS = 40;
@@ -120,6 +131,11 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
       <Mono style={styles.marketCount}>
         {t('{{n}} MANDIS REPORTING', { n: data.count })} · ₹/{unitLabel(unit)}
       </Mono>
+      {data.excluded > 0 && (
+        <Text style={styles.excluded}>
+          {t('{{n}} implausible reports left out: a typo or a per-piece price.', { n: data.excluded })}
+        </Text>
+      )}
       {rows.map((r, i) => (
         <View key={`${r.market}-${r.variety}-${i}`} style={styles.marketRow}>
           <View style={styles.marketLeft}>
@@ -153,7 +169,9 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
 
 function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; onToggle: () => void; state: string }) {
   const { t } = useTranslation();
-  const showSignal = r.source !== 'reference' && Math.abs(r.changePct) >= 0.1;
+  const hasUsual = r.usual !== null && r.changePct !== null;
+  const change = r.changePct ?? 0;
+  const showSignal = r.source !== 'reference' && hasUsual && Math.abs(change) >= 0.1;
   return (
     <View style={[styles.card, open && styles.cardOpen]}>
       <PressScale onPress={() => { glide(); onToggle(); }} scaleTo={0.98}>
@@ -172,11 +190,18 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
               <Text style={styles.cardUnit}>/{unitLabel(r.unit)}</Text>
             </Text>
             {showSignal ? (
-              <Mono style={[styles.cardDelta, { color: r.changePct >= 0 ? colors.forest : colors.ember2 }]}>
-                {r.changePct >= 0 ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}% {t('vs usual')}
+              <Mono style={[styles.cardDelta, { color: change >= 0 ? colors.forest : colors.ember2 }]}>
+                {change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}% {t('vs usual')}
               </Mono>
             ) : (
-              <Mono style={styles.cardSteady}>{r.source === 'reference' ? t('ref price') : t('steady')}</Mono>
+              <Mono style={styles.cardSteady}>
+                {r.source === 'reference'
+                  ? t('ref price')
+                  : hasUsual
+                    ? t('steady')
+                    // No reference price to compare with: say what the number rests on.
+                    : t(r.mandis === 1 ? '{{n}} mandi' : '{{n}} mandis', { n: r.mandis })}
+              </Mono>
             )}
           </View>
         </View>
@@ -193,25 +218,41 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
 // a body, not a standalone route.
 export function RatesBody() {
   const { t } = useTranslation();
-  const [board, setBoard] = useState<Board | null>(null);
+  const [board, setBoard] = useState<AllRates | null>(null);
   const [failed, setFailed] = useState(false);
   const [state, setState] = useState('');
+  const [query, setQuery] = useState('');
   const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     let on = true;
-    api.get(`/rates/board${state ? `?state=${encodeURIComponent(state)}` : ''}`)
+    api.get(`/rates/all${state ? `?state=${encodeURIComponent(state)}` : ''}`)
       .then(({ data }) => { if (on) { glide(); setBoard(data); setFailed(false); } })
       .catch(() => { if (on) { setBoard(null); setFailed(true); } });
     return () => { on = false; };
   }, [state]);
+
+  // Search matches the label and the feed's own name, so "karela", "bitter"
+  // and "Bitter gourd" all find it.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!board || !q) return board?.rates ?? [];
+    return board.rates.filter((r) => r.label.toLowerCase().includes(q) || r.commodity.toLowerCase().includes(q));
+  }, [board, query]);
+
+  // The chips are the states that reported today, plus whichever one is
+  // picked, so a choice never vanishes from under the person who made it.
+  const states = board ? [...new Set([...board.states, ...(state ? [state] : [])])].sort() : [];
+  // With a state picked, board crops it did not report fall back to the
+  // national figure; they are shown but not counted as its reports.
+  const reported = board?.rates.filter((r) => (state ? r.source === 'state' : r.source !== 'reference')).length ?? 0;
 
   return (
     <View style={styles.flex}>
       {/* state filter rail */}
       <View style={styles.filterWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterPad}>
-          {['', ...STATES].map((s) => {
+          {['', ...states].map((s) => {
             const on = state === s;
             return (
               <PressScale key={s || 'all'} onPress={() => { glide(); setState(s); setOpen(null); }} scaleTo={0.94} cardStyle={[styles.chip, on && styles.chipOn]}>
@@ -220,26 +261,53 @@ export function RatesBody() {
             );
           })}
         </ScrollView>
+        <View style={styles.searchWrap}>
+          <TextInput
+            style={styles.search}
+            value={query}
+            onChangeText={(q) => { setQuery(q); setOpen(null); }}
+            placeholder={t('Find a crop: onion, tur, karela…')}
+            placeholderTextColor={design.ink3}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPad}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollPad}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {/* source line */}
         <View style={styles.srcRow}>
           {board?.live ? <Pulse style={styles.liveDot} /> : null}
           <Mono style={styles.srcText}>
-            {board ? `${board.live ? 'LIVE' : 'REFERENCE'} · GOVT. AGMARKNET · ${board.date}` : 'GOVT. AGMARKNET'}
+            {board
+              ? `${board.live ? 'LIVE' : 'REFERENCE'} · GOVT. AGMARKNET · ${board.date}${reported > 0 ? ` · ${reported} ${reported === 1 ? 'CROP' : 'CROPS'}` : ''}`
+              : 'GOVT. AGMARKNET'}
           </Mono>
         </View>
+
+        {board && query.trim() !== '' && shown.length === 0 && (
+          <Text style={styles.note}>{t('Nothing matches “{{q}}” today.', { q: query.trim() })}</Text>
+        )}
 
         {failed && <Text style={styles.note}>{t('Could not reach the rates service — pull back and try again.')}</Text>}
         {!board && !failed && <Text style={styles.note}>{t("Loading today's rates…")}</Text>}
 
-        {board && CATS.map((cat) => {
-          const rates = board.rates.filter((r) => r.cat === cat.id);
+        {board && board.groups.map((group) => {
+          const rates = shown.filter((r) => r.group === group.id);
           if (rates.length === 0) return null;
           return (
-            <View key={cat.id}>
-              <Text style={styles.catTitle}>{t(cat.title)}</Text>
+            <View key={group.id}>
+              <Text style={styles.catTitle}>
+                {t(GROUP_TITLE[group.id] ?? group.title)}
+                <Text style={styles.catCount}>  {rates.length}</Text>
+              </Text>
               {rates.map((r) => (
                 <CropCard
                   key={r.commodity}
@@ -255,7 +323,7 @@ export function RatesBody() {
 
         {board && (
           <Text style={styles.foot}>
-            {t("Wholesale ₹ as reported by each market committee. “vs usual” compares today's modal price with the crop's typical level — a signal, not a forecast.")}
+            {t("Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares today's price with the crop's typical level, for the 30 crops we keep one for: a signal, not a forecast.")}
           </Text>
         )}
       </ScrollView>
@@ -275,6 +343,12 @@ const styles = StyleSheet.create({
   chipOn: { backgroundColor: colors.forest, borderColor: colors.forest },
   chipText: { fontFamily: font.sans, fontSize: 12.5, color: design.ink2 },
   chipTextOn: { color: '#f4f1ea' },
+  searchWrap: { paddingHorizontal: 16, paddingBottom: 10 },
+  search: {
+    backgroundColor: design.bg, borderWidth: 1, borderColor: design.line, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 9,
+    fontFamily: font.sans, fontSize: 14, color: design.ink,
+  },
 
   scrollPad: { paddingBottom: 40 },
   srcRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, marginTop: 14 },
@@ -285,6 +359,7 @@ const styles = StyleSheet.create({
     fontFamily: font.sansSemi, fontSize: 17, letterSpacing: -0.3, color: design.ink,
     paddingHorizontal: 16, marginTop: 22, marginBottom: 8,
   },
+  catCount: { fontFamily: font.sans, fontSize: 13, color: design.ink3 },
 
   card: {
     marginHorizontal: 16, marginBottom: 10,
@@ -308,6 +383,7 @@ const styles = StyleSheet.create({
 
   marketList: { marginTop: 10, borderTopWidth: 1, borderTopColor: design.line, paddingTop: 8 },
   marketCount: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginBottom: 6 },
+  excluded: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3, marginBottom: 6 },
   marketRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     gap: 10, paddingVertical: 7,

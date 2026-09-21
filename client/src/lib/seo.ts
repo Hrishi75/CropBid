@@ -64,14 +64,14 @@ export const ROUTES: RouteMeta[] = [
     path: '/rates',
     title: "Today's Mandi Rates — Live Prices from 4,600+ Mandis",
     description:
-      'Live government mandi rates (APMC bhav) for vegetables, fruits, grains and spices across 4,600+ Indian mandis. Updated every day, free to check.',
+      'Live government mandi rates (APMC bhav) for every crop India\'s mandis report: vegetables, fruits, pulses, grains, oilseeds and spices. Updated every day, free to check.',
     priority: '0.9',
     changefreq: 'daily',
     jsonLd: {
       '@type': 'Dataset',
       name: 'Daily mandi rates for Indian agricultural commodities',
       description:
-        'Daily wholesale (APMC mandi) prices for vegetables, fruits, grains, pulses and spices across 4,600+ regulated markets in India, sourced from government data.',
+        'Daily wholesale (APMC mandi) prices for every commodity reported that day, including vegetables, fruits, grains, pulses, oilseeds and spices, across 4,600+ regulated markets in India, sourced from government data.',
       creator: { '@id': 'https://cropbid.in/#organization' },
       spatialCoverage: { '@type': 'Country', name: 'India' },
       temporalCoverage: '2024/..',

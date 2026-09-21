@@ -3,6 +3,7 @@
 // =============================================================================
 // Public (no auth) live mandi rates for the storefront:
 //   GET /api/rates/board        → today's rates for the curated crop board
+//   GET /api/rates/all?state=   → every commodity the feed reported (/rates)
 //   GET /api/rates?crop=&state=&market=  → single-crop anchor (fallback chain)
 // Sets a short public cache header — rates change at most once a day and are
 // non-sensitive, so the CDN/browser can cache them.
@@ -18,6 +19,20 @@ export async function getBoard(req: Request, res: Response, next: NextFunction) 
     const state = (req.query.state as string) || undefined;
     const data = await ratesService.getBoard(state);
     res.set('Cache-Control', 'public, max-age=1800'); // 30 min
+    res.json(data);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/rates/all?state=Maharashtra: every commodity the mandi feed
+// reported, grouped, for the full /rates page. The board stays 30 crops,
+// because the storefront strip and the app are built around that many.
+export async function getAll(req: Request, res: Response, next: NextFunction) {
+  try {
+    const state = (req.query.state as string) || undefined;
+    const data = await ratesService.getAllRates(state);
+    res.set('Cache-Control', 'public, max-age=1800');
     res.json(data);
   } catch (error) {
     next(error);

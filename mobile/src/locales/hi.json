@@ -40,7 +40,6 @@
   "No mandi reported this crop in {{state}} today — the price above is the reference level.": "आज {{state}} की किसी मंडी ने इस फ़सल की रिपोर्ट नहीं दी — ऊपर का भाव संदर्भ स्तर है।",
   "{{n}} MANDIS REPORTING": "{{n}} मंडियों की रिपोर्ट",
   "Show {{n}} more mandis": "और {{n}} मंडियाँ देखें",
-  "Wholesale ₹ as reported by each market committee. “vs usual” compares today's modal price with the crop's typical level — a signal, not a forecast.": "थोक ₹ भाव, हर मंडी समिति की रिपोर्ट के अनुसार। “सामान्य से” आज के मोडल भाव की फ़सल के आम स्तर से तुलना है — यह एक संकेत है, भविष्यवाणी नहीं।",
 
   "Set to rise": "बढ़ने के आसार",
   "Set to ease": "घटने के आसार",
@@ -142,5 +141,21 @@
   "Your profile, listings, offers and notifications are removed for good. Completed deals stay on record without your personal details. This cannot be undone.": "आपकी प्रोफ़ाइल, लिस्टिंग, ऑफ़र और सूचनाएँ हमेशा के लिए हट जाएँगी। पूरे हो चुके सौदे बिना आपकी निजी जानकारी के रिकॉर्ड में रहेंगे। यह वापस नहीं हो सकता।",
   "Continue": "आगे बढ़ें",
   "Enter your password to confirm. Everything is removed for good.": "पुष्टि के लिए अपना पासवर्ड डालें। सब कुछ हमेशा के लिए हट जाएगा।",
-  "Delete forever": "हमेशा के लिए मिटाएँ"
+  "Delete forever": "हमेशा के लिए मिटाएँ",
+
+  "Vegetables": "सब्ज़ियाँ",
+  "Leafy greens & herbs": "हरी पत्तेदार सब्ज़ियाँ और जड़ी-बूटियाँ",
+  "Fruits": "फल",
+  "Cereals & millets": "अनाज और मोटा अनाज",
+  "Pulses": "दालें",
+  "Oilseeds": "तिलहन",
+  "Spices": "मसाले",
+  "Dry fruits & nuts": "सूखे मेवे",
+  "Other farm produce": "अन्य कृषि उपज",
+  "{{n}} mandi": "{{n}} मंडी",
+  "{{n}} mandis": "{{n}} मंडियाँ",
+  "{{n}} implausible reports left out: a typo or a per-piece price.": "{{n}} अविश्वसनीय रिपोर्ट छोड़ी गईं: टाइपिंग की गलती या प्रति नग भाव।",
+  "Find a crop: onion, tur, karela…": "फ़सल खोजें: प्याज़, तुअर, करेला…",
+  "Nothing matches “{{q}}” today.": "आज “{{q}}” से कुछ नहीं मिला।",
+  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares today's price with the crop's typical level, for the 30 crops we keep one for: a signal, not a forecast.": "थोक ₹ भाव, हर मंडी समिति की रिपोर्ट के अनुसार। भाव मंडियों की रिपोर्ट का बीच का मान है, और दायरा वह है जिसमें ज़्यादातर मंडियाँ रहीं। “सामान्य से” आज के भाव की फ़सल के आम स्तर से तुलना है, उन 30 फ़सलों के लिए जिनका आम स्तर हम रखते हैं: यह एक संकेत है, भविष्यवाणी नहीं।"
 }
