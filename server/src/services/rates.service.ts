@@ -8,27 +8,38 @@
 // from the Government of India's daily mandi feed (Agmarknet, via data.gov.in),
 // the same 4,600+ regulated markets that set physical wholesale prices.
 //
-// DESIGN (mirrors the rest of the codebase):
-//   - Native fetch, no SDK (same as the Gemini integration).
-//   - Daily in-memory cache — mandi rates change once a day, so we fetch once
-//     and reuse (same spirit as the in-memory auction state).
-//   - Graceful fallback — if the feed/key is unavailable we return static
-//     reference prices, so the board is NEVER empty (same as Razorpay/SMTP
-//     degrading instead of crashing the app).
+// DESIGN:
+//   - The whole day's feed is downloaded and held by mandiFeed.ts; nothing
+//     here talks to data.gov.in. Every answer below is computed from that one
+//     copy, so upstream requests no longer scale with visitors.
+//   - Names are matched exactly, through mandiCommodities.ts, which also says
+//     which group a commodity belongs to and which spellings are one product.
+//   - Graceful fallback: with no usable copy we return static reference
+//     prices, so the board is NEVER empty.
 //   - "Local" via a fallback chain: nearest market → state modal → national
 //     modal → static reference, each result labelled with its source so the UI
 //     can be honest about how local the number is.
+//   - A mandi reporting a price under a tenth or over ten times the crop's
+//     median is left out of every figure (Patti in Punjab once reported onion
+//     at ₹0.07 a quintal). The band shown is where most mandis sat, not the
+//     single lowest and highest report, which with hundreds of reports is
+//     always somebody's typo.
 //
 // Agmarknet prices are always ₹ per QUINTAL (100 kg). We normalise to the
 // display unit the storefront uses (₹/kg for veg & fruit, ₹/quintal for
 // grains/spices/oilseeds).
 // =============================================================================
 
-import { config } from '../config';
+import { getMandiSnapshot, normaliseState, type MandiRow, type MandiSnapshot } from './mandiFeed';
+import { GROUPS, commodityFor, type Commodity, type Group } from './mandiCommodities';
+
 
 // -----------------------------------------------------------------------------
-// The board — the crops we surface as "today's rates". `commodity` MUST match
-// Agmarknet's own spelling or the feed returns nothing. `unit` is how the
+// The board: the 30 crops the storefront strip, the dashboards and the forecast
+// carry, each with a "usual" reference price. `commodity` is the crop's id in
+// mandiCommodities.ts, which also lists every other spelling the feed files it
+// under (paddy is "Paddy(Common)" in most states today). /rates shows every
+// commodity the feed reported, of which these are 30. `unit` is how the
 // storefront shows it; grains/spices trade in quintals, fresh produce in kg.
 // -----------------------------------------------------------------------------
 // LITRE is display-only for dairy liquids (1 L ≈ 1 kg for milk/curd) — feed
@@ -37,7 +48,7 @@ type Unit = 'KG' | 'QUINTAL' | 'LITRE';
 type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 
 interface BoardItem {
-  commodity: string;   // Agmarknet commodity name (exact)
+  commodity: string;   // id in mandiCommodities.ts
   label: string;       // display name
   emoji: string;
   cat: Cat;
@@ -53,8 +64,7 @@ const BOARD: BoardItem[] = [
   { commodity: 'Green Chilli', label: 'Green Chilli', emoji: '🌶️', cat: 'veg', unit: 'KG', fallbackPerQuintal: 4500 },
   { commodity: 'Cauliflower', label: 'Cauliflower', emoji: '🥦', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2200 },
   { commodity: 'Brinjal', label: 'Brinjal', emoji: '🍆', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
-  // More daily-use vegetables. `commodity` uses Agmarknet's exact spelling
-  // (parenthesised names and all) or the feed returns nothing.
+  // More daily-use vegetables.
   { commodity: 'Cabbage', label: 'Cabbage', emoji: '🥬', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1600 },
   { commodity: 'Carrot', label: 'Carrot', emoji: '🥕', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2800 },
   { commodity: 'Bhindi(Ladies Finger)', label: 'Lady Finger', emoji: '🫛', cat: 'veg', unit: 'KG', fallbackPerQuintal: 3500 },
@@ -77,10 +87,11 @@ const BOARD: BoardItem[] = [
   { commodity: 'Pomegranate', label: 'Pomegranate', emoji: '🍒', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 11000 },
   { commodity: 'Grapes', label: 'Grapes', emoji: '🍇', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 7000 },
   { commodity: 'Apple', label: 'Apple', emoji: '🍎', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 12000 },
-  // More everyday fruits (Agmarknet exact spellings).
+  // More everyday fruits. The feed reports lemon and lime separately and a
+  // lemon costs about three times as much, so this row says which it is.
   { commodity: 'Pineapple', label: 'Pineapple', emoji: '🍍', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 4000 },
   { commodity: 'Water Melon', label: 'Watermelon', emoji: '🍉', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 1400 },
-  { commodity: 'Lime', label: 'Lemon', emoji: '🍋', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 6000 },
+  { commodity: 'Lime', label: 'Lime (Nimbu)', emoji: '🍋', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 6000 },
   // Grains & pulses
   { commodity: 'Wheat', label: 'Wheat', emoji: '🌾', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2480 },
   { commodity: 'Paddy(Dhan)(Common)', label: 'Paddy (Rice)', emoji: '🍚', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2400 },
@@ -93,8 +104,13 @@ const BOARD: BoardItem[] = [
   // of markets — honest via `source`, but thinner than the crops above.
   { commodity: 'Cocoa', label: 'Cocoa', emoji: '🍫', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 14800 },
 ];
+const BOARD_BY_ID = new Map(BOARD.map((b) => [b.commodity.toLowerCase(), b]));
 
-const BOARD_BY_COMMODITY = new Map(BOARD.map((b) => [b.commodity.toLowerCase(), b]));
+/** The board crop a name belongs to, under any of the feed's spellings. */
+function boardItemFor(name: string): BoardItem | undefined {
+  const c = commodityFor(name);
+  return c ? BOARD_BY_ID.get(c.id.toLowerCase()) : undefined;
+}
 
 // -----------------------------------------------------------------------------
 // Public shapes
@@ -108,7 +124,7 @@ export interface CropRate {
   unit: Unit;          // unit the prices below are expressed in
   cat: Cat;
   modal: number;       // ₹ per `unit`
-  min: number;
+  min: number;         // low end of where most mandis sat, ₹ per `unit`
   max: number;
   usual: number;       // static reference modal (₹ per `unit`) — the crop's "usual" price
   changePct: number;   // today's modal vs usual, % (0 when source is 'reference')
@@ -119,180 +135,92 @@ export interface CropRate {
 }
 
 // -----------------------------------------------------------------------------
-// Agmarknet feed
+// The day's rows, indexed by commodity
 // -----------------------------------------------------------------------------
-interface AgmarkRecord {
-  state: string;
-  district: string;
-  market: string;
-  commodity: string;
-  variety: string;
-  grade: string;
-  arrival_date: string;
-  min_price: string | number;
-  max_price: string | number;
-  modal_price: string | number;
+const PLAUSIBLE_FACTOR = 10;
+
+interface Entry {
+  commodity: Commodity;
+  rows: MandiRow[];      // plausible reports only
+  excluded: MandiRow[];  // reports outside PLAUSIBLE_FACTOR of the median
 }
 
-// date-keyed cache so we hit the feed at most once per commodity per day.
-// Empty results (feed down / no data) are retryable after a short window so a
-// transient upstream failure doesn't pin the board to reference prices all day.
-const EMPTY_RETRY_MS = 10 * 60 * 1000;
-interface CacheEntry { records: AgmarkRecord[]; at: number }
-let cacheDay = '';
-const recordCache = new Map<string, CacheEntry>();
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+interface Indexed {
+  byId: Map<string, Entry>;
+  states: string[];
+  date: string | null;   // the latest arrival_date in the copy
 }
 
-function resetCacheIfStale() {
-  const d = today();
-  if (d !== cacheDay) {
-    cacheDay = d;
-    recordCache.clear();
-  }
-}
+const indexCache = new WeakMap<MandiSnapshot, Indexed>();
+const EMPTY_INDEX: Indexed = { byId: new Map(), states: [], date: null };
 
-const PAGE_SIZE = 200;
-const MAX_PAGES = 25;
-
-// With no DATA_GOV_API_KEY set, config falls back to data.gov.in's shared demo
-// key — every project that never registered its own competes for that one
-// quota, so it spends most of the day returning 429 and the whole board
-// silently degrades to reference prices. Say so once, loudly, instead of
-// letting it look like a UI bug.
-let warnedDemoKey = false;
-
-function warnDemoKeyOnce() {
-  if (warnedDemoKey || !config.dataGov.usingDemoKey) return;
-  warnedDemoKey = true;
-  console.warn(
-    '[rates] DATA_GOV_API_KEY is not set — using data.gov.in\'s shared demo key, ' +
-    'which is rate-limited. Expect the board to fall back to reference prices. ' +
-    'Register a free key at https://data.gov.in and set DATA_GOV_API_KEY.'
-  );
-}
-
-// A dead feed fails on all 30 board commodities and retries every 10 minutes,
-// so log one line per distinct failure mode per hour — enough to see "429, all
-// day" in the logs without burying everything else.
-const WARN_THROTTLE_MS = 60 * 60 * 1000;
-const lastWarnAt = new Map<string, number>();
-
-function warnFetchFailed(reason: string, commodity: string, state?: string) {
-  warnDemoKeyOnce();
-  const at = lastWarnAt.get(reason) ?? 0;
-  if (Date.now() - at < WARN_THROTTLE_MS) return;
-  lastWarnAt.set(reason, Date.now());
-  console.warn('[rates] feed fetch failed, falling back to reference prices', {
-    reason, example: commodity, state: state ?? null,
-  });
-}
-
-// Last successful records per key, kept ACROSS the daily cache reset. A single
-// upstream hiccup (a 429 in the burst getBoard fires, an 8s timeout) used to
-// knock that one crop back to its static reference for the next ten minutes,
-// so the storefront showed a live price with a real move on one load and a
-// flat "ref" on the next. Reusing the last real records rides that out. Bounded
-// to STALE_MAX_MS so a crop that genuinely stops reporting (end of season)
-// ages out to reference instead of quoting a months-old price as today's.
-const STALE_MAX_MS = 3 * 24 * 60 * 60 * 1000;
-const lastGood = new Map<string, CacheEntry>();
-
-// Fetch (and cache for the day) all recent records for one board commodity,
-// optionally scoped to a state. Returns [] only when the feed is down AND
-// there is no recent good result to reuse — callers then fall back to
-// reference prices.
-async function fetchRecords(commodity: string, state?: string): Promise<AgmarkRecord[]> {
-  const key = `${commodity.toLowerCase()}::${(state || '').toLowerCase()}`;
-  const { records, complete } = await fetchFresh(commodity, key, state);
-  // Only a COMPLETE page walk earns the right to be reused later. A partial
-  // one is whichever mandis the feed happened to return before it broke — a
-  // biased slice, tolerable to serve once (better than nothing today) but
-  // wrong to keep quoting as the crop's price for the next three days.
-  if (records.length > 0 && complete) lastGood.set(key, { records, at: Date.now() });
-  if (records.length > 0) return records;
-  const stale = lastGood.get(key);
-  return stale && Date.now() - stale.at < STALE_MAX_MS ? stale.records : [];
-}
-
-// The paginated feed walk itself. The data.gov feed is paginated, so keep
-// walking until it returns a short page; otherwise high-volume crops look
-// artificially empty or capped to the first page.
-async function fetchFresh(
-  commodity: string, key: string, state?: string
-): Promise<{ records: AgmarkRecord[]; complete: boolean }> {
-  resetCacheIfStale();
-  const cached = recordCache.get(key);
-  if (cached && (cached.records.length > 0 || Date.now() - cached.at < EMPTY_RETRY_MS)) {
-    // Only complete walks are ever cached, so a cache hit is complete.
-    return { records: cached.records, complete: true };
-  }
-
-  try {
-    const records: AgmarkRecord[] = [];
-    // Proven complete ONLY by a short page, which is the upstream's way of
-    // saying the result set ended. Exhausting the page budget looks identical
-    // from in here but means the opposite, so completeness cannot be the
-    // default: a truncated prefix cached as authoritative would drive rates,
-    // market breakdowns and forecasts all day, and be reused as `lastGood` for
-    // three more.
-    let complete = false;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
-      url.searchParams.set('api-key', config.dataGov.apiKey);
-      url.searchParams.set('format', 'json');
-      url.searchParams.set('limit', String(PAGE_SIZE));
-      url.searchParams.set('offset', String(page * PAGE_SIZE));
-      url.searchParams.set('filters[commodity]', commodity);
-      if (state) url.searchParams.set('filters[state]', state);
-
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const controller = new AbortController();
-        timer = setTimeout(() => controller.abort(), 8000);
-        const res = await fetch(url.toString(), { signal: controller.signal });
-        if (!res.ok) throw new Error(`data.gov.in ${res.status}`);
-        const json = (await res.json()) as { records?: AgmarkRecord[] };
-        const pageRecords = (json.records ?? []).filter((r) => num(r.modal_price) > 0);
-        records.push(...pageRecords);
-        if ((json.records ?? []).length < PAGE_SIZE) {
-          complete = true;
-          break;
-        }
-      } catch (err) {
-        if (records.length === 0) throw err;
-        // Already false; a partial walk is never cacheable.
-        break;
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
-    }
-    if (complete) recordCache.set(key, { records, at: Date.now() });
-    return { records, complete };
-  } catch (err) {
-    // Log the reason — a swallowed failure here reads downstream as "the
-    // storefront lost its prices", with nothing in the logs to say why.
-    warnFetchFailed(err instanceof Error ? err.message : String(err), commodity, state);
-    // Cache the empty result briefly (EMPTY_RETRY_MS) — a dead feed isn't
-    // hammered on every request, but recovery is picked up within minutes.
-    recordCache.set(key, { records: [], at: Date.now() });
-    return { records: [], complete: false };
-  }
-}
-
-const num = (v: string | number): number => {
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : 0;
+// DD/MM/YYYY → a number that sorts by date.
+const dateKey = (d: string) => {
+  const [dd, mm, yyyy] = d.split('/');
+  return Number(`${yyyy}${mm?.padStart(2, '0')}${dd?.padStart(2, '0')}`) || 0;
 };
 
-const median = (xs: number[]): number => {
+function indexOf(snap: MandiSnapshot | null): Indexed {
+  if (!snap) return EMPTY_INDEX;
+  const cached = indexCache.get(snap);
+  if (cached) return cached;
+
+  const grouped = new Map<string, { commodity: Commodity; rows: MandiRow[] }>();
+  const states = new Set<string>();
+  let date: string | null = null;
+  for (const row of snap.rows) {
+    const c = commodityFor(row.commodity);
+    if (!c) continue;
+    const g = grouped.get(c.id) ?? { commodity: c, rows: [] };
+    g.rows.push(row);
+    grouped.set(c.id, g);
+    if (row.state) states.add(row.state);
+    if (row.date && (!date || dateKey(row.date) > dateKey(date))) date = row.date;
+  }
+
+  const byId = new Map<string, Entry>();
+  for (const [id, g] of grouped) {
+    const mid = quantile(g.rows.map((r) => r.modal), 0.5);
+    const plausible = (r: MandiRow) => r.modal >= mid / PLAUSIBLE_FACTOR && r.modal <= mid * PLAUSIBLE_FACTOR;
+    byId.set(id, {
+      commodity: g.commodity,
+      rows: g.rows.filter(plausible),
+      excluded: g.rows.filter((r) => !plausible(r)),
+    });
+  }
+
+  const indexed = { byId, states: [...states].sort((a, b) => a.localeCompare(b)), date };
+  indexCache.set(snap, indexed);
+  return indexed;
+}
+
+// Linear-interpolated quantile; q = 0.5 is the median.
+function quantile(xs: number[], q: number): number {
   if (xs.length === 0) return 0;
   const s = [...xs].sort((a, b) => a - b);
-  const mid = Math.floor(s.length / 2);
-  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-};
+  const pos = (s.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+}
+
+// ₹/quintal. With five or more mandis the band is where the middle 80% of
+// them sat. With fewer there is no "most", so it is their own reported low
+// and high, ignoring a low under a tenth or a high over ten times that same
+// mandi's modal.
+function band(rows: MandiRow[]): { modal: number; min: number; max: number } {
+  const modals = rows.map((r) => r.modal);
+  const modal = quantile(modals, 0.5);
+  if (rows.length >= 5) return { modal, min: quantile(modals, 0.1), max: quantile(modals, 0.9) };
+  const mins = rows.map((r) => (r.min > 0 && r.min >= r.modal / PLAUSIBLE_FACTOR ? r.min : r.modal));
+  const maxs = rows.map((r) => (r.max > 0 && r.max <= r.modal * PLAUSIBLE_FACTOR ? r.max : r.modal));
+  return { modal, min: Math.min(modal, ...mins), max: Math.max(modal, ...maxs) };
+}
+
+const latestDate = (rows: MandiRow[]) =>
+  rows.reduce<string | null>((d, r) => (r.date && (!d || dateKey(r.date) > dateKey(d)) ? r.date : d), null);
+
+const today = () => new Date().toLocaleDateString('en-GB');
 
 // Convert ₹/quintal (as the feed reports) into the board item's display unit.
 // LITRE behaves like KG: 1 quintal ≈ 100 kg ≈ 100 L for dairy liquids.
@@ -302,66 +230,63 @@ function toUnit(perQuintal: number, unit: Unit): number {
   return unit === 'QUINTAL' ? Math.round(v) : Math.round(v * 10) / 10;
 }
 
+// Fresh produce is bought by the kilo; everything else trades by the quintal.
+const GROUP_UNIT: Record<Group, Unit> = {
+  vegetables: 'KG', greens: 'KG', fruits: 'KG', dairy: 'KG',
+  cereals: 'QUINTAL', pulses: 'QUINTAL', oilseeds: 'QUINTAL', spices: 'QUINTAL',
+  dryfruits: 'QUINTAL', other: 'QUINTAL',
+};
+
+const GROUP_EMOJI: Record<Group, string> = {
+  vegetables: '🥬', greens: '🌿', fruits: '🍎', cereals: '🌾', pulses: '🫘',
+  oilseeds: '🌻', spices: '🌶️', dryfruits: '🥜', dairy: '🥛', other: '🧺',
+};
+
 // -----------------------------------------------------------------------------
 // getRateForCrop — the negotiation/listing anchor, with local fallback chain
 // -----------------------------------------------------------------------------
-export async function getRateForCrop(
-  commodity: string,
-  opts: { state?: string; market?: string } = {}
-): Promise<CropRate | null> {
-  const item = BOARD_BY_COMMODITY.get(commodity.toLowerCase());
-  if (!item) return null;
+function rateFor(
+  item: BoardItem, idx: Indexed, opts: { state?: string; market?: string }
+): { rate: CropRate; mandis: number } {
   const meta = item;
+  const all = idx.byId.get(commodityFor(item.commodity)?.id ?? item.commodity)?.rows ?? [];
+  const state = opts.state ? normaliseState(opts.state) : undefined;
+  const inState = state ? all.filter((r) => r.state === state) : [];
 
-  // Pull state-scoped records first (fewer, more local), then national.
-  const stateRecords = opts.state ? await fetchRecords(commodity, opts.state) : [];
-  const nationalRecords = stateRecords.length ? stateRecords : await fetchRecords(commodity);
-
-  const build = (records: AgmarkRecord[], source: RateSource, market: string | null, state: string | null): CropRate => {
-    const modalPerQ = median(records.map((r) => num(r.modal_price)));
-    // min/max ignore malformed (zero) values; fall back to modal so a partial
-    // record can never render a ₹0 band edge.
-    const mins = records.map((r) => num(r.min_price)).filter((n) => n > 0);
-    const maxs = records.map((r) => num(r.max_price)).filter((n) => n > 0);
-    const minPerQ = mins.length ? Math.min(...mins) : modalPerQ;
-    const maxPerQ = maxs.length ? Math.max(...maxs) : modalPerQ;
+  const build = (rows: MandiRow[], source: RateSource, market: string | null, st: string | null) => {
+    const b = band(rows);
     // Signal: how today's modal sits vs the crop's usual (static reference)
     // price. Honest and simple — not a forecast, a "strong/weak day" flag.
     const changePct = meta.fallbackPerQuintal > 0
-      ? Math.round(((modalPerQ - meta.fallbackPerQuintal) / meta.fallbackPerQuintal) * 1000) / 10
+      ? Math.round(((b.modal - meta.fallbackPerQuintal) / meta.fallbackPerQuintal) * 1000) / 10
       : 0;
-    return {
+    const rate: CropRate = {
       commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
-      modal: toUnit(modalPerQ, meta.unit),
-      min: toUnit(minPerQ, meta.unit),
-      max: toUnit(maxPerQ, meta.unit),
+      modal: toUnit(b.modal, meta.unit),
+      min: toUnit(b.min, meta.unit),
+      max: toUnit(b.max, meta.unit),
       usual: toUnit(meta.fallbackPerQuintal, meta.unit),
       changePct,
-      market, state, source,
-      date: records[0]?.arrival_date ?? new Date().toLocaleDateString('en-GB'),
+      market, state: st, source,
+      date: latestDate(rows) ?? today(),
     };
+    return { rate, mandis: rows.length };
   };
 
-  // 1. exact market match
+  // 1. exact market match, within the state when one was given and reported
   if (opts.market) {
-    const hit = nationalRecords.filter(
-      (r) => r.market?.toLowerCase().includes(opts.market!.toLowerCase())
-    );
+    const pool = inState.length ? inState : all;
+    const hit = pool.filter((r) => r.market.toLowerCase().includes(opts.market!.toLowerCase()));
     if (hit.length) return build(hit, 'market', hit[0].market, hit[0].state);
   }
   // 2. state modal
-  if (opts.state) {
-    const hit = nationalRecords.filter(
-      (r) => r.state?.toLowerCase() === opts.state!.toLowerCase()
-    );
-    if (hit.length) return build(hit, 'state', null, hit[0].state);
-  }
+  if (inState.length) return build(inState, 'state', null, state!);
   // 3. national modal
-  if (nationalRecords.length) return build(nationalRecords, 'national', null, null);
+  if (all.length) return build(all, 'national', null, null);
 
   // 4. static reference (feed down / no data for this crop)
-  if (meta.fallbackPerQuintal > 0) {
-    return {
+  return {
+    rate: {
       commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
       modal: toUnit(meta.fallbackPerQuintal, meta.unit),
       min: toUnit(Math.round(meta.fallbackPerQuintal * 0.85), meta.unit),
@@ -369,10 +294,19 @@ export async function getRateForCrop(
       usual: toUnit(meta.fallbackPerQuintal, meta.unit),
       changePct: 0,
       market: null, state: null, source: 'reference',
-      date: new Date().toLocaleDateString('en-GB'),
-    };
-  }
-  return null;
+      date: today(),
+    },
+    mandis: 0,
+  };
+}
+
+export async function getRateForCrop(
+  commodity: string,
+  opts: { state?: string; market?: string } = {}
+): Promise<CropRate | null> {
+  const item = boardItemFor(commodity);
+  if (!item) return null;
+  return rateFor(item, indexOf(await getMandiSnapshot()), opts).rate;
 }
 
 // -----------------------------------------------------------------------------
@@ -398,39 +332,46 @@ export interface MarketBreakdown {
   unit: Unit;
   count: number;
   records: MarketRate[];
+  // Reports left out as implausible (see PLAUSIBLE_FACTOR), so the page can
+  // say rows are missing rather than silently show fewer.
+  excluded: number;
 }
 
+// Works for any commodity the feed reports, not only the 30 on the board.
 export async function getMarketBreakdown(commodity: string, state?: string): Promise<MarketBreakdown | null> {
-  const item = BOARD_BY_COMMODITY.get(commodity.toLowerCase());
-  if (!item) return null;
-  const meta = item;
+  const c = commodityFor(commodity);
+  if (!c) return null;
+  const item = BOARD_BY_ID.get(c.id.toLowerCase());
+  const entry = indexOf(await getMandiSnapshot()).byId.get(c.id);
+  if (!entry && !item) return null;
 
-  let records = await fetchRecords(meta.commodity, state);
-  // A state-scoped fetch can come back empty (feed quirk); fall back to
-  // filtering the national records locally so the view degrades gracefully.
-  if (records.length === 0 && state) {
-    records = (await fetchRecords(meta.commodity)).filter(
-      (r) => r.state?.toLowerCase() === state.toLowerCase()
-    );
-  }
+  const st = state ? normaliseState(state) : undefined;
+  const inScope = (r: MandiRow) => !st || r.state === st;
+  const unit = item?.unit ?? GROUP_UNIT[c.group];
 
-  const rows: MarketRate[] = records
+  const rows: MarketRate[] = (entry?.rows ?? [])
+    .filter(inScope)
     .map((r) => ({
-      market: r.market ?? '—',
-      district: r.district ?? '—',
-      state: r.state ?? '—',
-      variety: r.variety ?? '—',
-      grade: r.grade ?? '—',
-      date: r.arrival_date,
-      modal: toUnit(num(r.modal_price), meta.unit),
-      min: toUnit(num(r.min_price), meta.unit),
-      max: toUnit(num(r.max_price), meta.unit),
+      market: r.market || '—',
+      district: r.district || '—',
+      state: r.state || '—',
+      variety: r.variety || '—',
+      grade: r.grade || '—',
+      date: r.date,
+      modal: toUnit(r.modal, unit),
+      min: toUnit(r.min, unit),
+      max: toUnit(r.max, unit),
     }))
     .sort((a, b) => a.state.localeCompare(b.state) || a.market.localeCompare(b.market));
 
   return {
-    commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit,
-    count: rows.length, records: rows,
+    commodity: c.id,
+    label: item?.label ?? c.label,
+    emoji: item?.emoji ?? GROUP_EMOJI[c.group],
+    unit,
+    count: rows.length,
+    records: rows,
+    excluded: (entry?.excluded ?? []).filter(inScope).length,
   };
 }
 
@@ -438,14 +379,90 @@ export async function getMarketBreakdown(commodity: string, state?: string): Pro
 // getBoard — today's rates for the whole curated set (for the storefront board)
 // -----------------------------------------------------------------------------
 export async function getBoard(state?: string): Promise<{ date: string; live: boolean; rates: CropRate[] }> {
-  const rates = await Promise.all(
-    BOARD.map((b) => getRateForCrop(b.commodity, { state }))
-  );
-  const clean = rates.filter((r): r is CropRate => r !== null);
-  const live = clean.some((r) => r.source !== 'reference');
+  const idx = indexOf(await getMandiSnapshot());
+  const rates = BOARD.map((b) => rateFor(b, idx, { state }).rate);
   return {
-    date: new Date().toLocaleDateString('en-GB'),
-    live,
-    rates: clean,
+    date: idx.date ?? today(),
+    live: rates.some((r) => r.source !== 'reference'),
+    rates,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// getAllRates: every commodity the feed reported (the /rates page)
+// -----------------------------------------------------------------------------
+export interface CommodityRate {
+  commodity: string;          // pass back as /rates/markets?crop=
+  label: string;
+  emoji: string;
+  group: Group;
+  unit: Unit;
+  modal: number;
+  min: number;
+  max: number;
+  usual: number | null;       // board crops only: nothing else has a reference price
+  changePct: number | null;
+  mandis: number;             // reports behind the number
+  source: RateSource;
+  state: string | null;
+  date: string;
+}
+
+export interface AllRates {
+  date: string;
+  live: boolean;
+  complete: boolean;          // false while part of the day is still missing
+  states: string[];           // every state that reported, for the picker
+  groups: typeof GROUPS;
+  rates: CommodityRate[];
+}
+
+// A state picked: every commodity that state's mandis reported, and the 30
+// board crops through their usual fallback chain, so the page never loses a
+// crop it always showed. All India: every commodity reported anywhere.
+export async function getAllRates(state?: string): Promise<AllRates> {
+  const snap = await getMandiSnapshot();
+  const idx = indexOf(snap);
+  const st = state ? normaliseState(state) : undefined;
+  const rates: CommodityRate[] = [];
+
+  for (const [id, entry] of idx.byId) {
+    if (BOARD_BY_ID.has(id.toLowerCase())) continue;
+    const rows = st ? entry.rows.filter((r) => r.state === st) : entry.rows;
+    if (rows.length === 0) continue;
+    const c = entry.commodity;
+    const unit = GROUP_UNIT[c.group];
+    const b = band(rows);
+    rates.push({
+      commodity: c.id, label: c.label, emoji: GROUP_EMOJI[c.group], group: c.group, unit,
+      modal: toUnit(b.modal, unit), min: toUnit(b.min, unit), max: toUnit(b.max, unit),
+      usual: null, changePct: null, mandis: rows.length,
+      source: st ? 'state' : 'national', state: st ?? null,
+      date: latestDate(rows) ?? today(),
+    });
+  }
+
+  for (const item of BOARD) {
+    const { rate, mandis } = rateFor(item, idx, { state });
+    rates.push({
+      commodity: rate.commodity, label: rate.label, emoji: rate.emoji,
+      group: commodityFor(item.commodity)?.group ?? 'other', unit: rate.unit,
+      modal: rate.modal, min: rate.min, max: rate.max,
+      usual: rate.usual, changePct: rate.changePct, mandis,
+      source: rate.source, state: rate.state, date: rate.date,
+    });
+  }
+
+  const order = new Map(GROUPS.map((g, i) => [g.id, i]));
+  rates.sort((a, b) =>
+    (order.get(a.group)! - order.get(b.group)!) || (b.mandis - a.mandis) || a.label.localeCompare(b.label));
+
+  return {
+    date: idx.date ?? today(),
+    live: rates.some((r) => r.source !== 'reference'),
+    complete: snap?.complete ?? false,
+    states: idx.states,
+    groups: GROUPS,
+    rates,
   };
 }

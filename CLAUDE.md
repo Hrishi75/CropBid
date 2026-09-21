@@ -25,7 +25,7 @@ An agricultural marketplace connecting Indian farmers directly with buyers, with
 | **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer |
 | **Retail** | Households | Browse by shop, buy by the kilo. Pune and Nagpur only. |
 
-Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
+Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. §11 says how those rates are read, and why the obvious way is wrong. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
 
 Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
 
@@ -351,7 +351,7 @@ DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run de
 - In a worktree, `server/src/generated` must be a real directory containing a `prisma` symlink.
 - No SMTP/WhatsApp configured locally → **OTP codes and emails print to the API log.**
 - Blank Razorpay keys → payment endpoints return 503 and everything else works.
-- Blank `DATA_GOV_API_KEY` → rates fall back to static reference prices, badged `ref`. This is also true in production and looks like a UI bug but is not.
+- Blank `DATA_GOV_API_KEY` → the shared demo key, which is throttled much of the day and returns 10 rows a request, so rates show a sliver of the country or fall back to static reference prices, badged `ref`. The API logs which. It looks like a UI bug and is not (§11).
 
 Running the app against a local everything, which is what testing the policy screens needs:
 
@@ -524,3 +524,31 @@ Each product shows its enquiry count, linked to where the leads themselves are w
 - **Crop leads the filter on `/inputs`, not category.** A farmer does not want "fertiliser", they want to know what goes on cotton, and it is the one filter they can always complete without knowing a product name.
 - **Prices are per pack**, because that is how the trade sells: seed in 475g packets, urea in 45kg bags. A per-kg price would make every screen reconstruct the number the farmer actually pays.
 - **Urea, DAP and MOP carry a statutory MRP.** Those rows are flagged `subsidised`, and the page says the price is set by government, identical at every licensed shop, and that paying more is overcharging reportable to the district agriculture officer. Presenting a controlled price as this shop's own offer would be misleading.
+
+## 11. Mandi rates (rebuilt 2026-09-21)
+
+**The whole day's feed is downloaded, held in memory, and every rate is computed from that one copy** (`services/mandiFeed.ts`). The board, a state's view, one crop's mandi table, the listing anchor and the forecast all read it. A request can start a refresh but never waits for one, except the first request after a restart, and `warmMandiFeed()` at boot usually has the day loaded before anyone asks. It refreshes every two hours, serving the old copy while the new one downloads.
+
+It used to ask the feed per crop and per state, and the day it was checked properly (2026-09-21) every number on the board was wrong, for four reasons that are properties of the feed, measured, not guesses:
+
+1. **Its filters match any shared word.** `filters[commodity]=Onion` returned spring onion too; "Green Chilli" and "Ginger(Green)" pulled in anything green; `filters[state]=Andhra Pradesh` returned all four Pradesh states, so a state's mandi table listed other states. The exact filter is `filters[<field>.keyword]`, and commodity names are matched on our side.
+2. **No request reaches past row 10,000** (offset + limit), and a full day is about 17,000 rows. So the day is fetched one state at a time, and the states' totals must add up to the day's `total` before the copy counts as complete.
+3. **The shared demo key returns 10 rows whatever `limit` asks,** and replies `limit: 10`. The old pager took a page shorter than asked as "the end", so production quoted every crop as the median of the first 10 rows the feed happened to return. Maharashtra's onion was missing from /rates because its first row was number 24. Completeness is now judged on `total`, never on page length.
+4. **A key is refused for a minute or two after a burst.** Thirty crops fetched at once was a burst; the same 28 requests one after another went through without a single 429. Requests are strictly sequential, and a 429 is waited out.
+
+**A partial copy never replaces a complete one** (a sweep throttled half way is a slice of the country, not the country), and a copy older than three days is not served at all: the board says reference instead.
+
+**`services/mandiCommodities.ts` says what each of the feed's ~260 names is**: its group, a readable label, and which names are one product. Merges were checked against the day's prices first: bhindi and "Ladies Finger", capsicum and "Chilly Capsicum", both mango codes, and "Paddy(Common)" into the board's paddy, whose own name had no rows at all. Lemon (₹150/kg) and lime (₹50/kg) stay apart, as do onion and spring onion. Livestock, flowers, wood and fodder are left out. **A name the table does not know is shown under "Other farm produce", not dropped**, so a new crop reaches the page the day it is first reported.
+
+**What the numbers mean:**
+- The price is the median of the mandis' modal prices. The range beneath it is **where most mandis sat** (10th to 90th percentile) once five or more reported, not the single lowest and highest report: with hundreds of reports the extremes are always somebody's typo. Patti (Punjab) reported onion at ₹0.07 a quintal and the card read "₹0 to ₹120".
+- A report under a tenth or over ten times the crop's median is left out of every figure, and the mandi table says how many were. They are typos or per-piece prices (Pune radish at ₹10 a quintal is a price per bunch).
+- The feed spells five states its own way ("Keralam", "Chattisgarh", "NCT of Delhi", "Pondicherry", "Andaman and Nicobar"). Rows are stored under `utils/indianStates` spelling, so "Kerala" from a listing or a picker finds Kerala.
+
+**The board stays 30 crops; the rates pages show everything.** `GET /rates/board` is what the storefront strip, the dashboards, the app's rates rail and the forecast read, and they are built around 30. `GET /rates/all` is every commodity the day reported (about 220), grouped, and both full rates pages read it: `/rates` on the web and the app's `RatesScreen`. Each has a search box and a state picker listing the states that actually reported. The app keeps its own group titles, because the English title is the key its Hindi and Marathi translations are looked up by. With a state picked, `/rates/all` lists what that state reported plus the 30 board crops through their usual fallback. Only the 30 carry "vs usual", because only they have a reference price.
+
+**Production had no registered key until 2026-09-21.** It is set in the Lightsail `.env` now. A registered key is also shared by anything else that uses it, local development included.
+
+**Knowingly unbuilt:**
+- The "usual" reference prices are old. Onion's is ₹18/kg against ₹47 today, so its card reads roughly "+160% vs usual", which is the reference being stale rather than onion being dear.
+- The copy lives in memory, so a restart re-downloads the day (about 15 seconds, the first page within 2).

@@ -15,6 +15,7 @@ import app from './app';
 import { config } from './config';
 import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
+import { warmMandiFeed } from './services/mandiFeed';
 
 const PORT = config.port;
 
@@ -40,6 +41,10 @@ void clearPlaintextRefreshTokens()
     if (cleared > 0) console.log(`🔑 Cleared ${cleared} refresh token(s) that were stored in the clear`);
   })
   .catch((err) => console.error('Could not sweep plaintext refresh tokens:', err));
+
+// Start downloading the day's mandi feed now, so the first visitor to the
+// rates board is not the one who waits for it. Never fatal.
+warmMandiFeed();
 
 server.listen(PORT, () => {
   console.log(`
