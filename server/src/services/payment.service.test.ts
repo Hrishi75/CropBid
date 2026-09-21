@@ -56,7 +56,10 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
-vi.mock('./notification.helpers', () => ({ notifyAdminsRetailOverpaid: vi.fn(() => Promise.resolve()) }));
+vi.mock('./notification.helpers', () => ({
+  notifyAdminsRetailOverpaid: vi.fn(() => Promise.resolve()),
+  notifySellersMissingPayoutDetails: vi.fn(() => Promise.resolve()),
+}));
 
 import { prisma } from '../lib/prisma';
 import { notifyAdminsRetailOverpaid } from './notification.helpers';
@@ -99,7 +102,10 @@ const BASKET_PAYMENT = {
   currency: 'INR',
   razorpayOrderId: 'order_rzp_1',
   paidAt: null,
-  orders: [{ id: 'order-a', totalAmount: 130 }, { id: 'order-b', totalAmount: 204 }],
+  orders: [
+    { id: 'order-a', totalAmount: 130, transactions: [{ id: 'tx-a', paymentStatus: 'ESCROW', farmerId: 'seller-a' }] },
+    { id: 'order-b', totalAmount: 204, transactions: [{ id: 'tx-b', paymentStatus: 'ESCROW', farmerId: 'seller-b' }] },
+  ],
   buyer: { name: 'Priya' },
 };
 

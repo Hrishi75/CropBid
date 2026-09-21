@@ -7,6 +7,7 @@
 
 import { createNotification } from './notification.service';
 import { prisma } from '../lib/prisma';
+import { hasPayoutDetails } from './payoutDetails';
 
 // --- Bid Events ---
 
@@ -331,5 +332,50 @@ export async function notifyAdminsRetailRefundDue(
         data: { retailOrderId },
       }).catch(() => {}),
     ),
+  );
+}
+
+// --- Payout details ---
+
+// Money has reached escrow for a seller we cannot pay. Settlement is a manual
+// bank transfer (CLAUDE.md §6), so a missing account is not discovered by a
+// failed payout: it is discovered by an admin with nothing to type in. This is
+// the one nag, and it fires at the only moment it is unarguable, which is when
+// the money is actually sitting there.
+//
+// ONE OPEN NAG AT A TIME. A shop with six orders in a morning would otherwise
+// get six identical notifications, which is how a bell stops being read. An
+// unread one already saying this is left to do its job; it is marked read when
+// the seller acts, and the next order after that asks again.
+export async function notifySellersMissingPayoutDetails(sellerIds: string[]) {
+  const unique = [...new Set(sellerIds)].filter(Boolean);
+  if (unique.length === 0) return;
+
+  const profiles = await prisma.farmerProfile.findMany({
+    where: { userId: { in: unique } },
+    select: { userId: true, payoutUpiId: true, payoutAccountName: true, payoutAccountNumber: true, payoutIfsc: true },
+  });
+
+  const unpayable = profiles.filter((p) => !hasPayoutDetails(p)).map((p) => p.userId);
+  if (unpayable.length === 0) return;
+
+  const alreadyAsked = await prisma.notification.findMany({
+    where: { userId: { in: unpayable }, type: 'PAYOUT_DETAILS_MISSING', read: false },
+    select: { userId: true },
+  });
+  const asked = new Set(alreadyAsked.map((n) => n.userId));
+
+  await Promise.all(
+    unpayable
+      .filter((userId) => !asked.has(userId))
+      .map((userId) =>
+        createNotification({
+          userId,
+          type: 'PAYOUT_DETAILS_MISSING',
+          title: 'Add your bank or UPI details',
+          message: 'A buyer has paid for your order. We need a UPI id or bank account to send your money to.',
+          data: {},
+        }).catch(() => {}),
+      ),
   );
 }

@@ -240,6 +240,26 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **Unresolved, and now more visible:** roles are exclusive, so an approved seller cannot use the cart (`/cart`, `/checkout`, `/orders` are `allowedRoles={['CONSUMER']}`; `POST /bids/direct-purchase` is `requireRole('CONSUMER')`). `ShopScreen` renders the shelf read-only for them rather than 403ing at checkout, and `JoinScreen` warns before they apply, but both are plasters. If selling should stack on top of shopping, that is a role-to-capabilities refactor nobody has decided.
 
+### 4a. Where a seller's money goes (shipped 2026-09-21)
+
+**A UPI id, or a bank account, and at least one before anybody can be paid.** Money had been reaching escrow since payments went live with nowhere to send it afterwards: `FarmerProfile.bankDetails` existed, was never written by anything, and the only code that touched it cleared it on account deletion. Four typed columns replace it (`payoutUpiId`, `payoutAccountName`, `payoutAccountNumber`, `payoutIfsc`); the JSON column is left in place, unused, because dropping a column is a destructive migration and it costs nothing to keep.
+
+**Asked on the application, required before payout, never a gate on approval.** A blank is a bad reason to hold up a review, and a reviewer approves people, not bank accounts. What makes it arrive in time is the nag: when a capture puts money into escrow for a seller who cannot be paid, that seller is told (`notifySellersMissingPayoutDetails`, both capture paths). **One open nag at a time** by design, since a shop with six orders in a morning would otherwise get six of them, which is how a bell stops being read.
+
+**Three audiences, three answers, and this is the part to not undo:**
+
+- **The seller sees their own details masked.** `safeUser()` in `auth.service.ts` now does both jobs for every user response: strips the credential columns as before, and masks the payout ones. It is one function because it used to be an inline destructure at seven return sites and a new endpoint only has to forget once. The account number keeps its last four; the UPI id keeps its provider; the **IFSC and the account name stay readable on purpose**, because an IFSC names a branch rather than an account and a seller who cannot read any of it cannot tell a right entry from a wrong one.
+- **Admins see it in full, one seller at a time, and every read is logged.** `GET /admin/partners/:id/payout`. The application queue carries `hasPayoutDetails`, a boolean, and never the columns: a reviewer working a queue has no business reading forty account numbers to decide one application. **The audit row is written before the details are returned, and not through `recordAudit`**, which swallows its own failures by design: here the log IS the control, so if it cannot be written the details are not shown.
+- **Nobody else sees anything.** `PUBLIC_SELLER_SELECT` is an allow-list, so these cannot leak to a buyer by existing.
+
+**The mask must never round-trip.** The seller's form is the same component in both places (`PayoutFields`, one per surface) and it **starts empty even when an account is on file**, showing what is stored as text above it, because a prefilled mask posts straight back into the column and turns an account number into bullet points. `parsePayoutDetails` refuses any value containing the mask character as well, which is the guard for the client that gets it wrong.
+
+**Two thirds of a bank account is refused.** Name, number and IFSC together or none of them: a partial record is not something to complete later, it is money that cannot be sent, and storing it would put a half-filled account in front of whoever makes the transfer. An explicit clear of all four is allowed, or a wrong number could only be removed by writing in.
+
+**Account deletion takes them with it.** The anonymising scrub is a hand-written column list, which is exactly the kind of list a new column is left out of, and `/privacy` promises bank details are removed. A test pins it.
+
+**Where a seller enters them:** the application (web and app), the app's profile editor, and a **card on the web seller dashboard**, which exists because the website has no seller profile page at all. That gap was survivable until money needed somewhere to go. The app's profile editor also stopped demanding an acreage and a crop list from shops and wholesalers while this was done, because it is the screen a shop now has to reach to be paid and they could not save it at all.
+
 ## 5. Public pages
 
 `/terms`, `/privacy`, `/faq` and `/how-it-works`, all linked from the footer. **Every claim in them must be true of the code today.** They are written to that rule and it has been broken before:
@@ -301,6 +321,8 @@ Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery 
 **Settlement moves no money.** Capture is real; money genuinely reaches the platform account. But the release (inside `updateDeliveryStatus`, when the buyer confirms) and `refundTransaction` **only update a database column**. Paying a seller's bank needs Razorpay Route (not built), and the refund path never calls Razorpay's refund API at all. Every payout and refund is a manual bank transfer.
 
 It is invisible in the UI: an order reads "Released" and looks finished. **Never write copy promising an automatic payout.**
+
+Since 2026-09-21 there is at least somewhere to send it by hand: §4a. **Nothing yet connects the two.** No screen lists who is owed what, the admin transaction list still shows no delivery fees, and a released transaction does not appear anywhere alongside the account it should be paid into. The queue that would fix it is the derived-not-stored kind `/admin/attention` already demonstrates (§2a): released transactions, oldest first, with the seller's payout status on the row.
 
 **Price is unbound at checkout.** Web and mobile send listing + quantity; the server recomputes `totalAmount` from the live `retailPricePerUnit`. A seller re-pricing between the bill and the request charges an amount the shopper never approved. Fix is the same shape as the unit guard and the delivery-fee guard that already ship: send the agreed price, refuse a mismatch. **The delivery fee is bound** (§3b); the item price is not.
 

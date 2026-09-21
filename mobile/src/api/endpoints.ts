@@ -128,6 +128,13 @@ export interface UpdateFarmerProfileInput {
   farmSizeAcres?: number;
   cropsGrown?: string[];
   state?: string;
+  // Sent only when the seller typed something: see PayoutFields for why these
+  // boxes start empty and why sending back what /auth/me returned would be
+  // sending back a mask.
+  payoutUpiId?: string;
+  payoutAccountName?: string;
+  payoutAccountNumber?: string;
+  payoutIfsc?: string;
 }
 
 // A shopper's delivery city. Same endpoint as the profile update, but this is
@@ -194,6 +201,13 @@ export interface FarmerOnboardingInput {
   address?: string;
   fssaiLicense?: string;
   gstin?: string;
+  // Where the money goes. Optional: an application is not held up for a blank
+  // one, and the seller is asked again the first time a buyer actually pays.
+  // Sent only when typed, so a resubmission does not clear what is on file.
+  payoutUpiId?: string;
+  payoutAccountName?: string;
+  payoutAccountNumber?: string;
+  payoutIfsc?: string;
 }
 
 export interface BuyerOnboardingInput {

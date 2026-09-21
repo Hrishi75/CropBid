@@ -20,6 +20,7 @@ import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../util
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
 import { hashRefreshToken, refreshTokenMatches } from '../utils/refreshToken';
 import { ApiError } from '../utils/ApiError';
+import { maskPayoutDetails, maskUserPayoutDetails, parsePayoutDetails } from './payoutDetails';
 import { sendPasswordResetEmail, sendSignupOtpEmail } from './email.service';
 import {
   SIGNUP_OTP_MAX_ATTEMPTS,
@@ -69,6 +70,29 @@ export function normalizePhone(phone: string): string {
 // lock those people out of their own accounts.
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+// ---------------------------------------------------------------------------
+// What a user row looks like on the way out
+// ---------------------------------------------------------------------------
+// Two jobs, in one place, because both used to be done by hand at every return
+// site and a new endpoint only has to forget once.
+//
+//   1. Nothing that is or stands in for a credential leaves: the password
+//      hash, the stored refresh-token digest, the reset token and its expiry.
+//   2. The seller's payout details are masked. They belong to the seller and
+//      are shown back in a form they can recognise but nobody can use
+//      (payoutDetails.ts). The unmasked columns leave the server through
+//      exactly one endpoint, the audited admin one.
+function safeUser<T extends Record<string, any>>(user: T) {
+  const {
+    password: _,
+    refreshToken: __,
+    passwordResetToken: ___,
+    passwordResetExpires: ____,
+    ...rest
+  } = user;
+  return maskUserPayoutDetails(rest);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,13 +201,7 @@ async function createUserAndIssueTokens(data: {
   });
 
   // Return user data WITHOUT password or any token material.
-  const {
-    password: _,
-    refreshToken: __,
-    passwordResetToken: ___,
-    passwordResetExpires: ____,
-    ...userWithoutSensitiveData
-  } = user;
+  const userWithoutSensitiveData = safeUser(user);
 
   return {
     user: userWithoutSensitiveData,
@@ -532,13 +550,7 @@ export async function login(input: LoginInput) {
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
 
-  const {
-    password: _,
-    refreshToken: __,
-    passwordResetToken: ___,
-    passwordResetExpires: ____,
-    ...userWithoutSensitiveData
-  } = user;
+  const userWithoutSensitiveData = safeUser(user);
 
   return {
     user: userWithoutSensitiveData,
@@ -612,13 +624,7 @@ export async function refresh(refreshToken: string) {
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
 
-  const {
-    password: _,
-    refreshToken: __,
-    passwordResetToken: ___,
-    passwordResetExpires: ____,
-    ...userWithoutSensitiveData
-  } = user;
+  const userWithoutSensitiveData = safeUser(user);
 
   return {
     user: userWithoutSensitiveData,
@@ -881,10 +887,23 @@ export async function deleteAccount(userId: string, password: string) {
     } else {
       // The farmer profile must survive when transacted listings cascade from
       // it — scrub its sensitive fields instead of deleting the row.
+      //
+      // THE PAYOUT COLUMNS GO WITH IT. /privacy says bank details are removed
+      // when an account is anonymised, and a scrub that missed them would
+      // leave a bank account attached to a deal that has no name on it any
+      // more, which is the opposite of what anonymising is for.
       if (user.farmerProfile) {
         await tx.farmerProfile.update({
           where: { userId },
-          data: { bankDetails: Prisma.DbNull, fpoName: null, apmcLicense: null },
+          data: {
+            bankDetails: Prisma.DbNull,
+            payoutUpiId: null,
+            payoutAccountName: null,
+            payoutAccountNumber: null,
+            payoutIfsc: null,
+            fpoName: null,
+            apmcLicense: null,
+          },
         });
       }
       await tx.buyerProfile.deleteMany({ where: { userId } });
@@ -956,13 +975,7 @@ export async function updateAvatar(userId: string, avatarPath: string) {
     void removeImage(previous.avatar);
   }
 
-  const {
-    password: _,
-    refreshToken: __,
-    passwordResetToken: ___,
-    passwordResetExpires: ____,
-    ...userWithoutSensitiveData
-  } = user;
+  const userWithoutSensitiveData = safeUser(user);
   return userWithoutSensitiveData;
 }
 
@@ -982,13 +995,7 @@ export async function getCurrentUser(userId: string) {
     throw new ApiError(404, 'User not found');
   }
 
-  const {
-    password: _,
-    refreshToken: __,
-    passwordResetToken: ___,
-    passwordResetExpires: ____,
-    ...userWithoutSensitiveData
-  } = user;
+  const userWithoutSensitiveData = safeUser(user);
   return userWithoutSensitiveData;
 }
 
@@ -1021,6 +1028,12 @@ interface FarmerOnboardingInput {
   gstin?: string;
   minOrderValue?: number;
   leadTimeDays?: number;
+  // Optional on purpose: a blank payout field is a bad reason to hold up a
+  // review, and the seller is asked again when money is actually waiting.
+  payoutUpiId?: string;
+  payoutAccountName?: string;
+  payoutAccountNumber?: string;
+  payoutIfsc?: string;
 }
 
 interface BuyerOnboardingInput {
@@ -1103,6 +1116,10 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     gstin: input.gstin?.trim() || null,
     minOrderValue: input.minOrderValue ?? null,
     leadTimeDays: input.leadTimeDays ?? null,
+    // null when the application said nothing about payout, which leaves
+    // whatever is already on file alone. A resubmission is not a reason to
+    // wipe an account somebody has already been paid into.
+    ...(parsePayoutDetails(input) ?? {}),
   };
 
   const existing = await prisma.farmerProfile.findUnique({ where: { userId } });
@@ -1131,7 +1148,10 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
       entityType: 'FarmerProfile', entityId: profile.id,
       metadata: { sellerType: data.sellerType, previousStatus: existing.status },
     });
-    return profile;
+    // Masked on the way back for the same reason /auth/me masks: this is the
+    // applicant's own screen, and it is also whatever is behind them. The
+    // account number they just typed does not need to come back at all.
+    return maskPayoutDetails(profile);
   }
 
   const profile = await prisma.farmerProfile.create({
@@ -1143,7 +1163,7 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     entityType: 'FarmerProfile', entityId: profile.id,
     metadata: { sellerType: data.sellerType },
   });
-  return profile;
+  return maskPayoutDetails(profile);
 }
 
 // ---------------------------------------------------------------------------
@@ -1161,6 +1181,10 @@ interface UpdateFarmerProfileInput {
   farmSizeAcres?: number;
   cropsGrown?: string[];
   state?: string;
+  payoutUpiId?: string | null;
+  payoutAccountName?: string | null;
+  payoutAccountNumber?: string | null;
+  payoutIfsc?: string | null;
 }
 
 export async function updateFarmerProfile(userId: string, input: UpdateFarmerProfileInput) {
@@ -1191,10 +1215,17 @@ export async function updateFarmerProfile(userId: string, input: UpdateFarmerPro
   if (input.location !== undefined) userData.location = input.location;
   if (input.language !== undefined) userData.language = input.language;
 
-  const profileData: { farmSizeAcres?: number; cropsGrown?: string[]; state?: string } = {};
+  const profileData: Prisma.FarmerProfileUpdateInput = {};
   if (input.farmSizeAcres !== undefined) profileData.farmSizeAcres = input.farmSizeAcres;
   if (input.cropsGrown !== undefined) profileData.cropsGrown = input.cropsGrown;
   if (input.state !== undefined) profileData.state = input.state;
+
+  // All four columns move together or not at all. They are one account between
+  // them, so writing a new UPI id while leaving yesterday's bank account
+  // beside it would leave two answers to one question in front of whoever
+  // makes the transfer.
+  const payout = parsePayoutDetails(input);
+  if (payout) Object.assign(profileData, payout);
 
   // One transaction so the two rows never drift if the second write fails.
   await prisma.$transaction([
@@ -1579,10 +1610,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
       data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
     });
 
-    const {
-      password: _, refreshToken: __, passwordResetToken: ___, passwordResetExpires: ____,
-      ...user
-    } = existing;
+    const user = safeUser(existing);
 
     return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: false };
   }
@@ -1627,10 +1655,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
     metadata: { role: created.role },
   });
 
-  const {
-    password: _, refreshToken: __, passwordResetToken: ___, passwordResetExpires: ____,
-    ...user
-  } = created;
+  const user = safeUser(created);
 
   return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: true };
 }

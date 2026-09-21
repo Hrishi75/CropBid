@@ -28,6 +28,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { EMPTY_PAYOUT, PayoutFields, isPayoutUntouched, type PayoutValues } from '../../components/PayoutFields';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
 import { PARTNER_TYPE_KEY, forgetPartnerType } from './SignupPage';
 import { SELLER_TYPE_LABEL, SHOP_TYPE_OPTIONS } from '../../utils/partner';
@@ -281,6 +282,10 @@ export function OnboardingPage() {
   const [minOrderValue, setMinOrderValue] = useState(existingSeller?.minOrderValue?.toString() || '');
   const [leadTimeDays, setLeadTimeDays] = useState(existingSeller?.leadTimeDays?.toString() || '');
 
+  // Starts empty even on a resubmission: what /auth/me returns is masked, so
+  // seeding the form from it would post the mask back. See PayoutFields.
+  const [payout, setPayout] = useState<PayoutValues>(EMPTY_PAYOUT);
+
   // --- Buyer state ---
   const [companyName, setCompanyName] = useState(existingBuyer?.companyName || '');
   const [companyType, setCompanyType] = useState<CompanyType>(
@@ -313,6 +318,9 @@ export function OnboardingPage() {
         await api.post('/auth/onboarding/farmer', {
           sellerType,
           state,
+          // Omitted entirely when untouched, which leaves whatever is already
+          // on file alone rather than clearing it.
+          ...(isPayoutUntouched(payout) ? {} : payout),
           // Per-type payload: only send what the chosen type actually uses,
           // so a shop application doesn't carry a stale farm size.
           ...(sellerType === 'FARMER' ? {
@@ -644,6 +652,21 @@ export function OnboardingPage() {
                 <CropPicker selected={selectedCrops} onToggle={toggleCrop} />
               </SectionCard>
             </>
+          )}
+
+          {/* --------- GETTING PAID (every seller kind) --------- */}
+          {isFarmer && (
+            <SectionCard title="Getting paid" optional>
+              <p className="cb-field-hint" style={{ margin: 0 }}>
+                You can apply without this and add it later. We need it before we can send you
+                money for a sale, and you will be asked again the first time a buyer pays.
+              </p>
+              <PayoutFields
+                values={payout}
+                onChange={setPayout}
+                onFile={existingSeller || null}
+              />
+            </SectionCard>
           )}
 
           {/* ---------------- BUYER ---------------- */}

@@ -48,6 +48,18 @@ export interface User {
     // only `status` says that. See lib/partner.ts.
     status?: PartnerStatus;
     statusNote?: string | null;
+    /**
+     * Where this seller is paid, ALWAYS MASKED on the way here: the account
+     * number is dots plus its last four digits, the UPI id is dots plus its
+     * provider. Enough to recognise, useless to anyone reading over a
+     * shoulder. Only an admin sees the real values, through an endpoint that
+     * audits every read. See server/src/services/payoutDetails.ts.
+     */
+    payoutUpiId?: string | null;
+    payoutAccountName?: string | null;
+    payoutAccountNumber?: string | null;
+    payoutIfsc?: string | null;
+    hasPayoutDetails?: boolean;
   } | null;
   buyerProfile?: {
     companyName?: string;

@@ -51,5 +51,8 @@ router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
 // POST /api/admin/partners/:id/review — approve / request info / reject / suspend
 router.get('/partners', adminController.getPartnerApplications);
 router.post('/partners/:id/review', adminController.reviewPartnerApplication);
+// GET /api/admin/partners/:id/payout — where to send this seller's money.
+// Audited on every call: see admin.service.getSellerPayoutDetails.
+router.get('/partners/:id/payout', adminController.getSellerPayoutDetails);
 
 export default router;

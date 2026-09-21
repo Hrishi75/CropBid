@@ -79,6 +79,17 @@ export interface FarmerProfile {
   apmcLicense: string | null;
   organicCertified: boolean;
   certificationBody: string | null;
+  /**
+   * Where this seller is paid. MASKED whenever it reaches a client: the
+   * account number is dots and its last four digits, the UPI id is dots and
+   * its provider. Only an admin, through its own audited endpoint, ever sees
+   * the real values. See server/src/services/payoutDetails.ts.
+   */
+  payoutUpiId: string | null;
+  payoutAccountName: string | null;
+  payoutAccountNumber: string | null;
+  payoutIfsc: string | null;
+  hasPayoutDetails?: boolean;
   bankDetails: any;
   verified: boolean;
   createdAt: string;
