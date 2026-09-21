@@ -16,6 +16,7 @@
 // codebase; see DEALER_PUBLIC below.
 // =============================================================================
 
+import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 
@@ -258,19 +259,47 @@ export async function createEnquiry(
     }
   }
 
-  const enquiry = await prisma.equipmentEnquiry.create({
-    data: {
-      equipmentId,
-      userId,
-      intent: input.intent,
-      message: input.message,
-      rentFrom,
-      rentTo,
-    },
-  });
+  // One lead per account, per machine, per intent, held by a unique index
+  // rather than a look-before-insert, so a double tap racing itself still
+  // writes one row. A repeat gets the lead already on file and the number with
+  // it: they earned the number the first time, and asking again must not put a
+  // second copy of the same lead in front of the dealer. The same shape as
+  // /inputs (agriInput.service createEnquiry). This stops one account filling
+  // the table; equipmentEnquiryLimiter on the route is what stops it walking
+  // the catalogue.
+  //
+  // A repeat does NOT overwrite the dates or message on file. The dealer may
+  // already have called about the first one, and silently changing what they
+  // were told would leave the lead saying something the farmer and the dealer
+  // never discussed. New dates are a new conversation, which the phone number
+  // they now hold is for.
+  let enquiry;
+  let created = true;
+  try {
+    enquiry = await prisma.equipmentEnquiry.create({
+      data: {
+        equipmentId,
+        userId,
+        intent: input.intent,
+        message: input.message,
+        rentFrom,
+        rentTo,
+      },
+    });
+  } catch (error) {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) {
+      throw error;
+    }
+    enquiry = await prisma.equipmentEnquiry.findUniqueOrThrow({
+      where: { userId_equipmentId_intent: { userId, equipmentId, intent: input.intent } },
+    });
+    created = false;
+  }
 
   return {
     enquiry,
+    // False on a repeat, so the controller answers 200 rather than 201.
+    created,
     // The payoff for raising an enquiry: now the farmer can call.
     dealer: {
       name: equipment.dealer.name,

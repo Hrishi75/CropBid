@@ -1451,6 +1451,16 @@ model EquipmentEnquiry {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // One lead per account per machine PER INTENT. A repeat gets the row
+  // already on file (equipment.service.ts createEnquiry) instead of writing a
+  // copy, so one account cannot fill this table.
+  //
+  // Intent is in the key on purpose, where /inputs needs only (user, product).
+  // Buying a tractor and hiring one are different leads a dealer acts on
+  // differently, so a farmer who enquired to buy and later wants to hire must
+  // reach the dealer again rather than be handed back their own stale offer to
+  // buy. It caps duplicates at one of each, which is the point.
+  @@unique([userId, equipmentId, intent])
   @@index([userId, createdAt])
 }
 

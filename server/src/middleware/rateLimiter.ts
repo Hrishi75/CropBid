@@ -136,6 +136,28 @@ export const enquiryLimiter = rateLimit({
   },
 });
 
+// The same allowance for /equipment, which had no limit at all: one signed-in
+// account could enquire on every machine in turn and leave with every dealer's
+// phone number (CLAUDE.md section 10).
+//
+// ITS OWN INSTANCE ON PURPOSE, not enquiryLimiter mounted twice. Every
+// rateLimit() call carries its own store, so sharing one would make this a
+// single twenty-a-day budget across both catalogues: a farmer who priced
+// twenty seed packets in the morning could not then ask about hiring a
+// tractor. What is rationed is how much of ONE catalogue an account can
+// collect, and each catalogue is a separate thing to collect.
+export const equipmentEnquiryLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => enquiryKey(req),
+  message: {
+    error: true,
+    message: 'You have sent a lot of enquiries today. Please try again tomorrow.',
+  },
+});
+
 // Strict auth rate limiter — prevents brute force on login/signup/refresh.
 // Keys by (ip + account) when the body names an account so an attacker cannot
 // rotate IPs to bypass per-account locking, and cannot enumerate accounts
