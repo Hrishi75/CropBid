@@ -51,7 +51,7 @@ const SUPPLIER_PUBLIC = {
   rating: true,
 } as const;
 
-const CATEGORIES = [
+export const CATEGORIES = [
   'SEED', 'FERTILISER', 'ORGANIC',
   'CROP_PROTECTION', 'MICRONUTRIENT', 'SEEDLING',
 ] as const;
@@ -93,6 +93,32 @@ const SELLABLE = {
     { category: 'CROP_PROTECTION' as const, supplier: { pesticideLicence: { not: null } } },
   ],
 };
+
+// The same licence rule as data rather than as a query: which column each
+// controlled category needs. SELLABLE stays the one that decides what a farmer
+// sees; this only exists so the admin view can say WHICH licence a hidden row is
+// waiting on. agriInput.admin.test.ts holds the two together against a real
+// database, so a category gated in one and not the other fails there.
+type LicenceColumn = 'seedLicence' | 'fertiliserLicence' | 'pesticideLicence';
+
+export const REQUIRED_LICENCE: Record<AgriInputCategory, LicenceColumn | null> = {
+  SEED: 'seedLicence',
+  FERTILISER: 'fertiliserLicence',
+  CROP_PROTECTION: 'pesticideLicence',
+  ORGANIC: null,
+  MICRONUTRIENT: null,
+  SEEDLING: null,
+};
+
+export type LicenceKind = 'seed' | 'fertiliser' | 'pesticide';
+
+const LICENCE_BADGE: Record<LicenceColumn, LicenceKind> = {
+  seedLicence: 'seed',
+  fertiliserLicence: 'fertiliser',
+  pesticideLicence: 'pesticide',
+};
+
+const LICENCE_COLUMNS = Object.keys(LICENCE_BADGE) as LicenceColumn[];
 
 // What the clients get instead of raw licence numbers: which licences this shop
 // holds, as booleans. Enough to render "✓ Licensed seed dealer" without
@@ -385,4 +411,457 @@ export async function getMyEnquiries(userId: string) {
     })),
     total: enquiries.length,
   };
+}
+
+// =============================================================================
+// ADMIN — The whole catalogue, including what the licence gate hides
+// =============================================================================
+// Every read above sees the catalogue through SELLABLE, which is right for a
+// farmer and left ops blind: on production a fresh load hides every seed,
+// fertiliser and crop-protection row until someone enters a checked licence by
+// hand (CLAUDE.md §10), and no screen showed which rows those were or what each
+// one was waiting on.
+//
+// So these two skip the gate and report on it instead. Whether a row is live is
+// decided by running SELLABLE itself over the page rather than re-deriving it,
+// so this view cannot disagree with /inputs about what a farmer sees.
+// hiddenBecause is only the explanation.
+//
+// Being ops does not open the two things the rest of this file keeps in: no
+// contactPhone, and licences as booleans, never numbers.
+
+const ADMIN_SUPPLIER = {
+  ...SUPPLIER_PUBLIC,
+  active: true,
+  seedLicence: true,
+  fertiliserLicence: true,
+  pesticideLicence: true,
+} as const;
+
+// The include every admin product read uses, so a row read back after a write
+// has exactly the shape the list gave it.
+const ADMIN_ROW_INCLUDE = {
+  supplier: { select: ADMIN_SUPPLIER },
+  _count: { select: { enquiries: true } },
+} as const;
+
+type AdminRowSource = Prisma.AgriInputGetPayload<{ include: typeof ADMIN_ROW_INCLUDE }>;
+
+// Everything standing between a row and /inputs, not just the first thing: a
+// product taken off by hand at a shop with no licence needs both put right, and
+// naming one would send someone to fix it and find nothing changed.
+export function hiddenBecause(row: {
+  active: boolean;
+  category: AgriInputCategory;
+  supplier: { active: boolean } & Record<LicenceColumn, string | null>;
+}): string[] {
+  const reasons: string[] = [];
+  if (!row.active) reasons.push('Taken off the catalogue');
+  if (!row.supplier.active) reasons.push('The shop is taken off the catalogue');
+  const needed = REQUIRED_LICENCE[row.category];
+  // `== null` rather than falsy, to match SELLABLE's `not: null` exactly.
+  if (needed && row.supplier[needed] == null) {
+    reasons.push(`No ${LICENCE_BADGE[needed]} licence on file for this shop`);
+  }
+  return reasons;
+}
+
+interface AdminCatalogueQuery {
+  category?: AgriInputCategory;
+  visibility?: 'live' | 'hidden';
+  q?: string;
+  limit: number;
+  offset: number;
+}
+
+export async function listCatalogueForAdmin(query: AdminCatalogueQuery) {
+  const and: Prisma.AgriInputWhereInput[] = [];
+
+  if (query.category) and.push({ category: query.category });
+  if (query.visibility === 'live') and.push(SELLABLE);
+  if (query.visibility === 'hidden') and.push({ NOT: SELLABLE });
+
+  const q = query.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { brand: { contains: q, mode: 'insensitive' } },
+        { composition: { contains: q, mode: 'insensitive' } },
+        // Ops think in shops as often as in products: "what does Godavari have".
+        { supplier: { name: { contains: q, mode: 'insensitive' } } },
+      ],
+    });
+  }
+
+  const where: Prisma.AgriInputWhereInput = { AND: and };
+
+  const [rows, total, allByCategory, liveByCategory] = await Promise.all([
+    prisma.agriInput.findMany({
+      where,
+      // Grouped the way the category pills are, then alphabetical, so a page
+      // reads like a shelf rather than in whatever order a loader inserted it.
+      orderBy: [{ category: 'asc' }, { title: 'asc' }],
+      skip: query.offset,
+      take: query.limit,
+      include: ADMIN_ROW_INCLUDE,
+    }),
+    prisma.agriInput.count({ where }),
+    // The headline counts are the whole catalogue, whatever the filter, so the
+    // numbers at the top do not change meaning as someone clicks around.
+    prisma.agriInput.groupBy({ by: ['category'], _count: { _all: true } }),
+    prisma.agriInput.groupBy({ by: ['category'], where: SELLABLE, _count: { _all: true } }),
+  ]);
+
+  const liveIds = new Set(
+    (
+      await prisma.agriInput.findMany({
+        where: { AND: [{ id: { in: rows.map((r) => r.id) } }, SELLABLE] },
+        select: { id: true },
+      })
+    ).map((r) => r.id)
+  );
+
+  const categories = CATEGORIES.map((id) => {
+    const needs = REQUIRED_LICENCE[id];
+    return {
+      id,
+      label: CATEGORY_LABEL[id],
+      // Which licence the category needs, so the add-product form can warn
+      // before saving instead of keeping its own copy of the rule.
+      licence: needs ? LICENCE_BADGE[needs] : null,
+      total: allByCategory.find((c) => c.category === id)?._count._all ?? 0,
+      live: liveByCategory.find((c) => c.category === id)?._count._all ?? 0,
+    };
+  });
+
+  return {
+    inputs: rows.map((row) => toAdminRow(row, liveIds.has(row.id))),
+    total,
+    counts: {
+      total: categories.reduce((n, c) => n + c.total, 0),
+      live: categories.reduce((n, c) => n + c.live, 0),
+    },
+    categories,
+  };
+}
+
+function toAdminRow({ _count, supplier, ...row }: AdminRowSource, live: boolean) {
+  const reasons = live ? [] : hiddenBecause({ ...row, supplier });
+  const { seedLicence, fertiliserLicence, pesticideLicence, ...shop } = supplier;
+  return {
+    ...row,
+    live,
+    // A hidden row always says something. An empty list here would mean
+    // SELLABLE and REQUIRED_LICENCE have drifted apart, which the admin test
+    // exists to catch, but the screen should not go quiet if it does.
+    hiddenBecause: live ? [] : reasons.length > 0 ? reasons : ['Hidden by the catalogue rules'],
+    enquiries: _count.enquiries,
+    supplier: {
+      ...shop,
+      licences: licenceBadges({ seedLicence, fertiliserLicence, pesticideLicence }),
+    },
+  };
+}
+
+async function getAdminRow(id: string) {
+  const [row, live] = await Promise.all([
+    prisma.agriInput.findUnique({ where: { id }, include: ADMIN_ROW_INCLUDE }),
+    prisma.agriInput.count({ where: { AND: [{ id }, SELLABLE] } }),
+  ]);
+  if (!row) throw new ApiError(404, 'Product not found');
+  return toAdminRow(row, live > 0);
+}
+
+// Unpaginated on purpose: shops are added one at a time by a person, from the
+// admin panel or the catalogue file, so this is a list somebody typed in rather
+// than a table that grows by itself.
+export async function listSuppliersForAdmin(only?: { id: string }) {
+  const [suppliers, stocked, liveBySupplier] = await Promise.all([
+    prisma.inputSupplier.findMany({
+      where: only,
+      orderBy: [{ state: 'asc' }, { name: 'asc' }],
+      select: { ...ADMIN_SUPPLIER, _count: { select: { inputs: true } } },
+    }),
+    // What each shop stocks, to work out which licences its own shelf needs.
+    // A shop selling only compost needs none, and should not be told otherwise.
+    prisma.agriInput.groupBy({
+      by: ['supplierId', 'category'],
+      where: { active: true, ...(only && { supplierId: only.id }) },
+    }),
+    prisma.agriInput.groupBy({
+      by: ['supplierId'],
+      where: only ? { AND: [{ supplierId: only.id }, SELLABLE] } : SELLABLE,
+      _count: { _all: true },
+    }),
+  ]);
+
+  return {
+    suppliers: suppliers.map(({ _count, seedLicence, fertiliserLicence, pesticideLicence, ...shop }) => {
+      const held: Record<LicenceColumn, string | null> = { seedLicence, fertiliserLicence, pesticideLicence };
+      const missing = new Set<LicenceColumn>();
+      for (const row of stocked) {
+        if (row.supplierId !== shop.id) continue;
+        const needed = REQUIRED_LICENCE[row.category];
+        if (needed && held[needed] == null) missing.add(needed);
+      }
+      return {
+        ...shop,
+        licences: licenceBadges(held),
+        // The licences this shop's own stock is waiting on. The one line on the
+        // screen that says what to go and get. Walked in a fixed order because
+        // groupBy returns rows in whatever order Postgres likes.
+        missingLicences: LICENCE_COLUMNS.filter((c) => missing.has(c)).map((c) => LICENCE_BADGE[c]),
+        products: _count.inputs,
+        live: liveBySupplier.find((r) => r.supplierId === shop.id)?._count._all ?? 0,
+      };
+    }),
+  };
+}
+
+async function getAdminSupplier(id: string) {
+  const { suppliers } = await listSuppliersForAdmin({ id });
+  if (!suppliers[0]) throw new ApiError(404, 'Shop not found');
+  return suppliers[0];
+}
+
+// =============================================================================
+// ADMIN WRITES — adding shops and products, and entering licences
+// =============================================================================
+// The catalogue used to reach the database only through the loader file (§7).
+// These let ops add to it from the admin panel instead. Nothing here goes round
+// SELLABLE: a product added to a shop with no seed licence is written, and stays
+// hidden from farmers until the licence is on file, exactly like a loaded one.
+//
+// The rules a product has to satisfy live here rather than in the controller,
+// so any future caller is bound by them too.
+
+function uniqueViolation(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+// /inputs filters by exact crop name (`has`), so "cotton" typed here next to a
+// catalogue's "Cotton" would make a second Cotton chip, and the new product
+// would be missing from the first. A name the catalogue already uses is
+// matched whatever its case; a new one is kept, with a capital.
+async function canonicalCrops(names: string[]): Promise<string[]> {
+  const rows = await prisma.agriInput.findMany({ select: { cropNames: true } });
+  const known = new Map(rows.flatMap((r) => r.cropNames).map((c) => [c.toLowerCase(), c]));
+  const out = names
+    .map((n) => n.trim().replace(/\s+/g, ' '))
+    .filter(Boolean)
+    .map((n) => known.get(n.toLowerCase()) ?? n.charAt(0).toUpperCase() + n.slice(1));
+  return [...new Set(out)];
+}
+
+export interface AgriInputFields {
+  title: string;
+  category: AgriInputCategory;
+  brand: string | null;
+  cropNames: string[];
+  packSize: string;
+  pricePerPack: number;
+  subsidised: boolean;
+  composition: string | null;
+  germinationPct: number | null;
+  seedTreatment: string | null;
+  dosagePerAcre: string | null;
+  specs: string[];
+  description: string | null;
+}
+
+// Checked on the product as it will be saved, not on the request, so an edit
+// that changes only the category is held to the same rules as a new product.
+function assertProductRules(p: AgriInputFields) {
+  // A statutory MRP is a fertiliser thing (urea, DAP, MOP). On anything else the
+  // "set by government" line /inputs prints under a subsidised row would be false.
+  if (p.subsidised && p.category !== 'FERTILISER') {
+    throw new ApiError(400, 'Only fertiliser carries a government-set price');
+  }
+  // These print as the seed label on /inputs. On a bag of urea they would read
+  // as a germination guarantee it does not have.
+  if (p.category !== 'SEED' && (p.germinationPct != null || p.seedTreatment != null)) {
+    throw new ApiError(400, 'Germination and seed treatment are for seed only');
+  }
+  if (p.cropNames.length === 0) {
+    throw new ApiError(400, 'Pick at least one crop: it is how farmers find a product');
+  }
+}
+
+export async function createAgriInput(supplierId: string, fields: AgriInputFields) {
+  const supplier = await prisma.inputSupplier.findUnique({
+    where: { id: supplierId },
+    select: { id: true, location: true, state: true },
+  });
+  if (!supplier) throw new ApiError(404, 'Shop not found');
+
+  const data = {
+    ...fields,
+    cropNames: await canonicalCrops(fields.cropNames),
+    pricePerPack: Math.round(fields.pricePerPack * 100) / 100,
+  };
+  assertProductRules(data);
+
+  try {
+    const created = await prisma.agriInput.create({
+      data: {
+        ...data,
+        supplierId,
+        // Where the product is sold is where the shop is. /inputs filters by
+        // the product's own state, so it is copied rather than asked for twice.
+        location: supplier.location,
+        state: supplier.state,
+      },
+      select: { id: true },
+    });
+    return getAdminRow(created.id);
+  } catch (error) {
+    if (uniqueViolation(error)) {
+      throw new ApiError(409, `This shop already lists "${fields.title}"`);
+    }
+    throw error;
+  }
+}
+
+export async function updateAgriInput(
+  id: string,
+  patch: Partial<AgriInputFields> & { active?: boolean }
+) {
+  const existing = await prisma.agriInput.findUnique({ where: { id } });
+  if (!existing) throw new ApiError(404, 'Product not found');
+
+  const { active, ...fieldPatch } = patch;
+  const merged: AgriInputFields = {
+    title: existing.title,
+    category: existing.category,
+    brand: existing.brand,
+    cropNames: existing.cropNames,
+    packSize: existing.packSize,
+    pricePerPack: existing.pricePerPack,
+    subsidised: existing.subsidised,
+    composition: existing.composition,
+    germinationPct: existing.germinationPct,
+    seedTreatment: existing.seedTreatment,
+    dosagePerAcre: existing.dosagePerAcre,
+    specs: existing.specs,
+    description: existing.description,
+    ...fieldPatch,
+  };
+  if (fieldPatch.cropNames) merged.cropNames = await canonicalCrops(fieldPatch.cropNames);
+  merged.pricePerPack = Math.round(merged.pricePerPack * 100) / 100;
+  assertProductRules(merged);
+
+  try {
+    await prisma.agriInput.update({
+      where: { id },
+      data: { ...merged, ...(active !== undefined && { active }) },
+    });
+  } catch (error) {
+    if (uniqueViolation(error)) {
+      throw new ApiError(409, `This shop already lists "${merged.title}"`);
+    }
+    throw error;
+  }
+  return getAdminRow(id);
+}
+
+export interface SupplierFields {
+  name: string;
+  location: string;
+  state: string;
+  contactPhone: string;
+  contactEmail: string | null;
+}
+
+// A new shop starts unverified and unlicensed. Licences go in through
+// setSupplierLicences, which is the one path that records who vouched for them.
+export async function createSupplier(fields: SupplierFields) {
+  try {
+    const created = await prisma.inputSupplier.create({ data: fields, select: { id: true } });
+    return getAdminSupplier(created.id);
+  } catch (error) {
+    if (uniqueViolation(error)) {
+      throw new ApiError(409, `A shop called "${fields.name}" is already listed in ${fields.state}`);
+    }
+    throw error;
+  }
+}
+
+// Town and state are not editable. A licence is issued for one premises in one
+// state, so a shop that moves is a new shop with its own licences, and the
+// schema already treats a chain's branch in another state that way.
+export async function updateSupplier(
+  id: string,
+  patch: Partial<Pick<SupplierFields, 'name' | 'contactPhone' | 'contactEmail'>> & { active?: boolean }
+) {
+  const existing = await prisma.inputSupplier.findUnique({ where: { id }, select: { state: true } });
+  if (!existing) throw new ApiError(404, 'Shop not found');
+
+  try {
+    await prisma.inputSupplier.update({ where: { id }, data: patch });
+  } catch (error) {
+    if (uniqueViolation(error)) {
+      throw new ApiError(409, `A shop called "${patch.name}" is already listed in ${existing.state}`);
+    }
+    throw error;
+  }
+  return getAdminSupplier(id);
+}
+
+export type LicencePatch = Partial<Record<LicenceKind, string | null>>;
+
+const LICENCE_COLUMN: Record<LicenceKind, LicenceColumn> = {
+  seed: 'seedLicence',
+  fertiliser: 'fertiliserLicence',
+  pesticide: 'pesticideLicence',
+};
+
+// THE LICENCE COLUMN IS THE GATE. Whatever writes it decides what a farmer is
+// told a shop may legally sell, and /inputs prints "holds a valid licence to
+// sell this category, checked by CropBid" under every product it unlocks. So:
+//
+//   - Entering a licence needs the admin to say they have seen the document.
+//     Clearing one does not: taking a claim down is always safe.
+//   - The audit row is written in the same transaction as the licence, not
+//     through recordAudit, which swallows its own failures. A licence with no
+//     record of who vouched for it is exactly what must not exist.
+//   - The audit row names which licences changed and who changed them, never
+//     the numbers: an audit table that copies every licence number is a second
+//     place to copy them from, and the number is on the shop row anyway.
+export async function setSupplierLicences(
+  adminId: string,
+  supplierId: string,
+  patch: LicencePatch,
+  paperworkSeen: boolean
+) {
+  const kinds = (Object.keys(patch) as LicenceKind[]).filter((k) => patch[k] !== undefined);
+  if (kinds.length === 0) throw new ApiError(400, 'No licence to change');
+
+  const entered = kinds.filter((k) => patch[k] != null);
+  const cleared = kinds.filter((k) => patch[k] == null);
+  if (entered.length > 0 && !paperworkSeen) {
+    throw new ApiError(400, 'Confirm you have seen the licence document before entering it');
+  }
+
+  const exists = await prisma.inputSupplier.count({ where: { id: supplierId } });
+  if (!exists) throw new ApiError(404, 'Shop not found');
+
+  const data: Partial<Record<LicenceColumn, string | null>> = {};
+  for (const k of kinds) data[LICENCE_COLUMN[k]] = patch[k] ?? null;
+
+  await prisma.$transaction([
+    prisma.inputSupplier.update({ where: { id: supplierId }, data }),
+    prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        actorRole: 'ADMIN',
+        action: 'admin.input_supplier.licences',
+        entityType: 'InputSupplier',
+        entityId: supplierId,
+        metadata: { entered, cleared, paperworkSeen: entered.length > 0 },
+      },
+    }),
+  ]);
+
+  return getAdminSupplier(supplierId);
 }

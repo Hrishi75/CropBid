@@ -6,6 +6,12 @@
 // table, which makes it correct for a development reset and unusable against
 // production. This script INSERTS AND UPDATES ONLY, and never deletes.
 //
+// IT OVERWRITES PANEL EDITS
+// Shops and products can also be added and edited in the admin panel. A re-run
+// writes the file's values back over any row the file names (every product
+// field; a shop's town, phone and email), so a price corrected in the panel is
+// undone by the next run. Rows the file does not name are never touched.
+//
 // IDEMPOTENT
 // Suppliers are keyed on (name, state) and products on (supplier, title), both
 // enforced by unique constraints in the schema, so this runs as a single upsert
@@ -26,8 +32,8 @@
 // this is the script that runs against production, so a supplier goes through
 // supplierLoadFields, which carries neither. On a fresh production load every
 // seed, fertiliser and crop-protection row is therefore hidden until a person
-// enters the checked licence on the supplier row, and that gap is the gate
-// working. On a development database, where seed.ts writes the placeholders, a
+// who has checked the licence enters it in the admin panel (Seeds & fertiliser
+// → Shops → Licences), and that gap is the gate working. On a development database, where seed.ts writes the placeholders, a
 // gap means a catalogue row names a shop not licensed for that category.
 //
 // RUN: npx ts-node prisma/seedAgriInputs.ts
@@ -157,8 +163,8 @@ async function main() {
     console.warn(
       `\n⚠️  ${written - liveProducts} active product(s) are HIDDEN because their supplier holds no\n` +
       `   licence for that category on this database. This loader never writes licences:\n` +
-      `   enter each one on the supplier row by hand once the paperwork has been checked,\n` +
-      `   and its products go live.`,
+      `   once the paperwork has been checked, enter each one in the admin panel\n` +
+      `   (Seeds & fertiliser → Shops → Licences) and its products go live.`,
     );
   }
 }

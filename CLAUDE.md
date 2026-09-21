@@ -366,7 +366,7 @@ cd mobile && EXPO_PUBLIC_API_URL=http://localhost:5055/api \
 
 Both variables default to production, so an unset one is not a broken build, it is a build reading live data.
 
-Both marketplace catalogues are loaded by hand, never through an API. Pass an explicit `DATABASE_URL`, because `server/.env` points at production:
+The equipment catalogue is loaded by hand, never through an API. Seeds and fertiliser can be added from the admin panel since 2026-09-21 (§10), and the loader below still works for a first or bulk load. Pass an explicit `DATABASE_URL`, because `server/.env` points at production:
 
 ```bash
 cd server
@@ -376,7 +376,9 @@ npx ts-node prisma/seedAgriInputs.ts   # seed, fertiliser, crop protection
 
 Both are **additive and idempotent**: insert and update only, never delete, so they are safe against production and a re-run corrects prices in place. `active` is never written on update, so a row taken off the catalogue by hand stays off. `prisma/seed.ts` is the opposite, wiping every table first, and is development-only. It loads both catalogues as well, placeholder licences included, which is the one place those may be written.
 
-`seedAgriInputs.ts` warns when a product loaded but is **hidden** by the licence gate. On production that is expected until a licence has been entered by hand (§10), since the loader never writes one. On a development database it means a catalogue row names a shop not licensed for that category: fix the licence or drop the row.
+`seedAgriInputs.ts` warns when a product loaded but is **hidden** by the licence gate. On production that is expected until a licence has been entered in the admin panel (§10), since the loader never writes one.
+
+**The loader and the admin panel now write the same rows.** A re-run overwrites every field of a product the file names, and a shop's town, phone and email, so it puts the file's values back over an edit made in the panel. It never touches licences, `active` or anything the file does not name, so products and shops added in the panel are safe. Once the panel is in use on production, change a file row in the file, or stop re-running the loader. On a development database it means a catalogue row names a shop not licensed for that category: fix the licence or drop the row.
 
 **CI runs the server test suite** (`Test (vitest)` in the server job, `.github/workflows/ci.yml`). The client job is lint + build and the mobile job is typecheck, neither of which runs tests, because neither has a suite. Client typecheck needs `tsc -b`, not `tsc --noEmit` (project references).
 
@@ -462,7 +464,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 Both are web only. The app dropped its equipment screen (§9) and never had an inputs one.
 
 - **Neither creates a `Transaction`, a `Bid`, or touches Razorpay.** They write `EquipmentEnquiry` / `AgriInputEnquiry` rows. Leads, not orders. CropBid takes no payment for a tractor or a bag of urea.
-- **Dealers and suppliers are not `User`s.** No login, no self-serve, so there is **no write API**. Both catalogues are loaded by hand from a file (§7). If either ever gets self-service, the row gains an optional `userId` rather than being replaced.
+- **Dealers and suppliers are not `User`s.** No login and no self-serve, so no dealer or shop writes anything. Equipment is loaded by hand from a file (§7) and has **no write API**; seeds and fertiliser are added by an **admin**, from the panel (below) or the file. If either ever gets self-service, the row gains an optional `userId` rather than being replaced.
 - **The contact rule.** A partner's phone number is returned by **exactly one function**, `createEnquiry`, which requires auth. Browse and detail expose name, location, rating and verified status only. That is what stops the catalogue being harvested into a contact list, and it is the same instinct as `contactVisibility.ts` on the trading side. **A new read path must not include `contactPhone`.**
 - **Auth alone does not stop the harvest**, which review caught on `/inputs`. Every product id is on the public browse, so one signed-in account could enquire on each in turn and leave with every number. Two guards, for two different harms. A unique index on `(userId, agriInputId)` means a repeat gets back the lead already on file (200, not 201) instead of writing another, so the table cannot be filled with copies. `enquiryLimiter` caps enquiries at 20 a day per **account**, not per IP, because what is being rationed is what one account may collect, and an IP in the key hands out a fresh allowance to anyone who changes network. **`/equipment` has neither yet.**
 
@@ -480,7 +482,30 @@ CropBid holds none of them and must never need to. That is only true while **Cro
 
 Licence *numbers* never leave the server. Clients get booleans, enough to render "licensed seed dealer" without publishing a document reference someone could copy onto a fake shopfront.
 
-**A licence reaches the production database only by hand, after someone has checked the paperwork.** The catalogue's licence numbers are placeholders in real state formats, and `SELLABLE` can only test that a column is not null, so whatever writes that column is the actual gate. `seed.ts` writes them, because a development database is where placeholders belong. `seedAgriInputs.ts`, the loader that runs against production, writes **no licence and no `verified` flag** on create or update: it goes through `supplierLoadFields` in the catalogue, and a test pins what that returns. A fresh production load therefore shows organic inputs, micronutrients and saplings and hides every seed, fertiliser and crop-protection row until a person enters the checked licence on the supplier row. That is the correct state, not a bug. Review caught the version before it, which loaded the placeholders: they passed the gate, put "holds a valid licence, checked by CropBid" over shops nobody had checked, and every re-run wrote them back over a licence someone had cleared.
+**A licence reaches the production database only when a person who has checked the paperwork enters it**, in the admin panel since 2026-09-21 (below). The catalogue's licence numbers are placeholders in real state formats, and `SELLABLE` can only test that a column is not null, so whatever writes that column is the actual gate. `seed.ts` writes them, because a development database is where placeholders belong. `seedAgriInputs.ts`, the loader that runs against production, writes **no licence and no `verified` flag** on create or update: it goes through `supplierLoadFields` in the catalogue, and a test pins what that returns. A fresh production load therefore shows organic inputs, micronutrients and saplings and hides every seed, fertiliser and crop-protection row until a person enters the checked licence for that shop. That is the correct state, not a bug. Review caught the version before it, which loaded the placeholders: they passed the gate, put "holds a valid licence, checked by CropBid" over shops nobody had checked, and every re-run wrote them back over a licence someone had cleared.
+
+### What ops see and do: `/admin/inputs` (shipped 2026-09-21)
+
+**Every product in the catalogue, whether a farmer can see it and what each hidden one is waiting on; and the place ops add shops and products and enter licences.** Every read path above goes through `SELLABLE`, so before this an admin could not tell what the catalogue held, and "why is there no seed on /inputs" had no answer short of reading the database. A Shops view lists each shop's licences as on file or not, and which licences **its own stock** is waiting on: a shop selling only compost needs none and is not told otherwise.
+
+Reading it:
+
+- **Live is decided by running `SELLABLE` over the page**, not re-derived, so this screen cannot disagree with `/inputs`. Its headline live count is the number public browse returns, and a test pins that.
+- **The explanation is `REQUIRED_LICENCE`**, the same rule written as data, because a query can say a row is hidden but not why. Two statements of one rule can drift, so `agriInput.admin.test.ts` runs every category against every licence mix on a real Postgres and fails if they disagree. It was watched failing with a gate removed from each side in turn. The same map tells the add-product form which licence a category needs, so the browser keeps no copy of the rule.
+- **Every reason, not the first.** A product taken off at an unlicensed shop needs both put right; naming one sends someone to fix it and nothing changes.
+
+Writing to it (the user's call, 2026-09-21: seeds and fertiliser are added from the admin panel, not only from the file):
+
+- **Adding a product does not go round the gate.** A seed added to a shop with no seed licence is saved and stays hidden, exactly like a loaded one, and the form says so before the button is pressed.
+- **The label rules live in the service**, so they bind any caller: a government-set price only on fertiliser, germination and seed treatment only on seed, at least one crop. They are checked on the product as it will be saved, so an edit that only changes the category cannot leave a germination figure on a bag of urea.
+- **Crop names are matched to the catalogue's own spelling**, because `/inputs` filters on an exact match: "cotton" typed next to an existing "Cotton" would make a second chip and hide the product from the first.
+- **A product's town and state are the shop's**, copied on save. **A shop's town and state cannot be edited**: a licence covers one premises in one state, so a shop that moves is a new shop. The API refuses the edit out loud rather than dropping the field.
+- **Entering a licence needs the admin to tick that they have seen the document**, because `/inputs` then prints "holds a valid licence to sell this category, checked by CropBid" under that shop's products, and the tick is someone taking responsibility for that sentence. Removing one needs only a second click: taking a claim down is always safe. Licence entry is in the panel because without it a seed added there could never show on production, where no shop holds a licence yet.
+- **The licence and its audit row are one transaction**, not written through `recordAudit`, which swallows its own failures. A licence with no record of who vouched for it must not exist. The row names which licences were entered or cleared and by whom, **never the numbers**: an audit table copying every licence number is a second place to copy them from, the same argument as §4a's payout details.
+- **Still no phone numbers and no licence numbers going out**, admin included, and not even straight after saving one. Editing a shop's phone starts blank and blank means keep. Tests check the responses for both.
+- **Taking off** a product or a whole shop is `active: false`, reversible, and asks once before it acts. There is no delete: a product can have enquiries hanging off it.
+
+**Knowingly unbuilt:** the enquiries show only as a count per product. Equipment leads have a screen for working them (`/admin/enquiries`: who asked, both phone numbers, mark contacted); inputs leads have none. Nor can an admin mark a shop `verified` or upload product images from the panel.
 
 ### Smaller calls worth not reversing
 
