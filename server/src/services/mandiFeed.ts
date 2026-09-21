@@ -23,9 +23,13 @@
 //      for at once was a burst; the same volume one request at a time is not.
 //      So requests go out strictly one after another, and a 429 is waited out.
 //
-// A visitor never waits on the feed except on the first request after a
-// restart, and `warmMandiFeed()` at boot usually has it loaded before then.
-// A stale copy is served while a fresh one downloads in the background.
+// Only a COMPLETE copy is ever served. A half-read day is a slice of the
+// country, and the board, a listing's anchor and the forecast would all show
+// it as live national prices with no way to say otherwise. Until the first
+// complete copy exists (a cold start, a capped key, a sweep that could not
+// finish) callers get null and fall back to reference prices, labelled as
+// such. A stale complete copy is served while a fresh one downloads in the
+// background, and `warmMandiFeed()` starts the first download at boot.
 // =============================================================================
 
 import { config } from '../config';
@@ -44,12 +48,9 @@ export interface MandiRow {
   modal: number;
 }
 
+// Always a whole day: partial downloads are never published.
 export interface MandiSnapshot {
   rows: MandiRow[];
-  // True only when the rows add up to the `total` the feed itself reported.
-  // A partial copy is served while nothing better exists, but never kept in
-  // place of a complete one, however old that is within STALE_MAX_MS.
-  complete: boolean;
   fetchedAt: number;
 }
 
@@ -166,60 +167,62 @@ const rowsOf = (records: RawRecord[]) => records.map(toRow).filter((r): r is Man
 // -----------------------------------------------------------------------------
 // One unfiltered request gives the day's total, the states the feed is using
 // that day (in its own spelling) and, early in the day, everything. Once the
-// day outgrows the window, each state is fetched on its own until the states'
-// totals add up to the day's. A state absent from the first page is found
-// through CropBid's own list; one the feed spells in a way nobody here knows
-// leaves the copy incomplete, and the warning names the shortfall.
-async function downloadDay(onFirstPage: (partial: MandiSnapshot) => void): Promise<MandiSnapshot> {
+// day outgrows the window, EVERY state is fetched on its own: the ones the
+// first page named, then the rest of CropBid's list, for a state whose rows
+// all sit past row 10,000.
+//
+// The sweep never stops early on a running total. The feed grows while it is
+// read, so the states fetched first can gain enough rows to reach the total
+// taken at the start while later states are still unread. The total is only
+// checked once every state is in, and only as a floor: a state's rows only
+// ever grow, so a sweep that found every state adds up to at least the
+// opening total. Falling short means rows under a state spelling nobody here
+// knows, and the warning says by how much. (Growth could hide such a state
+// only if it is also absent from the first 10,000 rows.)
+//
+// Returns the whole day, or null when it could not be read whole.
+async function downloadDay(): Promise<MandiRow[] | null> {
   const first = await fetchPatiently({});
   const day = first.total;
-  if (first.records.length >= day) {
-    return { rows: rowsOf(first.records), complete: true, fetchedAt: Date.now() };
-  }
+  if (first.records.length >= day) return rowsOf(first.records);
   if (first.limit < WINDOW) {
     // The key is capped (the demo key's 10 rows). A sweep would be 17,000
-    // rows ten at a time; serve the sliver and say why.
+    // rows ten at a time, and ten rows is not a price.
     warnOnce('capped', `[rates] data.gov.in returned ${first.records.length} of ${day} rows and ` +
       `capped the page at ${first.limit}. That is what the shared demo key does: set a registered ` +
-      'DATA_GOV_API_KEY or every price is a median of a handful of mandis.');
-    return { rows: rowsOf(first.records), complete: false, fetchedAt: Date.now() };
+      'DATA_GOV_API_KEY. Until then the rates show reference prices.');
+    return null;
   }
-
-  const firstRows = rowsOf(first.records);
-  onFirstPage({ rows: firstRows, complete: false, fetchedAt: Date.now() });
 
   const seen = [...new Set(first.records.map((r) => (r.state ?? '').trim()).filter(Boolean))];
   const known = INDIAN_STATES.map((s) => FEED_SPELLING.get(s) ?? s);
   const queue = [...seen, ...known.filter((s) => !seen.includes(s))];
 
   const rows: MandiRow[] = [];
-  const fetched = new Set<string>();
   let covered = 0;
-  let complete = true;
   for (const feedState of queue) {
-    if (covered >= day) break;
     let page: Page;
     try {
       page = await fetchPatiently({ 'filters[state.keyword]': feedState });
     } catch (err) {
-      // Throttled past patience, or the feed went down mid-sweep. Keep what
-      // arrived and fill the rest of the day from the first page.
+      // Throttled past patience, or the feed went down mid-sweep.
       warnFailure(err, `sweep stopped at ${feedState}`);
-      complete = false;
-      break;
+      return null;
+    }
+    if (page.records.length < page.total) {
+      warnOnce('state-window', `[rates] ${feedState} alone has ${page.total} rows, past the feed's ` +
+        `${WINDOW}-row window; mandiFeed.ts needs to split it further.`);
+      return null;
     }
     covered += page.total;
-    if (page.records.length < page.total) complete = false;
     rows.push(...rowsOf(page.records));
-    fetched.add(normaliseState(feedState));
   }
   if (covered < day) {
-    complete = false;
-    warnOnce('shortfall', `[rates] the states add up to ${covered} of the feed's ${day} rows; ` +
-      'the rest is under a state spelling mandiFeed.ts does not know, or the sweep stopped early.');
+    warnOnce('shortfall', `[rates] the states add up to ${covered} of the feed's ${day} rows; the ` +
+      'rest is under a state spelling mandiFeed.ts does not know.');
+    return null;
   }
-  rows.push(...firstRows.filter((r) => !fetched.has(r.state)));
-  return { rows, complete, fetchedAt: Date.now() };
+  return rows;
 }
 
 // -----------------------------------------------------------------------------
@@ -233,25 +236,21 @@ const listeners = new Set<() => void>();
 const usable = (s: MandiSnapshot | null): s is MandiSnapshot =>
   s !== null && Date.now() - s.fetchedAt < STALE_MAX_MS;
 
-function publish(s: MandiSnapshot) {
-  current = s;
-  for (const l of listeners) l();
-}
-
-// A complete copy always wins. A partial one only replaces nothing, or
-// another partial, or a copy too old to serve.
-function offer(s: MandiSnapshot) {
-  if (s.complete || !usable(current) || !current.complete) publish(s);
-}
-
+// A download that did not finish, or found nothing, is dropped: whatever was
+// being served before stays, and it is tried again in FAILED_RETRY_MS. The
+// reason has already been logged by then.
 function refresh(): Promise<void> {
   if (!refreshing) {
     refreshing = (async () => {
       try {
-        const snap = await downloadDay(offer);
-        if (snap.rows.length === 0) throw new Error('data.gov.in returned no rows');
-        offer(snap);
-        nextRefreshAt = Date.now() + (snap.complete ? REFRESH_MS : FAILED_RETRY_MS);
+        const rows = await downloadDay();
+        if (rows?.length === 0) warnOnce('empty', '[rates] data.gov.in returned no rows');
+        if (rows && rows.length > 0) {
+          current = { rows, fetchedAt: Date.now() };
+          nextRefreshAt = Date.now() + REFRESH_MS;
+        } else {
+          nextRefreshAt = Date.now() + FAILED_RETRY_MS;
+        }
       } catch (err) {
         warnFailure(err, 'refresh failed');
         nextRefreshAt = Date.now() + FAILED_RETRY_MS;
@@ -265,17 +264,18 @@ function refresh(): Promise<void> {
 }
 
 /**
- * The day's rows, or null when there is nothing fit to serve (the feed has
- * been down for days, or this is a cold start and the first page is slow).
- * Callers fall back to reference prices on null.
+ * The day's rows, or null when there is no complete copy fit to serve (the
+ * feed has been down for days, the key is capped, or this is a cold start
+ * and the download has not finished). Callers fall back to reference prices
+ * on null.
  */
 export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   if (Date.now() >= nextRefreshAt) void refresh();
   if (usable(current)) return current;
   if (!refreshing) return null;
 
-  // Nothing to serve yet: wait for the first page or the end of the refresh,
-  // whichever comes first, but never hold a visitor longer than COLD_WAIT_MS.
+  // Nothing to serve yet: wait for the download to finish, but never hold a
+  // visitor longer than COLD_WAIT_MS.
   await new Promise<void>((resolve) => {
     const done = () => { clearTimeout(timer); listeners.delete(done); resolve(); };
     const timer = setTimeout(done, COLD_WAIT_MS);

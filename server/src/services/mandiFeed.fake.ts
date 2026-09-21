@@ -34,10 +34,10 @@ export function fakeFeed(rows: FakeRecord[], opts: { cap?: number; fail?: (u: UR
     if (status) return { ok: false, status, json: async () => ({}) } as unknown as Response;
     const state = u.searchParams.get('filters[state.keyword]');
     const limit = Math.min(Number(u.searchParams.get('limit')), opts.cap ?? WINDOW);
+    // Counted when the request lands, as the real feed does, so a test can
+    // grow `rows` between requests and have each reply see its own moment.
     const matched = state ? rows.filter((r) => r.state === state) : rows;
-    return {
-      ok: true, status: 200,
-      json: async () => ({ total: matched.length, limit: String(limit), records: matched.slice(0, limit) }),
-    } as unknown as Response;
+    const body = { total: matched.length, limit: String(limit), records: matched.slice(0, limit) };
+    return { ok: true, status: 200, json: async () => body } as unknown as Response;
   });
 }

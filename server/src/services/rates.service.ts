@@ -411,7 +411,6 @@ export interface CommodityRate {
 export interface AllRates {
   date: string;
   live: boolean;
-  complete: boolean;          // false while part of the day is still missing
   states: string[];           // every state that reported, for the picker
   groups: typeof GROUPS;
   rates: CommodityRate[];
@@ -421,8 +420,7 @@ export interface AllRates {
 // board crops through their usual fallback chain, so the page never loses a
 // crop it always showed. All India: every commodity reported anywhere.
 export async function getAllRates(state?: string): Promise<AllRates> {
-  const snap = await getMandiSnapshot();
-  const idx = indexOf(snap);
+  const idx = indexOf(await getMandiSnapshot());
   const st = state ? normaliseState(state) : undefined;
   const rates: CommodityRate[] = [];
 
@@ -460,7 +458,6 @@ export async function getAllRates(state?: string): Promise<AllRates> {
   return {
     date: idx.date ?? today(),
     live: rates.some((r) => r.source !== 'reference'),
-    complete: snap?.complete ?? false,
     states: idx.states,
     groups: GROUPS,
     rates,

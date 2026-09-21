@@ -351,7 +351,7 @@ DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run de
 - In a worktree, `server/src/generated` must be a real directory containing a `prisma` symlink.
 - No SMTP/WhatsApp configured locally → **OTP codes and emails print to the API log.**
 - Blank Razorpay keys → payment endpoints return 503 and everything else works.
-- Blank `DATA_GOV_API_KEY` → the shared demo key, which is throttled much of the day and returns 10 rows a request, so rates show a sliver of the country or fall back to static reference prices, badged `ref`. The API logs which. It looks like a UI bug and is not (§11).
+- Blank `DATA_GOV_API_KEY` → the shared demo key, which is throttled much of the day and returns 10 rows a request, so the rates fall back to static reference prices, badged `ref`, and the API log says why. It looks like a UI bug and is not (§11).
 
 Running the app against a local everything, which is what testing the policy screens needs:
 
@@ -532,11 +532,11 @@ Each product shows its enquiry count, linked to where the leads themselves are w
 It used to ask the feed per crop and per state, and the day it was checked properly (2026-09-21) every number on the board was wrong, for four reasons that are properties of the feed, measured, not guesses:
 
 1. **Its filters match any shared word.** `filters[commodity]=Onion` returned spring onion too; "Green Chilli" and "Ginger(Green)" pulled in anything green; `filters[state]=Andhra Pradesh` returned all four Pradesh states, so a state's mandi table listed other states. The exact filter is `filters[<field>.keyword]`, and commodity names are matched on our side.
-2. **No request reaches past row 10,000** (offset + limit), and a full day is about 17,000 rows. So the day is fetched one state at a time, and the states' totals must add up to the day's `total` before the copy counts as complete.
+2. **No request reaches past row 10,000** (offset + limit), and a full day is about 17,000 rows. So the day is fetched one state at a time, and the states' totals must add up to the day's `total` before the copy counts as complete. **Every state is read before that check**, never stopping on a running total: the feed grows while it is read, so the states read first can reach the opening count while others are still unread.
 3. **The shared demo key returns 10 rows whatever `limit` asks,** and replies `limit: 10`. The old pager took a page shorter than asked as "the end", so production quoted every crop as the median of the first 10 rows the feed happened to return. Maharashtra's onion was missing from /rates because its first row was number 24. Completeness is now judged on `total`, never on page length.
 4. **A key is refused for a minute or two after a burst.** Thirty crops fetched at once was a burst; the same 28 requests one after another went through without a single 429. Requests are strictly sequential, and a 429 is waited out.
 
-**A partial copy never replaces a complete one** (a sweep throttled half way is a slice of the country, not the country), and a copy older than three days is not served at all: the board says reference instead.
+**Only a complete copy is ever served.** A half-read day (the first page after a restart, a sweep throttled half way, the demo key's 10 rows) is a slice of the country, and the board, a listing's anchor and the forecast would all show it as live national prices with no way to say otherwise. Until a complete copy exists, and once the last one is three days old, they get reference prices, labelled as such.
 
 **`services/mandiCommodities.ts` says what each of the feed's ~260 names is**: its group, a readable label, and which names are one product. Merges were checked against the day's prices first: bhindi and "Ladies Finger", capsicum and "Chilly Capsicum", both mango codes, and "Paddy(Common)" into the board's paddy, whose own name had no rows at all. Lemon (₹150/kg) and lime (₹50/kg) stay apart, as do onion and spring onion. Livestock, flowers, wood and fodder are left out. **A name the table does not know is shown under "Other farm produce", not dropped**, so a new crop reaches the page the day it is first reported.
 
@@ -551,4 +551,4 @@ It used to ask the feed per crop and per state, and the day it was checked prope
 
 **Knowingly unbuilt:**
 - The "usual" reference prices are old. Onion's is ₹18/kg against ₹47 today, so its card reads roughly "+160% vs usual", which is the reference being stale rather than onion being dear.
-- The copy lives in memory, so a restart re-downloads the day (about 15 seconds, the first page within 2).
+- The copy lives in memory, so a restart re-downloads the day, about 15 seconds with reference prices until it is in.

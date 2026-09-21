@@ -46,7 +46,6 @@ interface LiveRate {
 interface AllRates {
   date: string;
   live: boolean;
-  complete: boolean;
   states: string[];
   groups: Array<{ id: Group; title: string }>;
   rates: LiveRate[];
@@ -293,11 +292,6 @@ export function RatesBody() {
           </Mono>
         </View>
 
-        {board?.live && !board.complete && (
-          <Text style={styles.note}>
-            {t("Part of today's report is still loading, so some states may be missing for a few minutes.")}
-          </Text>
-        )}
         {board && query.trim() !== '' && shown.length === 0 && (
           <Text style={styles.note}>{t('Nothing matches “{{q}}” today.', { q: query.trim() })}</Text>
         )}

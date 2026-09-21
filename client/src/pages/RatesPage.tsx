@@ -46,7 +46,6 @@ interface LiveRate {
 interface AllRates {
   date: string;
   live: boolean;
-  complete: boolean;
   states: string[];
   groups: Array<{ id: Group; title: string }>;
   rates: LiveRate[];
@@ -280,12 +279,6 @@ export function RatesPage() {
             </label>
           </div>
         </div>
-
-        {board?.live && !board.complete && (
-          <div className="rp-detail-note">
-            Part of today's report is still loading, so some states may be missing for a few minutes.
-          </div>
-        )}
 
         {board && query.trim() && shown.length === 0 && (
           <div className="rp-detail-note">

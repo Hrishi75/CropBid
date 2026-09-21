@@ -37,7 +37,6 @@ describe('a day that fits in one request', () => {
     vi.stubGlobal('fetch', fetch);
 
     const snap = await feed.getMandiSnapshot();
-    expect(snap?.complete).toBe(true);
     expect(snap?.rows).toHaveLength(2);
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -54,20 +53,31 @@ describe('a day bigger than the 10,000-row window', () => {
     ];
     vi.stubGlobal('fetch', fakeFeed(rows));
 
-    const first = await feed.getMandiSnapshot();
-    // The first request after a restart does not wait for the sweep: it gets
-    // the first page, labelled partial.
-    expect(first?.complete).toBe(false);
-
-    let snap = first;
-    for (let i = 0; i < 50 && !snap?.complete; i += 1) {
-      await new Promise((r) => setTimeout(r, 0));
-      snap = await feed.getMandiSnapshot();
-    }
-    expect(snap?.complete).toBe(true);
+    const snap = await feed.getMandiSnapshot();
     expect(snap?.rows).toHaveLength(WINDOW + 5);
     // Stored under CropBid's spelling, so "Kerala" from the picker finds it.
     expect(snap?.rows.filter((r) => r.state === 'Kerala')).toHaveLength(5);
+  });
+
+  it('reads every state even when the first ones have grown past the opening total', async () => {
+    // The day is counted at 10,005 rows, Punjab's 5 past the first page. By
+    // the time Maharashtra and Gujarat are read, Maharashtra has 10 more, so
+    // those two alone reach the count while Punjab is still unread. Stopping
+    // there would drop Punjab and call the day whole.
+    const rows = [
+      ...Array.from({ length: 6000 }, () => rec('Onion', 'Maharashtra', 2000)),
+      ...Array.from({ length: 4000 }, () => rec('Onion', 'Gujarat', 2000)),
+      ...Array.from({ length: 5 }, () => rec('Wheat', 'Punjab', 2500)),
+    ];
+    const inner = fakeFeed(rows);
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const res = await inner(input);
+      if (inner.mock.calls.length === 1) rows.push(...Array.from({ length: 10 }, () => rec('Onion', 'Maharashtra', 2000)));
+      return res;
+    }));
+
+    const snap = await feed.getMandiSnapshot();
+    expect(snap?.rows.filter((r) => r.state === 'Punjab')).toHaveLength(5);
   });
 
   it('asks for each state with the exact filter, not the word match', async () => {
@@ -84,14 +94,14 @@ describe('a day bigger than the 10,000-row window', () => {
 });
 
 describe('a key that caps every page (the shared demo key)', () => {
-  it('is not mistaken for the whole day, and is not swept ten rows at a time', async () => {
+  it('is not served as the day, and is not swept ten rows at a time', async () => {
+    // Ten rows passed off as India's price is the bug that hid Maharashtra's
+    // onion. Reference prices, labelled as such, are the honest answer.
     const rows = Array.from({ length: 30 }, (_, i) => rec('Onion', i < 15 ? 'Punjab' : 'Maharashtra', 2000));
     const fetch = fakeFeed(rows, { cap: 10 });
     vi.stubGlobal('fetch', fetch);
 
-    const snap = await feed.getMandiSnapshot();
-    expect(snap?.rows).toHaveLength(10);
-    expect(snap?.complete).toBe(false);
+    expect(await feed.getMandiSnapshot()).toBeNull();
     await vi.waitFor(() => expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('capped the page at 10')));
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -113,7 +123,7 @@ describe('when the feed fails', () => {
 
     // ...while the download waits out the throttle and finishes for the next.
     await vi.advanceTimersByTimeAsync(5_000);
-    expect((await feed.getMandiSnapshot())?.complete).toBe(true);
+    expect((await feed.getMandiSnapshot())?.rows).toHaveLength(1);
     expect(calls).toBe(2);
   });
 
@@ -122,7 +132,7 @@ describe('when the feed fails', () => {
     vi.setSystemTime(new Date('2026-09-21T06:00:00Z'));
     vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
     const good = await feed.getMandiSnapshot();
-    expect(good?.complete).toBe(true);
+    expect(good?.rows).toHaveLength(1);
 
     // Past the refresh interval, and the feed is down: the visitor gets the
     // copy they had, straight away, while the retry happens behind them.
@@ -135,6 +145,26 @@ describe('when the feed fails', () => {
     const pending = feed.getMandiSnapshot();
     await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     expect(await pending).toBeNull();
+  });
+
+  it('serves nothing rather than a half-read day, even on a cold start', async () => {
+    // The first page is 10,000 rows of the country, in the feed's own order:
+    // whole states can be missing from it. Served, the board would show it
+    // as live national prices and a state's view would show its reports gone.
+    vi.useFakeTimers();
+    const rows = [
+      ...Array.from({ length: WINDOW }, () => rec('Onion', 'Punjab', 2000)),
+      rec('Onion', 'Maharashtra', 3800),
+    ];
+    vi.stubGlobal('fetch', fakeFeed(rows, {
+      fail: (u) => (u.searchParams.get('filters[state.keyword]') === 'Maharashtra' ? 503 : undefined),
+    }));
+
+    const pending = feed.getMandiSnapshot();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await pending).toBeNull();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+    expect(await feed.getMandiSnapshot()).toBeNull();
   });
 
   it('never lets a half-finished download replace a complete one', async () => {
