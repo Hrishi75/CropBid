@@ -13,17 +13,18 @@
 
 import { useState, type FormEvent } from 'react';
 import api from '../../../lib/axios';
-import { INDIAN_STATES } from '../../../utils/indianStates';
 import { apiMessage, type AdminSupplier } from './types';
 
 interface Props {
   /** Present when editing; absent when adding. */
   shop?: AdminSupplier;
+  /** The states the server accepts, sent with the shop list. */
+  states: string[];
   onSaved: (shop: AdminSupplier) => void;
   onCancel: () => void;
 }
 
-export function ShopForm({ shop, onSaved, onCancel }: Props) {
+export function ShopForm({ shop, states, onSaved, onCancel }: Props) {
   const [name, setName] = useState(shop?.name ?? '');
   const [location, setLocation] = useState('');
   const [state, setState] = useState('Maharashtra');
@@ -86,7 +87,7 @@ export function ShopForm({ shop, onSaved, onCancel }: Props) {
             <div>
               <label className="cb-label" htmlFor="sf-state">State</label>
               <select id="sf-state" className="cb-input" value={state} onChange={(e) => setState(e.target.value)}>
-                {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {states.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </>

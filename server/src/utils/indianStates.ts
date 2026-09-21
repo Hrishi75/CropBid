@@ -1,12 +1,11 @@
 // =============================================================================
-// Indian states and union territories, for pickers
+// Indian states and union territories, spelled one way
 // =============================================================================
-// A picker rather than a text box wherever a state is stored, because /inputs
-// and the rates board filter on the state as written, and "maharashtra" next
-// to "Maharashtra" would be two states to a filter.
-//
-// CreateListing, CreateRequirement and RatesPage each still keep their own
-// shorter copy; they can move onto this one.
+// /inputs groups and filters products by the state stored on them, and a
+// product takes its state from its shop. So a shop saved as "Maharastra" would
+// make a second state on the public filter, and its products would be missing
+// from Maharashtra. The admin shop form reads this list from the API rather
+// than keeping its own copy, and the server refuses anything not on it.
 // =============================================================================
 
 export const INDIAN_STATES = [
@@ -19,3 +18,10 @@ export const INDIAN_STATES = [
   'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu',
   'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
 ] as const;
+
+const BY_LOWER = new Map<string, string>(INDIAN_STATES.map((s) => [s.toLowerCase(), s]));
+
+/** The list's own spelling of a state typed in any case, or null if it is not one. */
+export function canonicalState(input: string): string | null {
+  return BY_LOWER.get(input.trim().replace(/\s+/g, ' ').toLowerCase()) ?? null;
+}

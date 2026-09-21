@@ -39,6 +39,7 @@ export function ProductForm({ product, suppliers, categories, onSaved, onCancel 
     product?.germinationPct != null ? String(product.germinationPct) : ''
   );
   const [treatment, setTreatment] = useState(product?.seedTreatment ?? '');
+  const [details, setDetails] = useState(product?.specs.join('\n') ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export function ProductForm({ product, suppliers, categories, onSaved, onCancel 
       dosagePerAcre: dosage,
       germinationPct: category === 'SEED' && germination.trim() ? Number(germination) : null,
       seedTreatment: category === 'SEED' ? treatment : null,
+      specs: details.split('\n').map((d) => d.trim()).filter(Boolean),
       description,
     };
 
@@ -188,6 +190,16 @@ export function ProductForm({ product, suppliers, categories, onSaved, onCancel 
             </div>
           </>
         )}
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <label className="cb-label" htmlFor="pf-details">Details (optional)</label>
+        <textarea id="pf-details" className="cb-input" rows={3} value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          placeholder={'160–180 day duration\nSucking-pest tolerant'} />
+        <div className="cb-field-hint">
+          One per line, up to 10. Shown to farmers under "Details" on /inputs.
+        </div>
       </div>
 
       <div style={{ marginTop: 14 }}>

@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as adminService from '../services/admin.service';
 import * as agriInputService from '../services/agriInput.service';
+import { INDIAN_STATES } from '../utils/indianStates';
 import { prisma } from '../lib/prisma';
 import { auditFromRequest } from '../services/audit.service';
 
@@ -293,10 +294,12 @@ export async function getAgriInputCatalogue(req: Request, res: Response, next: N
   }
 }
 
-// GET /api/admin/agri-inputs/suppliers — the shops, and which licences are on file
+// GET /api/admin/agri-inputs/suppliers — the shops, and which licences are on file.
+// Carries the list of states too, so the add-shop picker offers exactly what
+// the server will accept instead of keeping its own copy.
 export async function getAgriInputSuppliers(_req: Request, res: Response, next: NextFunction) {
   try {
-    res.json(await agriInputService.listSuppliersForAdmin());
+    res.json({ ...(await agriInputService.listSuppliersForAdmin()), states: INDIAN_STATES });
   } catch (error) {
     next(error);
   }

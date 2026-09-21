@@ -33,6 +33,7 @@
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { canonicalState } from '../utils/indianStates';
 
 // Supplier fields safe to return on public endpoints. contactPhone/contactEmail
 // are deliberately absent — adding them here would leak every shop's number to
@@ -776,12 +777,17 @@ export interface SupplierFields {
 // A new shop starts unverified and unlicensed. Licences go in through
 // setSupplierLicences, which is the one path that records who vouched for them.
 export async function createSupplier(fields: SupplierFields) {
+  // Checked here rather than only in the form's picker, because every product
+  // at this shop inherits the spelling and /inputs files them under it.
+  const state = canonicalState(fields.state);
+  if (!state) throw new ApiError(400, 'Pick a state from the list');
+
   try {
-    const created = await prisma.inputSupplier.create({ data: fields, select: { id: true } });
+    const created = await prisma.inputSupplier.create({ data: { ...fields, state }, select: { id: true } });
     return getAdminSupplier(created.id);
   } catch (error) {
     if (uniqueViolation(error)) {
-      throw new ApiError(409, `A shop called "${fields.name}" is already listed in ${fields.state}`);
+      throw new ApiError(409, `A shop called "${fields.name}" is already listed in ${state}`);
     }
     throw error;
   }

@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { useState, useEffect, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import api from '../../lib/axios';
@@ -80,6 +81,7 @@ export function AdminInputs() {
   const LIMIT = 20;
 
   const [suppliers, setSuppliers] = useState<AdminSupplier[] | null>(null);
+  const [states, setStates] = useState<string[]>([]);
   const [suppliersFailed, setSuppliersFailed] = useState(false);
   const [suppliersReload, setSuppliersReload] = useState(0);
 
@@ -105,6 +107,15 @@ export function AdminInputs() {
     api.get<CatalogueResponse>(`/admin/agri-inputs?${params}`)
       .then((res) => {
         if (!current) return;
+        // A write can leave this page past the end: take off the last product
+        // on page 3 of "Live" and there is no page 3. Step back to the last
+        // page that has rows, rather than "No products match" with the pager
+        // gone. Changing the page starts a new request, so this one is dropped.
+        const lastPage = Math.max(0, Math.ceil(res.data.total / LIMIT) - 1);
+        if (page > lastPage) {
+          setPage(lastPage);
+          return;
+        }
         setCatalogue(res.data);
         setSettledKey(requestKey);
       })
@@ -120,10 +131,11 @@ export function AdminInputs() {
 
   useEffect(() => {
     let current = true;
-    api.get<{ suppliers: AdminSupplier[] }>('/admin/agri-inputs/suppliers')
+    api.get<{ suppliers: AdminSupplier[]; states: string[] }>('/admin/agri-inputs/suppliers')
       .then((res) => {
         if (!current) return;
         setSuppliers(res.data.suppliers);
+        setStates(res.data.states);
         setSuppliersFailed(false);
       })
       .catch((err) => {
@@ -256,7 +268,7 @@ export function AdminInputs() {
         />
       )}
       {view === 'shops' && open?.kind === 'add-shop' && (
-        <ShopForm onSaved={(s) => onShopSaved(s, '{name} added. Enter its licences next.')} onCancel={() => setOpen(null)} />
+        <ShopForm states={states} onSaved={(s) => onShopSaved(s, '{name} added. Enter its licences next.')} onCancel={() => setOpen(null)} />
       )}
 
       {view === 'products' ? (
@@ -385,7 +397,7 @@ export function AdminInputs() {
             if (open?.kind === 'edit-shop' && open.id === s.id) {
               return (
                 <div key={s.id} style={{ padding: 12, borderBottom: last ? 'none' : '1px solid var(--cb-line)' }}>
-                  <ShopForm shop={s} onSaved={(saved) => onShopSaved(saved, '{name} saved')} onCancel={() => setOpen(null)} />
+                  <ShopForm shop={s} states={states} onSaved={(saved) => onShopSaved(saved, '{name} saved')} onCancel={() => setOpen(null)} />
                 </div>
               );
             }
@@ -443,7 +455,11 @@ function ProductRow({ product: p, last, onEdit, onSetActive }: {
         {p.supplier.name}
         {p.supplier.verified ? ' ✓' : ''} · {p.supplier.location}, {p.supplier.state}
         {' · '}
-        {p.enquiries === 1 ? '1 enquiry' : `${p.enquiries} enquiries`}
+        {p.enquiries > 0 ? (
+          <Link to="/admin/enquiries?kind=inputs" style={{ color: 'inherit' }}>
+            {p.enquiries === 1 ? '1 enquiry' : `${p.enquiries} enquiries`}
+          </Link>
+        ) : '0 enquiries'}
       </div>
 
       {p.hiddenBecause.length > 0 && (

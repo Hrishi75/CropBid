@@ -161,6 +161,19 @@ describe('editing a product', () => {
     expect(fert).toMatchObject({ category: 'FERTILISER', subsidised: true, germinationPct: null });
   });
 
+  it('replaces the details farmers see, and can clear them', async () => {
+    const shop = await createSupplier(shopFields('Specs'));
+    const product = await createAgriInput(shop.id, seed(`${TAG} specs`, { specs: ['160 day duration'] }));
+    expect(product.specs).toEqual(['160 day duration']);
+
+    expect((await updateAgriInput(product.id, { specs: ['Rust resistant', 'Irrigated'] })).specs)
+      .toEqual(['Rust resistant', 'Irrigated']);
+    expect((await updateAgriInput(product.id, { specs: [] })).specs).toEqual([]);
+    // An edit that does not mention them leaves them alone.
+    await updateAgriInput(product.id, { specs: ['Kept'] });
+    expect((await updateAgriInput(product.id, { pricePerPack: 900 })).specs).toEqual(['Kept']);
+  });
+
   it('takes a product off and puts it back', async () => {
     const shop = await createSupplier(shopFields('Toggle'));
     const product = await createAgriInput(shop.id, seed(`${TAG} toggle`, {
@@ -191,6 +204,20 @@ describe('shops', () => {
     expect(JSON.stringify(renamed)).not.toContain('90000');
     const row = await prisma.inputSupplier.findUniqueOrThrow({ where: { id: shop.id } });
     expect(row.contactPhone).toBe('+91 90000 22222');
+  });
+
+  it('files a shop under the one spelling of its state, and refuses a state that is not one', async () => {
+    const lower = await createSupplier(shopFields('Case', '  maharashtra '));
+    expect(lower.state).toBe('Maharashtra');
+    // Its products inherit that spelling, which is what /inputs files them under.
+    const product = await createAgriInput(lower.id, seed(`${TAG} case`));
+    expect(product.state).toBe('Maharashtra');
+
+    await expect(createSupplier(shopFields('Typo', 'Maharastra'))).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Pick a state from the list',
+    });
+    expect(await prisma.inputSupplier.count({ where: { name: `${TAG} Typo` } })).toBe(0);
   });
 
   it('treats the same name in another state as another shop', async () => {

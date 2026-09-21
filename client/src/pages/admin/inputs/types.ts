@@ -24,6 +24,7 @@ export interface AdminInput {
   germinationPct: number | null;
   seedTreatment: string | null;
   dosagePerAcre: string | null;
+  specs: string[];
   description: string | null;
   location: string;
   state: string;
