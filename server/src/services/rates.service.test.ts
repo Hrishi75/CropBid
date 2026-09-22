@@ -15,6 +15,20 @@ vi.mock('../config', () => ({
   config: { dataGov: { apiKey: 'test-key', resourceId: 'test-resource', usingDemoKey: false } },
 }));
 
+// The usual-price table, faked: what each test puts in `usualRows` is what the
+// service reads at start-up, and `executeRaw` records what it writes back.
+// usualPrices.test.ts covers the real table.
+const db = vi.hoisted(() => ({
+  usualRows: [] as Array<{ commodity: string; state: string; perQuintal: number; days: number; lastDay: Date }>,
+  executeRaw: vi.fn(async (..._args: unknown[]) => 0),
+}));
+vi.mock('../lib/prisma', () => ({
+  prisma: {
+    usualPrice: { findMany: async () => db.usualRows },
+    $executeRaw: (...args: unknown[]) => db.executeRaw(...args),
+  },
+}));
+
 import { fakeFeed, rec } from './mandiFeed.fake';
 import { commodityFor } from './mandiCommodities';
 
@@ -24,6 +38,8 @@ let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
   // A fresh module per test, so each one downloads its own feed.
+  db.usualRows = [];
+  db.executeRaw.mockClear();
   vi.resetModules();
   rates = await import('./rates.service');
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -32,6 +48,7 @@ beforeEach(async () => {
 afterEach(() => {
   warnSpy.mockRestore();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('matching names exactly', () => {
@@ -174,5 +191,126 @@ describe('the board', () => {
     const board = await rates.getBoard();
     expect(board.rates).toHaveLength(30);
     for (const r of board.rates) expect(commodityFor(r.commodity)?.id).toBe(r.commodity);
+  });
+});
+
+describe('vs usual', () => {
+  // State "" is the all-India row.
+  const onFile = (commodity: string, state: string, perQuintal: number, days: number) =>
+    ({ commodity, state, perQuintal, days, lastDay: new Date('2026-09-20') });
+
+  it('compares today with what the crop has been selling for lately, not a typed-in price', async () => {
+    // The typed-in onion price is ₹18/kg; the last 12 days averaged ₹40.
+    db.usualRows = [onFile('Onion', 'Maharashtra', 4000, 12)];
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 4400)]));
+
+    const onion = await rates.getRateForCrop('Onion');
+    expect(onion?.usual).toBe(40);
+    expect(onion?.usualDays).toBe(12);
+    expect(onion?.changePct).toBe(10);
+  });
+
+  it('makes no comparison on a crop\'s first day, rather than claiming a steady one', async () => {
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Onion', 'Maharashtra', 3800), rec('Onion', 'Punjab', 5000),
+      rec('Bitter gourd', 'Maharashtra', 3000),
+    ]));
+
+    const onion = await rates.getRateForCrop('Onion');
+    expect(onion?.usualDays).toBe(0);
+    expect(onion?.changePct).toBe(0);
+    // Maharashtra's price against today's national one is a gap between two
+    // places, not a move against usual, and must not be shown as one.
+    const mh = await rates.getRateForCrop('Onion', { state: 'Maharashtra' });
+    expect(mh?.source).toBe('state');
+    expect(mh?.changePct).toBe(0);
+    const all = await rates.getAllRates();
+    for (const id of ['Onion', 'Bitter gourd']) {
+      const r = all.rates.find((x) => x.commodity === id);
+      expect(r?.usual).toBeNull();
+      expect(r?.changePct).toBeNull();
+    }
+  });
+
+  it('covers every commodity, not only the 30 on the board', async () => {
+    db.usualRows = [onFile('Bitter gourd', 'Maharashtra', 3000, 5)];
+    vi.stubGlobal('fetch', fakeFeed([rec('Bitter gourd', 'Maharashtra', 3300)]));
+
+    const karela = (await rates.getAllRates()).rates.find((r) => r.commodity === 'Bitter gourd');
+    expect(karela?.usual).toBe(30);
+    expect(karela?.usualDays).toBe(5);
+    expect(karela?.changePct).toBe(10);
+  });
+
+  it('falls back to the crop\'s own recent average when the feed has nothing for it', async () => {
+    db.usualRows = [onFile('Onion', '', 4000, 12)];
+    vi.stubGlobal('fetch', fakeFeed([rec('Tomato', 'Maharashtra', 2500)]));
+
+    const onion = await rates.getRateForCrop('Onion');
+    expect(onion?.source).toBe('reference');
+    expect(onion?.modal).toBe(40); // not the typed-in ₹18
+  });
+
+  it('adds each finished day to the averages once the feed moves on to the next', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 4700, { arrival_date: '21/09/2026' })]));
+    await rates.getBoard();
+    expect(db.executeRaw).not.toHaveBeenCalled(); // the 21st is still going
+
+    // Next morning the feed carries the 22nd. The copy on hand is stale, so
+    // this request starts a download; when it lands, the 21st is written.
+    vi.setSystemTime(new Date('2026-09-22T04:00:00Z'));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 5000, { arrival_date: '22/09/2026' })]));
+    await rates.getBoard();
+    await vi.waitFor(() => expect(db.executeRaw).toHaveBeenCalledTimes(1));
+
+    const [, ids, states, prices, , days] =
+      db.executeRaw.mock.calls[0] as [unknown, string[], string[], number[], number[], string[]];
+    const india = ids.findIndex((id, n) => id === 'Onion' && states[n] === '');
+    const mh = ids.findIndex((id, n) => id === 'Onion' && states[n] === 'Maharashtra');
+    expect(prices[india]).toBe(4700);
+    expect(prices[mh]).toBe(4700);
+    expect(days[india]).toBe('2026-09-21');
+    const onion = await rates.getRateForCrop('Onion');
+    expect(onion?.usualDays).toBe(1);
+    expect(onion?.changePct).toBeCloseTo(6.4, 1); // ₹50 against a one-day average of ₹47
+  });
+
+  it('compares like with like, so the states that report first cannot swing all India', async () => {
+    // 2026-09-22, mid-afternoon: Tamil Nadu's farmer markets (potato ₹35) had
+    // all reported and Uttar Pradesh's bulk mandis (₹5.5) a third of theirs.
+    // The all-India median read ₹35 against a usual of ₹11, while neither
+    // state's price had moved at all.
+    db.usualRows = [
+      onFile('Potato', 'Tamil Nadu', 3500, 5),
+      onFile('Potato', 'Uttar Pradesh', 550, 5),
+      onFile('Potato', '', 1131, 5),
+    ];
+    vi.stubGlobal('fetch', fakeFeed([
+      ...Array.from({ length: 10 }, (_, i) => rec('Potato', 'Tamil Nadu', 3500, { market: `TN${i}` })),
+      ...Array.from({ length: 2 }, (_, i) => rec('Potato', 'Uttar Pradesh', 550, { market: `UP${i}` })),
+    ]));
+
+    const potato = await rates.getRateForCrop('Potato');
+    expect(potato?.modal).toBe(35);
+    expect(potato?.changePct).toBe(0);
+    expect(potato?.usualDays).toBe(5);
+    expect(potato?.usual).toBe(35); // the usual the 0% implies, so the two agree
+  });
+
+  it('compares a state with its own past, not with all India', async () => {
+    db.usualRows = [
+      onFile('Onion', 'Maharashtra', 3800, 5), onFile('Onion', 'Punjab', 5000, 5),
+      onFile('Bitter gourd', 'Maharashtra', 3000, 5),
+    ];
+    vi.stubGlobal('fetch', fakeFeed([
+      rec('Onion', 'Maharashtra', 3990), rec('Onion', 'Punjab', 5000),
+      rec('Bitter gourd', 'Maharashtra', 3300),
+    ]));
+
+    expect((await rates.getRateForCrop('Onion', { state: 'Maharashtra' }))?.changePct).toBe(5);
+    const karela = (await rates.getAllRates('Maharashtra')).rates.find((r) => r.commodity === 'Bitter gourd');
+    expect(karela?.changePct).toBe(10);
   });
 });

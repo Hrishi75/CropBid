@@ -1625,3 +1625,35 @@ model AgriInputEnquiry {
   @@unique([userId, agriInputId])
   @@index([userId, createdAt])
 }
+
+// =============================================================================
+// UsualPrice: what each crop has been selling for lately, state by state
+// =============================================================================
+// The "vs usual" signal on every rates card, and the forecast that reads it,
+// compare today's mandi prices with these rows: a running average of the days
+// CropBid has seen, up to the last 30, so it follows the seasons by itself. It
+// replaced a price typed in per crop that nobody updated, which had onion's
+// "usual" at ₹18/kg with the crop trading at ₹47.
+//
+// PER STATE, because the day's reports arrive unevenly: Tamil Nadu's farmer
+// markets (potato at ₹35) report early and Uttar Pradesh's bulk mandis (₹5.5)
+// late, so an all-India price swings from ₹11 to ₹18 within a day while no
+// state's price moves. Comparing each state with its own past cancels that.
+// `state` is "" for the all-India row (every report), which is what a card's
+// fallback price uses when the feed has nothing.
+//
+// ONE ROW PER CROP PER STATE, UPDATED IN PLACE, so the table does not grow
+// with time: about 1,600 rows, under 1 MB. Written once a day, when the feed
+// moves on to a new date, rather than on every two-hourly refresh, so the
+// free-plan database is not woken twelve times a day to store it.
+// services/usualPrices.ts is the only writer.
+model UsualPrice {
+  commodity  String // id in services/mandiCommodities.ts
+  state      String // utils/indianStates spelling; "" = all India
+  perQuintal Float // the running average, ₹ per quintal
+  days       Int // how many days are in it; the average spans up to 30
+  lastDay    DateTime @db.Date // the newest day folded in
+  updatedAt  DateTime @updatedAt
+
+  @@id([commodity, state])
+}

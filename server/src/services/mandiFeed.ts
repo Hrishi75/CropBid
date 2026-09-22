@@ -231,7 +231,17 @@ async function downloadDay(): Promise<MandiRow[] | null> {
 let current: MandiSnapshot | null = null;
 let refreshing: Promise<void> | null = null;
 let nextRefreshAt = 0;
-const listeners = new Set<() => void>();
+const waiters = new Set<() => void>();
+const subscribers = new Set<(snap: MandiSnapshot) => void>();
+
+/**
+ * Called with every new complete copy as it is published. usualPrices learns
+ * each day's prices this way. A subscriber that throws is logged and skipped;
+ * it cannot stop the copy being served.
+ */
+export function onMandiSnapshot(fn: (snap: MandiSnapshot) => void): void {
+  subscribers.add(fn);
+}
 
 const usable = (s: MandiSnapshot | null): s is MandiSnapshot =>
   s !== null && Date.now() - s.fetchedAt < STALE_MAX_MS;
@@ -248,6 +258,9 @@ function refresh(): Promise<void> {
         if (rows && rows.length > 0) {
           current = { rows, fetchedAt: Date.now() };
           nextRefreshAt = Date.now() + REFRESH_MS;
+          for (const fn of subscribers) {
+            try { fn(current); } catch (err) { warnFailure(err, 'a snapshot subscriber failed'); }
+          }
         } else {
           nextRefreshAt = Date.now() + FAILED_RETRY_MS;
         }
@@ -256,7 +269,7 @@ function refresh(): Promise<void> {
         nextRefreshAt = Date.now() + FAILED_RETRY_MS;
       } finally {
         refreshing = null;
-        for (const l of listeners) l();
+        for (const w of waiters) w();
       }
     })();
   }
@@ -277,9 +290,9 @@ export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   // Nothing to serve yet: wait for the download to finish, but never hold a
   // visitor longer than COLD_WAIT_MS.
   await new Promise<void>((resolve) => {
-    const done = () => { clearTimeout(timer); listeners.delete(done); resolve(); };
+    const done = () => { clearTimeout(timer); waiters.delete(done); resolve(); };
     const timer = setTimeout(done, COLD_WAIT_MS);
-    listeners.add(done);
+    waiters.add(done);
   });
   return usable(current) ? current : null;
 }

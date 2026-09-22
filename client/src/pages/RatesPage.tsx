@@ -5,14 +5,15 @@
 // commodity the Government of India's Agmarknet feed reported today (about
 // 220 of them, where the storefront strip carries 30), grouped the way a
 // buyer looks for them, with today's modal price, the range most mandis sat
-// in, and how local the number is. The 30 board crops also carry a vs-usual
-// signal; nothing else has a reference price to compare with. Clicking a
-// crop opens the market-wise breakdown: every reporting mandi with market,
-// district, state, variety, grade and price band. Prices are ₹-native (the
+// in, and how local the number is. Every crop also carries a vs-usual signal
+// once CropBid has an earlier day of its price to compare with (the server's
+// usualPrices.ts keeps a running average of up to 30 days). Clicking a
+// crop opens the market-wise breakdown in a dialog over the page: every
+// reporting mandi with market, district, state, variety, grade and price band. Prices are ₹-native (the
 // feed is India-only), so no FX conversion happens here.
 // =============================================================================
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
@@ -35,7 +36,8 @@ interface LiveRate {
   modal: number;
   min: number;
   max: number;
-  usual: number | null;      // only the 30 board crops have a reference price
+  usual: number | null;      // null until there is an earlier day to compare with
+  usualDays: number;         // days `usual` averages; the average spans up to 30
   changePct: number | null;
   mandis: number;
   state: string | null;
@@ -107,7 +109,10 @@ function Signal({ r }: { r: LiveRate }) {
   if (Math.abs(r.changePct) < 0.1) return <span className="rp-sig flat">steady</span>;
   const up = r.changePct >= 0;
   return (
-    <span className={`rp-sig ${up ? 'pos' : 'neg'}`} title={`vs usual ${inr(r.usual)}/${unitLabel(r.unit)}`}>
+    <span
+      className={`rp-sig ${up ? 'pos' : 'neg'}`}
+      title={`Usual ≈ ${inr(r.usual)}/${unitLabel(r.unit)}, comparing each state with its own last ${Math.min(r.usualDays, 30)} ${r.usualDays === 1 ? 'day' : 'days'}`}
+    >
       {up ? '▲' : '▼'} {Math.abs(r.changePct).toFixed(1)}% vs usual
     </span>
   );
@@ -138,7 +143,7 @@ function MarketTable({ crop, state }: { crop: LiveRate; state: string }) {
   if (data.count === 0) {
     return (
       <div className="rp-detail-note">
-        No mandi reported {crop.label} today{state ? ` in ${state}` : ''} — the card above shows the reference price.
+        No mandi reported {crop.label} today{state ? ` in ${state}` : ''}, so the price above is the reference price.
       </div>
     );
   }
@@ -186,6 +191,78 @@ function MarketTable({ crop, state }: { crop: LiveRate; state: string }) {
             ))}
           </tbody>
         </table>
+        {/* The same rows for a phone, where nine columns put the price off
+            screen: market with its place underneath, price on the right.
+            CSS shows one or the other. */}
+        <ul className="rp-mlist">
+          {data.records.map((r, i) => (
+            <li key={`${r.market}-${r.variety}-${i}`}>
+              <div className="rp-mlist-main">
+                <div className="rp-mlist-name">{r.market}</div>
+                <div className="rp-mlist-meta">
+                  {[r.district, r.state].filter((x) => x && x !== '—').join(', ')}
+                  {r.variety && r.variety !== '—' ? ` · ${r.variety}` : ''}
+                </div>
+              </div>
+              <div className="rp-mlist-price">
+                <div className="rp-mlist-modal">{inr(r.modal)}</div>
+                <div className="cb-mono rp-mlist-band">{inr(r.min)}–{inr(r.max)}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// The mandi list, in a dialog over the page
+// -----------------------------------------------------------------------------
+// It used to unfold under the whole group of cards, which on a group of sixty
+// vegetables pushed everything below it off the screen and left the reader
+// scrolling to find which card they had opened. Closed by the × button, by
+// Escape, or by a click on the dimmed page. The page behind does not scroll
+// while it is open, focus starts on the close button, and it goes back to
+// the card that opened it on close.
+
+function MandiModal({ crop, state, onClose }: { crop: LiveRate; state: string; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previous;
+      opener?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="cb-modal-backdrop rp-modal-backdrop"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="cb-modal rp-modal" role="dialog" aria-modal="true" aria-labelledby="rp-modal-title">
+        <button ref={closeRef} type="button" className="cb-modal-close" onClick={onClose} aria-label="Close">×</button>
+        <div className="rp-modal-head">
+          <span className="rp-emoji" aria-hidden="true">{crop.emoji}</span>
+          <div>
+            <span className="cb-mono rp-source">{SOURCE_LABEL[crop.source]}</span>
+            <h2 id="rp-modal-title" className="rp-modal-title">{crop.label}</h2>
+            <div className="rp-modal-price">
+              <span>{inr(crop.modal)}<span className="rp-unit">/{unitLabel(crop.unit)}</span></span>
+              <span className="cb-mono rp-band">{inr(crop.min)} – {inr(crop.max)}</span>
+            </div>
+            <Signal r={crop} />
+          </div>
+        </div>
+        <MarketTable key={`${crop.commodity}::${state}`} crop={crop} state={state} />
       </div>
     </div>
   );
@@ -218,7 +295,9 @@ export function RatesPage() {
     return board.rates.filter((r) => r.label.toLowerCase().includes(q) || r.commodity.toLowerCase().includes(q));
   }, [board, query]);
 
-  const selectedRate = shown.find((r) => r.commodity === selected) ?? null;
+  const selectedRate = board?.rates.find((r) => r.commodity === selected) ?? null;
+  // Stable, so the dialog's open effect (focus, scroll lock) runs once.
+  const closeMandis = useCallback(() => setSelected(null), []);
   // The picker offers the states that reported today, plus whichever one is
   // picked, so a choice never vanishes from under the person who made it.
   const states = board ? [...new Set([...board.states, ...(state ? [state] : [])])].sort() : [];
@@ -295,7 +374,6 @@ export function RatesPage() {
         {board && board.groups.map((group) => {
           const rates = shown.filter((r) => r.group === group.id);
           if (rates.length === 0) return null;
-          const detail = selectedRate && selectedRate.group === group.id ? selectedRate : null;
           return (
             <section key={group.id} className="rp-cat">
               <div className="rp-cat-head">
@@ -308,7 +386,8 @@ export function RatesPage() {
                     key={r.commodity}
                     type="button"
                     className={`rp-card${selected === r.commodity ? ' active' : ''}`}
-                    onClick={() => setSelected(selected === r.commodity ? null : r.commodity)}
+                    onClick={() => setSelected(r.commodity)}
+                    aria-haspopup="dialog"
                     title={r.state ?? 'National'}
                   >
                     <div className="rp-card-top">
@@ -322,21 +401,26 @@ export function RatesPage() {
                     </div>
                     <div className="cb-mono rp-band">{inr(r.min)} – {inr(r.max)}</div>
                     <Signal r={r} />
-                    <span className="rp-more">{selected === r.commodity ? 'hide mandis ↑' : 'see every mandi ↓'}</span>
+                    <span className="rp-more">see every mandi →</span>
                   </button>
                 ))}
               </div>
-              {detail && <MarketTable key={`${detail.commodity}::${state}`} crop={detail} state={state} />}
             </section>
           );
         })}
+
+        {selectedRate && <MandiModal crop={selectedRate} state={state} onClose={closeMandis} />}
 
         <p className="cb-small rp-foot">
           Source: Government of India, Agmarknet daily mandi feed (data.gov.in). Prices are wholesale
           ₹ per kg or quintal as reported by each market committee. The price on each card is the
           middle of what the mandis reported, and the range beneath it is where most of them sat.
-          "vs usual" compares today's price with the crop's typical level, and is shown for the 30
-          crops we keep a reference price for. It is a signal, not a forecast.
+          "vs usual" compares today's price with what the crop sold for on earlier days, averaged over
+          up to the last 30. Each state is compared with its own past and the all-India figure is the
+          typical change across states, so the mandis that happen to report first cannot swing it.
+          CropBid began keeping that history on 22 September 2026, so early averages cover only a few
+          days, and a crop shows no comparison until it has an earlier day. It is a signal, not a
+          forecast.
         </p>
       </main>
 

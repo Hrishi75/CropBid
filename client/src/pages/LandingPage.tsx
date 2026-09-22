@@ -115,7 +115,8 @@ interface LiveRate {
   modal: number;       // ₹ per unit — today's clearing price
   min: number;
   max: number;
-  usual: number;       // the crop's usual reference price
+  usual: number;       // what the crop has been selling for lately
+  usualDays?: number;  // days `usual` averages; 0 = no history yet, nothing to compare
   changePct: number;   // today vs usual, % — the price signal
   market: string | null;
   state: string | null;
@@ -671,9 +672,14 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
           <div key={r.commodity} className="st-rate" title={r.market ? `${r.market}${r.state ? ', ' + r.state : ''}` : r.state ?? 'National average'}>
             <div className="st-rate-top">
               <span className="st-rate-emoji" aria-hidden="true">{r.emoji}</span>
-              {/* reference cards say "ref", not "steady" — the board never
-                  pretends a fallback number is a live one */}
-              <Delta pct={r.changePct} flatLabel={r.source === 'reference' ? 'ref' : 'steady'} />
+              {/* reference cards say "ref", not "steady": the board never
+                  pretends a fallback number is a live one. A crop with no
+                  earlier day on record says nothing, since 0% there is not
+                  a steady price, it is no comparison at all. */}
+              <Delta
+                pct={r.changePct}
+                flatLabel={r.source === 'reference' ? 'ref' : r.usualDays === 0 ? undefined : 'steady'}
+              />
             </div>
             <div className="st-rate-n">{r.label}</div>
             <div className="st-rate-v">
