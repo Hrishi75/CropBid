@@ -16,16 +16,18 @@ vi.mock('../config', () => ({
 }));
 
 // The usual-price table, faked: what each test puts in `usualRows` is what the
-// service reads at start-up, and `executeRaw` records what it writes back.
-// usualPrices.test.ts covers the real table.
+// service reads at start-up, and `queryRaw` records each write and returns
+// what the test says the database would. usualPrices.test.ts covers the real
+// table and its arithmetic.
+type UsualRow = { commodity: string; state: string; perQuintal: number; days: number; pendingPerQuintal: number };
 const db = vi.hoisted(() => ({
-  usualRows: [] as Array<{ commodity: string; state: string; perQuintal: number; days: number; lastDay: Date }>,
-  executeRaw: vi.fn(async (..._args: unknown[]) => 0),
+  usualRows: [] as Array<{ commodity: string; state: string; perQuintal: number; days: number; pendingPerQuintal: number }>,
+  queryRaw: vi.fn(async (..._args: unknown[]): Promise<unknown[]> => []),
 }));
 vi.mock('../lib/prisma', () => ({
   prisma: {
     usualPrice: { findMany: async () => db.usualRows },
-    $executeRaw: (...args: unknown[]) => db.executeRaw(...args),
+    $queryRaw: (...args: unknown[]) => db.queryRaw(...args),
   },
 }));
 
@@ -39,7 +41,8 @@ let warnSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(async () => {
   // A fresh module per test, so each one downloads its own feed.
   db.usualRows = [];
-  db.executeRaw.mockClear();
+  db.queryRaw.mockReset();
+  db.queryRaw.mockImplementation(async () => []);
   vi.resetModules();
   rates = await import('./rates.service');
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -196,8 +199,8 @@ describe('the board', () => {
 
 describe('vs usual', () => {
   // State "" is the all-India row.
-  const onFile = (commodity: string, state: string, perQuintal: number, days: number) =>
-    ({ commodity, state, perQuintal, days, lastDay: new Date('2026-09-20') });
+  const onFile = (commodity: string, state: string, perQuintal: number, days: number): UsualRow =>
+    ({ commodity, state, perQuintal, days, pendingPerQuintal: perQuintal });
 
   it('compares today with what the crop has been selling for lately, not a typed-in price', async () => {
     // The typed-in onion price is ₹18/kg; the last 12 days averaged ₹40.
@@ -251,30 +254,34 @@ describe('vs usual', () => {
     expect(onion?.modal).toBe(40); // not the typed-in ₹18
   });
 
-  it('adds each finished day to the averages once the feed moves on to the next', async () => {
+  it('hands every download to the averages, state by state, and takes the result back', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
     vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 4700, { arrival_date: '21/09/2026' })]));
     await rates.getBoard();
-    expect(db.executeRaw).not.toHaveBeenCalled(); // the 21st is still going
+    await vi.waitFor(() => expect(db.queryRaw).toHaveBeenCalledTimes(1));
+    // [template, day, commodities, states, prices, span]
+    const [, day21, ids, states, prices] = db.queryRaw.mock.calls[0] as [unknown, string, string[], string[], number[]];
+    expect(day21).toBe('2026-09-21');
+    const at = (state: string) => ids.findIndex((id, n) => id === 'Onion' && states[n] === state);
+    expect(prices[at('')]).toBe(4700);
+    expect(prices[at('Maharashtra')]).toBe(4700);
 
     // Next morning the feed carries the 22nd. The copy on hand is stale, so
-    // this request starts a download; when it lands, the 21st is written.
+    // this request starts a download; the database folds the 21st in and
+    // hands back the averages, which is what the cards then use.
+    db.queryRaw.mockImplementation(async () => [
+      { commodity: 'Onion', state: '', perQuintal: 4700, days: 1, pendingPerQuintal: 5000 },
+      { commodity: 'Onion', state: 'Maharashtra', perQuintal: 4700, days: 1, pendingPerQuintal: 5000 },
+    ]);
     vi.setSystemTime(new Date('2026-09-22T04:00:00Z'));
     vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 5000, { arrival_date: '22/09/2026' })]));
     await rates.getBoard();
-    await vi.waitFor(() => expect(db.executeRaw).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(db.queryRaw).toHaveBeenCalledTimes(2));
+    expect(db.queryRaw.mock.calls[1][1]).toBe('2026-09-22');
 
-    const [, ids, states, prices, , days] =
-      db.executeRaw.mock.calls[0] as [unknown, string[], string[], number[], number[], string[]];
-    const india = ids.findIndex((id, n) => id === 'Onion' && states[n] === '');
-    const mh = ids.findIndex((id, n) => id === 'Onion' && states[n] === 'Maharashtra');
-    expect(prices[india]).toBe(4700);
-    expect(prices[mh]).toBe(4700);
-    expect(days[india]).toBe('2026-09-21');
-    const onion = await rates.getRateForCrop('Onion');
-    expect(onion?.usualDays).toBe(1);
-    expect(onion?.changePct).toBeCloseTo(6.4, 1); // ₹50 against a one-day average of ₹47
+    await vi.waitFor(async () => expect((await rates.getRateForCrop('Onion'))?.usualDays).toBe(1));
+    expect((await rates.getRateForCrop('Onion'))?.changePct).toBeCloseTo(6.4, 1); // ₹50 against ₹47
   });
 
   it('compares like with like, so the states that report first cannot swing all India', async () => {

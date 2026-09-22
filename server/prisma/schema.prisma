@@ -1643,17 +1643,20 @@ model AgriInputEnquiry {
 // fallback price uses when the feed has nothing.
 //
 // ONE ROW PER CROP PER STATE, UPDATED IN PLACE, so the table does not grow
-// with time: about 1,600 rows, under 1 MB. Written once a day, when the feed
-// moves on to a new date, rather than on every two-hourly refresh, so the
-// free-plan database is not woken twelve times a day to store it.
-// services/usualPrices.ts is the only writer.
+// with time: about 1,600 rows, under 1 MB. Today's latest price is kept on the
+// row (`pendingDay`, `pendingPerQuintal`) and written with every refresh; the
+// first write of a later date folds it into the average, in the same UPDATE,
+// from the row as committed. So a restart cannot lose a day and two processes
+// cannot hold different averages. services/usualPrices.ts is the only writer.
 model UsualPrice {
-  commodity  String // id in services/mandiCommodities.ts
-  state      String // utils/indianStates spelling; "" = all India
-  perQuintal Float // the running average, ₹ per quintal
-  days       Int // how many days are in it; the average spans up to 30
-  lastDay    DateTime @db.Date // the newest day folded in
-  updatedAt  DateTime @updatedAt
+  commodity         String // id in services/mandiCommodities.ts
+  state             String // utils/indianStates spelling; "" = all India
+  perQuintal        Float // the running average, ₹ per quintal; meaningless while days = 0
+  days              Int // how many days are in it; the average spans up to 30
+  lastDay           DateTime? @db.Date // the newest day folded in
+  pendingDay        DateTime  @db.Date // the day being watched, not yet in the average
+  pendingPerQuintal Float // its latest price
+  updatedAt         DateTime  @updatedAt
 
   @@id([commodity, state])
 }

@@ -225,26 +225,59 @@ function MarketTable({ crop, state }: { crop: LiveRate; state: string }) {
 // Escape, or by a click on the dimmed page. The page behind does not scroll
 // while it is open, focus starts on the close button, and it goes back to
 // the card that opened it on close.
+//
+// Everything else on the page is made `inert` while it is open, so Tab cannot
+// walk into the cards behind it and a screen reader does not read them; review
+// caught that aria-modal alone left both open. Tab also cycles inside it.
+
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 function MandiModal({ crop, state, onClose }: { crop: LiveRate; state: string; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+
+    // Mark every sibling on the way up from the dialog to <body> inert, and
+    // only those, so closing undoes exactly what opening did.
+    const madeInert: Element[] = [];
+    for (let node: Element | null = backdropRef.current; node?.parentElement; node = node.parentElement) {
+      for (const sibling of Array.from(node.parentElement.children)) {
+        if (sibling !== node && !sibling.hasAttribute('inert')) {
+          sibling.setAttribute('inert', '');
+          madeInert.push(sibling);
+        }
+      }
+      if (node.parentElement === document.body) break;
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key !== 'Tab' || !backdropRef.current) return;
+      const inside = Array.from(backdropRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (inside.length === 0) return;
+      const first = inside[0];
+      const last = inside[inside.length - 1];
+      const here = document.activeElement;
+      if (e.shiftKey && (here === first || !backdropRef.current.contains(here))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (here === last || !backdropRef.current.contains(here))) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
+      for (const el of madeInert) el.removeAttribute('inert');
       opener?.focus();
     };
   }, [onClose]);
 
   return (
     <div
+      ref={backdropRef}
       className="cb-modal-backdrop rp-modal-backdrop"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >

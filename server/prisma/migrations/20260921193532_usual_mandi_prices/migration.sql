@@ -12,7 +12,9 @@ CREATE TABLE "UsualPrice" (
     "state" TEXT NOT NULL,
     "perQuintal" DOUBLE PRECISION NOT NULL,
     "days" INTEGER NOT NULL,
-    "lastDay" DATE NOT NULL,
+    "lastDay" DATE,
+    "pendingDay" DATE NOT NULL,
+    "pendingPerQuintal" DOUBLE PRECISION NOT NULL,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "UsualPrice_pkey" PRIMARY KEY ("commodity","state")
