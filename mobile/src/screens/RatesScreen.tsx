@@ -5,18 +5,21 @@
 // web's /rates: every commodity the Government of India's Agmarknet feed
 // reported today (about 220; the storefront rail carries 30), grouped, with
 // today's modal price, the range most mandis sat in and how local the number
-// is. The 30 board crops also carry a vs-usual signal; nothing else has a
-// reference price to compare with. A search box finds a crop by name, and
+// is. Every crop also carries a vs-usual signal once the server has an earlier
+// day of its price to compare with (usualPrices.ts, up to a 30-day average). A search box finds a crop by name, and
 // the state chips are the states that actually reported today.
-// Tapping a crop expands the market-wise breakdown: every reporting mandi
-// with market, district, state, variety and price band. Prices are ₹-native.
+// Tapping a crop opens the market-wise breakdown in a sheet over the screen:
+// every reporting mandi with market, district, state, variety and price band.
+// Prices are ₹-native.
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
 import { PressScale, Pulse, glide } from '../components/motion';
+import { IconClose } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { money, unitLabel } from '../lib/format';
 
@@ -36,7 +39,8 @@ interface LiveRate {
   modal: number;
   min: number;
   max: number;
-  usual: number | null;      // only the 30 board crops have a reference price
+  usual: number | null;      // null until there is an earlier day to compare with
+  usualDays: number;
   changePct: number | null;
   mandis: number;
   state: string | null;
@@ -165,16 +169,38 @@ function MarketList({ commodity, state, unit }: { commodity: string; state: stri
   );
 }
 
-// --- one crop card (tap to expand the mandi list) ---
+// --- the price signal under a crop's price (card and sheet alike) ---
 
-function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; onToggle: () => void; state: string }) {
+function Signal({ r }: { r: LiveRate }) {
   const { t } = useTranslation();
   const hasUsual = r.usual !== null && r.changePct !== null;
   const change = r.changePct ?? 0;
-  const showSignal = r.source !== 'reference' && hasUsual && Math.abs(change) >= 0.1;
+  if (r.source !== 'reference' && hasUsual && Math.abs(change) >= 0.1) {
+    return (
+      <Mono style={[styles.cardDelta, { color: change >= 0 ? colors.forest : colors.ember2 }]}>
+        {change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}% {t('vs usual')}
+      </Mono>
+    );
+  }
   return (
-    <View style={[styles.card, open && styles.cardOpen]}>
-      <PressScale onPress={() => { glide(); onToggle(); }} scaleTo={0.98}>
+    <Mono style={styles.cardSteady}>
+      {r.source === 'reference'
+        ? t('ref price')
+        : hasUsual
+          ? t('steady')
+          // No earlier day to compare with: say what the number rests on.
+          : t(r.mandis === 1 ? '{{n}} mandi' : '{{n}} mandis', { n: r.mandis })}
+    </Mono>
+  );
+}
+
+// --- one crop card (tap to open its mandis) ---
+
+function CropCard({ r, onOpen }: { r: LiveRate; onOpen: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.card}>
+      <PressScale onPress={onOpen} scaleTo={0.98}>
         <View style={styles.cardRow}>
           <Text style={styles.cardEmoji}>{r.emoji}</Text>
           <View style={styles.cardMain}>
@@ -189,26 +215,65 @@ function CropCard({ r, open, onToggle, state }: { r: LiveRate; open: boolean; on
               {money(r.modal)}
               <Text style={styles.cardUnit}>/{unitLabel(r.unit)}</Text>
             </Text>
-            {showSignal ? (
-              <Mono style={[styles.cardDelta, { color: change >= 0 ? colors.forest : colors.ember2 }]}>
-                {change >= 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}% {t('vs usual')}
-              </Mono>
-            ) : (
-              <Mono style={styles.cardSteady}>
-                {r.source === 'reference'
-                  ? t('ref price')
-                  : hasUsual
-                    ? t('steady')
-                    // No reference price to compare with: say what the number rests on.
-                    : t(r.mandis === 1 ? '{{n}} mandi' : '{{n}} mandis', { n: r.mandis })}
-              </Mono>
-            )}
+            <Signal r={r} />
           </View>
         </View>
-        <Text style={styles.cardMore}>{open ? t('hide mandis ↑') : t('see every mandi ↓')}</Text>
+        <Text style={styles.cardMore}>{t('see every mandi →')}</Text>
       </PressScale>
-      {open && <MarketList key={`${r.commodity}::${state}`} commodity={r.commodity} state={state} unit={r.unit} />}
     </View>
+  );
+}
+
+// --- the mandi list, in a sheet over the screen ---
+// It used to unfold under the card, which on a list of sixty vegetables pushed
+// the rest of the screen out of reach. The sheet slides up over the list and
+// closes with the ×, a tap on the dimmed screen above it, or Android's back
+// button. `r` outlives `visible` so the sheet still has its content while it
+// slides away.
+
+function MandiSheet({ r, state, visible, onClose }: {
+  r: LiveRate | null; state: string; visible: boolean; onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.sheetWrap}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('Close')} />
+        {r && (
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            <View style={styles.grabber} />
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetEmoji}>{r.emoji}</Text>
+              <View style={styles.cardMain}>
+                <Mono style={styles.cardSource}>
+                  {SOURCE_LABEL[r.source]}{state ? ` · ${state.toUpperCase()}` : ''}
+                </Mono>
+                <Text style={styles.sheetTitle}>{r.label}</Text>
+                <Text style={styles.cardPrice}>
+                  {money(r.modal)}
+                  <Text style={styles.cardUnit}>/{unitLabel(r.unit)}</Text>
+                  <Text style={styles.sheetBand}>   {money(r.min)}–{money(r.max)}</Text>
+                </Text>
+                <Signal r={r} />
+              </View>
+              <Pressable
+                onPress={onClose}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel={t('Close')}
+                style={styles.sheetClose}
+              >
+                <IconClose size={18} stroke={design.ink2} />
+              </Pressable>
+            </View>
+            <ScrollView style={styles.sheetScroll} showsVerticalScrollIndicator={false}>
+              <MarketList key={`${r.commodity}::${state}`} commodity={r.commodity} state={state} unit={r.unit} />
+            </ScrollView>
+          </View>
+        )}
+      </View>
+    </Modal>
   );
 }
 
@@ -222,7 +287,11 @@ export function RatesBody() {
   const [failed, setFailed] = useState(false);
   const [state, setState] = useState('');
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  // Which crop the sheet shows, and whether it is up. Kept apart so closing
+  // does not blank the sheet before it has slid away.
+  const [sheetCrop, setSheetCrop] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetRate = board?.rates.find((r) => r.commodity === sheetCrop) ?? null;
 
   useEffect(() => {
     let on = true;
@@ -255,7 +324,7 @@ export function RatesBody() {
           {['', ...states].map((s) => {
             const on = state === s;
             return (
-              <PressScale key={s || 'all'} onPress={() => { glide(); setState(s); setOpen(null); }} scaleTo={0.94} cardStyle={[styles.chip, on && styles.chipOn]}>
+              <PressScale key={s || 'all'} onPress={() => { glide(); setState(s); setSheetOpen(false); }} scaleTo={0.94} cardStyle={[styles.chip, on && styles.chipOn]}>
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>{s || t('All India')}</Text>
               </PressScale>
             );
@@ -265,7 +334,7 @@ export function RatesBody() {
           <TextInput
             style={styles.search}
             value={query}
-            onChangeText={(q) => { setQuery(q); setOpen(null); }}
+            onChangeText={setQuery}
             placeholder={t('Find a crop: onion, tur, karela…')}
             placeholderTextColor={design.ink3}
             autoCapitalize="none"
@@ -312,9 +381,7 @@ export function RatesBody() {
                 <CropCard
                   key={r.commodity}
                   r={r}
-                  state={state}
-                  open={open === r.commodity}
-                  onToggle={() => setOpen(open === r.commodity ? null : r.commodity)}
+                  onOpen={() => { setSheetCrop(r.commodity); setSheetOpen(true); }}
                 />
               ))}
             </View>
@@ -323,10 +390,17 @@ export function RatesBody() {
 
         {board && (
           <Text style={styles.foot}>
-            {t("Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares today's price with the crop's typical level, for the 30 crops we keep one for: a signal, not a forecast.")}
+            {t("Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares each state's price today with that state's own average over earlier days, up to the last 30, and shows once there is an earlier day to compare with: a signal, not a forecast.")}
           </Text>
         )}
       </ScrollView>
+
+      <MandiSheet
+        r={sheetRate}
+        state={state}
+        visible={sheetOpen && sheetRate !== null}
+        onClose={() => setSheetOpen(false)}
+      />
     </View>
   );
 }
@@ -366,7 +440,6 @@ const styles = StyleSheet.create({
     backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 14,
     padding: 13,
   },
-  cardOpen: { borderColor: colors.forest },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   cardEmoji: { fontSize: 24 },
   cardMain: { flex: 1, minWidth: 0 },
@@ -380,6 +453,28 @@ const styles = StyleSheet.create({
   cardDelta: { fontSize: 9.5, marginTop: 3 },
   cardSteady: { fontSize: 9.5, marginTop: 3, color: design.ink3 },
   cardMore: { fontFamily: font.sans, fontSize: 11, color: colors.sage, marginTop: 8 },
+
+  sheetWrap: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(20,20,15,0.45)' },
+  sheet: {
+    maxHeight: '88%',
+    backgroundColor: design.bg,
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingHorizontal: 16, paddingTop: 10,
+  },
+  grabber: {
+    alignSelf: 'center', width: 38, height: 4, borderRadius: 999,
+    backgroundColor: design.line, marginBottom: 12,
+  },
+  sheetHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  sheetEmoji: { fontSize: 30 },
+  sheetTitle: { fontFamily: font.sansSemi, fontSize: 20, letterSpacing: -0.4, color: design.ink, marginTop: 2 },
+  sheetBand: { fontFamily: font.sans, fontSize: 11, color: design.ink3 },
+  sheetClose: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: design.line, backgroundColor: design.paper,
+  },
+  sheetScroll: { flexGrow: 0, flexShrink: 1, marginTop: 4 },
 
   marketList: { marginTop: 10, borderTopWidth: 1, borderTopColor: design.line, paddingTop: 8 },
   marketCount: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginBottom: 6 },

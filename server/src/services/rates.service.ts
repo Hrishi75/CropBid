@@ -30,13 +30,14 @@
 // grains/spices/oilseeds).
 // =============================================================================
 
-import { getMandiSnapshot, normaliseState, type MandiRow, type MandiSnapshot } from './mandiFeed';
+import { getMandiSnapshot, normaliseState, onMandiSnapshot, warmMandiFeed, type MandiRow, type MandiSnapshot } from './mandiFeed';
 import { GROUPS, commodityFor, type Commodity, type Group } from './mandiCommodities';
+import { loadUsualPrices, observeDay, usualFor, usualKey } from './usualPrices';
 
 
 // -----------------------------------------------------------------------------
 // The board: the 30 crops the storefront strip, the dashboards and the forecast
-// carry, each with a "usual" reference price. `commodity` is the crop's id in
+// carry, each with a fixed reference price for when the feed has nothing. `commodity` is the crop's id in
 // mandiCommodities.ts, which also lists every other spelling the feed files it
 // under (paddy is "Paddy(Common)" in most states today). /rates shows every
 // commodity the feed reported, of which these are 30. `unit` is how the
@@ -53,7 +54,10 @@ interface BoardItem {
   emoji: string;
   cat: Cat;
   unit: Unit;
-  fallbackPerQuintal: number; // static reference modal (₹/quintal) used if feed is down
+  // Typed in once and never updated, so only a last resort: the price shown
+  // when the feed has not reported the crop and CropBid has no history of its
+  // own for it (usualPrices.ts). It is not what "vs usual" compares against.
+  fallbackPerQuintal: number;
 }
 
 const BOARD: BoardItem[] = [
@@ -126,8 +130,9 @@ export interface CropRate {
   modal: number;       // ₹ per `unit`
   min: number;         // low end of where most mandis sat, ₹ per `unit`
   max: number;
-  usual: number;       // static reference modal (₹ per `unit`) — the crop's "usual" price
-  changePct: number;   // today's modal vs usual, % (0 when source is 'reference')
+  usual: number;       // what the crop has been selling for lately (₹ per `unit`), see usualPrices.ts
+  usualDays: number;   // days `usual` averages; 0 = no history yet, so there is no comparison
+  changePct: number;   // today's modal vs usual, % (0 when there is no history or source is 'reference')
   market: string | null;
   state: string | null;
   source: RateSource;  // how local this number is
@@ -222,6 +227,78 @@ const latestDate = (rows: MandiRow[]) =>
 
 const today = () => new Date().toLocaleDateString('en-GB');
 
+// % change from `from` to `to`, to one decimal.
+const pctChange = (to: number, from: number) =>
+  from > 0 ? Math.round(((to - from) / from) * 1000) / 10 : 0;
+
+// DD/MM/YYYY → YYYY-MM-DD, which sorts as a date.
+const isoDay = (d: string) => {
+  const [dd, mm, yyyy] = d.split('/');
+  return `${yyyy}-${mm?.padStart(2, '0')}-${dd?.padStart(2, '0')}`;
+};
+
+// Every complete download hands its prices, all-India and state by state, to
+// usualPrices, which folds each finished day into the running averages.
+function learnFrom(snap: MandiSnapshot) {
+  const idx = indexOf(snap);
+  if (!idx.date) return;
+  const prices = new Map<string, number>();
+  for (const [id, entry] of idx.byId) {
+    if (entry.rows.length === 0) continue;
+    prices.set(usualKey(id, ''), band(entry.rows).modal);
+    for (const [state, rows] of byState(entry.rows)) prices.set(usualKey(id, state), band(rows).modal);
+  }
+  void observeDay(isoDay(idx.date), prices);
+}
+onMandiSnapshot(learnFrom);
+
+const byState = (rows: MandiRow[]) => {
+  const out = new Map<string, MandiRow[]>();
+  for (const r of rows) {
+    if (!r.state) continue;
+    const list = out.get(r.state) ?? [];
+    list.push(r);
+    out.set(r.state, list);
+  }
+  return out;
+};
+
+/**
+ * How today's price compares with usual, like with like. A state (or one of
+ * its markets) against that state's own past; all India as the typical change
+ * across the states that have reported, so a state that reports early or late
+ * in the day cannot move it. Null when there is no earlier day to compare with.
+ */
+function vsUsual(id: string, rows: MandiRow[], state: string | null): { changePct: number; days: number } | null {
+  if (state) {
+    const u = usualFor(id, state);
+    return u && u.days > 0 ? { changePct: pctChange(band(rows).modal, u.perQuintal), days: u.days } : null;
+  }
+  const changes: number[] = [];
+  let days = 0;
+  for (const [st, stateRows] of byState(rows)) {
+    const u = usualFor(id, st);
+    if (!u || u.days === 0 || !(u.perQuintal > 0)) continue;
+    changes.push((band(stateRows).modal - u.perQuintal) / u.perQuintal);
+    days = Math.max(days, u.days);
+  }
+  return changes.length > 0 ? { changePct: Math.round(quantile(changes, 0.5) * 1000) / 10, days } : null;
+}
+
+// The day's rows, indexed, with the usual prices read in. The read happens
+// once per process; it is awaited so the first answer after a restart already
+// compares against history rather than showing none.
+async function ready(): Promise<Indexed> {
+  const [snap] = await Promise.all([getMandiSnapshot(), loadUsualPrices()]);
+  return indexOf(snap);
+}
+
+/** Starts the day's download and reads the usual prices, at boot. */
+export function warmRates(): void {
+  void loadUsualPrices();
+  warmMandiFeed();
+}
+
 // Convert ₹/quintal (as the feed reports) into the board item's display unit.
 // LITRE behaves like KG: 1 quintal ≈ 100 kg ≈ 100 L for dairy liquids.
 function toUnit(perQuintal: number, unit: Unit): number {
@@ -253,20 +330,25 @@ function rateFor(
   const state = opts.state ? normaliseState(opts.state) : undefined;
   const inState = state ? all.filter((r) => r.state === state) : [];
 
+  const id = commodityFor(item.commodity)?.id ?? item.commodity;
+  // The all-India average: the fallback price when the feed has nothing for
+  // the crop, and the typed-in price only where CropBid has no history at all.
+  const usualPerQ = usualFor(id, '')?.perQuintal ?? meta.fallbackPerQuintal;
+
   const build = (rows: MandiRow[], source: RateSource, market: string | null, st: string | null) => {
     const b = band(rows);
-    // Signal: how today's modal sits vs the crop's usual (static reference)
-    // price. Honest and simple — not a forecast, a "strong/weak day" flag.
-    const changePct = meta.fallbackPerQuintal > 0
-      ? Math.round(((b.modal - meta.fallbackPerQuintal) / meta.fallbackPerQuintal) * 1000) / 10
-      : 0;
+    // Signal: how today's modal sits against what the crop has been selling
+    // for lately, like with like. Not a forecast, a "strong/weak day" flag.
+    const cmp = vsUsual(id, rows, st);
     const rate: CropRate = {
       commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
       modal: toUnit(b.modal, meta.unit),
       min: toUnit(b.min, meta.unit),
       max: toUnit(b.max, meta.unit),
-      usual: toUnit(meta.fallbackPerQuintal, meta.unit),
-      changePct,
+      // With a comparison, the usual price the % implies, so the two agree.
+      usual: toUnit(cmp ? b.modal / (1 + cmp.changePct / 100) : usualPerQ, meta.unit),
+      usualDays: cmp?.days ?? 0,
+      changePct: cmp?.changePct ?? 0,
       market, state: st, source,
       date: latestDate(rows) ?? today(),
     };
@@ -284,14 +366,16 @@ function rateFor(
   // 3. national modal
   if (all.length) return build(all, 'national', null, null);
 
-  // 4. static reference (feed down / no data for this crop)
+  // 4. reference (feed down / no data for this crop): the crop's own recent
+  // average where CropBid has one, the typed-in price only where it has not
   return {
     rate: {
       commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
-      modal: toUnit(meta.fallbackPerQuintal, meta.unit),
-      min: toUnit(Math.round(meta.fallbackPerQuintal * 0.85), meta.unit),
-      max: toUnit(Math.round(meta.fallbackPerQuintal * 1.15), meta.unit),
-      usual: toUnit(meta.fallbackPerQuintal, meta.unit),
+      modal: toUnit(usualPerQ, meta.unit),
+      min: toUnit(Math.round(usualPerQ * 0.85), meta.unit),
+      max: toUnit(Math.round(usualPerQ * 1.15), meta.unit),
+      usual: toUnit(usualPerQ, meta.unit),
+      usualDays: 0,
       changePct: 0,
       market: null, state: null, source: 'reference',
       date: today(),
@@ -306,7 +390,7 @@ export async function getRateForCrop(
 ): Promise<CropRate | null> {
   const item = boardItemFor(commodity);
   if (!item) return null;
-  return rateFor(item, indexOf(await getMandiSnapshot()), opts).rate;
+  return rateFor(item, await ready(), opts).rate;
 }
 
 // -----------------------------------------------------------------------------
@@ -342,7 +426,7 @@ export async function getMarketBreakdown(commodity: string, state?: string): Pro
   const c = commodityFor(commodity);
   if (!c) return null;
   const item = BOARD_BY_ID.get(c.id.toLowerCase());
-  const entry = indexOf(await getMandiSnapshot()).byId.get(c.id);
+  const entry = (await ready()).byId.get(c.id);
   if (!entry && !item) return null;
 
   const st = state ? normaliseState(state) : undefined;
@@ -379,7 +463,7 @@ export async function getMarketBreakdown(commodity: string, state?: string): Pro
 // getBoard — today's rates for the whole curated set (for the storefront board)
 // -----------------------------------------------------------------------------
 export async function getBoard(state?: string): Promise<{ date: string; live: boolean; rates: CropRate[] }> {
-  const idx = indexOf(await getMandiSnapshot());
+  const idx = await ready();
   const rates = BOARD.map((b) => rateFor(b, idx, { state }).rate);
   return {
     date: idx.date ?? today(),
@@ -400,7 +484,8 @@ export interface CommodityRate {
   modal: number;
   min: number;
   max: number;
-  usual: number | null;       // board crops only: nothing else has a reference price
+  usual: number | null;       // null until there is at least one earlier day to compare with
+  usualDays: number;          // days `usual` averages, up to 30 counted fully
   changePct: number | null;
   mandis: number;             // reports behind the number
   source: RateSource;
@@ -420,7 +505,7 @@ export interface AllRates {
 // board crops through their usual fallback chain, so the page never loses a
 // crop it always showed. All India: every commodity reported anywhere.
 export async function getAllRates(state?: string): Promise<AllRates> {
-  const idx = indexOf(await getMandiSnapshot());
+  const idx = await ready();
   const st = state ? normaliseState(state) : undefined;
   const rates: CommodityRate[] = [];
 
@@ -431,10 +516,14 @@ export async function getAllRates(state?: string): Promise<AllRates> {
     const c = entry.commodity;
     const unit = GROUP_UNIT[c.group];
     const b = band(rows);
+    const cmp = vsUsual(id, rows, st ?? null);
     rates.push({
       commodity: c.id, label: c.label, emoji: GROUP_EMOJI[c.group], group: c.group, unit,
       modal: toUnit(b.modal, unit), min: toUnit(b.min, unit), max: toUnit(b.max, unit),
-      usual: null, changePct: null, mandis: rows.length,
+      usual: cmp ? toUnit(b.modal / (1 + cmp.changePct / 100), unit) : null,
+      usualDays: cmp?.days ?? 0,
+      changePct: cmp?.changePct ?? null,
+      mandis: rows.length,
       source: st ? 'state' : 'national', state: st ?? null,
       date: latestDate(rows) ?? today(),
     });
@@ -446,7 +535,11 @@ export async function getAllRates(state?: string): Promise<AllRates> {
       commodity: rate.commodity, label: rate.label, emoji: rate.emoji,
       group: commodityFor(item.commodity)?.group ?? 'other', unit: rate.unit,
       modal: rate.modal, min: rate.min, max: rate.max,
-      usual: rate.usual, changePct: rate.changePct, mandis,
+      // No history, no comparison: the same rule as every other commodity.
+      usual: rate.usualDays > 0 ? rate.usual : null,
+      usualDays: rate.usualDays,
+      changePct: rate.usualDays > 0 ? rate.changePct : null,
+      mandis,
       source: rate.source, state: rate.state, date: rate.date,
     });
   }

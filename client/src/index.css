@@ -1648,10 +1648,48 @@ body * {
 .rp-date { font-size: 11px; color: var(--cb-ink-3); }
 .rp-foot { margin-top: 40px; max-width: 72ch; color: var(--cb-ink-3); }
 
+/* The mandi list opens in a dialog over the page (the shared .cb-modal),
+   wide enough for the nine-column table on a laptop and a sheet from the
+   bottom on a phone. The table scrolls inside it, under its sticky header.
+   Paired with the shared class in each selector: .cb-modal and
+   .cb-modal-backdrop are defined further down this file and would otherwise
+   win every tie. */
+.cb-modal.rp-modal { width: min(980px, 100%); padding: 22px 22px 18px; }
+.rp-modal .rp-table-wrap { margin-top: 16px; }
+.rp-modal .rp-table-scroll { max-height: min(58vh, 560px); max-height: min(58dvh, 560px); }
+.rp-modal .rp-detail-note { margin-top: 16px; }
+.rp-modal-head { display: flex; align-items: flex-start; gap: 14px; padding-right: 40px; }
+.rp-modal-head .rp-emoji { font-size: 34px; line-height: 1; }
+.rp-modal-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: var(--cb-ink); margin: 4px 0 2px; }
+.rp-modal-price {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  font-size: 20px; font-weight: 700; color: var(--cb-ink);
+}
+/* Phone rows for the mandi list; hidden until the table is too wide. */
+.rp-mlist { display: none; list-style: none; margin: 0; padding: 0; }
+.rp-mlist li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--cb-line-2);
+}
+.rp-mlist li:last-child { border-bottom: none; }
+.rp-mlist-main { min-width: 0; }
+.rp-mlist-name { font-size: 13.5px; font-weight: 600; color: var(--cb-ink); }
+.rp-mlist-meta { font-size: 11.5px; color: var(--cb-ink-3); margin-top: 2px; }
+.rp-mlist-price { text-align: right; flex-shrink: 0; }
+.rp-mlist-modal { font-size: 14px; font-weight: 700; color: var(--cb-ink); font-variant-numeric: tabular-nums; }
+.rp-mlist-band { font-size: 10.5px; color: var(--cb-ink-3); margin-top: 1px; }
+
 @media (max-width: 720px) {
   .rp-nav-links a:not(.cb-btn):not(.nav-signin) { display: none; }
   .rp-head { align-items: stretch; }
   .rp-controls { flex-direction: column; align-items: stretch; width: 100%; }
+  .rp-table { display: none; }
+  .rp-mlist { display: block; }
+  .cb-modal-backdrop.rp-modal-backdrop { padding: 0; align-items: flex-end; }
+  .cb-modal.rp-modal {
+    border-radius: 18px 18px 0 0; padding: 18px 16px 14px;
+    max-height: 92vh; max-height: 92dvh;
+  }
   .rp-state select,
   .rp-state input { min-width: 100%; }
 }

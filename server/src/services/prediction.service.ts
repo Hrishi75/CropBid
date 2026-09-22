@@ -265,14 +265,18 @@ function predictCrop(
   const season = SEASONS[rate.commodity] ?? { peak: [], peakLabel: '', lean: [], leanLabel: '' };
   const inPeak = season.peak.includes(month);
   const inLean = season.lean.includes(month);
-  const pctVsUsual = rate.source === 'reference' ? 0 : rate.changePct;
+  // No history yet (a crop's first day on record) means no gap to read,
+  // which is not the same thing as a gap of zero.
+  const hasHistory = rate.source !== 'reference' && rate.usualDays > 0;
+  const pctVsUsual = hasHistory ? rate.changePct : 0;
 
   // --- demand: is the market pulling? ---------------------------------------
   let demandScore = 50;
   const demandDrivers: string[] = [];
 
   demandScore += clamp(pctVsUsual, -15, 15) * W.demandPricePull;
-  if (pctVsUsual >= 3) demandDrivers.push(`Trading ${pctVsUsual.toFixed(1)}% above usual — buyers are paying up`);
+  if (!hasHistory) demandDrivers.push('Not enough price history yet to say how today compares with usual');
+  else if (pctVsUsual >= 3) demandDrivers.push(`Trading ${pctVsUsual.toFixed(1)}% above usual — buyers are paying up`);
   else if (pctVsUsual <= -3) demandDrivers.push(`Trading ${Math.abs(pctVsUsual).toFixed(1)}% below usual — buyers are holding back`);
   else demandDrivers.push('Trading inside the usual band — no unusual pull either way');
 

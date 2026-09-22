@@ -186,6 +186,8 @@ interface LiveRate {
   unit: UnitCode;
   modal: number;
   changePct: number;
+  usualDays?: number;  // 0 = no earlier day on record, so no change to show
+  source?: 'market' | 'state' | 'national' | 'reference';
   market: string | null;
   state: string | null;
 }
@@ -270,7 +272,11 @@ export function MarketRates({ crops = [], limit = 4, cropsUnavailable = false }:
               className="cb-mono cb-tiny"
               style={{ color: r.changePct >= 0 ? 'var(--cb-sage)' : 'var(--cb-ember)', minWidth: 52, textAlign: 'right' }}
             >
-              {r.changePct >= 0 ? '+' : '−'}{Math.abs(r.changePct).toFixed(1)}%
+              {/* Only a real comparison gets a number: a fallback price or a crop
+                  with no earlier day on record would read as "+0.0%". */}
+              {r.source === 'reference' || r.usualDays === 0
+                ? ''
+                : `${r.changePct >= 0 ? '+' : '−'}${Math.abs(r.changePct).toFixed(1)}%`}
             </span>
           </span>
         </div>

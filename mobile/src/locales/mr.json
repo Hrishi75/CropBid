@@ -29,8 +29,8 @@
   "Spices & Oilseeds": "मसाले आणि तेलबिया",
   "Loading today's rates…": "आजचे भाव लोड होत आहेत…",
   "Could not reach the rates service — pull back and try again.": "भाव सेवेशी संपर्क होऊ शकला नाही — थोड्या वेळाने पुन्हा प्रयत्न करा.",
-  "see every mandi ↓": "प्रत्येक मंडी पहा ↓",
-  "hide mandis ↑": "मंड्या लपवा ↑",
+  "see every mandi →": "प्रत्येक मंडी पहा →",
+  "Close": "बंद करा",
   "steady": "स्थिर",
   "ref price": "संदर्भ भाव",
   "vs usual": "नेहमीपेक्षा",
@@ -157,5 +157,5 @@
   "{{n}} implausible reports left out: a typo or a per-piece price.": "{{n}} अविश्वसनीय अहवाल वगळले: टंकलेखनातील चूक किंवा नगाचा भाव.",
   "Find a crop: onion, tur, karela…": "पीक शोधा: कांदा, तूर, कारले…",
   "Nothing matches “{{q}}” today.": "आज “{{q}}” शी काहीही जुळले नाही.",
-  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares today's price with the crop's typical level, for the 30 crops we keep one for: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे आजच्या भावाची पिकाच्या नेहमीच्या पातळीशी तुलना, ज्या 30 पिकांची नेहमीची पातळी आम्ही ठेवतो त्यांच्यासाठी: हा संकेत आहे, भाकीत नाही."
+  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares each state's price today with that state's own average over earlier days, up to the last 30, and shows once there is an earlier day to compare with: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे प्रत्येक राज्याच्या आजच्या भावाची त्याच राज्याच्या आधीच्या दिवसांच्या (जास्तीत जास्त 30) सरासरीशी तुलना, आणि तुलनेसाठी आधीचा एखादा दिवस असेल तेव्हाच दिसते: हा संकेत आहे, भाकीत नाही."
 }

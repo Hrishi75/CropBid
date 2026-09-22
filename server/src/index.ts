@@ -15,7 +15,7 @@ import app from './app';
 import { config } from './config';
 import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
-import { warmMandiFeed } from './services/mandiFeed';
+import { warmRates } from './services/rates.service';
 
 const PORT = config.port;
 
@@ -42,9 +42,9 @@ void clearPlaintextRefreshTokens()
   })
   .catch((err) => console.error('Could not sweep plaintext refresh tokens:', err));
 
-// Start downloading the day's mandi feed now, so the first visitor to the
-// rates board is not the one who waits for it. Never fatal.
-warmMandiFeed();
+// Start downloading the day's mandi feed and reading the usual prices now,
+// so the first visitor to the rates board is not the one who waits. Never fatal.
+warmRates();
 
 server.listen(PORT, () => {
   console.log(`

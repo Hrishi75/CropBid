@@ -130,6 +130,8 @@ export const IconArrowLeft = (p: IcoProps) => <Ico {...p} d="M19 12H5M11 6l-6 6 
 
 export const IconPlus = (p: IcoProps) => <Ico {...p} sw={2.4} d="M12 5v14M5 12h14" />;
 
+export const IconClose = (p: IcoProps) => <Ico {...p} sw={2.2} d="M6 6l12 12M18 6L6 18" />;
+
 export const IconBell2 = (p: IcoProps) => (
   <Ico {...p}>
     <Path d="M18 8a6 6 0 10-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
