@@ -104,7 +104,8 @@ export async function getTransaction(req: Request, res: Response, next: NextFunc
   try {
     const transaction = await transactionService.getTransaction(
       req.params.id as string,
-      req.user!.userId
+      req.user!.userId,
+      req.user!.role,
     );
     res.json(transaction);
   } catch (error) {

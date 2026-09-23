@@ -581,8 +581,9 @@ describe('cancelling a shop order', () => {
   it('tells the shop, and does not call a refund due when nothing was paid', async () => {
     await cancelRetailOrder('order-1', shopper);
 
+    expect(notifyRetailOrderCancelled).toHaveBeenCalledTimes(1);
     expect(notifyRetailOrderCancelled).toHaveBeenCalledWith(
-      SHOP, 'shopper', 2, 130, 'INR', null, 'order-1',
+      SHOP, 'shop', 'shopper', 2, 130, 'INR', null, 'order-1',
     );
     expect(notifyAdminsRetailRefundDue).not.toHaveBeenCalled();
   });
@@ -681,8 +682,41 @@ describe('cancelling a shop order', () => {
     expect(runTransaction).not.toHaveBeenCalled();
   });
 
-  it('lets an admin cancel', async () => {
-    await expect(cancelRetailOrder('order-1', { userId: 'admin-1', role: 'ADMIN' })).resolves.toBeDefined();
+  describe('when an admin cancels', () => {
+    const admin = { userId: 'admin-1', role: 'ADMIN' };
+
+    it('lets them, with a reason', async () => {
+      await expect(cancelRetailOrder('order-1', admin, 'Shop is closed today')).resolves.toBeDefined();
+    });
+
+    // Calling off somebody else's order, like a shop does.
+    it('makes them say why', async () => {
+      await expect(cancelRetailOrder('order-1', admin)).rejects.toMatchObject({ statusCode: 400 });
+      await expect(cancelRetailOrder('order-1', admin, '   ')).rejects.toMatchObject({ statusCode: 400 });
+      expect(runTransaction).not.toHaveBeenCalled();
+    });
+
+    // Neither side pressed the button, so both are told, and told it was
+    // CropBid. This used to tell the shopper alone that the shop had done it.
+    it('tells the shop and the shopper that CropBid cancelled it', async () => {
+      await cancelRetailOrder('order-1', admin, 'Shop is closed today');
+
+      expect(notifyRetailOrderCancelled).toHaveBeenCalledTimes(2);
+      expect(notifyRetailOrderCancelled).toHaveBeenCalledWith(
+        SHOP, 'shop', 'cropbid', 2, 130, 'INR', 'Shop is closed today', 'order-1',
+      );
+      expect(notifyRetailOrderCancelled).toHaveBeenCalledWith(
+        CONSUMER, 'shopper', 'cropbid', 2, 130, 'INR', 'Shop is closed today', 'order-1',
+      );
+    });
+
+    it('records the admin as the one who cancelled', async () => {
+      await cancelRetailOrder('order-1', admin, 'Shop is closed today');
+
+      expect(tx.retailOrder.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ cancelledById: 'admin-1', cancelReason: 'Shop is closed today' }),
+      }));
+    });
   });
 
   describe('when the shop cancels', () => {
@@ -697,8 +731,9 @@ describe('cancelling a shop order', () => {
       expect(tx.retailOrder.updateMany).toHaveBeenCalledWith(expect.objectContaining({
         data: expect.objectContaining({ cancelReason: 'Sold out this morning' }),
       }));
+      expect(notifyRetailOrderCancelled).toHaveBeenCalledTimes(1);
       expect(notifyRetailOrderCancelled).toHaveBeenCalledWith(
-        CONSUMER, 'shop', 2, 130, 'INR', 'Sold out this morning', 'order-1',
+        CONSUMER, 'shopper', 'shop', 2, 130, 'INR', 'Sold out this morning', 'order-1',
       );
     });
 

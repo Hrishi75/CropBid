@@ -5,6 +5,10 @@
 // SHIPPED → DELIVERED → CONFIRMED → RELEASED). The buyer pays into escrow via
 // Razorpay (lib/razorpay openCheckout); both sides advance delivery status and
 // confirm receipt, which releases escrow to the farmer.
+//
+// Admins open it too, from Admin → Transactions. They see the deal read-only,
+// with no pay or delivery buttons, and can call off a shop order before
+// dispatch, as the shop can.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -41,6 +45,7 @@ function SpecRow({ label, value }: { label: string; value: React.ReactNode }) {
 export function TransactionDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -117,7 +122,9 @@ export function TransactionDetail() {
       const res = await api.get(`/transactions/${id}`);
       setTransaction(res.data);
       setAskCancel(false);
-      toast.success('Order cancelled, and the shopper has been told');
+      toast.success(isAdmin
+        ? 'Order cancelled, and the shop and the shopper have been told'
+        : 'Order cancelled, and the shopper has been told');
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Could not cancel this order');
     } finally {
@@ -182,8 +189,9 @@ export function TransactionDetail() {
           : 'held';
 
   // Retail shop orders only: a trade deal has a contract behind it, and
-  // cancelling one is a conversation, not a button.
-  const canCancel = isFarmer
+  // cancelling one is a conversation, not a button. The shop can, and so can
+  // an admin; the shopper cancels from their own order page.
+  const canCancel = (isFarmer || isAdmin)
     && transaction.retailOrder != null
     && !transaction.retailOrder.cancelledAt
     && transaction.deliveryStatus === 'PENDING';
@@ -203,7 +211,7 @@ export function TransactionDetail() {
     <DashboardLayout>
       <div className="cb-section-head">
         <div className="cb-page-eyebrow">
-          <Link to="/transactions" style={{ color: 'inherit', textDecoration: 'none' }}>← Transactions</Link> · #T-{transaction.id.slice(-6).toUpperCase()}
+          <Link to={isAdmin ? '/admin/transactions' : '/transactions'} style={{ color: 'inherit', textDecoration: 'none' }}>← Transactions</Link> · #T-{transaction.id.slice(-6).toUpperCase()}
         </div>
         <button type="button" className="cb-btn cb-btn-ghost">↗ Contract.pdf ↓</button>
       </div>
@@ -280,7 +288,7 @@ export function TransactionDetail() {
               onClick={() => setAskCancel(true)}
               style={{ background: 'none', border: 'none', color: 'var(--cb-ink-3)', textDecoration: 'underline', cursor: 'pointer' }}
             >
-              Can't fulfil this order?
+              {isAdmin ? 'Cancel this shop order' : "Can't fulfil this order?"}
             </button>
           </div>
         )}
@@ -291,11 +299,13 @@ export function TransactionDetail() {
             <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 10 }}>
               This cancels all {transaction.retailOrder?._count.transactions ?? 1}{' '}
               {(transaction.retailOrder?._count.transactions ?? 1) === 1 ? 'item' : 'items'} in it,
-              puts the stock back on your shelf and tells the shopper. They see the reason you give.
+              {isAdmin
+                ? " puts the stock back on the shop's shelf and tells the shop and the shopper that CropBid cancelled it. Both see the reason you give."
+                : ' puts the stock back on your shelf and tells the shopper. They see the reason you give.'}
             </p>
             <Input
-              label="Why can't you fulfil it?"
-              placeholder="Sold out this morning"
+              label={isAdmin ? 'Why is it being cancelled?' : "Why can't you fulfil it?"}
+              placeholder={isAdmin ? 'The shop is closed today' : 'Sold out this morning'}
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
             />
