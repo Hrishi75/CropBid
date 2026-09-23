@@ -416,8 +416,9 @@ export async function createDirectPurchase(consumerId: string, input: DirectPurc
 // CANCEL A SHOP ORDER: called off before the shop sends it
 // =============================================================================
 // WHO. The shopper who placed it, the shop it was placed with, or an admin. A
-// shop has to say why, because it is calling off somebody else's order; the
-// shopper does not owe anyone a reason.
+// shop or an admin has to say why, because each is calling off somebody else's
+// order; the shopper does not owe anyone a reason. When an admin does it, both
+// sides are told, and told it was CropBid: neither of them pressed the button.
 //
 // UNTIL WHEN. Only while every lot is still PENDING, which is up to the moment
 // the shop marks it on the way. After that the produce has been picked for this
@@ -470,9 +471,15 @@ export async function cancelRetailOrder(
       : 'This order is already on its way, so it cannot be cancelled.');
   }
 
+  // Past the check above, someone who is neither side is an admin.
+  const byCropBid = !isBuyer && !isSeller;
+
   const note = reason?.trim() || null;
   if (isSeller && !note) {
     throw new ApiError(400, 'Say why you cannot fulfil this order, so the shopper is told something.');
+  }
+  if (byCropBid && !note) {
+    throw new ApiError(400, 'Say why this order is being cancelled. The shopper and the shop are both shown it.');
   }
 
   const cancelled = await prisma.$transaction(async (tx) => {
@@ -575,16 +582,22 @@ export async function cancelRetailOrder(
   if (!cancelled) return loadRetailOrder(order.id);
 
   // Best-effort, after the commit. The cancellation is real whatever happens.
-  const tellTheOtherSide = isBuyer ? order.sellerId : order.buyerId;
-  notifyRetailOrderCancelled(
-    tellTheOtherSide,
-    isBuyer ? 'shopper' : 'shop',
-    order.transactions.length,
-    order.totalAmount,
-    order.currency,
-    note,
-    order.id,
-  ).catch(() => {});
+  // Whoever did not press the button is told: the other side, or both sides
+  // when it was an admin.
+  const cancelledBy = isBuyer ? 'shopper' : isSeller ? 'shop' : 'cropbid';
+  const tell = (userId: string, recipient: 'shopper' | 'shop') =>
+    notifyRetailOrderCancelled(
+      userId,
+      recipient,
+      cancelledBy,
+      order.transactions.length,
+      order.totalAmount,
+      order.currency,
+      note,
+      order.id,
+    ).catch(() => {});
+  if (!isSeller) tell(order.sellerId, 'shop');
+  if (!isBuyer) tell(order.buyerId, 'shopper');
 
   if (cancelled.heldForRefund > 0) {
     void notifyAdminsRetailRefundDue(

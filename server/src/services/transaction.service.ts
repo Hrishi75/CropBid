@@ -235,7 +235,7 @@ export async function getMyTransactions(userId: string, role: string) {
 // =============================================================================
 // GET TRANSACTION — View a specific transaction
 // =============================================================================
-export async function getTransaction(transactionId: string, userId: string) {
+export async function getTransaction(transactionId: string, userId: string, role: string) {
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
     include: {
@@ -255,10 +255,11 @@ export async function getTransaction(transactionId: string, userId: string) {
       // Freight, for the settlement breakdown: the seller pays it, so they
       // need to see the amount alongside the platform fee.
       //
-      // An explicit select, not `true`. Only the two counterparties reach this
-      // endpoint, and they are exactly who the carrier's identity is withheld
-      // from, so listing the visible columns means a future column on Shipment
-      // cannot appear here by simply existing.
+      // An explicit select, not `true`. The two counterparties are exactly who
+      // the carrier's identity is withheld from, so listing the visible
+      // columns means a future column on Shipment cannot appear here by simply
+      // existing. Admins get the same select: this page does not show the
+      // carrier, and the tracking page it links to is where ops read it.
       shipment: {
         select: {
           id: true,
@@ -276,14 +277,19 @@ export async function getTransaction(transactionId: string, userId: string) {
 
   if (!transaction) throw new ApiError(404, 'Transaction not found');
 
-  // Verify user is involved (farmer, buyer, or admin)
-  if (transaction.farmerId !== userId && transaction.buyerId !== userId) {
+  // The two sides of the deal, or an admin. Admin → Transactions links every
+  // row here, and until this check let admins through, every one of those
+  // links was a 403.
+  const isAdmin = role === 'ADMIN';
+  if (!isAdmin && transaction.farmerId !== userId && transaction.buyerId !== userId) {
     throw new ApiError(403, 'You are not involved in this transaction');
   }
 
-  // Only the two counterparties reach this point, so "not the buyer" means the
-  // farmer — the side the gate is for.
-  const viewed = redactTransactionContact(transaction, { userId, role: 'FARMER' });
+  // Past the check, a non-admin who is not the buyer is the farmer, which is
+  // the side the contact gate is for. The role is passed as FARMER rather than
+  // as sent so that holds whatever the account's role says; an admin is passed
+  // as ADMIN and sees both sides' contact, as on every other admin read.
+  const viewed = redactTransactionContact(transaction, { userId, role: isAdmin ? 'ADMIN' : 'FARMER' });
   return viewed.contactReleased
     ? viewed
     : { ...viewed, bid: { ...viewed.bid, deliveryAddress: null, contactPhone: null } };
