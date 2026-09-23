@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import api from '../../lib/axios';
-import { ConfirmButton } from './inputs/ConfirmButton';
+import { ConfirmButton } from './ConfirmButton';
 import { LicenceForm } from './inputs/LicenceForm';
 import { ProductForm } from './inputs/ProductForm';
 import { ShopForm } from './inputs/ShopForm';

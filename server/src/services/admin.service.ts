@@ -99,12 +99,22 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
         suspended: true,
         avatar: true,
         createdAt: true,
+        ...DELETE_BLOCKER_SELECT,
       },
     }),
     prisma.user.count({ where }),
   ]);
 
-  return { users, total };
+  // Each row says whether it can be deleted and, if not, why, so the panel
+  // shows the reason instead of a button that is refused. The counts it is
+  // worked out from stay on the server.
+  return {
+    users: users.map(({ _count, wallet, ...u }) => ({
+      ...u,
+      deleteBlocker: userDeleteBlocker({ role: u.role, _count, wallet }),
+    })),
+    total,
+  };
 }
 
 // =============================================================================
@@ -124,7 +134,9 @@ export async function getAllListings(status?: string, limit = 20, offset = 0) {
         farmer: {
           include: { user: { select: { id: true, name: true } } },
         },
-        _count: { select: { bids: true } },
+        // transactions: a lot that has sold is financial history and cannot
+        // be deleted, and the panel needs to know before offering to.
+        _count: { select: { bids: true, transactions: true } },
       },
     }),
     prisma.listing.count({ where }),
@@ -374,25 +386,69 @@ export async function deleteListing(listingId: string) {
 // user row. Negotiations that reference the user's agent config sit on OTHER
 // users' bids, so they're cleared first to free the agent config's restrict
 // FKs. Users with transactions are financial history — refuse.
+//
+// So is a wallet that has ever moved. The wallet and its entries cascade with
+// the user, and a top-up is money CropBid took from them: deleting the row
+// would leave the money in our account and no record of whose it is.
+
+// What decides whether an account can go. The user list sends the answer on
+// every row and deleteUser applies it, from this one function, so the panel
+// can never offer a delete the server then refuses.
+const DELETE_BLOCKER_SELECT = {
+  _count: { select: { farmerTransactions: true, buyerTransactions: true } },
+  wallet: { select: { _count: { select: { entries: true } } } },
+} as const;
+
+export type UserDeleteBlocker = 'ADMIN' | 'TRANSACTIONS' | 'WALLET';
+
+export function userDeleteBlocker(u: {
+  role: string;
+  _count: { farmerTransactions: number; buyerTransactions: number };
+  wallet: { _count: { entries: number } } | null;
+}): UserDeleteBlocker | null {
+  if (u.role === 'ADMIN') return 'ADMIN';
+  if (u._count.farmerTransactions + u._count.buyerTransactions > 0) return 'TRANSACTIONS';
+  if ((u.wallet?._count.entries ?? 0) > 0) return 'WALLET';
+  return null;
+}
+
 export async function deleteUser(userId: string, actingAdminId: string) {
   if (userId === actingAdminId) {
     throw new ApiError(400, 'You cannot delete your own admin account');
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new ApiError(404, 'User not found');
-  if (user.role === 'ADMIN') {
-    throw new ApiError(403, 'Admin accounts cannot be deleted via the API');
-  }
+  return prisma.$transaction(async (tx) => {
+    // THE LOCK COMES FIRST, AND IT IS WHAT MAKES THE CHECK MEAN ANYTHING.
+    // The count used to be read outside the transaction, so a top-up that
+    // committed a moment later was cascaded away with the account: money taken
+    // and no record of whose it is, which is the one thing this guard exists
+    // to stop.
+    //
+    // Both writes that would matter conflict with these two locks. A first
+    // wallet, or a new deal, takes a key-share lock on the account row;
+    // applyEntry takes FOR UPDATE on the wallet row itself. So a top-up either
+    // gets here first, and the re-read below refuses the delete, or it waits
+    // for this transaction and then fails against an account that is gone,
+    // which is loud rather than silent.
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    if (locked.length === 0) throw new ApiError(404, 'User not found');
+    await tx.$queryRaw`SELECT id FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
 
-  const transactions = await prisma.transaction.count({
-    where: { OR: [{ farmerId: userId }, { buyerId: userId }] },
-  });
-  if (transactions > 0) {
-    throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
-  }
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, role: true, ...DELETE_BLOCKER_SELECT },
+    });
 
-  await prisma.$transaction(async (tx) => {
+    switch (userDeleteBlocker(user)) {
+      case 'ADMIN':
+        throw new ApiError(403, 'Admin accounts cannot be deleted via the API');
+      case 'TRANSACTIONS':
+        throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
+      case 'WALLET':
+        throw new ApiError(409, 'User has wallet history and cannot be hard-deleted: that is money they paid us');
+    }
+
     const agent = await tx.agentConfig.findUnique({ where: { userId } });
     if (agent) {
       await tx.negotiation.deleteMany({
@@ -400,58 +456,268 @@ export async function deleteUser(userId: string, actingAdminId: string) {
       });
     }
     await tx.user.delete({ where: { id: userId } });
-  });
 
-  return { id: userId, email: user.email };
+    return { id: userId, email: user.email };
+  });
 }
 
 // =============================================================================
-// PURGE DEMO DATA — One-shot cleanup of seeded/test data
+// DEMO DATA — the seeded accounts, and what they left behind
 // =============================================================================
-// Deletes ALL marketplace activity (shipments, transactions, retail orders and
-// their payments, negotiations, bids, listings, notifications) plus every user
-// whose email ends in "@cropbid.test" — except the calling admin — and any
-// extra emails passed explicitly. Real user ACCOUNTS survive; their listings/deals do not.
-// Logistics partners and the waitlist are left untouched.
-// Ordering matters: transactions restrict-FK onto listings/users, so activity
-// rows go first, users last.
-export async function purgeDemoData(actingAdminId: string, extraEmails: string[] = []) {
-  const demoUserWhere = {
-    id: { not: actingAdminId },
-    OR: [
-      { email: { endsWith: '@cropbid.test' } },
-      ...(extraEmails.length > 0 ? [{ email: { in: extraEmails } }] : []),
-    ],
-  };
+// SCOPED TO THE DEMO ACCOUNTS (2026-09-23). Until now this deleted EVERY
+// shipment, transaction, retail order, payment, negotiation, bid, listing and
+// notification on the platform, real ones included, and kept only the
+// accounts. Under a name like "purge demo data" that is a production wipe one
+// click away, which is why it had no button for as long as it read like that.
+// What it takes now is the demo accounts themselves and the rows that belong
+// to them: their lots, the deals and bids on those lots, their shop orders and
+// payments, their demand and offers, their notifications.
+//
+// A lot that is demo takes the real buyer's bid on it with it. That bid is an
+// offer on something that never existed, and the lot cannot go without it.
+//
+// NOTHING RAZORPAY HAS TOUCHED. If a captured payment, a shop payment or a
+// wallet top-up is caught in the set, the whole purge is refused and nothing
+// is deleted: real money against a demo account is not something to tidy away
+// in a transaction, it is something for a person to look at.
+//
+// Ordering matters: transactions restrict-FK onto listings, orders and users,
+// so activity rows go first and users last. Wallets, addresses, profiles and
+// enquiries cascade with the user row and are not listed here.
+//
+// Logistics partners, the waitlist, the input and equipment catalogues and the
+// audit log are left alone.
 
-  const [shipments, transactions, retailPayments, retailOrders, negotiations, bids, listings, notifications, users] =
-    await prisma.$transaction([
-      prisma.shipment.deleteMany(),
-      prisma.transaction.deleteMany(),
-      // After the lots that point at them, before the users they point at.
-      // Payments first: they point at users too.
-      prisma.retailPayment.deleteMany(),
-      prisma.retailOrder.deleteMany(),
-      prisma.negotiation.deleteMany(),
-      prisma.bid.deleteMany(),
-      prisma.listing.deleteMany(),
-      prisma.notification.deleteMany(),
-      prisma.user.deleteMany({ where: demoUserWhere }),
-    ]);
+const DEMO_EMAIL_SUFFIX = '@cropbid.test';
+
+// A negotiation held by a demo account's agent, or on a demo lot or bid. The
+// agent config cascades with the user and negotiations restrict-FK onto it, so
+// the agent's own negotiations have to go explicitly or the user cannot.
+const negotiationWhere = (userIds: string[], listingIds: string[], bidIds: string[]) => ({
+  OR: [
+    { listingId: { in: listingIds } },
+    { bidId: { in: bidIds } },
+    { farmerAgent: { userId: { in: userIds } } },
+    { buyerAgent: { userId: { in: userIds } } },
+  ],
+});
+
+// An offer restrict-FKs onto the listing and the bid it minted, so a demo lot
+// cannot go while an offer points at it, whoever made the offer.
+const offerWhere = (userIds: string[], listingIds: string[], bidIds: string[]) => ({
+  OR: [
+    { listingId: { in: listingIds } },
+    { bidId: { in: bidIds } },
+    { farmerId: { in: userIds } },
+    { requirement: { buyerId: { in: userIds } } },
+  ],
+});
+
+// One pass over the database, shared by the preview and the purge, so what an
+// admin is shown is the set that would actually go.
+async function collectDemoData(actingAdminId: string, extraEmails: string[]) {
+  const users = await prisma.user.findMany({
+    where: {
+      id: { not: actingAdminId },
+      // No admin, ever, not only the one pressing the button. CropBid's own
+      // production admin signs in as admin@cropbid.test, so "every demo email"
+      // includes a colleague's ops account, and one click would delete it.
+      role: { not: 'ADMIN' },
+      OR: [
+        { email: { endsWith: DEMO_EMAIL_SUFFIX } },
+        ...(extraEmails.length > 0 ? [{ email: { in: extraEmails } }] : []),
+      ],
+    },
+    select: { id: true, email: true },
+  });
+  const userIds = users.map((u) => u.id);
+
+  const listings = await prisma.listing.findMany({
+    where: { farmer: { userId: { in: userIds } } },
+    select: { id: true },
+  });
+  const listingIds = listings.map((l) => l.id);
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      OR: [
+        { farmerId: { in: userIds } },
+        { buyerId: { in: userIds } },
+        { listingId: { in: listingIds } },
+      ],
+    },
+    select: { id: true, razorpayPaymentId: true },
+  });
+  const transactionIds = transactions.map((t) => t.id);
+
+  const retailOrders = await prisma.retailOrder.findMany({
+    where: { OR: [{ buyerId: { in: userIds } }, { sellerId: { in: userIds } }] },
+    select: { id: true },
+  });
+  const retailOrderIds = retailOrders.map((o) => o.id);
+
+  // A payment opened by a demo shopper, or one covering a demo shop's order.
+  //
+  // NEVER ONE THAT ALSO COVERS AN ORDER WE ARE KEEPING. A basket is paid once
+  // across however many shops it holds (CLAUDE.md section 3c), so one payment
+  // can cover a demo shop's order and a real shop's order together. Taking it
+  // because of the demo half would cancel the real shop's payment session,
+  // which is exactly the real data this is supposed to leave alone.
+  const retailPayments = await prisma.retailPayment.findMany({
+    where: {
+      OR: [
+        { buyerId: { in: userIds } },
+        { orders: { some: { id: { in: retailOrderIds } } } },
+      ],
+      NOT: { orders: { some: { id: { notIn: retailOrderIds } } } },
+    },
+    select: { id: true, razorpayPaymentId: true },
+  });
+
+  const bids = await prisma.bid.findMany({
+    where: { OR: [{ buyerId: { in: userIds } }, { listingId: { in: listingIds } }] },
+    select: { id: true },
+  });
+  const bidIds = bids.map((b) => b.id);
+
+  const [shipments, negotiations, notifications, requirements, offers, walletTopUps, paidRetailOrders] = await Promise.all([
+    prisma.shipment.count({ where: { transactionId: { in: transactionIds } } }),
+    prisma.negotiation.count({ where: negotiationWhere(userIds, listingIds, bidIds) }),
+    prisma.notification.count({ where: { userId: { in: userIds } } }),
+    prisma.buyerRequirement.count({ where: { buyerId: { in: userIds } } }),
+    prisma.requirementOffer.count({ where: offerWhere(userIds, listingIds, bidIds) }),
+    prisma.walletEntry.count({
+      where: { wallet: { userId: { in: userIds } }, razorpayPaymentId: { not: null } },
+    }),
+    // Its own payment row may sit outside the set, above, so the order says so
+    // itself.
+    prisma.retailOrder.count({ where: { id: { in: retailOrderIds }, paidAt: { not: null } } }),
+  ]);
 
   return {
-    deleted: {
-      shipments: shipments.count,
-      transactions: transactions.count,
-      retailPayments: retailPayments.count,
-      retailOrders: retailOrders.count,
-      negotiations: negotiations.count,
-      bids: bids.count,
-      listings: listings.count,
-      notifications: notifications.count,
-      users: users.count,
+    ids: { userIds, listingIds, transactionIds, retailOrderIds, bidIds, retailPaymentIds: retailPayments.map((p) => p.id) },
+    emails: users.map((u) => u.email),
+    counts: {
+      users: users.length,
+      listings: listings.length,
+      transactions: transactions.length,
+      retailOrders: retailOrders.length,
+      retailPayments: retailPayments.length,
+      bids: bids.length,
+      shipments,
+      negotiations,
+      notifications,
+      requirements,
+      requirementOffers: offers,
+    },
+    // Why it would be refused, empty when it would not be.
+    paid: {
+      transactions: transactions.filter((t) => t.razorpayPaymentId != null).length,
+      retailPayments: retailPayments.filter((p) => p.razorpayPaymentId != null).length,
+      retailOrders: paidRetailOrders,
+      walletTopUps,
     },
   };
+}
+
+// Money against a demo account is a thing for a person to look at, not to
+// tidy away inside a delete transaction.
+function refusePaid(paid: { transactions: number; retailPayments: number; retailOrders: number; walletTopUps: number }) {
+  const total = paid.transactions + paid.retailPayments + paid.retailOrders + paid.walletTopUps;
+  if (total === 0) return;
+  throw new ApiError(409,
+    `Real payments are attached to this data (${paid.transactions} deals, ${paid.retailPayments} shop payments, ${paid.retailOrders} paid shop orders, ${paid.walletTopUps} wallet top-ups). Nothing was deleted.`);
+}
+
+// What the panel shows before anyone presses anything.
+export async function previewDemoData(actingAdminId: string, extraEmails: string[] = []) {
+  const { counts, paid, emails } = await collectDemoData(actingAdminId, extraEmails);
+  return { counts, paid, accounts: emails.slice(0, 50), demoSuffix: DEMO_EMAIL_SUFFIX };
+}
+
+export async function purgeDemoData(actingAdminId: string, extraEmails: string[] = []) {
+  const { ids, counts, paid } = await collectDemoData(actingAdminId, extraEmails);
+
+  refusePaid(paid);
+
+  if (counts.users === 0) {
+    return { deleted: Object.fromEntries(Object.keys(counts).map((k) => [k, 0])) as Record<string, number> };
+  }
+
+  const { userIds, listingIds, transactionIds, retailOrderIds, retailPaymentIds, bidIds } = ids;
+
+  return prisma.$transaction(async (tx) => {
+    // The set above was read outside this transaction, so a capture that
+    // commits in between would otherwise be deleted by ids collected before it
+    // existed: the money stays collected and the record of it goes. Two
+    // measures, because the two writes are different shapes.
+    //
+    // FIRST, THE LOCKS. A first wallet, or a new deal, takes a key-share lock
+    // on the account row and applyEntry takes FOR UPDATE on the wallet row, so
+    // a top-up arriving now waits for this transaction and then finds the
+    // account gone, rather than landing inside it.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ANY(${userIds}) FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "Wallet" WHERE "userId" = ANY(${userIds}) FOR UPDATE`;
+
+    const walletTopUps = await tx.walletEntry.count({
+      where: { wallet: { userId: { in: userIds } }, razorpayPaymentId: { not: null } },
+    });
+    if (walletTopUps > 0) refusePaid({ transactions: 0, retailPayments: 0, retailOrders: 0, walletTopUps });
+
+    // SECOND, THE DELETES THEMSELVES CARRY THE RULE. A capture is an UPDATE of
+    // a row we already hold the id of, which no lock above covers: under READ
+    // COMMITTED the DELETE would wait for it and then remove the row it had
+    // just paid for. So each delete takes only rows that money has not
+    // reached, and a short count means one slipped in and the whole purge
+    // rolls back with nothing deleted.
+    const paidNow = () => {
+      throw new ApiError(409, 'A payment landed while this was running, so nothing was deleted. Open the panel again to see what is left.');
+    };
+
+    const shipments = await tx.shipment.deleteMany({ where: { transactionId: { in: transactionIds } } });
+
+    const transactions = await tx.transaction.deleteMany({
+      where: { id: { in: transactionIds }, razorpayPaymentId: null },
+    });
+    if (transactions.count !== transactionIds.length) paidNow();
+
+    const requirementOffers = await tx.requirementOffer.deleteMany({ where: offerWhere(userIds, listingIds, bidIds) });
+    const requirements = await tx.buyerRequirement.deleteMany({ where: { buyerId: { in: userIds } } });
+
+    // Payments before the orders they cover, and both before the users they
+    // point at.
+    const retailPayments = await tx.retailPayment.deleteMany({
+      where: { id: { in: retailPaymentIds }, razorpayPaymentId: null },
+    });
+    if (retailPayments.count !== retailPaymentIds.length) paidNow();
+
+    const retailOrders = await tx.retailOrder.deleteMany({
+      where: { id: { in: retailOrderIds }, paidAt: null },
+    });
+    if (retailOrders.count !== retailOrderIds.length) paidNow();
+
+    const negotiations = await tx.negotiation.deleteMany({ where: negotiationWhere(userIds, listingIds, bidIds) });
+    const bids = await tx.bid.deleteMany({ where: { id: { in: bidIds } } });
+    const listings = await tx.listing.deleteMany({ where: { id: { in: listingIds } } });
+    const notifications = await tx.notification.deleteMany({ where: { userId: { in: userIds } } });
+    const users = await tx.user.deleteMany({ where: { id: { in: userIds } } });
+
+    return {
+      deleted: {
+        shipments: shipments.count,
+        transactions: transactions.count,
+        requirementOffers: requirementOffers.count,
+        requirements: requirements.count,
+        retailPayments: retailPayments.count,
+        retailOrders: retailOrders.count,
+        negotiations: negotiations.count,
+        bids: bids.count,
+        listings: listings.count,
+        notifications: notifications.count,
+        users: users.count,
+      },
+    };
+  });
 }
 
 // =============================================================================

@@ -25,6 +25,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
+import { DemoDataCard } from './DemoDataCard';
 import api from '../../lib/axios';
 
 interface PlatformStats {
@@ -225,6 +226,10 @@ export function AdminDashboard() {
           <Link to="/admin/transactions" className="cb-btn cb-btn-link">Review orders →</Link>
         </div>
       </div>
+
+      {/* Renders only where seeded accounts actually exist, so a clean
+          database shows nothing here. */}
+      <DemoDataCard />
     </DashboardLayout>
   );
 }

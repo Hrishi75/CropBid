@@ -2,7 +2,8 @@
 // AdminUsers — User directory + trust-score editing
 // =============================================================================
 // Admin table of all users (via /admin/users) with search, role filter, and
-// pagination. Admins can edit a user's trust score inline. COUNTRY_FLAGS maps
+// pagination. Admins can edit a user's trust score inline, suspend an account,
+// and delete one that never traded or topped up its wallet. COUNTRY_FLAGS maps
 // country names to flag emoji for display.
 // =============================================================================
 
@@ -10,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -25,7 +27,18 @@ interface AdminUser {
   suspended: boolean;
   avatar: string | null;
   createdAt: string;
+  // Why this account cannot be deleted, or null when it can. Worked out by
+  // the server with the same rule the delete applies, so the button is only
+  // offered when the delete will go through.
+  deleteBlocker: 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | null;
 }
+
+// What an admin reads in place of the button. Admins get nothing, the same as
+// Suspend: there is no action on another admin here at all.
+const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET', string> = {
+  TRANSACTIONS: "Has deals, so can't be deleted",
+  WALLET: "Has wallet history, so can't be deleted",
+};
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'India': '🇮🇳',
@@ -98,6 +111,20 @@ export function AdminUsers() {
       toast.success(next ? 'User suspended' : 'User reinstated');
     } catch (err: any) {
       toast.error(err.response?.data?.message || `Failed to ${verb.toLowerCase()}`);
+    }
+  }
+
+  // Permanent, and it takes their profile, listings and bids with it. The
+  // server refuses anyone who has traded or topped up, so what goes is only
+  // what never touched money.
+  async function handleDelete(user: AdminUser) {
+    try {
+      await api.delete(`/admin/users/${user.id}`);
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      setTotal((t) => t - 1);
+      toast.success(`${user.name} deleted`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -248,6 +275,16 @@ export function AdminUsers() {
                               >
                                 {u.suspended ? 'Reinstate' : 'Suspend'}
                               </button>
+                            )}
+                            {u.deleteBlocker === null && (
+                              <ConfirmButton
+                                label="Delete"
+                                confirmLabel={`Delete ${u.name} for good? Their profile, listings and bids go too.`}
+                                onConfirm={() => handleDelete(u)}
+                              />
+                            )}
+                            {(u.deleteBlocker === 'TRANSACTIONS' || u.deleteBlocker === 'WALLET') && (
+                              <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{DELETE_BLOCKED[u.deleteBlocker]}</span>
                             )}
                           </>
                         )}
