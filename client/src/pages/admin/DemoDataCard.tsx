@@ -26,7 +26,7 @@ const CONFIRM_PHRASE = 'PURGE_DEMO_DATA';
 
 interface DemoData {
   counts: Record<string, number>;
-  paid: { transactions: number; retailPayments: number; walletTopUps: number };
+  paid: { transactions: number; retailPayments: number; retailOrders: number; walletTopUps: number };
   accounts: string[];
   demoSuffix: string;
 }
@@ -84,7 +84,7 @@ export function DemoDataCard() {
 
   if (!demo || demo.counts.users === 0) return null;
 
-  const blocked = demo.paid.transactions + demo.paid.retailPayments + demo.paid.walletTopUps > 0;
+  const blocked = Object.values(demo.paid).some((n) => n > 0);
   const listed = ROWS.filter((r) => (demo.counts[r.key] ?? 0) > 0);
 
   return (
@@ -111,9 +111,9 @@ export function DemoDataCard() {
       {blocked ? (
         <div className="cb-small" style={{ color: 'var(--cb-ember)' }}>
           Real payments are attached to this data: {demo.paid.transactions} deals,{' '}
-          {demo.paid.retailPayments} shop payments, {demo.paid.walletTopUps} wallet top-ups. Nothing
-          can be removed from here while that is true, because money reached a demo account and
-          somebody has to look at it first.
+          {demo.paid.retailPayments} shop payments, {demo.paid.retailOrders} paid shop orders,{' '}
+          {demo.paid.walletTopUps} wallet top-ups. Nothing can be removed from here while that is
+          true, because money reached a demo account and somebody has to look at it first.
         </div>
       ) : (
         <>

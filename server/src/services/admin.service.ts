@@ -417,22 +417,38 @@ export async function deleteUser(userId: string, actingAdminId: string) {
     throw new ApiError(400, 'You cannot delete your own admin account');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { email: true, role: true, ...DELETE_BLOCKER_SELECT },
-  });
-  if (!user) throw new ApiError(404, 'User not found');
+  return prisma.$transaction(async (tx) => {
+    // THE LOCK COMES FIRST, AND IT IS WHAT MAKES THE CHECK MEAN ANYTHING.
+    // The count used to be read outside the transaction, so a top-up that
+    // committed a moment later was cascaded away with the account: money taken
+    // and no record of whose it is, which is the one thing this guard exists
+    // to stop.
+    //
+    // Both writes that would matter conflict with these two locks. A first
+    // wallet, or a new deal, takes a key-share lock on the account row;
+    // applyEntry takes FOR UPDATE on the wallet row itself. So a top-up either
+    // gets here first, and the re-read below refuses the delete, or it waits
+    // for this transaction and then fails against an account that is gone,
+    // which is loud rather than silent.
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    if (locked.length === 0) throw new ApiError(404, 'User not found');
+    await tx.$queryRaw`SELECT id FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
 
-  switch (userDeleteBlocker(user)) {
-    case 'ADMIN':
-      throw new ApiError(403, 'Admin accounts cannot be deleted via the API');
-    case 'TRANSACTIONS':
-      throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
-    case 'WALLET':
-      throw new ApiError(409, 'User has wallet history and cannot be hard-deleted: that is money they paid us');
-  }
+    const user = await tx.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, role: true, ...DELETE_BLOCKER_SELECT },
+    });
 
-  await prisma.$transaction(async (tx) => {
+    switch (userDeleteBlocker(user)) {
+      case 'ADMIN':
+        throw new ApiError(403, 'Admin accounts cannot be deleted via the API');
+      case 'TRANSACTIONS':
+        throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
+      case 'WALLET':
+        throw new ApiError(409, 'User has wallet history and cannot be hard-deleted: that is money they paid us');
+    }
+
     const agent = await tx.agentConfig.findUnique({ where: { userId } });
     if (agent) {
       await tx.negotiation.deleteMany({
@@ -440,9 +456,9 @@ export async function deleteUser(userId: string, actingAdminId: string) {
       });
     }
     await tx.user.delete({ where: { id: userId } });
-  });
 
-  return { id: userId, email: user.email };
+    return { id: userId, email: user.email };
+  });
 }
 
 // =============================================================================
@@ -541,12 +557,19 @@ async function collectDemoData(actingAdminId: string, extraEmails: string[]) {
   const retailOrderIds = retailOrders.map((o) => o.id);
 
   // A payment opened by a demo shopper, or one covering a demo shop's order.
+  //
+  // NEVER ONE THAT ALSO COVERS AN ORDER WE ARE KEEPING. A basket is paid once
+  // across however many shops it holds (CLAUDE.md section 3c), so one payment
+  // can cover a demo shop's order and a real shop's order together. Taking it
+  // because of the demo half would cancel the real shop's payment session,
+  // which is exactly the real data this is supposed to leave alone.
   const retailPayments = await prisma.retailPayment.findMany({
     where: {
       OR: [
         { buyerId: { in: userIds } },
         { orders: { some: { id: { in: retailOrderIds } } } },
       ],
+      NOT: { orders: { some: { id: { notIn: retailOrderIds } } } },
     },
     select: { id: true, razorpayPaymentId: true },
   });
@@ -557,7 +580,7 @@ async function collectDemoData(actingAdminId: string, extraEmails: string[]) {
   });
   const bidIds = bids.map((b) => b.id);
 
-  const [shipments, negotiations, notifications, requirements, offers, walletTopUps] = await Promise.all([
+  const [shipments, negotiations, notifications, requirements, offers, walletTopUps, paidRetailOrders] = await Promise.all([
     prisma.shipment.count({ where: { transactionId: { in: transactionIds } } }),
     prisma.negotiation.count({ where: negotiationWhere(userIds, listingIds, bidIds) }),
     prisma.notification.count({ where: { userId: { in: userIds } } }),
@@ -566,6 +589,9 @@ async function collectDemoData(actingAdminId: string, extraEmails: string[]) {
     prisma.walletEntry.count({
       where: { wallet: { userId: { in: userIds } }, razorpayPaymentId: { not: null } },
     }),
+    // Its own payment row may sit outside the set, above, so the order says so
+    // itself.
+    prisma.retailOrder.count({ where: { id: { in: retailOrderIds }, paidAt: { not: null } } }),
   ]);
 
   return {
@@ -588,9 +614,19 @@ async function collectDemoData(actingAdminId: string, extraEmails: string[]) {
     paid: {
       transactions: transactions.filter((t) => t.razorpayPaymentId != null).length,
       retailPayments: retailPayments.filter((p) => p.razorpayPaymentId != null).length,
+      retailOrders: paidRetailOrders,
       walletTopUps,
     },
   };
+}
+
+// Money against a demo account is a thing for a person to look at, not to
+// tidy away inside a delete transaction.
+function refusePaid(paid: { transactions: number; retailPayments: number; retailOrders: number; walletTopUps: number }) {
+  const total = paid.transactions + paid.retailPayments + paid.retailOrders + paid.walletTopUps;
+  if (total === 0) return;
+  throw new ApiError(409,
+    `Real payments are attached to this data (${paid.transactions} deals, ${paid.retailPayments} shop payments, ${paid.retailOrders} paid shop orders, ${paid.walletTopUps} wallet top-ups). Nothing was deleted.`);
 }
 
 // What the panel shows before anyone presses anything.
@@ -602,11 +638,7 @@ export async function previewDemoData(actingAdminId: string, extraEmails: string
 export async function purgeDemoData(actingAdminId: string, extraEmails: string[] = []) {
   const { ids, counts, paid } = await collectDemoData(actingAdminId, extraEmails);
 
-  const paidRows = paid.transactions + paid.retailPayments + paid.walletTopUps;
-  if (paidRows > 0) {
-    throw new ApiError(409,
-      `Real payments are attached to this data (${paid.transactions} deals, ${paid.retailPayments} shop payments, ${paid.walletTopUps} wallet top-ups). Nothing was deleted.`);
-  }
+  refusePaid(paid);
 
   if (counts.users === 0) {
     return { deleted: Object.fromEntries(Object.keys(counts).map((k) => [k, 0])) as Record<string, number> };
@@ -614,38 +646,78 @@ export async function purgeDemoData(actingAdminId: string, extraEmails: string[]
 
   const { userIds, listingIds, transactionIds, retailOrderIds, retailPaymentIds, bidIds } = ids;
 
-  const [shipments, transactions, requirementOffers, requirements, retailPayments, retailOrders, negotiations, bids, listings, notifications, users] =
-    await prisma.$transaction([
-      prisma.shipment.deleteMany({ where: { transactionId: { in: transactionIds } } }),
-      prisma.transaction.deleteMany({ where: { id: { in: transactionIds } } }),
-      prisma.requirementOffer.deleteMany({ where: offerWhere(userIds, listingIds, bidIds) }),
-      prisma.buyerRequirement.deleteMany({ where: { buyerId: { in: userIds } } }),
-      // Payments before the orders they cover, and both before the users they
-      // point at.
-      prisma.retailPayment.deleteMany({ where: { id: { in: retailPaymentIds } } }),
-      prisma.retailOrder.deleteMany({ where: { id: { in: retailOrderIds } } }),
-      prisma.negotiation.deleteMany({ where: negotiationWhere(userIds, listingIds, bidIds) }),
-      prisma.bid.deleteMany({ where: { id: { in: bidIds } } }),
-      prisma.listing.deleteMany({ where: { id: { in: listingIds } } }),
-      prisma.notification.deleteMany({ where: { userId: { in: userIds } } }),
-      prisma.user.deleteMany({ where: { id: { in: userIds } } }),
-    ]);
+  return prisma.$transaction(async (tx) => {
+    // The set above was read outside this transaction, so a capture that
+    // commits in between would otherwise be deleted by ids collected before it
+    // existed: the money stays collected and the record of it goes. Two
+    // measures, because the two writes are different shapes.
+    //
+    // FIRST, THE LOCKS. A first wallet, or a new deal, takes a key-share lock
+    // on the account row and applyEntry takes FOR UPDATE on the wallet row, so
+    // a top-up arriving now waits for this transaction and then finds the
+    // account gone, rather than landing inside it.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ANY(${userIds}) FOR UPDATE`;
+    await tx.$queryRaw`SELECT id FROM "Wallet" WHERE "userId" = ANY(${userIds}) FOR UPDATE`;
 
-  return {
-    deleted: {
-      shipments: shipments.count,
-      transactions: transactions.count,
-      requirementOffers: requirementOffers.count,
-      requirements: requirements.count,
-      retailPayments: retailPayments.count,
-      retailOrders: retailOrders.count,
-      negotiations: negotiations.count,
-      bids: bids.count,
-      listings: listings.count,
-      notifications: notifications.count,
-      users: users.count,
-    },
-  };
+    const walletTopUps = await tx.walletEntry.count({
+      where: { wallet: { userId: { in: userIds } }, razorpayPaymentId: { not: null } },
+    });
+    if (walletTopUps > 0) refusePaid({ transactions: 0, retailPayments: 0, retailOrders: 0, walletTopUps });
+
+    // SECOND, THE DELETES THEMSELVES CARRY THE RULE. A capture is an UPDATE of
+    // a row we already hold the id of, which no lock above covers: under READ
+    // COMMITTED the DELETE would wait for it and then remove the row it had
+    // just paid for. So each delete takes only rows that money has not
+    // reached, and a short count means one slipped in and the whole purge
+    // rolls back with nothing deleted.
+    const paidNow = () => {
+      throw new ApiError(409, 'A payment landed while this was running, so nothing was deleted. Open the panel again to see what is left.');
+    };
+
+    const shipments = await tx.shipment.deleteMany({ where: { transactionId: { in: transactionIds } } });
+
+    const transactions = await tx.transaction.deleteMany({
+      where: { id: { in: transactionIds }, razorpayPaymentId: null },
+    });
+    if (transactions.count !== transactionIds.length) paidNow();
+
+    const requirementOffers = await tx.requirementOffer.deleteMany({ where: offerWhere(userIds, listingIds, bidIds) });
+    const requirements = await tx.buyerRequirement.deleteMany({ where: { buyerId: { in: userIds } } });
+
+    // Payments before the orders they cover, and both before the users they
+    // point at.
+    const retailPayments = await tx.retailPayment.deleteMany({
+      where: { id: { in: retailPaymentIds }, razorpayPaymentId: null },
+    });
+    if (retailPayments.count !== retailPaymentIds.length) paidNow();
+
+    const retailOrders = await tx.retailOrder.deleteMany({
+      where: { id: { in: retailOrderIds }, paidAt: null },
+    });
+    if (retailOrders.count !== retailOrderIds.length) paidNow();
+
+    const negotiations = await tx.negotiation.deleteMany({ where: negotiationWhere(userIds, listingIds, bidIds) });
+    const bids = await tx.bid.deleteMany({ where: { id: { in: bidIds } } });
+    const listings = await tx.listing.deleteMany({ where: { id: { in: listingIds } } });
+    const notifications = await tx.notification.deleteMany({ where: { userId: { in: userIds } } });
+    const users = await tx.user.deleteMany({ where: { id: { in: userIds } } });
+
+    return {
+      deleted: {
+        shipments: shipments.count,
+        transactions: transactions.count,
+        requirementOffers: requirementOffers.count,
+        requirements: requirements.count,
+        retailPayments: retailPayments.count,
+        retailOrders: retailOrders.count,
+        negotiations: negotiations.count,
+        bids: bids.count,
+        listings: listings.count,
+        notifications: notifications.count,
+        users: users.count,
+      },
+    };
+  });
 }
 
 // =============================================================================

@@ -11,6 +11,8 @@
 //   2. An account that never transacted or topped up is deleted.
 //   3. The user list says, per row, why an account cannot be deleted, from the
 //      same rule, so the panel never offers a delete the server refuses.
+//   4. A top-up that commits WHILE the delete runs is not cascaded away with
+//      the account.
 // =============================================================================
 
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
@@ -77,6 +79,37 @@ describe('deleteUser', () => {
       await prisma.user.deleteMany({ where: { id: other } });
     }
   });
+});
+
+// The check used to run outside the delete transaction, so an account with no
+// entries at that moment could be deleted a moment after one was paid for,
+// taking the ledger row with it. Ten rounds, because a single round of this
+// passes on the broken code whenever the two happen not to overlap.
+describe('a top-up landing mid-delete', () => {
+  it('survives, ten times over', async () => {
+    for (let round = 0; round < 10; round++) {
+      await prisma.user.deleteMany({ where: { id: PLAIN } });
+      await prisma.user.create({ data: user(PLAIN) });
+      const wallet = await prisma.wallet.create({ data: { userId: PLAIN } });
+
+      // What applyEntry does: lock the wallet row, then write the entry.
+      const topUp = prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Wallet" WHERE id = ${wallet.id} FOR UPDATE`;
+        await new Promise((r) => setTimeout(r, 60));
+        await tx.walletEntry.create({
+          data: { walletId: wallet.id, type: 'TOPUP', amount: 100, balanceAfter: 100, razorpayPaymentId: `pay_del_race_${round}` },
+        });
+      });
+
+      await new Promise((r) => setTimeout(r, 20));
+      const outcome = await deleteUser(PLAIN, ADMIN).then(() => 'deleted').catch(() => 'refused');
+      await topUp;
+
+      expect(outcome).toBe('refused');
+      expect(await prisma.walletEntry.count({ where: { razorpayPaymentId: `pay_del_race_${round}` } })).toBe(1);
+      expect(await prisma.user.count({ where: { id: PLAIN } })).toBe(1);
+    }
+  }, 30000);
 });
 
 describe('the user list', () => {
