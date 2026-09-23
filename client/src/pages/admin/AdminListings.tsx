@@ -3,14 +3,17 @@
 // =============================================================================
 // Admin table of every listing on the platform (via /admin/listings) with
 // status-tab filtering and pagination. Shows crop, farmer, price range, bid
-// count, and status; links into each listing's detail view.
+// count, and status; links into each listing's detail view. A lot that never
+// sold can be deleted; one that has is financial history and cannot.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
+import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
+import toast from 'react-hot-toast';
 
 interface AdminListing {
   id: string;
@@ -28,7 +31,7 @@ interface AdminListing {
   organic: boolean;
   createdAt: string;
   farmer: { user: { id: string; name: string; trustScore?: number; country?: string } };
-  _count: { bids: number };
+  _count: { bids: number; transactions: number };
 }
 
 const STATUS_TABS = [
@@ -72,6 +75,19 @@ export function AdminListings() {
       console.error('Failed to load listings:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Permanent. Its bids and negotiations go with it; a lot that has sold is
+  // refused by the server, so this button is only shown on one that has not.
+  async function handleDelete(listing: AdminListing) {
+    try {
+      await api.delete(`/admin/listings/${listing.id}`);
+      setListings((prev) => prev.filter((l) => l.id !== listing.id));
+      setTotal((t) => t - 1);
+      toast.success(`${listing.cropName} lot deleted`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to delete');
     }
   }
 
@@ -141,7 +157,17 @@ export function AdminListings() {
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <Link to={`/listings/${l.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
                   <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-wheat)' }}>⚠ Flag</button>
-                  <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>✕ Take down</button>
+                  {l._count.transactions === 0 ? (
+                    <ConfirmButton
+                      label="✕ Delete"
+                      confirmLabel={l._count.bids > 0
+                        ? `Delete this lot and its ${l._count.bids} ${l._count.bids === 1 ? 'bid' : 'bids'} for good?`
+                        : 'Delete this lot for good?'}
+                      onConfirm={() => handleDelete(l)}
+                    />
+                  ) : (
+                    <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>Has sold, so can't be deleted</span>
+                  )}
                 </div>
               </div>
             );

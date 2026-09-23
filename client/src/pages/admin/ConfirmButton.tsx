@@ -1,8 +1,9 @@
 // =============================================================================
 // ConfirmButton — a link-style action that asks once before it acts
 // =============================================================================
-// For the actions that take products off /inputs. Inline rather than
-// window.confirm, which embedded browsers can suppress without showing anything.
+// For admin actions that take something away: a product off /inputs, a
+// listing or an account deleted. Inline rather than window.confirm, which
+// embedded browsers can suppress without showing anything.
 // =============================================================================
 
 import { useState } from 'react';

@@ -14,7 +14,7 @@
 
 import { useState, type FormEvent } from 'react';
 import api from '../../../lib/axios';
-import { ConfirmButton } from './ConfirmButton';
+import { ConfirmButton } from '../ConfirmButton';
 import { apiMessage, LICENCE_KINDS, type AdminSupplier, type LicenceKind } from './types';
 
 interface Props {

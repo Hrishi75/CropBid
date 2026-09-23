@@ -31,7 +31,9 @@ router.get('/listings', adminController.getAllListings);
 // DELETE /api/admin/listings/:id — Remove a listing (no transactions attached)
 router.delete('/listings/:id', adminController.deleteListing);
 
-// POST /api/admin/purge-demo-data — Wipe seeded demo data (confirm phrase required)
+// GET  /api/admin/demo-data — what a purge would remove (read-only)
+// POST /api/admin/purge-demo-data — remove it (confirm phrase required)
+router.get('/demo-data', adminController.getDemoData);
 router.post('/purge-demo-data', adminController.purgeDemoData);
 
 // GET /api/admin/attention — Ops triage queue (deals with no freight booked)

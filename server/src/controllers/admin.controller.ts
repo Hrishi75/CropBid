@@ -189,9 +189,23 @@ export async function deleteListing(req: Request, res: Response, next: NextFunct
   }
 }
 
-// POST /api/admin/purge-demo-data — One-shot wipe of demo/seeded data.
-// Requires the exact confirm phrase in the body so it can never be triggered
-// by a stray click or replayed request drafted for another endpoint.
+// GET /api/admin/demo-data — what a purge would remove, and what would stop
+// it. Read-only, so the panel can show the set before anybody confirms it.
+export async function getDemoData(req: Request, res: Response, next: NextFunction) {
+  try {
+    const emails = typeof req.query.extraEmails === 'string' && req.query.extraEmails.length > 0
+      ? req.query.extraEmails.split(',').map((e) => e.trim()).filter(Boolean).slice(0, 50)
+      : [];
+    res.json(await adminService.previewDemoData(req.user!.userId, emails));
+  } catch (error) {
+    next(error);
+  }
+}
+
+// POST /api/admin/purge-demo-data — removes the demo accounts and the rows
+// that belong to them. Requires the exact confirm phrase in the body so it can
+// never be triggered by a stray click or replayed request drafted for another
+// endpoint.
 export async function purgeDemoData(req: Request, res: Response, next: NextFunction) {
   try {
     const body = purgeDemoDataSchema.safeParse(req.body);
