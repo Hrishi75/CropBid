@@ -289,7 +289,8 @@ export async function notifyAdminsRetailOverpaid(
 // cannot fulfil, with the reason it gave.
 export async function notifyRetailOrderCancelled(
   userId: string,
-  cancelledBy: 'shopper' | 'shop',
+  recipient: 'shopper' | 'shop',
+  cancelledBy: 'shopper' | 'shop' | 'cropbid',
   itemCount: number,
   amount: number,
   currency: string,
@@ -297,13 +298,17 @@ export async function notifyRetailOrderCancelled(
   retailOrderId: string,
 ) {
   const items = `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+  const money = `${currency} ${amount.toLocaleString('en-IN')}`;
+  const why = reason ? ` Reason: ${reason}` : '';
   await createNotification({
     userId,
     type: 'RETAIL_ORDER_CANCELLED',
-    title: cancelledBy === 'shopper' ? 'Order cancelled by the shopper' : 'Your order was cancelled',
-    message: cancelledBy === 'shopper'
-      ? `${items}, ${currency} ${amount.toLocaleString('en-IN')}. Nothing to pack.${reason ? ` Reason: ${reason}` : ''}`
-      : `The shop cancelled ${items}, ${currency} ${amount.toLocaleString('en-IN')}.${reason ? ` Reason: ${reason}` : ''}`,
+    title: recipient === 'shopper'
+      ? 'Your order was cancelled'
+      : cancelledBy === 'cropbid' ? 'Order cancelled by CropBid' : 'Order cancelled by the shopper',
+    message: recipient === 'shopper'
+      ? `${cancelledBy === 'cropbid' ? 'CropBid' : 'The shop'} cancelled ${items}, ${money}.${why}`
+      : `${items}, ${money}. Nothing to pack.${why}`,
     data: { retailOrderId },
   });
 }
@@ -327,7 +332,9 @@ export async function notifyAdminsRetailRefundDue(
       createNotification({
         userId: admin.id,
         type: 'RETAIL_REFUND_DUE',
-        title: `Refund due: ${buyerName} cancelled a paid order`,
+        // "was cancelled", not "cancelled": the shop or an admin may have done
+        // it, and this used to name the shopper whoever pressed the button.
+        title: `Refund due: ${buyerName}'s paid order was cancelled`,
         message: `${currency} ${amount.toLocaleString('en-IN')} is held for an order that is off.${reason ? ` Reason: ${reason}.` : ''} Send it back by hand.`,
         data: { retailOrderId },
       }).catch(() => {}),
