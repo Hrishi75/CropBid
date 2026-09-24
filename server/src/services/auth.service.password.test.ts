@@ -17,7 +17,12 @@ vi.mock('../lib/prisma', () => ({
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      // requestPasswordReset writes with `update`. The two paths that REPLACE a
+      // password write with `updateMany`, conditioned on the state they read,
+      // so a support reset landing in between cannot be undone by them
+      // (admin.service.resetUserPassword).
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -39,6 +44,12 @@ import { ApiError } from '../utils/ApiError';
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
 const mockFindFirst = vi.mocked(prisma.user.findFirst);
 const mockUpdate = vi.mocked(prisma.user.update);
+const mockUpdateMany = vi.mocked(prisma.user.updateMany);
+// What the password write was given, whichever shape it used.
+const written = () =>
+  (mockUpdateMany.mock.calls[0]?.[0].data ?? mockUpdate.mock.calls[0]?.[0].data) as any;
+const wroteNothing = () =>
+  mockUpdate.mock.calls.length === 0 && mockUpdateMany.mock.calls.length === 0;
 const mockSendReset = vi.mocked(sendPasswordResetEmail);
 
 const baseUser = {
@@ -51,6 +62,8 @@ const baseUser = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockUpdate.mockResolvedValue(baseUser);
+  // One row matched: the state it was decided from is still there.
+  mockUpdateMany.mockResolvedValue({ count: 1 } as any);
   // clearAllMocks wipes recorded calls but keeps implementations, so both
   // lookups get an explicit "no match" default — otherwise a test that stubs
   // one of them silently changes the meaning of the next one.
@@ -118,7 +131,7 @@ describe('resetPassword', () => {
     await expect(resetPassword('bad-token', 'NewPassw0rd')).rejects.toMatchObject({
       statusCode: 400,
     });
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(wroteNothing()).toBe(true);
   });
 
   it('looks the user up by token hash AND unexpired expiry', async () => {
@@ -136,12 +149,15 @@ describe('resetPassword', () => {
 
     await resetPassword('some-raw-token', 'NewPassw0rd');
 
-    const updateData = mockUpdate.mock.calls[0][0].data as any;
+    const updateData = written();
     expect(updateData.password).not.toBe('NewPassw0rd'); // never plain text
     expect(await bcrypt.compare('NewPassw0rd', updateData.password)).toBe(true);
     expect(updateData.passwordResetToken).toBeNull();    // single-use
     expect(updateData.passwordResetExpires).toBeNull();
     expect(updateData.refreshToken).toBeNull();          // log out everywhere
+    // The link is spent only if it is still the one that was matched.
+    expect((mockUpdateMany.mock.calls[0][0].where as any).passwordResetToken)
+      .toBe(hashResetToken('some-raw-token'));
   });
 });
 
@@ -155,7 +171,7 @@ describe('changePassword', () => {
     await expect(
       changePassword('user-1', 'WrongPassw0rd', 'NewPassw0rd'),
     ).rejects.toMatchObject({ statusCode: 401 });
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(wroteNothing()).toBe(true);
   });
 
   it('rejects when the user does not exist', async () => {
@@ -174,7 +190,7 @@ describe('changePassword', () => {
 
     await changePassword('user-1', 'RealPassw0rd', 'NewPassw0rd');
 
-    const updateData = mockUpdate.mock.calls[0][0].data as any;
+    const updateData = written();
     expect(await bcrypt.compare('NewPassw0rd', updateData.password)).toBe(true);
     expect(updateData.passwordResetToken).toBeNull();
     expect(updateData.passwordResetExpires).toBeNull();

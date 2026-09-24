@@ -40,6 +40,8 @@ declare global {
         userId: string;
         role: string;
         mustChangePassword?: boolean;
+        /** Which reset this session belongs to; see utils/jwt. */
+        resetAt?: number;
       };
     }
   }
@@ -86,6 +88,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     userId: payload.userId,
     role: payload.role,
     mustChangePassword: payload.mustChangePassword === true,
+    resetAt: payload.resetAt,
   };
 
   if (req.user.mustChangePassword && !mayActWithTempPassword(req)) {

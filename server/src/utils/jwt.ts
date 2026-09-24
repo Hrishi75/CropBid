@@ -51,6 +51,12 @@ interface TokenPayload {
   /// access token expires, which is five minutes; the reset kills the refresh
   /// token, so nothing outlives that.
   mustChangePassword?: boolean;
+  /// WHICH reset this session belongs to, as epoch milliseconds, set whenever
+  /// mustChangePassword is. A flagged token stays valid for its five minutes
+  /// after its own change is done, so without this a second reset inside that
+  /// window would let the old token skip the current-password check again.
+  /// changePassword compares it with the row.
+  resetAt?: number;
 }
 
 interface RefreshPayload {
@@ -63,11 +69,20 @@ interface RefreshPayload {
 export const IDLE_TIMEOUT_MS = config.auth.idleTimeoutMinutes * 60 * 1000;
 
 // Generate both tokens at once (used on login, signup and every refresh)
-export function generateTokens(userId: string, role: string, mustChangePassword = false) {
+export function generateTokens(
+  userId: string,
+  role: string,
+  mustChangePassword = false,
+  resetAt?: Date | null,
+) {
   const accessToken = jwt.sign(
     // Omitted rather than false when it does not apply, so an ordinary token
     // is byte-for-byte what it was before this existed.
-    { userId, role, ...(mustChangePassword && { mustChangePassword: true }) } as TokenPayload,
+    {
+      userId,
+      role,
+      ...(mustChangePassword && { mustChangePassword: true, resetAt: resetAt?.getTime() }),
+    } as TokenPayload,
     config.jwtSecret,
     { expiresIn: `${config.auth.accessTokenMinutes}m` } // Short-lived — forces regular refresh
   );

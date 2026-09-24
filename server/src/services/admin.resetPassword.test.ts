@@ -169,17 +169,60 @@ describe('a session from before the reset', () => {
 // The reset reads, then writes. A sign-in that read the account first must not
 // be able to write its session back afterwards.
 describe('a sign-in racing the reset', () => {
+  // The window is between login verifying the password and writing its session.
+  // Calling resetUserPassword here would hash a password of its own first, and
+  // which of the two landed first came down to the clock: the test passed and
+  // failed by turns. So the reset's WRITE is made directly, once the sign-in is
+  // known to be inside bcrypt, which is where the window is. Five rounds,
+  // because a race test that has never been watched to fail proves nothing.
   it('is refused rather than reinstating the session it was about to get', async () => {
-    // The sign-in gets as far as verifying the old password, then the reset
-    // lands before it writes. Modelled by resetting between the two halves,
-    // which is what the conditional write in login exists for.
-    const signIn = login({ identifier: EMAIL, password: OLD_PASSWORD });
+    const replacement = await bcrypt.hash('support-issued', 12);
+
+    for (let round = 0; round < 5; round++) {
+      await prisma.user.update({
+        where: { id: USER },
+        data: {
+          password: await bcrypt.hash(OLD_PASSWORD, 12),
+          refreshToken: 'a-live-session',
+          mustChangePassword: false,
+        },
+      });
+
+      const signIn = login({ identifier: EMAIL, password: OLD_PASSWORD });
+      // Long enough to be inside the compare, far short of it finishing.
+      await new Promise((r) => setTimeout(r, 40));
+      await prisma.user.update({
+        where: { id: USER },
+        data: { password: replacement, refreshToken: null, mustChangePassword: true },
+      });
+
+      await expect(signIn).rejects.toMatchObject({ statusCode: 401 });
+
+      // The revocation stands: no session was written back over it.
+      expect((await row()).refreshToken).toBeNull();
+    }
+  }, 30000);
+});
+
+// A flagged token outlives its own change by up to five minutes. If support
+// resets the account again inside that window, the old token must not be able
+// to skip the check a second time: it is proof of the first reset, not this one.
+describe('a token from an earlier reset', () => {
+  it('cannot skip the check after a second reset', async () => {
+    await resetUserPassword(ADMIN, USER);
+    const firstResetAt = (await row()).passwordResetAt!.getTime();
+    await changePassword(USER, '', 'chosenOnce!2026', true, firstResetAt);
+
+    // Support resets again a moment later.
     await resetUserPassword(ADMIN, USER);
 
-    await expect(signIn).rejects.toMatchObject({ statusCode: 401 });
+    await expect(changePassword(USER, '', 'takenOver!2026', true, firstResetAt))
+      .rejects.toMatchObject({ statusCode: 401 });
 
-    // The revocation stands: no session was written back over it.
-    expect((await row()).refreshToken).toBeNull();
+    // The session the SECOND reset minted is the one that may.
+    const secondResetAt = (await row()).passwordResetAt!.getTime();
+    await expect(changePassword(USER, '', 'chosenAgain!2026', true, secondResetAt))
+      .resolves.toBeTruthy();
   });
 });
 
@@ -206,9 +249,11 @@ describe('the session the temporary password buys', () => {
     const { tempPassword } = await resetUserPassword(ADMIN, USER);
     await login({ identifier: EMAIL, password: tempPassword });
 
-    // true is what authenticate passes for a token minted by that sign-in,
-    // which is the only kind that may skip the current password.
-    const tokens = await changePassword(USER, '', 'myOwnPassword!2026', true);
+    // What authenticate passes for a token minted by that sign-in: the claim,
+    // and the stamp of the reset it belongs to. Only that pair may skip the
+    // current password.
+    const resetAt = (await row()).passwordResetAt!.getTime();
+    const tokens = await changePassword(USER, '', 'myOwnPassword!2026', true, resetAt);
 
     expect(verifyAccessToken(tokens.accessToken).mustChangePassword).toBeUndefined();
     expect((await row()).mustChangePassword).toBe(false);

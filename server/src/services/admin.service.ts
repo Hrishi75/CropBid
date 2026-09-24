@@ -906,6 +906,10 @@ export async function resetUserPassword(adminId: string, userId: string) {
       data: {
         password: hashed,
         mustChangePassword: true,
+        // Which reset this is. A session allowed to skip the current-password
+        // check carries the same stamp, so one minted by an earlier reset is
+        // not proof for this one.
+        passwordResetAt: new Date(),
         // Every session this account had is over: the reset exists because
         // somebody lost their way in, and if that is because the account was
         // taken, whoever took it goes with it. Any emailed reset link still in
