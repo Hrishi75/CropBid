@@ -680,17 +680,29 @@ export async function createDealer(fields: DealerFields) {
 // their machines with it in the same transaction, because /equipment files a
 // machine under its own state and a dealer whose yard moved to Nashik must not
 // still be answering Pune searches.
+//
+// CHANGING WHAT THE VERIFIED BADGE VOUCHED FOR TAKES IT DOWN. The tick an
+// admin gives in ClaimsForm is specific: this business exists at this town, in
+// this state, and this number reaches them. Editing any of those afterwards
+// would otherwise leave the badge standing over details nobody checked, which
+// is the whole thing the tick exists to stop. So the claim is withdrawn and
+// has to be made again, with the same audit trail as any other withdrawal.
+// SMAM empanelment is about the scheme rather than the address, so it stands.
+const VERIFIED_DETAILS = ['name', 'location', 'state', 'contactPhone'] as const;
+
 export async function updateDealer(
   id: string,
   patch: Partial<DealerFields> & { active?: boolean }
 ) {
   const existing = await prisma.equipmentDealer.findUnique({
     where: { id },
-    select: { location: true, state: true },
+    // contactPhone is read here and never returned: the comparison below is
+    // the only thing it is used for.
+    select: { name: true, location: true, state: true, contactPhone: true, verified: true },
   });
   if (!existing) throw new ApiError(404, 'Dealer not found');
 
-  const data: Partial<DealerFields> & { active?: boolean } = { ...patch };
+  const data: Partial<DealerFields> & { active?: boolean; verified?: boolean } = { ...patch };
   if (patch.state !== undefined) {
     const state = canonicalState(patch.state);
     if (!state) throw new ApiError(400, 'Pick a state from the list');
@@ -700,6 +712,10 @@ export async function updateDealer(
   const moved = (data.state ?? existing.state) !== existing.state
     || (data.location ?? existing.location) !== existing.location;
 
+  const rechecked = VERIFIED_DETAILS.filter((f) => data[f] !== undefined && data[f] !== existing[f]);
+  const dropVerified = existing.verified && rechecked.length > 0;
+  if (dropVerified) data.verified = false;
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.equipmentDealer.update({ where: { id }, data });
@@ -707,6 +723,21 @@ export async function updateDealer(
         await tx.equipment.updateMany({
           where: { dealerId: id },
           data: { location: data.location ?? existing.location, state: data.state ?? existing.state },
+        });
+      }
+      // Written with the change, not after it, for the same reason the claims
+      // endpoint does: a badge that went up or came down with no record of why
+      // is what must not exist. The phone number is not copied in, here or
+      // anywhere.
+      if (dropVerified) {
+        await tx.auditLog.create({
+          data: {
+            actorRole: 'ADMIN',
+            action: 'admin.equipment_dealer.claims',
+            entityType: 'EquipmentDealer',
+            entityId: id,
+            metadata: { set: [], cleared: ['verified'], checked: false, because: rechecked },
+          },
         });
       }
     });

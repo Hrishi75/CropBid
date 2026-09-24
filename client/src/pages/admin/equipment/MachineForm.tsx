@@ -12,6 +12,11 @@
 // for it can never find.
 //
 // Where the machine is, is where its dealer is. It is not asked for twice.
+//
+// Saving is not the same as showing: a machine added to a dealer who has been
+// taken off the catalogue is saved and stays off it until the dealer is back.
+// The picker says which dealers those are rather than letting an admin find out
+// from the list afterwards.
 // =============================================================================
 
 import { useState, type FormEvent } from 'react';
@@ -109,12 +114,17 @@ export function MachineForm({ machine, dealers, categories, onSaved, onCancel }:
             <select id="mf-dealer" className="cb-input" value={dealerId} onChange={(e) => setDealerId(e.target.value)} required>
               <option value="">Pick a dealer</option>
               {dealers.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} · {d.location}, {d.state}</option>
+                <option key={d.id} value={d.id}>
+                  {d.name} · {d.location}, {d.state}{d.active ? '' : ' · taken off the catalogue'}
+                </option>
               ))}
             </select>
           )}
           {!machine && dealer && (
-            <div className="cb-field-hint">Listed in {dealer.location}, {dealer.state}, where the dealer is.</div>
+            <div className="cb-field-hint">
+              Listed in {dealer.location}, {dealer.state}, where the dealer is.
+              {dealer.active ? '' : ' This dealer is off the catalogue, so the machine will be saved but will not show on /equipment until they are back on it.'}
+            </div>
           )}
         </div>
 

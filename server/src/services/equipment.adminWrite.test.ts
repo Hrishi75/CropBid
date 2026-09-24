@@ -18,7 +18,10 @@
 //   4. The verified badge and the SMAM listing need the admin to say they have
 //      checked, and leave an audit row naming who, in the same transaction.
 //      Taking one down needs no such say-so.
-//   5. No read gives back a dealer's phone number, which leaves the server from
+//   5. The badge comes down when what it vouched for changes: the tick says
+//      this business exists at this address on this number, so editing any of
+//      those leaves a claim nobody checked.
+//   6. No read gives back a dealer's phone number, which leaves the server from
 //      createEnquiry alone.
 //
 // Against a real Postgres, because the claims are about what the catalogue
@@ -43,9 +46,12 @@ const ADMIN = 'eq-admin-1';
 const DEALER = 'Adminwrite Test Yantra';
 const OTHER = 'Adminwrite Other Yantra';
 
+// By prefix, not by the two names: a test renames a dealer, and cleaning up
+// only the names it started with leaves that row behind to collide with the
+// next run.
 async function reset() {
   const dealers = await prisma.equipmentDealer.findMany({
-    where: { name: { in: [DEALER, OTHER] } },
+    where: { name: { startsWith: 'Adminwrite' } },
     select: { id: true },
   });
   const ids = dealers.map((d) => d.id);
@@ -281,6 +287,47 @@ describe('the claims about a dealer', () => {
     expect(dealer.verified).toBe(false);
     const logs = await prisma.auditLog.findMany({ where: { actorId: ADMIN }, orderBy: { createdAt: 'asc' } });
     expect(logs.at(-1)!.metadata).toMatchObject({ cleared: ['verified'], checked: false });
+  });
+
+  // The tick in ClaimsForm is specific: this business exists at this town, in
+  // this state, and this number reaches them. An edit to any of those would
+  // otherwise leave the badge standing over details nobody checked.
+  describe('when what was checked is edited afterwards', () => {
+    beforeEach(async () => {
+      await setDealerClaims(ADMIN, dealerId, { verified: true, smamEmpanelled: true }, true);
+    });
+
+    it('takes the badge down on a move, and records why', async () => {
+      const moved = await updateDealer(dealerId, { location: 'Kolhapur' });
+
+      expect(moved.verified).toBe(false);
+      // SMAM is about the scheme, not the address, so it stands.
+      expect(moved.smamEmpanelled).toBe(true);
+
+      const logs = await prisma.auditLog.findMany({ where: { actorId: ADMIN } });
+      const [dropped] = await prisma.auditLog.findMany({
+        where: { entityId: dealerId, actorId: null },
+      });
+      expect(logs).toHaveLength(1);
+      expect(dropped.metadata).toMatchObject({ cleared: ['verified'], because: ['location'] });
+    });
+
+    it('takes it down on a rename or a new phone number', async () => {
+      const renamed = await updateDealer(dealerId, { name: `${DEALER} II` });
+      expect(renamed.verified).toBe(false);
+
+      await setDealerClaims(ADMIN, dealerId, { verified: true }, true);
+      const rung = await updateDealer(dealerId, { contactPhone: '+91-9820000999' });
+      expect(rung.verified).toBe(false);
+    });
+
+    it('leaves it alone when nothing it vouched for changed', async () => {
+      const off = await updateDealer(dealerId, { active: false });
+      expect(off.verified).toBe(true);
+
+      const same = await updateDealer(dealerId, { location: 'Nashik', contactEmail: 'new@example.test' });
+      expect(same.verified).toBe(true);
+    });
   });
 
   it('refuses a request that changes nothing', async () => {

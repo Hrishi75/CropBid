@@ -11,6 +11,14 @@
 // IDEMPOTENT
 // Dealers are keyed on (name, state) and machines on (dealer, title), both
 // enforced by unique constraints in the schema, so this runs as a single
+// FOR A FIRST OR BULK LOAD. Since 2026-09-24 ops add dealers and machines in
+// the admin panel (/admin/equipment), and this file finds a dealer by
+// (name, state) and a machine by (dealerId, title). A dealer renamed or moved
+// in the panel is therefore no longer under the file's key, and a re-run
+// CREATES A SECOND ONE and rebuilds their machines beneath it: the farmer sees
+// the yard twice. A town, phone or email corrected in the panel is written
+// back over. Rows the file does not name are untouched. See CLAUDE.md section 7.
+//
 // upsert per row: a re-run corrects prices and specs in place rather than
 // duplicating stock, and two overlapping runs cannot race a find against an
 // insert.

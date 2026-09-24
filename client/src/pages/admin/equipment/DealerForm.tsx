@@ -11,6 +11,11 @@
 // Town and state ARE editable, unlike a licensed seed shop, where a licence
 // covers one premises. Moving a dealer moves their machines with them, because
 // /equipment files a machine under its own state.
+//
+// Changing the name, town, state or phone of a VERIFIED dealer takes the badge
+// down, because those are the details the admin ticked to say they had checked.
+// The form says so before the change is saved rather than leaving it to be
+// noticed afterwards.
 // =============================================================================
 
 import { useState, type FormEvent } from 'react';
@@ -36,6 +41,9 @@ export function DealerForm({ dealer, states, onSaved, onCancel }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const moving = dealer != null && (location.trim() !== dealer.location || state !== dealer.state);
+  // Kept in step with VERIFIED_DETAILS on the server, which decides it.
+  const dropsBadge = dealer?.verified === true
+    && (moving || name.trim() !== dealer.name || phone.trim() !== '');
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -108,6 +116,13 @@ export function DealerForm({ dealer, states, onSaved, onCancel }: Props) {
             placeholder={dealer ? 'Leave blank to keep what is on file' : ''} />
         </div>
       </div>
+
+      {dropsBadge && (
+        <div className="cb-tiny" style={{ marginTop: 14, color: 'var(--cb-ember)' }}>
+          This takes the verified badge down: it says CropBid checked this name, this address and
+          this number. Check the new details and claim it again under Claims.
+        </div>
+      )}
 
       {error && <div className="cb-field-error" role="alert">{error}</div>}
 
