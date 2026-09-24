@@ -939,11 +939,22 @@ function IncubatedBy() {
 // =============================================================================
 
 export function LandingPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { openAuth, isAuthOpen } = useAuthModal();
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
   const { board, pending: ratesPending } = useLiveRates();
+  // Set when a guest is sent to sign in from "Shop the market", so the shelf
+  // is still where signing in takes them rather than back at the hero. Reset
+  // on whichever comes first: a session appearing (scroll), or the popup
+  // closing with none (they backed out).
+  const [pendingShopScroll, setPendingShopScroll] = useState(false);
+  // Set when that click landed mid-restore, so it is re-decided once the
+  // initial /auth/refresh answers rather than guessed at click time — a
+  // guess would either pop the sign-in prompt on a session about to be
+  // restored, or, the other way, wave a real guest past it for good.
+  const [awaitingAuthCheck, setAwaitingAuthCheck] = useState(false);
 
   // Where the promo tiles land. The shelf is retail — bulk lots live behind
   // /buyer/browse and /auctions, so a signed-in buyer or farmer is sent to the
@@ -974,6 +985,34 @@ export function LandingPage() {
 
   const searching = query.trim() !== '';
 
+  useEffect(() => {
+    if (!pendingShopScroll) return;
+    if (user) { setPendingShopScroll(false); scrollTo('shelf'); }
+    else if (!isAuthOpen) setPendingShopScroll(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isAuthOpen]);
+
+  // Any sign-in surface appearing while the check is pending — however it got
+  // there, header included — discharges it. Checking isAuthOpen only at the
+  // moment loading resolves would miss an open-then-dismiss that happened in
+  // between; this catches the appearance itself, so a dismissal already given
+  // stands rather than being second-guessed by a prompt popping back up.
+  useEffect(() => {
+    if (awaitingAuthCheck && isAuthOpen) setAwaitingAuthCheck(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthOpen]);
+
+  // The click already scrolled (see onShop below); once loading resolves,
+  // finish the job for whichever case it turned out to be. A now-known guest
+  // still gets the sign-in prompt, deferred rather than skipped — unless the
+  // effect above already discharged it.
+  useEffect(() => {
+    if (!awaitingAuthCheck || authLoading) return;
+    setAwaitingAuthCheck(false);
+    if (!user) { setPendingShopScroll(true); openAuth(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
+
   return (
     <div className="cb-landing st-store">
       <Ticker currency={currency} board={board} />
@@ -988,7 +1027,26 @@ export function LandingPage() {
         {/* One shelf, one truth, whoever is looking. The search box narrows the
             shelf itself, so a search hides the marketing sections around it
             rather than routing to a separate results page over demo data. */}
-        {!searching && <HeroBanner onShop={() => scrollTo('shelf')} board={board} currency={currency} user={user} />}
+        {!searching && (
+          <HeroBanner
+            onShop={() => {
+              // While the initial /auth/refresh is still in flight, `user` is
+              // null whether or not this is a returning shopper. Scroll now,
+              // since the shelf itself needs no auth either way, and let the
+              // awaitingAuthCheck effect above decide the rest once loading
+              // resolves — deciding here would either pop the sign-in prompt
+              // on a session about to be restored, or wave a real guest past
+              // it for good.
+              if (authLoading) { scrollTo('shelf'); setAwaitingAuthCheck(true); return; }
+              if (user) { scrollTo('shelf'); return; }
+              setPendingShopScroll(true);
+              openAuth();
+            }}
+            board={board}
+            currency={currency}
+            user={user}
+          />
+        )}
         <LiveShelf query={query} />
         {!searching && (
           <>
