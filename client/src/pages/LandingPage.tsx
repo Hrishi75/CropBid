@@ -992,9 +992,20 @@ export function LandingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isAuthOpen]);
 
+  // Any sign-in surface appearing while the check is pending — however it got
+  // there, header included — discharges it. Checking isAuthOpen only at the
+  // moment loading resolves would miss an open-then-dismiss that happened in
+  // between; this catches the appearance itself, so a dismissal already given
+  // stands rather than being second-guessed by a prompt popping back up.
+  useEffect(() => {
+    if (awaitingAuthCheck && isAuthOpen) setAwaitingAuthCheck(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthOpen]);
+
   // The click already scrolled (see onShop below); once loading resolves,
   // finish the job for whichever case it turned out to be. A now-known guest
-  // still gets the sign-in prompt, deferred rather than skipped.
+  // still gets the sign-in prompt, deferred rather than skipped — unless the
+  // effect above already discharged it.
   useEffect(() => {
     if (!awaitingAuthCheck || authLoading) return;
     setAwaitingAuthCheck(false);
