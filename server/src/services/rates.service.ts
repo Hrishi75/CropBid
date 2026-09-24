@@ -31,7 +31,7 @@
 // =============================================================================
 
 import { getMandiSnapshot, normaliseState, onMandiSnapshot, warmMandiFeed, type MandiRow, type MandiSnapshot } from './mandiFeed';
-import { GROUPS, commodityFor, type Commodity, type Group } from './mandiCommodities';
+import { GROUPS, commodityFor, emojiFor, type Commodity, type Group } from './mandiCommodities';
 import { loadUsualPrices, observeDay, usualFor, usualKey } from './usualPrices';
 
 
@@ -314,11 +314,6 @@ const GROUP_UNIT: Record<Group, Unit> = {
   dryfruits: 'QUINTAL', other: 'QUINTAL',
 };
 
-const GROUP_EMOJI: Record<Group, string> = {
-  vegetables: '🥬', greens: '🌿', fruits: '🍎', cereals: '🌾', pulses: '🫘',
-  oilseeds: '🌻', spices: '🌶️', dryfruits: '🥜', dairy: '🥛', other: '🧺',
-};
-
 // -----------------------------------------------------------------------------
 // getRateForCrop — the negotiation/listing anchor, with local fallback chain
 // -----------------------------------------------------------------------------
@@ -451,7 +446,7 @@ export async function getMarketBreakdown(commodity: string, state?: string): Pro
   return {
     commodity: c.id,
     label: item?.label ?? c.label,
-    emoji: item?.emoji ?? GROUP_EMOJI[c.group],
+    emoji: item?.emoji ?? emojiFor(c),
     unit,
     count: rows.length,
     records: rows,
@@ -518,7 +513,7 @@ export async function getAllRates(state?: string): Promise<AllRates> {
     const b = band(rows);
     const cmp = vsUsual(id, rows, st ?? null);
     rates.push({
-      commodity: c.id, label: c.label, emoji: GROUP_EMOJI[c.group], group: c.group, unit,
+      commodity: c.id, label: c.label, emoji: emojiFor(c), group: c.group, unit,
       modal: toUnit(b.modal, unit), min: toUnit(b.min, unit), max: toUnit(b.max, unit),
       usual: cmp ? toUnit(b.modal / (1 + cmp.changePct / 100), unit) : null,
       usualDays: cmp?.days ?? 0,
