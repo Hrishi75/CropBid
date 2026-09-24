@@ -231,6 +231,13 @@ model User {
   passwordResetToken   String?   @unique
   passwordResetExpires DateTime?
 
+  /// Set when an admin resets the password for somebody who called in locked
+  /// out (admin.service.resetUserPassword). The temporary password works once:
+  /// it signs them in and nothing else, because the access token carries this
+  /// flag and `authenticate` refuses every request but the change itself.
+  /// Cleared by changePassword, which is the only thing that clears it.
+  mustChangePassword Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

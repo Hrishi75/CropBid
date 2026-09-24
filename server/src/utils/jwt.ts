@@ -42,6 +42,15 @@ import { config } from '../config';
 interface TokenPayload {
   userId: string;
   role: string;
+  /// Set when an admin reset this account's password and the user has not
+  /// chosen a new one yet. Carried in the token rather than read from the
+  /// database on every request: `authenticate` is the one place every
+  /// authenticated request passes through, and a database round trip there
+  /// would be paid by every call the platform serves. The cost is that a
+  /// session already open when the reset happens keeps working until its
+  /// access token expires, which is five minutes; the reset kills the refresh
+  /// token, so nothing outlives that.
+  mustChangePassword?: boolean;
 }
 
 interface RefreshPayload {
@@ -54,9 +63,11 @@ interface RefreshPayload {
 export const IDLE_TIMEOUT_MS = config.auth.idleTimeoutMinutes * 60 * 1000;
 
 // Generate both tokens at once (used on login, signup and every refresh)
-export function generateTokens(userId: string, role: string) {
+export function generateTokens(userId: string, role: string, mustChangePassword = false) {
   const accessToken = jwt.sign(
-    { userId, role } as TokenPayload,
+    // Omitted rather than false when it does not apply, so an ordinary token
+    // is byte-for-byte what it was before this existed.
+    { userId, role, ...(mustChangePassword && { mustChangePassword: true }) } as TokenPayload,
     config.jwtSecret,
     { expiresIn: `${config.auth.accessTokenMinutes}m` } // Short-lived — forces regular refresh
   );

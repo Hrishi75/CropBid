@@ -193,6 +193,18 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **The buyer's emailed-code sign-up is unreachable.** Buyers used to sign up as buyers, get a 202 and verify their email first (`startBuyerSignup`). Nobody signs up as a buyer now, so `/signup/verify` and `/signup/resend` only finish signups already in flight, and that code is dead. Removing it is a separate cleanup.
 - **App:** `SignupScreen` asks the same four things. The fifteen-country picker is gone, since the product is India only and the server defaults to India and INR.
 
+### Support can reset a password, and the user must then choose their own (shipped 2026-09-25)
+
+**A button on Admin → Users sets a temporary password and shows it once, for the admin to read down the phone.** The account that rings support is exactly the one forgot-password cannot help: sign-up takes a phone number OR an email, the reset link is emailed, and a phone-only account has no email.
+
+- **What makes it safe is what the password can do.** It signs them in and nothing else. `mustChangePassword` on the row goes into the access token, and `authenticate` refuses every request but the change itself, `/auth/me` and logout. So a password spoken aloud is never a working account, and the rule holds for anything driving the API, not just a screen that behaves.
+- **Refusing is a 403 with `PASSWORD_CHANGE_REQUIRED`, never a 401.** A 401 reads as "sign in again", which sends them back to type the temporary password they were just given, which is the loop this exists to end.
+- **The plaintext is returned once and never stored**: the column holds its bcrypt hash like any other password, so a second look means a second reset. The reset is audited before the password is set, not through `recordAudit` which swallows its failures, and the audit row never holds the password.
+- **It ends every session the account had**, and any emailed reset link in flight. The claim rides the refresh as well, so refreshing cannot launder a temporary password into an ordinary session. A session already open when the reset happens keeps working for up to five minutes, which is the access token's life; the refresh token is gone, so nothing outlives that.
+- **The change does not ask for the temporary password.** Two ways into that state and neither is helped by the question: they typed it a moment ago, or they signed in by phone code and never knew it. An account nobody reset is still held to its current password, and a test pins that.
+- **Not another admin, and not yourself.** An admin account is where this would be a way to take over somebody's access rather than restore it, the same reason deleting one is refused.
+- **The app refuses to sign such an account in** and sends them to the website, because `mobile/` has no change-password screen. Building one there is unbuilt, not decided against.
+
 **Sessions are stored as a hash.** `User.refreshToken` holds the SHA-256 of the refresh token, never the token (`utils/refreshToken.ts`), because the column is otherwise a live session for every signed-in account and a database dump hands them all over. The schema said "stored hashed" for months while it stored them raw; fixed 2026-09-20, and the migration cleared the existing values, which signed everyone out once. The same rule already covered reset tokens and sign-in codes.
 
 **Knowingly unverified.** Nothing proves the email or number belongs to the person typing it. A typo'd email means the reset link goes to a stranger, and anyone can claim a number before its owner arrives. That is the price of no code, and it is the thing phone OTP is meant to fix.

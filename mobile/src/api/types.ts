@@ -27,6 +27,10 @@ export interface User {
   currency: string;
   avatar?: string | null;
   trustScore: number;
+  /** Set when support reset this account's password and the user has not
+   *  chosen their own yet. The app has no screen for that change, so signing
+   *  in is refused and they are sent to the website (see endpoints.login). */
+  mustChangePassword?: boolean;
   farmerProfile?: {
     // WHAT KIND OF SELLER THIS IS. The model is called FarmerProfile for
     // historical reasons and holds all three kinds; `sellerType` is the column

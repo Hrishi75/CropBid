@@ -541,7 +541,11 @@ export async function login(input: LoginInput) {
   }
 
   // 3. Generate new tokens
-  const tokens = generateTokens(user.id, user.role);
+  //
+  // An account whose password an admin reset gets a session that can do one
+  // thing: choose a new password. The flag rides in the token and the
+  // authenticate middleware is what enforces it.
+  const tokens = generateTokens(user.id, user.role, user.mustChangePassword);
 
   // 4. Save refresh token
   await prisma.user.update({
@@ -616,7 +620,11 @@ export async function refresh(refreshToken: string) {
   // 3. Generate new token pair (token rotation)
   // WHY ROTATE? If an old refresh token is stolen, it becomes useless
   // after the user's next refresh. This limits the window of attack.
-  const tokens = generateTokens(user.id, user.role);
+  //
+  // The password-change flag is read from the row and carried across. Minting
+  // without it would make a refresh the way to launder a temporary password
+  // into an ordinary session, which is the one thing it must not be.
+  const tokens = generateTokens(user.id, user.role, user.mustChangePassword);
 
   await prisma.user.update({
     where: { id: user.id },
@@ -747,7 +755,15 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // one rather than rotating an existing one. The caller is already
   // authenticated, and the real owner keeps their way in either way, since
   // phone sign-in never stops working.
-  if (user.password) {
+  //
+  // Nor is it demanded of an account an admin has just reset. Two ways into
+  // that state and neither is helped by the question: they typed the temporary
+  // password to get here, so asking for it again proves nothing, or they came
+  // in by phone code and never knew it, which would leave them told to change
+  // a password they cannot name. The account is held to the same standard
+  // either way, because until this call succeeds the session can do nothing
+  // else at all.
+  if (user.password && !user.mustChangePassword) {
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) {
       throw new ApiError(401, 'Current password is incorrect');
@@ -760,6 +776,10 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // previously issued one — if the password is being changed because a token
   // was stolen, the thief is evicted, while THIS session stays alive because
   // the controller hands the new pair back to the caller.
+  //
+  // Minted WITHOUT the password-change flag, and the column is cleared below:
+  // this is the one call that ends that state, which is what makes the
+  // temporary password an admin read out good for exactly one sign-in.
   const tokens = generateTokens(user.id, user.role);
 
   // Also clear any pending reset token — the user just proved they know the
@@ -771,6 +791,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
       refreshToken: hashRefreshToken(tokens.refreshToken),
       passwordResetToken: null,
       passwordResetExpires: null,
+      mustChangePassword: false,
     },
   });
 
@@ -1604,7 +1625,10 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
       throw new ApiError(403, 'This account has been suspended. Please contact support.');
     }
 
-    const tokens = generateTokens(existing.id, existing.role);
+    // The password-change flag rides this path as well. An admin who reset the
+    // password knows a working one until the user picks their own, and signing
+    // in by code instead does not make that any less true.
+    const tokens = generateTokens(existing.id, existing.role, existing.mustChangePassword);
     await prisma.user.update({
       where: { id: existing.id },
       data: { refreshToken: hashRefreshToken(tokens.refreshToken) },

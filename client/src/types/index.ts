@@ -49,6 +49,11 @@ export interface User {
   language: Language;
   avatar: string | null;
   trustScore: number;
+  /** Set when support reset this account's password and the user has not
+   *  chosen their own yet. Everything but the change itself is refused by the
+   *  server until they do, so the client routes on it rather than letting
+   *  screens load into a wall of 403s. */
+  mustChangePassword?: boolean;
   createdAt: string;
   updatedAt: string;
   farmerProfile?: FarmerProfile | null;
