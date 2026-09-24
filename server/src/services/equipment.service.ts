@@ -691,6 +691,7 @@ export async function createDealer(fields: DealerFields) {
 const VERIFIED_DETAILS = ['name', 'location', 'state', 'contactPhone'] as const;
 
 export async function updateDealer(
+  adminId: string,
   id: string,
   patch: Partial<DealerFields> & { active?: boolean }
 ) {
@@ -727,11 +728,14 @@ export async function updateDealer(
       }
       // Written with the change, not after it, for the same reason the claims
       // endpoint does: a badge that went up or came down with no record of why
-      // is what must not exist. The phone number is not copied in, here or
-      // anywhere.
+      // is what must not exist. It carries the admin who caused it, under the
+      // same action as a withdrawal made through the claims endpoint, so one
+      // search over that action finds every badge that ever came down and who
+      // took it. The phone number is not copied in, here or anywhere.
       if (dropVerified) {
         await tx.auditLog.create({
           data: {
+            actorId: adminId,
             actorRole: 'ADMIN',
             action: 'admin.equipment_dealer.claims',
             entityType: 'EquipmentDealer',

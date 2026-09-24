@@ -212,7 +212,7 @@ describe('where a machine is', () => {
   it('moves with the dealer', async () => {
     await createEquipment(dealerId, tractor());
 
-    await updateDealer(dealerId, { location: 'Kolhapur', state: 'maharashtra' });
+    await updateDealer(ADMIN, dealerId, { location: 'Kolhapur', state: 'maharashtra' });
 
     const [machine] = await mine();
     expect(machine.location).toBe('Kolhapur');
@@ -236,7 +236,7 @@ describe('taking things off', () => {
     const machine = await createEquipment(dealerId, tractor());
     await updateEquipment(machine.id, { active: false });
 
-    await updateDealer(dealerId, { active: false });
+    await updateDealer(ADMIN, dealerId, { active: false });
 
     const [row] = await mine();
     expect(row.live).toBe(false);
@@ -298,34 +298,37 @@ describe('the claims about a dealer', () => {
     });
 
     it('takes the badge down on a move, and records why', async () => {
-      const moved = await updateDealer(dealerId, { location: 'Kolhapur' });
+      const moved = await updateDealer(ADMIN, dealerId, { location: 'Kolhapur' });
 
       expect(moved.verified).toBe(false);
       // SMAM is about the scheme, not the address, so it stands.
       expect(moved.smamEmpanelled).toBe(true);
 
-      const logs = await prisma.auditLog.findMany({ where: { actorId: ADMIN } });
-      const [dropped] = await prisma.auditLog.findMany({
-        where: { entityId: dealerId, actorId: null },
+      // Under the same action as a withdrawal made through the claims
+      // endpoint, and carrying the admin who caused it, so one search finds
+      // every badge that came down and who took it.
+      const logs = await prisma.auditLog.findMany({
+        where: { actorId: ADMIN, action: 'admin.equipment_dealer.claims' },
+        orderBy: { createdAt: 'asc' },
       });
-      expect(logs).toHaveLength(1);
-      expect(dropped.metadata).toMatchObject({ cleared: ['verified'], because: ['location'] });
+      expect(logs).toHaveLength(2);
+      expect(logs.at(-1)!.metadata).toMatchObject({ cleared: ['verified'], because: ['location'] });
     });
 
     it('takes it down on a rename or a new phone number', async () => {
-      const renamed = await updateDealer(dealerId, { name: `${DEALER} II` });
+      const renamed = await updateDealer(ADMIN, dealerId, { name: `${DEALER} II` });
       expect(renamed.verified).toBe(false);
 
       await setDealerClaims(ADMIN, dealerId, { verified: true }, true);
-      const rung = await updateDealer(dealerId, { contactPhone: '+91-9820000999' });
+      const rung = await updateDealer(ADMIN, dealerId, { contactPhone: '+91-9820000999' });
       expect(rung.verified).toBe(false);
     });
 
     it('leaves it alone when nothing it vouched for changed', async () => {
-      const off = await updateDealer(dealerId, { active: false });
+      const off = await updateDealer(ADMIN, dealerId, { active: false });
       expect(off.verified).toBe(true);
 
-      const same = await updateDealer(dealerId, { location: 'Nashik', contactEmail: 'new@example.test' });
+      const same = await updateDealer(ADMIN, dealerId, { location: 'Nashik', contactEmail: 'new@example.test' });
       expect(same.verified).toBe(true);
     });
   });

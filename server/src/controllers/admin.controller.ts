@@ -823,7 +823,7 @@ export async function updateEquipmentDealer(req: Request, res: Response, next: N
       return;
     }
 
-    const dealer = await equipmentService.updateDealer(param.data.id, body.data);
+    const dealer = await equipmentService.updateDealer(req.user!.userId, param.data.id, body.data);
 
     await auditFromRequest(req, {
       action: 'admin.equipment_dealer.update',
