@@ -940,6 +940,7 @@ function IncubatedBy() {
 
 export function LandingPage() {
   const { user } = useAuth();
+  const { openAuth } = useAuthModal();
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
@@ -988,7 +989,14 @@ export function LandingPage() {
         {/* One shelf, one truth, whoever is looking. The search box narrows the
             shelf itself, so a search hides the marketing sections around it
             rather than routing to a separate results page over demo data. */}
-        {!searching && <HeroBanner onShop={() => scrollTo('shelf')} board={board} currency={currency} user={user} />}
+        {!searching && (
+          <HeroBanner
+            onShop={() => (user ? scrollTo('shelf') : openAuth())}
+            board={board}
+            currency={currency}
+            user={user}
+          />
+        )}
         <LiveShelf query={query} />
         {!searching && (
           <>
