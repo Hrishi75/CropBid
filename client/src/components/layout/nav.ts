@@ -40,6 +40,7 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
           { label: 'Transactions', path: '/admin/transactions' },
           { label: 'Leads', path: '/admin/enquiries' },
           { label: 'Seeds & fertiliser', path: '/admin/inputs' },
+          { label: 'Machinery', path: '/admin/equipment' },
           { label: 'Logistics', path: '/admin/logistics' },
           { label: 'Analytics', path: '/admin/analytics' },
         ],

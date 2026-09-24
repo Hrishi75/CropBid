@@ -24,7 +24,7 @@
 
 import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE } from './equipmentCatalogue';
+import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE, dealerLoadFields } from './equipmentCatalogue';
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter } as any);
@@ -61,14 +61,13 @@ async function main() {
     // `active` is written on neither branch: a new dealer takes the schema
     // default of true, and an existing one keeps whatever it has, so a dealer
     // taken off the catalogue by hand does not come back on the next load.
-    const shared = {
-      location: d.location,
-      contactPhone: d.contactPhone,
-      contactEmail: d.contactEmail ?? null,
-      verified: d.verified ?? false,
-      rating: d.rating ?? 4.0,
-      smamEmpanelled: d.smamEmpanelled ?? false,
-    };
+    // `verified` and `smamEmpanelled` are written on neither branch either, and
+    // for a sharper reason than `active`: they are claims made to a farmer, a
+    // person enters them in the admin panel after checking, and that write is
+    // audited. Writing them from a file would badge a dealer nobody checked,
+    // and would put the badge back over an admin who had taken it down. See
+    // dealerLoadFields.
+    const shared = dealerLoadFields(d);
 
     const row = await prisma.equipmentDealer.upsert({
       where: { name_state: { name: d.name, state: d.state } },
