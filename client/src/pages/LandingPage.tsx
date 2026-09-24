@@ -939,12 +939,17 @@ function IncubatedBy() {
 // =============================================================================
 
 export function LandingPage() {
-  const { user } = useAuth();
-  const { openAuth } = useAuthModal();
+  const { user, loading: authLoading } = useAuth();
+  const { openAuth, isAuthOpen } = useAuthModal();
   const [country, setCountry] = useState<Country>(loadCountry);
   const [query, setQuery] = useState('');
   const currency = country.currency;
   const { board, pending: ratesPending } = useLiveRates();
+  // Set when a guest is sent to sign in from "Shop the market", so the shelf
+  // is still where signing in takes them rather than back at the hero. Reset
+  // on whichever comes first: a session appearing (scroll), or the popup
+  // closing with none (they backed out).
+  const [pendingShopScroll, setPendingShopScroll] = useState(false);
 
   // Where the promo tiles land. The shelf is retail — bulk lots live behind
   // /buyer/browse and /auctions, so a signed-in buyer or farmer is sent to the
@@ -975,6 +980,13 @@ export function LandingPage() {
 
   const searching = query.trim() !== '';
 
+  useEffect(() => {
+    if (!pendingShopScroll) return;
+    if (user) { setPendingShopScroll(false); scrollTo('shelf'); }
+    else if (!isAuthOpen) setPendingShopScroll(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, isAuthOpen]);
+
   return (
     <div className="cb-landing st-store">
       <Ticker currency={currency} board={board} />
@@ -991,7 +1003,16 @@ export function LandingPage() {
             rather than routing to a separate results page over demo data. */}
         {!searching && (
           <HeroBanner
-            onShop={() => (user ? scrollTo('shelf') : openAuth())}
+            onShop={() => {
+              // While the initial /auth/refresh is still in flight, `user` is
+              // null whether or not this is a returning shopper — guessing
+              // "guest" here would pop a sign-in prompt on someone already
+              // signed in, right before their session lands. Scrolling is
+              // harmless either way, since the shelf itself needs no auth.
+              if (authLoading || user) { scrollTo('shelf'); return; }
+              setPendingShopScroll(true);
+              openAuth();
+            }}
             board={board}
             currency={currency}
             user={user}
