@@ -950,6 +950,11 @@ export function LandingPage() {
   // on whichever comes first: a session appearing (scroll), or the popup
   // closing with none (they backed out).
   const [pendingShopScroll, setPendingShopScroll] = useState(false);
+  // Set when that click landed mid-restore, so it is re-decided once the
+  // initial /auth/refresh answers rather than guessed at click time — a
+  // guess would either pop the sign-in prompt on a session about to be
+  // restored, or, the other way, wave a real guest past it for good.
+  const [awaitingAuthCheck, setAwaitingAuthCheck] = useState(false);
 
   // Where the promo tiles land. The shelf is retail — bulk lots live behind
   // /buyer/browse and /auctions, so a signed-in buyer or farmer is sent to the
@@ -987,6 +992,16 @@ export function LandingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, isAuthOpen]);
 
+  // The click already scrolled (see onShop below); once loading resolves,
+  // finish the job for whichever case it turned out to be. A now-known guest
+  // still gets the sign-in prompt, deferred rather than skipped.
+  useEffect(() => {
+    if (!awaitingAuthCheck || authLoading) return;
+    setAwaitingAuthCheck(false);
+    if (!user) { setPendingShopScroll(true); openAuth(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user]);
+
   return (
     <div className="cb-landing st-store">
       <Ticker currency={currency} board={board} />
@@ -1005,11 +1020,14 @@ export function LandingPage() {
           <HeroBanner
             onShop={() => {
               // While the initial /auth/refresh is still in flight, `user` is
-              // null whether or not this is a returning shopper — guessing
-              // "guest" here would pop a sign-in prompt on someone already
-              // signed in, right before their session lands. Scrolling is
-              // harmless either way, since the shelf itself needs no auth.
-              if (authLoading || user) { scrollTo('shelf'); return; }
+              // null whether or not this is a returning shopper. Scroll now,
+              // since the shelf itself needs no auth either way, and let the
+              // awaitingAuthCheck effect above decide the rest once loading
+              // resolves — deciding here would either pop the sign-in prompt
+              // on a session about to be restored, or wave a real guest past
+              // it for good.
+              if (authLoading) { scrollTo('shelf'); setAwaitingAuthCheck(true); return; }
+              if (user) { scrollTo('shelf'); return; }
               setPendingShopScroll(true);
               openAuth();
             }}
