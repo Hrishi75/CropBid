@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
-    user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
+    user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     phoneChallenge: { findUnique: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     auditLog: { create: vi.fn() },
   },
@@ -68,6 +68,9 @@ async function userRow(extra: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   userUpdate.mockResolvedValue({});
+  // The conditional writes in login and refresh: one row matched, so the
+  // session is theirs to write.
+  userUpdateMany.mockResolvedValue({ count: 1 });
   challengeUpdateMany.mockResolvedValue({ count: 1 });
   challengeDeleteMany.mockResolvedValue({ count: 1 });
   mock(prisma.auditLog.create).mockResolvedValue({});
@@ -81,7 +84,20 @@ async function accountIs(row: Record<string, unknown>) {
 }
 
 // What went into the database on the last write.
-const stored = () => userUpdate.mock.calls.at(-1)?.[0].data.refreshToken as string | null;
+const userUpdateMany = mock(prisma.user.updateMany);
+
+// Sessions are written two ways. Signing up and the phone paths write with
+// `update`; login and refresh write with `updateMany` conditioned on the state
+// they read, so a support reset landing in between cannot be undone by them
+// (admin.service.resetUserPassword). Either way the row must hold a digest,
+// which is what these tests are about, so this reads whichever wrote last.
+const lastWrite = () => {
+  const one = userUpdate.mock.invocationCallOrder.at(-1) ?? -1;
+  const many = userUpdateMany.mock.invocationCallOrder.at(-1) ?? -1;
+  return many > one ? userUpdateMany.mock.calls.at(-1)?.[0] : userUpdate.mock.calls.at(-1)?.[0];
+};
+const stored = () => lastWrite()?.data.refreshToken as string | null;
+const wroteNoSession = () => userUpdate.mock.calls.length === 0 && userUpdateMany.mock.calls.length === 0;
 
 describe('signing in', () => {
   it('stores the hash of the refresh token, not the token', async () => {
@@ -198,7 +214,7 @@ describe('refreshing', () => {
     await accountIs(await userRow({ refreshToken: hash }));
 
     await expect(refresh(hash)).rejects.toMatchObject({ statusCode: 401 });
-    expect(userUpdate).not.toHaveBeenCalled();
+    expect(wroteNoSession()).toBe(true);
   });
 
   // Rows written before this change hold a raw token. It no longer matches, so

@@ -884,34 +884,39 @@ export async function resetUserPassword(adminId: string, userId: string) {
   const tempPassword = generateTempPassword();
   const hashed = await bcrypt.hash(tempPassword, 12);
 
-  await prisma.auditLog.create({
-    data: {
-      actorId: adminId,
-      actorRole: 'ADMIN',
-      action: 'admin.user.password_reset',
-      entityType: 'User',
-      entityId: user.id,
-      // Never the password itself, temporary or not: an audit table holding a
-      // working credential is a second place to steal it from.
-      metadata: { email: user.email, role: user.role, suspended: user.suspended },
-    },
-  });
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: hashed,
-      mustChangePassword: true,
-      // Every session this account had is over: the reset exists because
-      // somebody lost their way in, and if that is because the account was
-      // taken, whoever took it goes with it. Any emailed reset link still in
-      // flight dies too, since the password it would set is no longer the one
-      // the user has been told.
-      refreshToken: null,
-      passwordResetToken: null,
-      passwordResetExpires: null,
-    },
-  });
+  // ONE TRANSACTION, both writes. The log is the control here, so a reset with
+  // no record of who did it must not exist; and a record of a reset that did
+  // not happen is its own kind of lie, which is what a separate insert left
+  // behind when the update afterwards failed. Review caught the second half.
+  await prisma.$transaction([
+    prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        actorRole: 'ADMIN',
+        action: 'admin.user.password_reset',
+        entityType: 'User',
+        entityId: user.id,
+        // Never the password itself, temporary or not: an audit table holding a
+        // working credential is a second place to steal it from.
+        metadata: { email: user.email, role: user.role, suspended: user.suspended },
+      },
+    }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashed,
+        mustChangePassword: true,
+        // Every session this account had is over: the reset exists because
+        // somebody lost their way in, and if that is because the account was
+        // taken, whoever took it goes with it. Any emailed reset link still in
+        // flight dies too, since the password it would set is no longer the one
+        // the user has been told.
+        refreshToken: null,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    }),
+  ]);
 
   return { id: user.id, name: user.name, tempPassword };
 }

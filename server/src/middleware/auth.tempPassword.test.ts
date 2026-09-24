@@ -18,6 +18,9 @@
 //   4. The refusal is a 403 and not a 401: a 401 would send the user back to
 //      the sign-in screen to type the temporary password again, which is the
 //      loop this whole feature exists to end.
+//   5. The socket handshake applies the same rule. It takes the same token,
+//      and without this a reset account could bid over a socket while being
+//      refused on every HTTP route. Review caught it.
 // =============================================================================
 
 import express from 'express';
@@ -25,6 +28,7 @@ import type { AddressInfo } from 'net';
 import { describe, it, expect, afterAll } from 'vitest';
 
 import { authenticate } from './auth';
+import { handshakeIdentity } from '../socket';
 import { errorHandler } from './errorHandler';
 import { generateTokens } from '../utils/jwt';
 
@@ -95,5 +99,24 @@ describe('a session that owes a password change', () => {
     // Only GET /api/auth/me is allowed, so the POST is refused even though a
     // route is mounted behind it.
     expect(res.status).toBe(403);
+  });
+});
+
+// The handshake takes the same access token as every route, so the gate has to
+// be there too, not only in the Express middleware. Called directly rather than
+// through a real socket: a client library for one test is a dependency the
+// server does not otherwise need.
+describe('the socket handshake', () => {
+  it('lets an ordinary session in', () => {
+    expect(handshakeIdentity(ordinary)).toMatchObject({ userId: 'u1', role: 'CONSUMER' });
+  });
+
+  it('refuses one that owes a password change', () => {
+    expect(() => handshakeIdentity(owing)).toThrow('Choose a new password before you carry on');
+  });
+
+  it('still refuses a missing or broken token', () => {
+    expect(() => handshakeIdentity(undefined)).toThrow('Authentication required');
+    expect(() => handshakeIdentity('not-a-token')).toThrow('Invalid token');
   });
 });

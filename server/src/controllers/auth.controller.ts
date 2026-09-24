@@ -472,6 +472,10 @@ export async function changePasswordHandler(req: Request, res: Response) {
     req.user!.userId,
     parsed.data.currentPassword,
     parsed.data.newPassword,
+    // Whether THIS session is one the reset minted. The row saying an account
+    // owes a change is not enough to skip the current password: a token from
+    // before the reset would inherit the exception. See the service.
+    req.user!.mustChangePassword === true,
   );
 
   // The service rotated the refresh token to evict any stolen session; hand

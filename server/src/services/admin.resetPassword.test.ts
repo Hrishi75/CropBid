@@ -15,8 +15,12 @@
 //   5. Every session the account had is over, and any emailed reset link with
 //      it.
 //   6. Not another admin, and not yourself.
-//   7. The reset is audited before the password is set, and the audit row
-//      never holds the password.
+//   7. The reset and its audit row commit together, so neither a reset with no
+//      record nor a record of a reset that did not happen can exist.
+//   8. A token from BEFORE the reset does not inherit the exception, which is
+//      the takeover review caught: support resets an account precisely when
+//      somebody may be holding a session they should not.
+//   9. A sign-in racing the reset cannot put its session back over it.
 //
 // Against a real Postgres, because what is being pinned is what the next
 // sign-in does with the row this wrote.
@@ -106,6 +110,21 @@ describe('resetting a password', () => {
     expect(other.password).toBe('x');
   });
 
+  it('leaves no audit row when the reset itself cannot be written', async () => {
+    // The account goes between the lookup and the write, which is what makes
+    // the update fail. Before this was one transaction, the log kept a record
+    // of a reset that never happened.
+    const doomed = 'reset-doomed';
+    await prisma.user.create({
+      data: { id: doomed, name: 'Gone', email: `${doomed}@test.local`, password: 'x', role: 'CONSUMER' },
+    });
+    const started = resetUserPassword(ADMIN, doomed);
+    await prisma.user.delete({ where: { id: doomed } });
+
+    await expect(started).rejects.toBeTruthy();
+    expect(await prisma.auditLog.count({ where: { entityId: doomed } })).toBe(0);
+  });
+
   it('gives a different password every time', async () => {
     const first = await resetUserPassword(ADMIN, USER);
     const second = await resetUserPassword(ADMIN, USER);
@@ -125,6 +144,42 @@ describe('an account nobody reset', () => {
 
     // Still the password it started with.
     expect(await bcrypt.compare(OLD_PASSWORD, (await row()).password!)).toBe(true);
+  });
+});
+
+// The exception belongs to the SESSION, not to the account. A token minted
+// before the reset is valid for another five minutes and carries no claim, so
+// whoever holds it must still prove the password to change it, and the one
+// they know was just replaced.
+describe('a session from before the reset', () => {
+  it('cannot skip the current password, even though the row says a change is owed', async () => {
+    await resetUserPassword(ADMIN, USER);
+
+    // viaResetSession false is what authenticate passes for a token with no
+    // such claim.
+    await expect(changePassword(USER, '', 'takenOver!2026', false))
+      .rejects.toMatchObject({ statusCode: 401 });
+    await expect(changePassword(USER, OLD_PASSWORD, 'takenOver!2026', false))
+      .rejects.toMatchObject({ statusCode: 401 });
+
+    expect((await row()).mustChangePassword).toBe(true);
+  });
+});
+
+// The reset reads, then writes. A sign-in that read the account first must not
+// be able to write its session back afterwards.
+describe('a sign-in racing the reset', () => {
+  it('is refused rather than reinstating the session it was about to get', async () => {
+    // The sign-in gets as far as verifying the old password, then the reset
+    // lands before it writes. Modelled by resetting between the two halves,
+    // which is what the conditional write in login exists for.
+    const signIn = login({ identifier: EMAIL, password: OLD_PASSWORD });
+    await resetUserPassword(ADMIN, USER);
+
+    await expect(signIn).rejects.toMatchObject({ statusCode: 401 });
+
+    // The revocation stands: no session was written back over it.
+    expect((await row()).refreshToken).toBeNull();
   });
 });
 
@@ -151,7 +206,9 @@ describe('the session the temporary password buys', () => {
     const { tempPassword } = await resetUserPassword(ADMIN, USER);
     await login({ identifier: EMAIL, password: tempPassword });
 
-    const tokens = await changePassword(USER, '', 'myOwnPassword!2026');
+    // true is what authenticate passes for a token minted by that sign-in,
+    // which is the only kind that may skip the current password.
+    const tokens = await changePassword(USER, '', 'myOwnPassword!2026', true);
 
     expect(verifyAccessToken(tokens.accessToken).mustChangePassword).toBeUndefined();
     expect((await row()).mustChangePassword).toBe(false);

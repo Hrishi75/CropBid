@@ -38,21 +38,28 @@ interface AuthResult {
 
 // `identifier` is the user's phone number (primary) or email — the server
 // matches either column.
+// AN ACCOUNT SUPPORT HAS RESET IS NOT LET INTO THIS APP. The temporary
+// password signs in and nothing else: the server refuses every request but the
+// password change itself (CLAUDE.md §4), and this app has no screen for that
+// change, so letting the session stand would drop somebody into a wall of
+// refusals with nothing to do about any of them. They are told where to go
+// instead.
+//
+// Called from every path that accepts a session, not just the password login:
+// the launch refresh restores one too, and review caught that it did so
+// straight past this. New session paths call it as well.
+export function refuseResetSession(user: User): void {
+  if (!user.mustChangePassword) return;
+  setAccessToken(null);
+  throw new Error(
+    'CropBid support reset this password. Open cropbid.in and sign in there to choose a new one, then come back.',
+  );
+}
+
 export async function login(identifier: string, password: string): Promise<User> {
   const { data } = await api.post<AuthResult>('/auth/login', { identifier, password });
 
-  // AN ACCOUNT SUPPORT HAS RESET IS NOT LET IN HERE. The temporary password
-  // signs in and nothing else: the server refuses every request but the
-  // password change itself (CLAUDE.md §4), and this app has no screen for that
-  // change, so letting the session stand would drop somebody into a wall of
-  // refusals with nothing to do about any of them. The session is dropped on
-  // the floor and they are told where to go instead.
-  if (data.user.mustChangePassword) {
-    setAccessToken(null);
-    throw new Error(
-      'CropBid support reset this password. Open cropbid.in and sign in there to choose a new one, then come back.',
-    );
-  }
+  refuseResetSession(data.user);
 
   setAccessToken(data.accessToken);
   if (data.refreshToken) await setRefreshToken(data.refreshToken);

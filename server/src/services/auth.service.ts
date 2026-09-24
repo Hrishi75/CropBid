@@ -548,11 +548,23 @@ export async function login(input: LoginInput) {
   const tokens = generateTokens(user.id, user.role, user.mustChangePassword);
 
   // 4. Save refresh token
-  await prisma.user.update({
-    where: { id: user.id },
+  //
+  // Conditional on the password still being the one just verified. A support
+  // reset committing between the read above and this write would otherwise
+  // have its revocation undone by this line, handing a session to somebody
+  // whose password had just been taken away, with tokens minted from the state
+  // before it. Last writer would win, which for a credential is the wrong rule.
+  // Review caught it.
+  const claimed = await prisma.user.updateMany({
+    where: { id: user.id, password: user.password },
     // The HASH, never the token: see utils/refreshToken.
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
+  if (claimed.count === 0) {
+    // The password changed underneath this sign-in, which is what the one just
+    // typed now is: wrong. Same wording as any other failure, so nothing leaks.
+    throw new ApiError(401, 'Invalid phone/email or password');
+  }
 
   const userWithoutSensitiveData = safeUser(user);
 
@@ -626,11 +638,18 @@ export async function refresh(refreshToken: string) {
   // into an ordinary session, which is the one thing it must not be.
   const tokens = generateTokens(user.id, user.role, user.mustChangePassword);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  // Conditional on the stored token still being the one matched above. A
+  // support reset clears it, and an unconditional write here would put a fresh
+  // session back over that revocation. Same reason as the equivalent line in
+  // login.
+  const rotated = await prisma.user.updateMany({
+    where: { id: user.id, refreshToken: user.refreshToken },
     // The HASH, never the token: see utils/refreshToken.
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
+  if (rotated.count === 0) {
+    throw new ApiError(401, 'Refresh token has been revoked');
+  }
 
   const userWithoutSensitiveData = safeUser(user);
 
@@ -728,6 +747,10 @@ export async function resetPassword(token: string, newPassword: string) {
       // …and log out every existing session. If the password was reset because
       // the account was compromised, this evicts the attacker too.
       refreshToken: null,
+      // An admin reset may be why they went looking for this link. They have
+      // just chosen a password of their own, which is all the flag was waiting
+      // for, so leaving it set would make them choose a second one.
+      mustChangePassword: false,
     },
   });
 
@@ -745,7 +768,20 @@ export async function resetPassword(token: string, newPassword: string) {
 // ---------------------------------------------------------------------------
 // Requires the CURRENT password even though the user is authenticated: a
 // stolen access token alone must not be enough to lock the real owner out.
-export async function changePassword(userId: string, currentPassword: string, newPassword: string) {
+// `viaResetSession` is true when the CALLER'S OWN TOKEN says this account owes
+// a password change, which only a login or refresh made after the reset mints.
+// It is not the same as the flag on the row, and the difference is the whole
+// guard: a token issued BEFORE the reset is valid for another five minutes and
+// carries no such claim, so reading the row alone would let whoever holds it
+// set a password without ever knowing the temporary one. Support resets an
+// account precisely when somebody may be holding a session they should not, so
+// that is the case this has to survive. Review caught it.
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  viaResetSession = false,
+) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new ApiError(404, 'User not found');
@@ -763,7 +799,7 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // a password they cannot name. The account is held to the same standard
   // either way, because until this call succeeds the session can do nothing
   // else at all.
-  if (user.password && !user.mustChangePassword) {
+  if (user.password && !(user.mustChangePassword && viaResetSession)) {
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) {
       throw new ApiError(401, 'Current password is incorrect');

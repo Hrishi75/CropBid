@@ -21,6 +21,10 @@ vi.mock('../lib/prisma', () => ({
     user: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      // refresh() rotates with a conditional updateMany, so that a support
+      // reset clearing the token cannot be undone by a refresh that read the
+      // row first (admin.service.resetUserPassword).
+      updateMany: vi.fn(),
     },
   },
 }));
@@ -38,6 +42,7 @@ import { config } from '../config';
 
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
 const mockUpdate = vi.mocked(prisma.user.update);
+const mockUpdateMany = vi.mocked(prisma.user.updateMany);
 
 const MINUTE = 60 * 1000;
 
@@ -110,6 +115,7 @@ describe('refresh — inactivity timeout', () => {
 
     // Expiry is decided from the token alone; no session lookup is needed.
     expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
   it('does not label a forged token as an idle timeout', async () => {
@@ -124,16 +130,17 @@ describe('refresh — inactivity timeout', () => {
   it('still refreshes an old-but-unexpired token, sliding the window forward', async () => {
     const nearlyStale = refreshTokenIssuedMinutesAgo(config.auth.idleTimeoutMinutes - 1);
     mockFindUnique.mockResolvedValue(farmerRow(nearlyStale) as any);
-    mockUpdate.mockResolvedValue({} as any);
+    mockUpdateMany.mockResolvedValue({ count: 1 } as any);
 
     const result = await refresh(nearlyStale);
 
     // Rotated: the stored hash is replaced with the one for a brand new token,
-    // which is what restarts the 15-minute clock.
+    // which is what restarts the 15-minute clock. The write is conditional on
+    // the token it matched still being there, so a reset in between wins.
     expect(result.refreshToken).not.toBe(nearlyStale);
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'user-1' },
+        where: { id: 'user-1', refreshToken: hashRefreshToken(nearlyStale) },
         data: { refreshToken: hashRefreshToken(result.refreshToken) },
       }),
     );
