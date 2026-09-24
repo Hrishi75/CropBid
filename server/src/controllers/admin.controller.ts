@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as adminService from '../services/admin.service';
 import * as agriInputService from '../services/agriInput.service';
+import * as equipmentService from '../services/equipment.service';
 import { INDIAN_STATES } from '../utils/indianStates';
 import { prisma } from '../lib/prisma';
 import { auditFromRequest } from '../services/audit.service';
@@ -615,6 +616,247 @@ export async function reviewPartnerApplication(req: Request, res: Response, next
       adminId: req.user!.userId,
     });
     res.json({ profile });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// =============================================================================
+// MACHINERY — the /equipment catalogue, as ops see it and write to it
+// =============================================================================
+// Same shape as the seeds and fertiliser endpoints above. What is missing is
+// the licence gate, which machinery has no equivalent of, so there is no
+// "hidden and waiting on paperwork" state here: a row is live unless somebody
+// took it, or its dealer, off the catalogue.
+//
+// The dealer's phone number is written by these and never read back by them,
+// exactly as on the inputs side.
+
+const equipmentListQuerySchema = z.object({
+  category: z.enum(equipmentService.CATEGORIES).optional(),
+  visibility: z.enum(['live', 'hidden']).optional(),
+  q: z.string().trim().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+// GET /api/admin/equipment — every machine, live or not, and why not
+export async function getEquipmentCatalogue(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = equipmentListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ error: true, message: 'Invalid query' });
+      return;
+    }
+    res.json(await equipmentService.listCatalogueForAdmin(parsed.data));
+  } catch (error) {
+    next(error);
+  }
+}
+
+// GET /api/admin/equipment/dealers — the dealers, with the states the server
+// will accept, so the add-dealer picker keeps no copy of that list.
+export async function getEquipmentDealers(_req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json({ ...(await equipmentService.listDealersForAdmin()), states: INDIAN_STATES });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// Bounded, not judged: whether a price is required, forbidden or positive is
+// decided by the machine's mode, and that rule lives in the service so every
+// caller is held to it.
+const rupees = z.number().max(100_000_000).nullable().optional();
+
+const machineShape = {
+  title: text(120).min(2, 'Give the machine a name'),
+  category: z.enum(equipmentService.CATEGORIES),
+  brand: clearable(80),
+  modelName: clearable(80),
+  condition: z.enum(['NEW', 'USED']),
+  yearMade: z.number().int().nullable().optional(),
+  mode: z.enum(equipmentService.MODES),
+  salePrice: rupees,
+  rentPricePerDay: rupees,
+  rentPricePerHour: rupees,
+  securityDeposit: rupees,
+  powerHp: z.number().max(10_000).nullable().optional(),
+  specs: z.array(text(60).min(1)).max(10),
+  description: clearable(1000),
+};
+
+export const createMachineSchema = z.object({
+  dealerId: z.string().uuid('Pick a dealer'),
+  ...machineShape,
+  condition: machineShape.condition.default('NEW'),
+  mode: machineShape.mode.default('SALE'),
+  specs: machineShape.specs.default([]),
+});
+
+export const updateMachineSchema = z.object(machineShape).partial().extend({
+  active: z.boolean().optional(),
+});
+
+// The service takes explicit nulls, so an absent optional is not mistaken for
+// "leave it" on a create, where there is nothing to leave.
+const machineFields = (f: z.infer<typeof createMachineSchema>) => ({
+  title: f.title,
+  category: f.category,
+  brand: f.brand ?? null,
+  modelName: f.modelName ?? null,
+  condition: f.condition,
+  yearMade: f.yearMade ?? null,
+  mode: f.mode,
+  salePrice: f.salePrice ?? null,
+  rentPricePerDay: f.rentPricePerDay ?? null,
+  rentPricePerHour: f.rentPricePerHour ?? null,
+  securityDeposit: f.securityDeposit ?? null,
+  powerHp: f.powerHp ?? null,
+  specs: f.specs,
+  description: f.description ?? null,
+});
+
+// POST /api/admin/equipment — add a machine to a dealer
+export async function createEquipment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = createMachineSchema.safeParse(req.body);
+    if (!parsed.success) return invalid(res, parsed.error);
+
+    const { dealerId } = parsed.data;
+    const machine = await equipmentService.createEquipment(dealerId, machineFields(parsed.data));
+
+    await auditFromRequest(req, {
+      action: 'admin.equipment.create',
+      entityType: 'Equipment',
+      entityId: machine.id,
+      metadata: { dealerId, title: machine.title, category: machine.category, mode: machine.mode },
+    });
+
+    res.status(201).json(machine);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /api/admin/equipment/:id — edit a machine, take it off, put it back
+export async function updateEquipment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+    const body = updateMachineSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+    if (Object.keys(body.data).length === 0) {
+      res.status(400).json({ error: true, message: 'Nothing to change' });
+      return;
+    }
+
+    const machine = await equipmentService.updateEquipment(param.data.id, body.data);
+
+    await auditFromRequest(req, {
+      action: 'admin.equipment.update',
+      entityType: 'Equipment',
+      entityId: machine.id,
+      metadata: { changed: Object.keys(body.data), ...(body.data.active !== undefined && { active: body.data.active }) },
+    });
+
+    res.json(machine);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export const createDealerSchema = z.object({
+  name: text(120).min(2, 'Give the dealer a name'),
+  location: text(80).min(2, 'Which town is the dealer in?'),
+  state: text(60).min(2, 'Which state is the dealer in?'),
+  contactPhone: phone,
+  contactEmail: emailField,
+});
+
+// Town and state are editable here, unlike a licensed input shop: nothing about
+// a machinery dealer is tied to one premises. The service carries their
+// machines to the new town in the same transaction.
+const updateDealerSchema = z.object({
+  name: text(120).min(2, 'Give the dealer a name').optional(),
+  location: text(80).min(2, 'Which town is the dealer in?').optional(),
+  state: text(60).min(2, 'Which state is the dealer in?').optional(),
+  contactPhone: phone.optional(),
+  contactEmail: emailField,
+  active: z.boolean().optional(),
+});
+
+// POST /api/admin/equipment/dealers — add a dealer (no claims until checked)
+export async function createEquipmentDealer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = createDealerSchema.safeParse(req.body);
+    if (!parsed.success) return invalid(res, parsed.error);
+
+    const dealer = await equipmentService.createDealer({
+      ...parsed.data,
+      contactEmail: parsed.data.contactEmail ?? null,
+    });
+
+    // The phone number stays out of the log, as it stays out of every read.
+    await auditFromRequest(req, {
+      action: 'admin.equipment_dealer.create',
+      entityType: 'EquipmentDealer',
+      entityId: dealer.id,
+      metadata: { name: dealer.name, state: dealer.state },
+    });
+
+    res.status(201).json(dealer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PATCH /api/admin/equipment/dealers/:id — rename, move, phone, take off
+export async function updateEquipmentDealer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+    const body = updateDealerSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+    if (Object.keys(body.data).length === 0) {
+      res.status(400).json({ error: true, message: 'Nothing to change' });
+      return;
+    }
+
+    const dealer = await equipmentService.updateDealer(req.user!.userId, param.data.id, body.data);
+
+    await auditFromRequest(req, {
+      action: 'admin.equipment_dealer.update',
+      entityType: 'EquipmentDealer',
+      entityId: dealer.id,
+      metadata: { changed: Object.keys(body.data), ...(body.data.active !== undefined && { active: body.data.active }) },
+    });
+
+    res.json(dealer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export const dealerClaimsSchema = z.object({
+  verified: z.boolean().optional(),
+  smamEmpanelled: z.boolean().optional(),
+  checked: z.boolean().default(false),
+});
+
+// PUT /api/admin/equipment/dealers/:id/claims — the verified badge and the
+// SMAM listing. Audited inside the service, in the same transaction.
+export async function setEquipmentDealerClaims(req: Request, res: Response, next: NextFunction) {
+  try {
+    const param = idParamSchema.safeParse(req.params);
+    if (!param.success) return invalid(res, param.error);
+    const body = dealerClaimsSchema.safeParse(req.body);
+    if (!body.success) return invalid(res, body.error);
+
+    const { checked, ...patch } = body.data;
+    const dealer = await equipmentService.setDealerClaims(req.user!.userId, param.data.id, patch, checked);
+
+    res.json(dealer);
   } catch (error) {
     next(error);
   }

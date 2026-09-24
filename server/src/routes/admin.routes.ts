@@ -67,6 +67,22 @@ router.patch('/agri-inputs/suppliers/:id', adminController.updateAgriInputSuppli
 router.put('/agri-inputs/suppliers/:id/licences', adminController.setAgriInputSupplierLicences);
 router.patch('/agri-inputs/:id', adminController.updateAgriInput);
 
+// --- Machinery: the /equipment catalogue, and adding to it ---
+// GET   /api/admin/equipment                     — machines, live or not and why not
+// POST  /api/admin/equipment                     — add a machine to a dealer
+// PATCH /api/admin/equipment/:id                 — edit, take off, put back
+// GET   /api/admin/equipment/dealers             — dealers, with machine counts
+// POST  /api/admin/equipment/dealers             — add a dealer
+// PATCH /api/admin/equipment/dealers/:id         — rename, move, phone, take off
+// PUT   /api/admin/equipment/dealers/:id/claims  — verified / SMAM (audited)
+router.get('/equipment', adminController.getEquipmentCatalogue);
+router.post('/equipment', adminController.createEquipment);
+router.get('/equipment/dealers', adminController.getEquipmentDealers);
+router.post('/equipment/dealers', adminController.createEquipmentDealer);
+router.patch('/equipment/dealers/:id', adminController.updateEquipmentDealer);
+router.put('/equipment/dealers/:id/claims', adminController.setEquipmentDealerClaims);
+router.patch('/equipment/:id', adminController.updateEquipment);
+
 // --- Partner applications: the approval queue ---
 // GET  /api/admin/partners            — list applications (+ per-status counts)
 // POST /api/admin/partners/:id/review — approve / request info / reject / suspend

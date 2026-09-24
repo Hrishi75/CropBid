@@ -56,6 +56,28 @@ export interface EquipmentSeed {
   state: string;
 }
 
+// What the PRODUCTION loader (seedEquipment.ts) writes for a dealer, and what
+// it deliberately leaves alone.
+//
+// `verified` and `smamEmpanelled` are claims CropBid makes to a farmer: a badge
+// that sorts a dealer to the top of every search, and a statement that they can
+// be used for a government subsidy. Since 2026-09-24 those are entered in the
+// admin panel by somebody who has checked, and that write is audited. A loader
+// that wrote them would put a badge over a dealer nobody checked, and would
+// then put it back on every re-run over an admin who had taken it down: the
+// same mistake the inputs catalogue made with licences (CLAUDE.md section 10).
+//
+// The values below stay in this file because seed.ts, which only ever touches a
+// development database, writes them to give the dev catalogue a realistic mix.
+export function dealerLoadFields(d: DealerSeed) {
+  return {
+    location: d.location,
+    contactPhone: d.contactPhone,
+    contactEmail: d.contactEmail ?? null,
+    rating: d.rating ?? 4.0,
+  };
+}
+
 export const EQUIPMENT_DEALERS: DealerSeed[] = [
   {
     name: 'Sharma Tractors & Implements',

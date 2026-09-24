@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { describe, it, expect } from 'vitest';
-import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE } from './equipmentCatalogue';
+import { EQUIPMENT_DEALERS, EQUIPMENT_CATALOGUE, dealerLoadFields } from './equipmentCatalogue';
 
 describe('equipment catalogue', () => {
   it('gives every machine a dealer that exists', () => {
@@ -86,5 +86,21 @@ describe('equipment catalogue', () => {
     // which reads as evasive on a listing costing lakhs.
     const undated = EQUIPMENT_CATALOGUE.filter((e) => e.condition === 'USED' && e.yearMade == null);
     expect(undated.map((e) => e.title)).toEqual([]);
+  });
+
+  it('never lets the production loader vouch for a dealer', () => {
+    // `verified` badges a dealer and sorts them above everyone else;
+    // `smamEmpanelled` tells a farmer they can claim a subsidy through them.
+    // Both are entered in the admin panel by someone who has checked, and that
+    // write is audited. Written from the file they would badge an unchecked
+    // dealer, and a re-run would put the badge back over an admin who had taken
+    // it down. Same rule as the inputs catalogue's licences.
+    const forbidden = ['verified', 'smamEmpanelled', 'active'];
+    const leaks = EQUIPMENT_DEALERS.flatMap((d) =>
+      Object.keys(dealerLoadFields(d))
+        .filter((k) => forbidden.includes(k))
+        .map((k) => `${d.name}: ${k}`),
+    );
+    expect(leaks).toEqual([]);
   });
 });
