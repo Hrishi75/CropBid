@@ -16,6 +16,7 @@ import { config } from './config';
 import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
 import { warmRates } from './services/rates.service';
+import { emailTransport } from './services/email.service';
 
 const PORT = config.port;
 
@@ -45,6 +46,16 @@ void clearPlaintextRefreshTokens()
 // Start downloading the day's mandi feed and reading the usual prices now,
 // so the first visitor to the rates board is not the one who waits. Never fatal.
 warmRates();
+
+// Say at boot which way email goes. Production with no transport used to send
+// nothing while every forgot-password request answered 200, and the only trace
+// was the reset link printed into this log.
+const mailVia = emailTransport();
+if (mailVia === 'none' && config.nodeEnv === 'production') {
+  console.error('📧 EMAIL IS NOT CONFIGURED: set BREVO_API_KEY (or SMTP_HOST). Password resets will not arrive.');
+} else {
+  console.log(`📧 Email via ${mailVia === 'none' ? 'console (development)' : mailVia}`);
+}
 
 server.listen(PORT, () => {
   console.log(`

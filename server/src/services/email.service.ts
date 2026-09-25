@@ -1,12 +1,14 @@
 // =============================================================================
 // Email Service — Transactional email with a dev-friendly fallback
 // =============================================================================
-// WHY A FALLBACK?
-// Password reset MUST work in every environment, but developers shouldn't need
-// an SMTP account to test it. So:
-//   - SMTP_HOST set     → send real email via nodemailer
-//   - SMTP_HOST not set → print the full email to the server console
-//     (the reset link is clickable straight from the terminal)
+// Three transports, first configured wins:
+//   - BREVO_API_KEY set → Brevo's HTTP API (port 443, works on any host)
+//   - SMTP_HOST set     → nodemailer over SMTP
+//   - neither           → development prints the full email to the console
+//     (the reset link is clickable straight from the terminal); PRODUCTION
+//     THROWS, because printing a reset link into a server log is neither a
+//     delivery nor safe, and doing it silently is how every password reset in
+//     production went nowhere while the endpoint answered 200.
 //
 // The transporter is created lazily and cached so the SMTP connection pool is
 // shared across sends. All senders here throw on failure — callers decide
@@ -20,8 +22,16 @@ import { config } from '../config';
 
 let cachedTransporter: Transporter | null = null;
 
-function isSmtpConfigured(): boolean {
-  return Boolean(config.smtp.host);
+// A blocked SMTP port drops packets rather than refusing, so without these a
+// send hangs for minutes instead of failing where the log can show it.
+const SEND_TIMEOUT_MS = 15_000;
+
+export type EmailTransport = 'brevo' | 'smtp' | 'none';
+
+export function emailTransport(): EmailTransport {
+  if (config.brevoApiKey) return 'brevo';
+  if (config.smtp.host) return 'smtp';
+  return 'none';
 }
 
 function getTransporter(): Transporter {
@@ -34,9 +44,45 @@ function getTransporter(): Transporter {
       auth: config.smtp.user
         ? { user: config.smtp.user, pass: config.smtp.pass }
         : undefined,
+      connectionTimeout: SEND_TIMEOUT_MS,
+      greetingTimeout: SEND_TIMEOUT_MS,
+      socketTimeout: SEND_TIMEOUT_MS,
     });
   }
   return cachedTransporter;
+}
+
+// "CropBid <no-reply@cropbid.in>" → { name, email }. A bare address is fine too.
+export function parseFrom(from: string): { name?: string; email: string } {
+  const match = from.match(/^\s*(.*?)\s*<([^>]+)>\s*$/);
+  if (!match) return { email: from.trim() };
+  const name = match[1].replace(/^"|"$/g, '').trim();
+  return name ? { name, email: match[2].trim() } : { email: match[2].trim() };
+}
+
+async function sendViaBrevo(input: EmailInput): Promise<void> {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': config.brevoApiKey,
+      'content-type': 'application/json',
+      accept: 'application/json',
+    },
+    body: JSON.stringify({
+      sender: parseFrom(config.smtp.from),
+      to: [{ email: input.to }],
+      subject: input.subject,
+      textContent: input.text,
+      ...(input.html ? { htmlContent: input.html } : {}),
+    }),
+    signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    // Brevo's error body names the problem (unverified sender, bad key), and
+    // never echoes the key back, so it is safe to log.
+    const detail = await res.text().catch(() => '');
+    throw new Error(`Brevo rejected the email (${res.status}): ${detail.slice(0, 300)}`);
+  }
 }
 
 export interface EmailInput {
@@ -47,7 +93,19 @@ export interface EmailInput {
 }
 
 export async function sendEmail(input: EmailInput): Promise<void> {
-  if (!isSmtpConfigured()) {
+  const transport = emailTransport();
+
+  if (transport === 'brevo') {
+    await sendViaBrevo(input);
+    return;
+  }
+
+  if (transport === 'none') {
+    if (config.nodeEnv === 'production') {
+      throw new Error(
+        'Email is not configured: set BREVO_API_KEY (or SMTP_HOST) on the server. Nothing was sent.',
+      );
+    }
     // Development fallback — make the email impossible to miss in the console.
     console.log(
       [

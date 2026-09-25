@@ -11,6 +11,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Force the unconfigured-SMTP branch regardless of the host machine's env.
 vi.mock('../config', () => ({
   config: {
+    nodeEnv: 'development',
+    brevoApiKey: '',
     smtp: { host: '', port: 587, user: '', pass: '', from: 'CropBid <no-reply@cropbid.in>' },
   },
 }));

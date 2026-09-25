@@ -151,9 +151,13 @@ export const config = {
     twilioFrom: process.env.TWILIO_FROM || '',
   },
 
-  // SMTP (transactional email — password resets etc.).
-  // Leave SMTP_HOST unset in development: emails are printed to the server
-  // console instead of sent, so the flow is fully testable without a provider.
+  // Transactional email (password resets etc.). Brevo's HTTP API is preferred
+  // when BREVO_API_KEY is set, because it goes over 443 and works on any host;
+  // SMTP is the fallback. docs/aws-lightsail-migration.md told production to
+  // set BREVO_API_KEY long before any code read it, so a box set up by that
+  // runbook sent no email at all. With neither set, development prints emails
+  // to the console and production refuses to send (email.service.ts).
+  brevoApiKey: process.env.BREVO_API_KEY || '',
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: parseInt(process.env.SMTP_PORT || '587', 10),

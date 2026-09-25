@@ -365,6 +365,7 @@ DATABASE_URL=postgresql://<user>@localhost:5432/cropbid_dev PORT=5001 npm run de
 - Postgres runs natively (pg@18 on :5432). `docker compose` does **not** work on this machine.
 - In a worktree, `server/src/generated` must be a real directory containing a `prisma` symlink.
 - No SMTP/WhatsApp configured locally → **OTP codes and emails print to the API log.**
+- **Email goes through Brevo's HTTP API when `BREVO_API_KEY` is set**, else SMTP (`SMTP_HOST`), else the console in development. **Production with neither refuses to send** and says so at boot (`📧` line). Until 2026-09-25 the code read only `SMTP_HOST` while the Lightsail runbook said to set `BREVO_API_KEY`, so a box set up by the runbook printed every reset link into its log and sent nothing, while forgot-password answered 200.
 - Blank Razorpay keys → payment endpoints return 503 and everything else works.
 - Blank `DATA_GOV_API_KEY` → the shared demo key, which is throttled much of the day and returns 10 rows a request, so the rates fall back to static reference prices, badged `ref`, and the API log says why. It looks like a UI bug and is not (§11).
 
