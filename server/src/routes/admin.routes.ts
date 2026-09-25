@@ -22,6 +22,10 @@ router.get('/users', adminController.getUsers);
 // PATCH /api/admin/users/:id — Update user
 router.patch('/users/:id', adminController.updateUser);
 
+// POST /api/admin/users/:id/reset-password — temporary password for a locked-out
+// user, returned once for the admin to read out (audited)
+router.post('/users/:id/reset-password', adminController.resetUserPassword);
+
 // DELETE /api/admin/users/:id — Hard-delete a user (no transactions attached)
 router.delete('/users/:id', adminController.deleteUser);
 

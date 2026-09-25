@@ -25,6 +25,7 @@ import {
   signup as apiSignup,
   verifySignupOtp as apiVerifySignupOtp,
   resendSignupOtp as apiResendSignupOtp,
+  refuseResetSession,
   type PendingSignup,
   type SignupInput,
   type SignupResult,
@@ -66,6 +67,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const refreshToken = await getRefreshToken();
         if (!refreshToken) return;
         const { data } = await api.post('/auth/refresh', { refreshToken });
+        // An account support has reset is not restored into the app either.
+        // Throwing lands in the catch below, which drops the stored token and
+        // leaves them at the sign-in screen, where the same check explains it.
+        refuseResetSession(data.user);
         setAccessToken(data.accessToken);
         if (data.refreshToken) await setRefreshToken(data.refreshToken);
         markSynced(); // Launch refresh re-armed the server's idle window.

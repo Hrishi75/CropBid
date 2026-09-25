@@ -88,6 +88,37 @@ function recordBid(socket: Socket): boolean {
   return true;
 }
 
+// WHO IS ON THE OTHER END OF A HANDSHAKE, or an Error saying why nobody is.
+// Lifted out of the io.use below so the rule can be tested directly: proving it
+// through a real handshake would mean adding a socket client to the server's
+// dependencies for one test.
+//
+// A SESSION HOLDING A TEMPORARY PASSWORD IS REFUSED HERE TOO. The handshake
+// takes the same access token as every HTTP route, and without this a reset
+// account could open a socket and bid, or sit in its own room receiving
+// events, while being refused everywhere else and supposed to be able to do
+// one thing: choose a password. Review caught it. A socket already open when
+// the reset lands stays open until it drops, which is the same window the
+// access token itself has.
+export function handshakeIdentity(token: unknown): { userId: string; role: string } {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Authentication required');
+  }
+
+  let payload;
+  try {
+    payload = verifyAccessToken(token);
+  } catch {
+    throw new Error('Invalid token');
+  }
+
+  if (payload.mustChangePassword) {
+    throw new Error('Choose a new password before you carry on');
+  }
+
+  return { userId: payload.userId, role: payload.role };
+}
+
 // Re-validate a user's role against the database RIGHT NOW, rather than trusting
 // the role captured from the JWT at handshake. A socket outlives its 15-minute
 // access token and survives an account-role change, so the handshake claim can
@@ -133,20 +164,17 @@ export function initializeSocket(httpServer: HttpServer) {
   // Socket.io has its own middleware system. We extract the JWT from
   // the `auth` object that the client sends during the handshake.
   io.use((socket: Socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (!token) {
-      return next(new Error('Authentication required'));
+    let identity;
+    try {
+      identity = handshakeIdentity(socket.handshake.auth?.token);
+    } catch (error) {
+      return next(error as Error);
     }
 
-    try {
-      const payload = verifyAccessToken(token);
-      (socket as any).userId = payload.userId;
-      (socket as any).role = payload.role;
-      (socket as any).userName = socket.handshake.auth?.userName || 'Anonymous';
-      next();
-    } catch {
-      next(new Error('Invalid token'));
-    }
+    (socket as any).userId = identity.userId;
+    (socket as any).role = identity.role;
+    (socket as any).userName = socket.handshake.auth?.userName || 'Anonymous';
+    next();
   });
 
   // =========================================================================

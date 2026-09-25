@@ -11,7 +11,7 @@
 // the lists below are the only place route-to-role mapping is defined.
 // =============================================================================
 
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
 
@@ -21,6 +21,7 @@ import { SignupPage } from '../pages/auth/SignupPage';
 import { OnboardingPage } from '../pages/auth/OnboardingPage';
 import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
+import { ChangePasswordPage } from '../pages/auth/ChangePasswordPage';
 
 // Partner flow — the seller/buyer door. The landing is public; the status
 // page manages its own auth (it must stay reachable to PENDING partners, so
@@ -136,8 +137,25 @@ function PublicDemandRoute() {
   return <PublicDemandPage />;
 }
 
+// A session whose password support reset can go to one place. The server is
+// what enforces that (the authenticate middleware refuses everything else);
+// this is so the user meets a screen that explains it instead of a page that
+// fails to load. It sits above every route rather than inside ProtectedRoute
+// because the storefront and the marketing pages are not protected, and a
+// shopper is exactly who this happens to.
+function PasswordChangeGate({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const { pathname } = useLocation();
+
+  if (!loading && user?.mustChangePassword && pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+  return <>{children}</>;
+}
+
 export function AppRoutes() {
   return (
+    <PasswordChangeGate>
     <Routes>
       {/* Root — smart redirect based on role */}
       <Route path="/" element={<RootRedirect />} />
@@ -164,6 +182,10 @@ export function AppRoutes() {
 
       {/* Public auth routes */}
       <Route path="/login" element={<LoginPage />} />
+      {/* Not public, but not behind ProtectedRoute either: it is where a
+          reset account lands whatever its role, and the gate above is what
+          sends it here. */}
+      <Route path="/change-password" element={<ChangePasswordPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/onboarding" element={<OnboardingPage />} />
       <Route path="/partner" element={<PartnerPage />} />
@@ -583,5 +605,6 @@ export function AppRoutes() {
       {/* Catch-all — redirect to root (which then redirects by role) */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </PasswordChangeGate>
   );
 }
