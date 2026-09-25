@@ -250,6 +250,65 @@ const EXCLUDED = new Set([
   'Firewood', 'Wood', 'Dry Fodder', 'Green Fodder', 'Broomstick(Flower Broom)', 'Coconut Coir',
 ].map((n) => n.toLowerCase()));
 
+// The icon a commodity is shown with, keyed by id. Unicode has about forty
+// food emoji, so most of the table has none: a gourd, a dal or a millet gets
+// its group's icon below rather than a lookalike that names another crop.
+// Near misses are allowed only where the shape really is the family (🫛 for
+// any bean or pea in its pod, 🥒 for the long gourds). Emoji newer than
+// Unicode 15 (2022) are left out, because older phones draw them as a box.
+export const EMOJI: Record<string, string> = {
+  // vegetables
+  Tomato: '🍅', Onion: '🧅', Potato: '🥔', Brinjal: '🍆', Cabbage: '🥬', Cauliflower: '🥦',
+  Carrot: '🥕', Garlic: '🧄', Pumpkin: '🎃', 'Sweet Pumpkin': '🎃', Beans: '🫛',
+  'Green Chilli': '🌶️', 'Ginger(Green)': '🫚', 'Bhindi(Ladies Finger)': '🫛',
+  'Cucumbar(Kheera)': '🥒', Capsicum: '🫑',
+  'Bitter gourd': '🥒', 'Ridgeguard(Tori)': '🥒', 'Snakeguard': '🥒', 'Sponge gourd': '🥒',
+  'Little gourd(Kundru)': '🥒', 'Pointed gourd(Parval)': '🥒', 'Long Melon(Kakri)': '🥒',
+  'Wild Cucumber': '🥒',
+  'Cluster beans': '🫛', 'French Beans(Frasbean)': '🫛', 'Indian Beans(Seam)': '🫛',
+  'Surat Beans(Papadi)': '🫛', 'Bunch Beans': '🫛', 'Duster Beans': '🫛', 'Cowpea(Veg)': '🫛',
+  'Green Avare(W)': '🫛', 'Chapparad Avare': '🫛', 'Field Bean(Anumulu)': '🫛', 'Green Peas': '🫛',
+  'Peas Wet': '🫛', 'Pegeon Pea(Arhar Fali)': '🫛', 'Gram Raw(Chholia)': '🫛',
+  'Baby Corn': '🌽', 'Sweet Corn': '🌽', Mashrooms: '🍄',
+  'Sweet Potato': '🍠', 'Yam(Ratalu)': '🍠', 'Banana - Green': '🍌',
+  // greens
+  Spinach: '🥬', Amaranthus: '🥬', 'Leafy Vegetable': '🥬', 'Methi(Leaves)': '☘️',
+  'Mint(Pudina)': '🍃', 'Onion Green': '🌱', basil: '🌿', 'Coriander(Leaves)': '🌿',
+  // fruits
+  Apple: '🍎', Banana: '🍌', Grapes: '🍇', Lemon: '🍋', Lime: '🍋', 'Galgal(Lemon)': '🍋',
+  Pomegranate: '🍒', Orange: '🍊', Kinnow: '🍊', 'Mousambi(Sweet Lime)': '🍊', Pineapple: '🍍', Avocado: '🥑',
+  Mango: '🥭', 'Water Melon': '🍉', 'Karbuja(Musk Melon)': '🍈', 'Pear(Marasebu)': '🍐',
+  'Kiwi Fruit': '🥝', 'Tender Coconut': '🥥',
+  // cereals
+  Wheat: '🌾', Maize: '🌽', Rice: '🍚', 'Paddy(Dhan)(Common)': '🍚', 'Broken Rice': '🍚',
+  'Beaten Rice': '🍚', 'Wheat Atta': '🫓',
+  // oilseeds. Soyabean keeps the bean it has always shown on the board.
+  Soyabean: '🫘', Groundnut: '🥜', 'Ground Nut Seed': '🥜', 'Groundnut pods(raw)': '🥜', 'Groundnut(Split)': '🥜',
+  Copra: '🥥', 'Sunflower/Sunflower Seed': '🌻',
+  // spices
+  Turmeric: '🫚', 'Turmeric(raw)': '🫚', 'Ginger(Dry)': '🫚', 'Chili Red': '🌶️',
+  'Bay leaf(Tejpatta)': '🍃', 'dried mango': '🥭',
+  // dry fruits
+  'Almond(Badam)': '🥜', Cashewnuts: '🥜', Walnut: '🌰', 'Dry Grapes': '🍇',
+  // dairy
+  Milk: '🥛', Ghee: '🧈', Curd: '🥣', Paneer: '🧀',
+  // other
+  Coconut: '🥥', 'Coconut Oil': '🥥', 'Mustard Oil': '🫙', Fish: '🐟', Prawn: '🦐', Cocoa: '🍫',
+  'Betal Leaves': '🍃',
+};
+
+// For a commodity with no emoji of its own. Spices get a shaker, not a
+// chilli, because a chilli on cardamom or jeera names the wrong crop.
+const GROUP_EMOJI: Record<Group, string> = {
+  vegetables: '🥬', greens: '🌿', fruits: '🍎', cereals: '🌾', pulses: '🫘',
+  oilseeds: '🌻', spices: '🧂', dryfruits: '🥜', dairy: '🥛', other: '🧺',
+};
+
+/** The icon to show beside a commodity: its own where Unicode has one, else its group's. */
+export function emojiFor(c: Commodity): string {
+  return EMOJI[c.id] ?? GROUP_EMOJI[c.group];
+}
+
 const key = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
 
 export const COMMODITIES: Commodity[] = (Object.entries(TABLE) as Array<[Group, Row[]]>).flatMap(
