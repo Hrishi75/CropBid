@@ -276,14 +276,14 @@ export const EMOJI: Record<string, string> = {
   'Mint(Pudina)': '🍃', 'Onion Green': '🌱', basil: '🌿', 'Coriander(Leaves)': '🌿',
   // fruits
   Apple: '🍎', Banana: '🍌', Grapes: '🍇', Lemon: '🍋', Lime: '🍋', 'Galgal(Lemon)': '🍋',
-  Orange: '🍊', Kinnow: '🍊', 'Mousambi(Sweet Lime)': '🍊', Pineapple: '🍍', Avocado: '🥑',
+  Pomegranate: '🍒', Orange: '🍊', Kinnow: '🍊', 'Mousambi(Sweet Lime)': '🍊', Pineapple: '🍍', Avocado: '🥑',
   Mango: '🥭', 'Water Melon': '🍉', 'Karbuja(Musk Melon)': '🍈', 'Pear(Marasebu)': '🍐',
   'Kiwi Fruit': '🥝', 'Tender Coconut': '🥥',
   // cereals
   Wheat: '🌾', Maize: '🌽', Rice: '🍚', 'Paddy(Dhan)(Common)': '🍚', 'Broken Rice': '🍚',
   'Beaten Rice': '🍚', 'Wheat Atta': '🫓',
-  // oilseeds
-  Groundnut: '🥜', 'Ground Nut Seed': '🥜', 'Groundnut pods(raw)': '🥜', 'Groundnut(Split)': '🥜',
+  // oilseeds. Soyabean keeps the bean it has always shown on the board.
+  Soyabean: '🫘', Groundnut: '🥜', 'Ground Nut Seed': '🥜', 'Groundnut pods(raw)': '🥜', 'Groundnut(Split)': '🥜',
   Copra: '🥥', 'Sunflower/Sunflower Seed': '🌻',
   // spices
   Turmeric: '🫚', 'Turmeric(raw)': '🫚', 'Ginger(Dry)': '🫚', 'Chili Red': '🌶️',

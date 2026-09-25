@@ -51,7 +51,6 @@ type Cat = 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
 interface BoardItem {
   commodity: string;   // id in mandiCommodities.ts
   label: string;       // display name
-  emoji: string;
   cat: Cat;
   unit: Unit;
   // Typed in once and never updated, so only a last resort: the price shown
@@ -62,51 +61,51 @@ interface BoardItem {
 
 const BOARD: BoardItem[] = [
   // Fresh vegetables
-  { commodity: 'Tomato', label: 'Tomato', emoji: '🍅', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2600 },
-  { commodity: 'Onion', label: 'Onion', emoji: '🧅', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
-  { commodity: 'Potato', label: 'Potato', emoji: '🥔', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1400 },
-  { commodity: 'Green Chilli', label: 'Green Chilli', emoji: '🌶️', cat: 'veg', unit: 'KG', fallbackPerQuintal: 4500 },
-  { commodity: 'Cauliflower', label: 'Cauliflower', emoji: '🥦', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2200 },
-  { commodity: 'Brinjal', label: 'Brinjal', emoji: '🍆', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
+  { commodity: 'Tomato', label: 'Tomato', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2600 },
+  { commodity: 'Onion', label: 'Onion', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
+  { commodity: 'Potato', label: 'Potato', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1400 },
+  { commodity: 'Green Chilli', label: 'Green Chilli', cat: 'veg', unit: 'KG', fallbackPerQuintal: 4500 },
+  { commodity: 'Cauliflower', label: 'Cauliflower', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2200 },
+  { commodity: 'Brinjal', label: 'Brinjal', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1800 },
   // More daily-use vegetables.
-  { commodity: 'Cabbage', label: 'Cabbage', emoji: '🥬', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1600 },
-  { commodity: 'Carrot', label: 'Carrot', emoji: '🥕', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2800 },
-  { commodity: 'Bhindi(Ladies Finger)', label: 'Lady Finger', emoji: '🫛', cat: 'veg', unit: 'KG', fallbackPerQuintal: 3500 },
-  { commodity: 'Cucumbar(Kheera)', label: 'Cucumber', emoji: '🥒', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2000 },
-  { commodity: 'Garlic', label: 'Garlic', emoji: '🧄', cat: 'veg', unit: 'KG', fallbackPerQuintal: 9000 },
-  { commodity: 'Ginger(Green)', label: 'Ginger', emoji: '🫚', cat: 'veg', unit: 'KG', fallbackPerQuintal: 8000 },
+  { commodity: 'Cabbage', label: 'Cabbage', cat: 'veg', unit: 'KG', fallbackPerQuintal: 1600 },
+  { commodity: 'Carrot', label: 'Carrot', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2800 },
+  { commodity: 'Bhindi(Ladies Finger)', label: 'Lady Finger', cat: 'veg', unit: 'KG', fallbackPerQuintal: 3500 },
+  { commodity: 'Cucumbar(Kheera)', label: 'Cucumber', cat: 'veg', unit: 'KG', fallbackPerQuintal: 2000 },
+  { commodity: 'Garlic', label: 'Garlic', cat: 'veg', unit: 'KG', fallbackPerQuintal: 9000 },
+  { commodity: 'Ginger(Green)', label: 'Ginger', cat: 'veg', unit: 'KG', fallbackPerQuintal: 8000 },
   // Milk & dairy — dairy trades through cooperatives, not APMC mandis, so the
   // feed rarely (if ever) reports it and these rows usually resolve to the
   // reference price, labelled honestly by the source chain. References track
   // the Dept. of Consumer Affairs retail price monitor (Delhi, Jul 2026:
   // milk ₹60/L, curd ₹61/L, paneer ₹348–400/kg, ghee ₹524–572/kg) — the only
   // government-published daily price series that covers dairy.
-  { commodity: 'Milk', label: 'Milk', emoji: '🥛', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6000 },
-  { commodity: 'Ghee', label: 'Ghee', emoji: '🧈', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 55000 },
-  { commodity: 'Curd', label: 'Curd (Dahi)', emoji: '🥣', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6100 },
-  { commodity: 'Paneer', label: 'Paneer', emoji: '🧀', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 37000 },
+  { commodity: 'Milk', label: 'Milk', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6000 },
+  { commodity: 'Ghee', label: 'Ghee', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 55000 },
+  { commodity: 'Curd', label: 'Curd (Dahi)', cat: 'dairy', unit: 'LITRE', fallbackPerQuintal: 6100 },
+  { commodity: 'Paneer', label: 'Paneer', cat: 'dairy', unit: 'KG', fallbackPerQuintal: 37000 },
   // Seasonal fruits
-  { commodity: 'Banana', label: 'Banana', emoji: '🍌', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 2800 },
-  { commodity: 'Mango', label: 'Mango', emoji: '🥭', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 9000 },
-  { commodity: 'Pomegranate', label: 'Pomegranate', emoji: '🍒', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 11000 },
-  { commodity: 'Grapes', label: 'Grapes', emoji: '🍇', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 7000 },
-  { commodity: 'Apple', label: 'Apple', emoji: '🍎', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 12000 },
+  { commodity: 'Banana', label: 'Banana', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 2800 },
+  { commodity: 'Mango', label: 'Mango', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 9000 },
+  { commodity: 'Pomegranate', label: 'Pomegranate', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 11000 },
+  { commodity: 'Grapes', label: 'Grapes', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 7000 },
+  { commodity: 'Apple', label: 'Apple', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 12000 },
   // More everyday fruits. The feed reports lemon and lime separately and a
   // lemon costs about three times as much, so this row says which it is.
-  { commodity: 'Pineapple', label: 'Pineapple', emoji: '🍍', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 4000 },
-  { commodity: 'Water Melon', label: 'Watermelon', emoji: '🍉', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 1400 },
-  { commodity: 'Lime', label: 'Lime (Nimbu)', emoji: '🍋', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 6000 },
+  { commodity: 'Pineapple', label: 'Pineapple', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 4000 },
+  { commodity: 'Water Melon', label: 'Watermelon', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 1400 },
+  { commodity: 'Lime', label: 'Lime (Nimbu)', cat: 'fruits', unit: 'KG', fallbackPerQuintal: 6000 },
   // Grains & pulses
-  { commodity: 'Wheat', label: 'Wheat', emoji: '🌾', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2480 },
-  { commodity: 'Paddy(Dhan)(Common)', label: 'Paddy (Rice)', emoji: '🍚', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2400 },
-  { commodity: 'Maize', label: 'Maize', emoji: '🌽', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2100 },
+  { commodity: 'Wheat', label: 'Wheat', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2480 },
+  { commodity: 'Paddy(Dhan)(Common)', label: 'Paddy (Rice)', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2400 },
+  { commodity: 'Maize', label: 'Maize', cat: 'grains', unit: 'QUINTAL', fallbackPerQuintal: 2100 },
   // Spices & oilseeds
-  { commodity: 'Soyabean', label: 'Soybean', emoji: '🫘', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 5420 },
-  { commodity: 'Turmeric', label: 'Turmeric', emoji: '🫚', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 13800 },
+  { commodity: 'Soyabean', label: 'Soybean', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 5420 },
+  { commodity: 'Turmeric', label: 'Turmeric', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 13800 },
   // Cocoa reports from very few mandis (Kerala/Karnataka plantation belt), so
   // outside those states it resolves to a 'national' modal drawn from a handful
   // of markets — honest via `source`, but thinner than the crops above.
-  { commodity: 'Cocoa', label: 'Cocoa', emoji: '🍫', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 14800 },
+  { commodity: 'Cocoa', label: 'Cocoa', cat: 'spices', unit: 'QUINTAL', fallbackPerQuintal: 14800 },
 ];
 const BOARD_BY_ID = new Map(BOARD.map((b) => [b.commodity.toLowerCase(), b]));
 
@@ -326,6 +325,8 @@ function rateFor(
   const inState = state ? all.filter((r) => r.state === state) : [];
 
   const id = commodityFor(item.commodity)?.id ?? item.commodity;
+  // One table of icons for every commodity, board crops included (mandiCommodities.ts).
+  const emoji = emojiFor(commodityFor(item.commodity) ?? { id: item.commodity, names: [item.commodity], label: item.label, group: 'other' });
   // The all-India average: the fallback price when the feed has nothing for
   // the crop, and the typed-in price only where CropBid has no history at all.
   const usualPerQ = usualFor(id, '')?.perQuintal ?? meta.fallbackPerQuintal;
@@ -336,7 +337,7 @@ function rateFor(
     // for lately, like with like. Not a forecast, a "strong/weak day" flag.
     const cmp = vsUsual(id, rows, st);
     const rate: CropRate = {
-      commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
+      commodity: meta.commodity, label: meta.label, emoji, unit: meta.unit, cat: meta.cat,
       modal: toUnit(b.modal, meta.unit),
       min: toUnit(b.min, meta.unit),
       max: toUnit(b.max, meta.unit),
@@ -365,7 +366,7 @@ function rateFor(
   // average where CropBid has one, the typed-in price only where it has not
   return {
     rate: {
-      commodity: meta.commodity, label: meta.label, emoji: meta.emoji, unit: meta.unit, cat: meta.cat,
+      commodity: meta.commodity, label: meta.label, emoji, unit: meta.unit, cat: meta.cat,
       modal: toUnit(usualPerQ, meta.unit),
       min: toUnit(Math.round(usualPerQ * 0.85), meta.unit),
       max: toUnit(Math.round(usualPerQ * 1.15), meta.unit),
@@ -446,7 +447,7 @@ export async function getMarketBreakdown(commodity: string, state?: string): Pro
   return {
     commodity: c.id,
     label: item?.label ?? c.label,
-    emoji: item?.emoji ?? emojiFor(c),
+    emoji: emojiFor(c),
     unit,
     count: rows.length,
     records: rows,
