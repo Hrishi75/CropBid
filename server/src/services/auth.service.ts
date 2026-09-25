@@ -541,14 +541,30 @@ export async function login(input: LoginInput) {
   }
 
   // 3. Generate new tokens
-  const tokens = generateTokens(user.id, user.role);
+  //
+  // An account whose password an admin reset gets a session that can do one
+  // thing: choose a new password. The flag rides in the token and the
+  // authenticate middleware is what enforces it.
+  const tokens = generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
 
   // 4. Save refresh token
-  await prisma.user.update({
-    where: { id: user.id },
+  //
+  // Conditional on the password still being the one just verified. A support
+  // reset committing between the read above and this write would otherwise
+  // have its revocation undone by this line, handing a session to somebody
+  // whose password had just been taken away, with tokens minted from the state
+  // before it. Last writer would win, which for a credential is the wrong rule.
+  // Review caught it.
+  const claimed = await prisma.user.updateMany({
+    where: { id: user.id, password: user.password },
     // The HASH, never the token: see utils/refreshToken.
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
+  if (claimed.count === 0) {
+    // The password changed underneath this sign-in, which is what the one just
+    // typed now is: wrong. Same wording as any other failure, so nothing leaks.
+    throw new ApiError(401, 'Invalid phone/email or password');
+  }
 
   const userWithoutSensitiveData = safeUser(user);
 
@@ -616,13 +632,24 @@ export async function refresh(refreshToken: string) {
   // 3. Generate new token pair (token rotation)
   // WHY ROTATE? If an old refresh token is stolen, it becomes useless
   // after the user's next refresh. This limits the window of attack.
-  const tokens = generateTokens(user.id, user.role);
+  //
+  // The password-change flag is read from the row and carried across. Minting
+  // without it would make a refresh the way to launder a temporary password
+  // into an ordinary session, which is the one thing it must not be.
+  const tokens = generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  // Conditional on the stored token still being the one matched above. A
+  // support reset clears it, and an unconditional write here would put a fresh
+  // session back over that revocation. Same reason as the equivalent line in
+  // login.
+  const rotated = await prisma.user.updateMany({
+    where: { id: user.id, refreshToken: user.refreshToken },
     // The HASH, never the token: see utils/refreshToken.
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
   });
+  if (rotated.count === 0) {
+    throw new ApiError(401, 'Refresh token has been revoked');
+  }
 
   const userWithoutSensitiveData = safeUser(user);
 
@@ -710,8 +737,12 @@ export async function resetPassword(token: string, newPassword: string) {
 
   const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-  await prisma.user.update({
-    where: { id: user.id },
+  // Conditional on the link still being the one matched above, which a support
+  // reset clears. Unconditional, this write would put the emailed password over
+  // a temporary one support had just issued and clear the flag with it, undoing
+  // a reset made seconds earlier.
+  const spent = await prisma.user.updateMany({
+    where: { id: user.id, passwordResetToken: tokenHash },
     data: {
       password: hashedPassword,
       // Single-use: clear the token so the link can't be replayed…
@@ -720,8 +751,16 @@ export async function resetPassword(token: string, newPassword: string) {
       // …and log out every existing session. If the password was reset because
       // the account was compromised, this evicts the attacker too.
       refreshToken: null,
+      // An admin reset may be why they went looking for this link. They have
+      // just chosen a password of their own, which is all the flag was waiting
+      // for, so leaving it set would make them choose a second one.
+      mustChangePassword: false,
+      passwordResetAt: null,
     },
   });
+  if (spent.count === 0) {
+    throw new ApiError(400, 'This reset link is invalid or has expired. Please request a new one.');
+  }
 
   await recordAudit({
     actorId: user.id,
@@ -737,7 +776,21 @@ export async function resetPassword(token: string, newPassword: string) {
 // ---------------------------------------------------------------------------
 // Requires the CURRENT password even though the user is authenticated: a
 // stolen access token alone must not be enough to lock the real owner out.
-export async function changePassword(userId: string, currentPassword: string, newPassword: string) {
+// `viaResetSession` is true when the CALLER'S OWN TOKEN says this account owes
+// a password change, which only a login or refresh made after the reset mints.
+// It is not the same as the flag on the row, and the difference is the whole
+// guard: a token issued BEFORE the reset is valid for another five minutes and
+// carries no such claim, so reading the row alone would let whoever holds it
+// set a password without ever knowing the temporary one. Support resets an
+// account precisely when somebody may be holding a session they should not, so
+// that is the case this has to survive. Review caught it.
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+  viaResetSession = false,
+  sessionResetAt?: number,
+) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) {
     throw new ApiError(404, 'User not found');
@@ -747,7 +800,24 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // one rather than rotating an existing one. The caller is already
   // authenticated, and the real owner keeps their way in either way, since
   // phone sign-in never stops working.
-  if (user.password) {
+  //
+  // Nor is it demanded of an account an admin has just reset. Two ways into
+  // that state and neither is helped by the question: they typed the temporary
+  // password to get here, so asking for it again proves nothing, or they came
+  // in by phone code and never knew it, which would leave them told to change
+  // a password they cannot name. The account is held to the same standard
+  // either way, because until this call succeeds the session can do nothing
+  // else at all.
+  // ...and only for THE reset this session belongs to. A flagged token outlives
+  // its own change by up to five minutes, so without comparing the stamp a
+  // second reset inside that window would let the old token skip the check
+  // again. Review caught that too.
+  const forThisReset = user.mustChangePassword
+    && viaResetSession
+    && user.passwordResetAt != null
+    && sessionResetAt === user.passwordResetAt.getTime();
+
+  if (user.password && !forThisReset) {
     const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) {
       throw new ApiError(401, 'Current password is incorrect');
@@ -760,19 +830,32 @@ export async function changePassword(userId: string, currentPassword: string, ne
   // previously issued one — if the password is being changed because a token
   // was stolen, the thief is evicted, while THIS session stays alive because
   // the controller hands the new pair back to the caller.
+  //
+  // Minted WITHOUT the password-change flag, and the column is cleared below:
+  // this is the one call that ends that state, which is what makes the
+  // temporary password an admin read out good for exactly one sign-in.
   const tokens = generateTokens(user.id, user.role);
 
   // Also clear any pending reset token — the user just proved they know the
   // password, so an older "forgot password" link shouldn't stay live.
-  await prisma.user.update({
-    where: { id: userId },
+  // Conditional on the password still being the one proved above. A support
+  // reset committing in between would otherwise be undone here: this write
+  // would replace the temporary password, clear the flag and hand back a
+  // session, all decided before the reset existed.
+  const changed = await prisma.user.updateMany({
+    where: { id: userId, password: user.password },
     data: {
       password: hashedPassword,
       refreshToken: hashRefreshToken(tokens.refreshToken),
       passwordResetToken: null,
       passwordResetExpires: null,
+      mustChangePassword: false,
+      passwordResetAt: null,
     },
   });
+  if (changed.count === 0) {
+    throw new ApiError(409, 'Your password changed while this was in flight. Sign in again.');
+  }
 
   await recordAudit({
     actorId: user.id,
@@ -1604,11 +1687,23 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
       throw new ApiError(403, 'This account has been suspended. Please contact support.');
     }
 
-    const tokens = generateTokens(existing.id, existing.role);
-    await prisma.user.update({
-      where: { id: existing.id },
+    // The password-change flag rides this path as well. An admin who reset the
+    // password knows a working one until the user picks their own, and signing
+    // in by code instead does not make that any less true.
+    const tokens = generateTokens(
+      existing.id, existing.role, existing.mustChangePassword, existing.passwordResetAt,
+    );
+    // Conditional on the password being the one read a moment ago, like login
+    // and refresh: a support reset landing in between would otherwise have its
+    // revocation undone by this write, and this session was minted from the
+    // state before it. Review caught this path after the other two were fixed.
+    const claimed = await prisma.user.updateMany({
+      where: { id: existing.id, password: existing.password },
       data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
     });
+    if (claimed.count === 0) {
+      throw new ApiError(401, 'Your account changed while signing in. Start again.');
+    }
 
     const user = safeUser(existing);
 

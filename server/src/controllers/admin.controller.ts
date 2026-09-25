@@ -144,6 +144,23 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
   }
 }
 
+// POST /api/admin/users/:id/reset-password — set a temporary password for
+// somebody who called in locked out. The plaintext comes back once, for the
+// admin to read to them; the service audits the reset before setting it.
+export async function resetUserPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = userIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      return res.status(400).json({ message: params.error.issues[0]?.message || 'Invalid id' });
+    }
+
+    const result = await adminService.resetUserPassword(req.user!.userId, params.data.id);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // DELETE /api/admin/users/:id — Hard-delete a user that never transacted
 export async function deleteUser(req: Request, res: Response, next: NextFunction) {
   try {

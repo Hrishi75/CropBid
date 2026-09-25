@@ -100,7 +100,11 @@ const resetPasswordSchema = z.object({
 });
 
 const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
+  // Empty is allowed here, and refused by the service for anyone it applies
+  // to: bcrypt compares '' against the stored hash and fails. The one case
+  // where it is legitimately blank is an account an admin has just reset,
+  // which the service knows about and this schema does not.
+  currentPassword: z.string().default(''),
   newPassword: passwordSchema,
 });
 
@@ -468,6 +472,11 @@ export async function changePasswordHandler(req: Request, res: Response) {
     req.user!.userId,
     parsed.data.currentPassword,
     parsed.data.newPassword,
+    // Whether THIS session is one the reset minted. The row saying an account
+    // owes a change is not enough to skip the current password: a token from
+    // before the reset would inherit the exception. See the service.
+    req.user!.mustChangePassword === true,
+    req.user!.resetAt,
   );
 
   // The service rotated the refresh token to evict any stolen session; hand
@@ -475,11 +484,16 @@ export async function changePasswordHandler(req: Request, res: Response) {
   // Trusting X-Client here is fine: the caller just proved the password.
   res.cookie('refreshToken', tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
 
+  // The access token comes back to every client, not just the app. It is the
+  // one the caller must use from here: the token they sent may carry
+  // mustChangePassword, which the middleware refuses everything with, and it
+  // lives another five minutes. The user rides along for the same reason, so
+  // the client's copy stops saying a change is owed.
   res.json({
     message: 'Password changed successfully.',
-    ...(isMobileClient(req)
-      ? { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken }
-      : {}),
+    user: await authService.getCurrentUser(req.user!.userId),
+    accessToken: tokens.accessToken,
+    ...(isMobileClient(req) ? { refreshToken: tokens.refreshToken } : {}),
   });
 }
 

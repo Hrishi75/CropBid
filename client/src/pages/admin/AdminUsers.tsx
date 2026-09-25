@@ -3,8 +3,14 @@
 // =============================================================================
 // Admin table of all users (via /admin/users) with search, role filter, and
 // pagination. Admins can edit a user's trust score inline, suspend an account,
-// and delete one that never traded or topped up its wallet. COUNTRY_FLAGS maps
-// country names to flag emoji for display.
+// delete one that never traded or topped up its wallet, and reset the password
+// of somebody who has called in locked out. COUNTRY_FLAGS maps country names
+// to flag emoji for display.
+//
+// The temporary password is shown once, on the row, for the admin to read down
+// the phone. It is not stored anywhere on this side and cannot be asked for
+// again: the server keeps only its hash, so a second look means a second reset.
+// It is good for one sign-in, which is the change of password itself.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -57,6 +63,9 @@ export function AdminUsers() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The one temporary password on screen, if any. Cleared when the admin
+  // dismisses it, and never re-fetchable.
+  const [issued, setIssued] = useState<{ id: string; name: string; password: string } | null>(null);
   const [editScore, setEditScore] = useState('');
   const [page, setPage] = useState(0);
   const LIMIT = 15;
@@ -125,6 +134,20 @@ export function AdminUsers() {
       toast.success(`${user.name} deleted`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete');
+    }
+  }
+
+  // For somebody locked out who has reached support. The password comes back
+  // once; the user is signed out everywhere and must choose their own at the
+  // next sign-in.
+  async function handleResetPassword(user: AdminUser) {
+    try {
+      const { data } = await api.post<{ id: string; name: string; tempPassword: string }>(
+        `/admin/users/${user.id}/reset-password`,
+      );
+      setIssued({ id: data.id, name: data.name, password: data.tempPassword });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not reset the password');
     }
   }
 
@@ -276,6 +299,14 @@ export function AdminUsers() {
                                 {u.suspended ? 'Reinstate' : 'Suspend'}
                               </button>
                             )}
+                            {u.role !== 'ADMIN' && (
+                              <ConfirmButton
+                                label="Reset password"
+                                confirmLabel={`Set a temporary password for ${u.name}? It signs them out everywhere.`}
+                                color="var(--cb-ink-3)"
+                                onConfirm={() => handleResetPassword(u)}
+                              />
+                            )}
                             {u.deleteBlocker === null && (
                               <ConfirmButton
                                 label="Delete"
@@ -289,6 +320,14 @@ export function AdminUsers() {
                           </>
                         )}
                       </div>
+
+                      {issued?.id === u.id && (
+                        <TempPasswordPanel
+                          name={issued.name}
+                          password={issued.password}
+                          onDone={() => setIssued(null)}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -306,5 +345,47 @@ export function AdminUsers() {
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+// Shown once, on the row it belongs to. Read it to the person on the phone:
+// the server kept only a hash of it, so closing this is the end of it and
+// another look means another reset.
+function TempPasswordPanel({ name, password, onDone }: {
+  name: string;
+  password: string;
+  onDone: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopied(true);
+    } catch {
+      // Clipboard access is refused in plenty of contexts, and the password is
+      // on screen to be read aloud anyway.
+      toast.error('Could not copy it. Read it from the screen.');
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 14, borderRadius: 8, background: 'var(--cb-paper-2)' }}>
+      <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Temporary password for {name}</div>
+      <div className="cb-mono" style={{ fontSize: 20, letterSpacing: 1, marginBottom: 10 }}>{password}</div>
+      <p className="cb-tiny" style={{ color: 'var(--cb-ink-2)', marginBottom: 10 }}>
+        Read it to them now. It is shown once and we keep no copy, so asking again means resetting
+        again. They are signed out everywhere, and this password does one thing: sign in and choose
+        their own. Until they do, nothing else on their account opens.
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'baseline' }}>
+        <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }} onClick={copy}>
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+        <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }} onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </div>
   );
 }

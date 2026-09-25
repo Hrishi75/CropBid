@@ -11,6 +11,8 @@ import { createNotification } from './notification.service';
 import { sendPartnerStatusEmail } from './email.service';
 import { recordAudit } from './audit.service';
 import { hasPayoutDetails } from './payoutDetails';
+import { generateTempPassword } from '../utils/tempPassword';
+import bcrypt from 'bcryptjs';
 
 // =============================================================================
 // PLATFORM STATS — Top-level numbers for the dashboard
@@ -838,6 +840,90 @@ const DECISION_COPY: Record<PartnerStatusValue, { title: string; message: (note?
   SUBMITTED: { title: '', message: () => '' },     // never sent
   UNDER_REVIEW: { title: '', message: () => '' },  // never sent
 };
+
+// =============================================================================
+// resetUserPassword — for somebody who rings up locked out
+// =============================================================================
+// The account that calls support is usually the one forgot-password cannot
+// help: sign-up takes a phone number OR an email (CLAUDE.md §4), the reset
+// link is emailed, and a phone-only account has no email to send it to. So an
+// admin sets a temporary password and reads it back down the line.
+//
+// WHAT MAKES THAT SAFE IS WHAT THE PASSWORD CAN DO. It signs the user in and
+// nothing else: `mustChangePassword` rides in the access token and the
+// authenticate middleware refuses every request but the change itself, so a
+// password an admin has spoken aloud cannot become a working account. It stops
+// working the moment the user picks their own, which is the only thing that
+// clears the flag.
+//
+// THE PLAINTEXT IS RETURNED ONCE AND NEVER STORED. The column holds the bcrypt
+// hash like any other password, so asking again means resetting again.
+//
+// THE AUDIT ROW IS WRITTEN FIRST, AND NOT THROUGH recordAudit, for the same
+// reason as the payout read below: recordAudit swallows its own failures, and
+// here the log IS the control. If it cannot be written, no password is set.
+//
+// NOT ANOTHER ADMIN, AND NOT YOURSELF. An admin account is the one where this
+// would be a way to take over somebody else's access rather than restore their
+// own, and it is refused for the same reason deleting one is. Your own
+// password is changed by knowing it, on the account page.
+export async function resetUserPassword(adminId: string, userId: string) {
+  if (userId === adminId) {
+    throw new ApiError(400, 'Change your own password from your account page');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, role: true, suspended: true },
+  });
+  if (!user) throw new ApiError(404, 'User not found');
+  if (user.role === 'ADMIN') {
+    throw new ApiError(403, 'Admin passwords cannot be reset from here');
+  }
+
+  const tempPassword = generateTempPassword();
+  const hashed = await bcrypt.hash(tempPassword, 12);
+
+  // ONE TRANSACTION, both writes. The log is the control here, so a reset with
+  // no record of who did it must not exist; and a record of a reset that did
+  // not happen is its own kind of lie, which is what a separate insert left
+  // behind when the update afterwards failed. Review caught the second half.
+  await prisma.$transaction([
+    prisma.auditLog.create({
+      data: {
+        actorId: adminId,
+        actorRole: 'ADMIN',
+        action: 'admin.user.password_reset',
+        entityType: 'User',
+        entityId: user.id,
+        // Never the password itself, temporary or not: an audit table holding a
+        // working credential is a second place to steal it from.
+        metadata: { email: user.email, role: user.role, suspended: user.suspended },
+      },
+    }),
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashed,
+        mustChangePassword: true,
+        // Which reset this is. A session allowed to skip the current-password
+        // check carries the same stamp, so one minted by an earlier reset is
+        // not proof for this one.
+        passwordResetAt: new Date(),
+        // Every session this account had is over: the reset exists because
+        // somebody lost their way in, and if that is because the account was
+        // taken, whoever took it goes with it. Any emailed reset link still in
+        // flight dies too, since the password it would set is no longer the one
+        // the user has been told.
+        refreshToken: null,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    }),
+  ]);
+
+  return { id: user.id, name: user.name, tempPassword };
+}
 
 // =============================================================================
 // getSellerPayoutDetails — the one way these columns leave the server
