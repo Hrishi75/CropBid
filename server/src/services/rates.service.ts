@@ -32,7 +32,7 @@
 
 import { getMandiSnapshot, normaliseState, onMandiSnapshot, warmMandiFeed, type MandiRow, type MandiSnapshot } from './mandiFeed';
 import { GROUPS, commodityFor, emojiFor, type Commodity, type Group } from './mandiCommodities';
-import { loadUsualPrices, observeDay, usualFor, usualKey } from './usualPrices';
+import { loadUsualPrices, observeDay, usualCommodities, usualFor, usualKey } from './usualPrices';
 
 
 // -----------------------------------------------------------------------------
@@ -499,7 +499,9 @@ export interface AllRates {
 
 // A state picked: every commodity that state's mandis reported, and the 30
 // board crops through their usual fallback chain, so the page never loses a
-// crop it always showed. All India: every commodity reported anywhere.
+// crop it always showed. All India: every commodity reported anywhere. With
+// no copy of the feed, all India also lists every commodity at its recent
+// average, as reference.
 export async function getAllRates(state?: string): Promise<AllRates> {
   const idx = await ready();
   const st = state ? normaliseState(state) : undefined;
@@ -523,6 +525,33 @@ export async function getAllRates(state?: string): Promise<AllRates> {
       source: st ? 'state' : 'national', state: st ?? null,
       date: latestDate(rows) ?? today(),
     });
+  }
+
+  // With no copy of the feed at all (it is down and nothing was saved),
+  // every other commodity CropBid has seen is listed at its own recent
+  // all-India average, labelled reference exactly as the board crops below
+  // are, rather than the page shrinking to 30. With a copy, a crop that did
+  // not report is still left out: a reference row among the day's reports
+  // would read as one of them. All India only: an all-India average in a
+  // state's view would pass off a national price as that state's.
+  if (!st && idx.byId.size === 0) {
+    for (const id of usualCommodities()) {
+      const c = commodityFor(id);
+      if (!c || BOARD_BY_ID.has(c.id.toLowerCase())) continue;
+      const usual = usualFor(c.id, '');
+      if (!usual) continue;
+      const unit = GROUP_UNIT[c.group];
+      rates.push({
+        commodity: c.id, label: c.label, emoji: emojiFor(c), group: c.group, unit,
+        modal: toUnit(usual.perQuintal, unit),
+        min: toUnit(Math.round(usual.perQuintal * 0.85), unit),
+        max: toUnit(Math.round(usual.perQuintal * 1.15), unit),
+        // The price IS the average, so there is nothing to compare it with.
+        usual: null, usualDays: 0, changePct: null,
+        mandis: 0,
+        source: 'reference', state: null, date: today(),
+      });
+    }
   }
 
   for (const item of BOARD) {

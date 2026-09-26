@@ -149,6 +149,15 @@ async function write(day: string, prices: Map<string, number>): Promise<void> {
 }
 
 /**
+ * Every commodity with an all-India usual price: every one the feed has
+ * reported since the averages began. /rates lists these at their average
+ * when there is no copy of the feed to read.
+ */
+export function usualCommodities(): string[] {
+  return [...stored.keys()].map(splitKey).filter(([, state]) => state === '').map(([commodity]) => commodity);
+}
+
+/**
  * The usual price for a crop in a state ("" for all India): its running
  * average, or on its first day there (no history yet) the day's own latest
  * price with `days: 0`, which callers must not present as a comparison. Null
