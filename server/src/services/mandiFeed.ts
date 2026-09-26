@@ -30,10 +30,16 @@
 // finish) callers get null and fall back to reference prices, labelled as
 // such. A stale complete copy is served while a fresh one downloads in the
 // background, and `warmMandiFeed()` starts the first download at boot.
+//
+// Each complete copy is also saved to the database (mandiFeedStore.ts), and a
+// restart serves the saved one while it downloads afresh. Every deploy is a
+// restart, and on a day the feed is down that used to throw away the only
+// complete copy there was.
 // =============================================================================
 
 import { config } from '../config';
 import { INDIAN_STATES, canonicalState } from '../utils/indianStates';
+import { loadMandiCopy, saveMandiCopy } from './mandiFeedStore';
 
 export interface MandiRow {
   state: string;      // canonical spelling (utils/indianStates) where we know it
@@ -96,6 +102,13 @@ interface RawRecord {
 interface Page { total: number; limit: number; records: RawRecord[] }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Waits for `p`, or `ms`, whichever is first.
+function within(p: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
 
 async function fetchPage(filters: Record<string, string>): Promise<Page> {
   const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
@@ -230,6 +243,7 @@ async function downloadDay(): Promise<MandiRow[] | null> {
 // -----------------------------------------------------------------------------
 let current: MandiSnapshot | null = null;
 let refreshing: Promise<void> | null = null;
+let restoring: Promise<void> | null = null;
 let nextRefreshAt = 0;
 const waiters = new Set<() => void>();
 const subscribers = new Set<(snap: MandiSnapshot) => void>();
@@ -246,6 +260,43 @@ export function onMandiSnapshot(fn: (snap: MandiSnapshot) => void): void {
 const usable = (s: MandiSnapshot | null): s is MandiSnapshot =>
   s !== null && Date.now() - s.fetchedAt < STALE_MAX_MS;
 
+// Serves a copy and tells the subscribers, unless a newer one is already
+// being served: a restore that finishes after a fresh download must not put
+// the older copy back.
+function publish(snap: MandiSnapshot) {
+  if (current && current.fetchedAt >= snap.fetchedAt) return;
+  current = snap;
+  for (const fn of subscribers) {
+    try { fn(snap); } catch (err) { warnFailure(err, 'a snapshot subscriber failed'); }
+  }
+}
+
+// The copy saved before the last restart, read once per process. One older
+// than STALE_MAX_MS is left where it is, for the same reason a stale copy in
+// memory stops being served. A database that cannot be read is logged and
+// the process carries on as it did before there was a store.
+function restore(): Promise<void> {
+  if (!restoring) {
+    restoring = (async () => {
+      try {
+        const saved = await loadMandiCopy();
+        if (usable(saved)) publish(saved);
+      } catch (err) {
+        warnOnce('restore', `[rates] could not read the saved mandi copy: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    })();
+  }
+  return restoring;
+}
+
+// Saving never holds up serving the copy, and a failed save only means the
+// next restart has an older copy (or none) to start from.
+function save(snap: MandiSnapshot) {
+  saveMandiCopy(snap).catch((err) => {
+    warnOnce('save', `[rates] could not save the mandi copy: ${err instanceof Error ? err.message : String(err)}`);
+  });
+}
+
 // A download that did not finish, or found nothing, is dropped: whatever was
 // being served before stays, and it is tried again in FAILED_RETRY_MS. The
 // reason has already been logged by then.
@@ -256,11 +307,10 @@ function refresh(): Promise<void> {
         const rows = await downloadDay();
         if (rows?.length === 0) warnOnce('empty', '[rates] data.gov.in returned no rows');
         if (rows && rows.length > 0) {
-          current = { rows, fetchedAt: Date.now() };
+          const snap = { rows, fetchedAt: Date.now() };
           nextRefreshAt = Date.now() + REFRESH_MS;
-          for (const fn of subscribers) {
-            try { fn(current); } catch (err) { warnFailure(err, 'a snapshot subscriber failed'); }
-          }
+          publish(snap);
+          save(snap);
         } else {
           nextRefreshAt = Date.now() + FAILED_RETRY_MS;
         }
@@ -284,6 +334,13 @@ function refresh(): Promise<void> {
  */
 export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   if (Date.now() >= nextRefreshAt) void refresh();
+  if (usable(current)) return current;
+
+  // After a restart, the saved copy is the quickest way to something to
+  // serve: a database read against a download of a minute or more. The
+  // download is already under way behind it. Bounded, because a database
+  // that hangs rather than fails would otherwise hold the visitor with it.
+  await within(restore(), COLD_WAIT_MS);
   if (usable(current)) return current;
   if (!refreshing) return null;
 

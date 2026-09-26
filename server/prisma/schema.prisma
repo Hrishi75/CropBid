@@ -1672,3 +1672,16 @@ model UsualPrice {
 
   @@id([commodity, state])
 }
+
+// The last complete copy of the government mandi feed (services/mandiFeed.ts),
+// so a restart serves it while a fresh one downloads instead of falling back
+// to reference prices. Every deploy restarts the API, and on a day data.gov.in
+// is down a restart used to throw away the only complete copy there was.
+// One row, key "day"; tests write under their own keys.
+model MandiFeedCopy {
+  key       String   @id
+  fetchedAt DateTime @db.Timestamptz(3) // when the copy was downloaded; a save only ever moves it forward
+  rowCount  Int // checked against the rows on load, so a damaged copy is not served
+  rows      Bytes // gzipped JSON of MandiRow[], about 300 KB for a full day
+  updatedAt DateTime @updatedAt
+}
