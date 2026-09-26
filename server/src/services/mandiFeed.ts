@@ -338,10 +338,12 @@ export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   // and the download is already under way beside it. Whichever produces a
   // copy first releases the visitor, and both share one deadline: neither a
   // hung database nor a slow feed holds them past COLD_WAIT_MS.
+  // The deadline is on the monotonic clock, so a wall-clock correction
+  // mid-wait cannot stretch it.
   void restore();
-  const deadline = Date.now() + COLD_WAIT_MS;
+  const deadline = performance.now() + COLD_WAIT_MS;
   while (!usable(current)) {
-    const left = deadline - Date.now();
+    const left = deadline - performance.now();
     if (left <= 0 || (restored && !refreshing)) break;
     await nextSettled(left);
   }

@@ -291,6 +291,20 @@ describe('across a restart', () => {
     expect(result).toBeNull();
   });
 
+  it('keeps the ten-second limit when the wall clock is set back mid-wait', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    store.load.mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+
+    let result: unknown = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.setSystemTime(new Date('2026-09-26T11:00:00Z')); // an NTP correction, say
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(result).toBeNull();
+  });
+
   it('lets a fresh download release the visitor while the database hangs', async () => {
     vi.useFakeTimers();
     store.load.mockImplementation(() => new Promise(() => {}));
