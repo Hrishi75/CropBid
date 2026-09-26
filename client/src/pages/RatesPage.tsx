@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
+import { isToday, ratesDateLabel, ratesTitle, shortDate } from '../utils/ratesDate';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
 
@@ -364,9 +365,9 @@ export function RatesPage() {
               {board?.live && <span className="cb-live-dot sm" />}
               {board?.live ? 'Live' : 'Reference'} · Govt. Agmarknet · 4,600+ regulated mandis
             </span>
-            <h1 className="cb-h1">Today's mandi rates{board ? ` · ${board.date}` : ''}</h1>
+            <h1 className="cb-h1">{board ? `${ratesTitle(board.date)} · ${ratesDateLabel(board.date)}` : 'Mandi rates'}</h1>
             <p className="cb-body rp-lede">
-              Every crop the government's mandi report carried today
+              Every crop the government's mandi report carried {board && !isToday(board.date) ? `on ${shortDate(board.date)}` : 'today'}
               {reported > 0 ? `, ${reported} of them${state ? ` from ${state}` : ''}` : ''}: the modal
               price and the range most mandis sat in. Pick a crop to see every reporting mandi,
               market by market.

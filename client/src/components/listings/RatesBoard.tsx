@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../../lib/axios';
+import { ratesDateLabel, ratesTitle } from '../../utils/ratesDate';
 
 interface Rate {
   commodity: string;
@@ -85,7 +86,7 @@ export function RatesBoard({ state }: { state?: string }) {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--cb-forest)', display: 'inline-block' }} />
         )}
         <span className="cb-eyebrow">
-          Today's mandi rates {board.live ? '· live' : ''} · {board.date}
+          {ratesTitle(board.date)} {board.live ? '· live' : ''} · {ratesDateLabel(board.date)}
         </span>
         <span className="cb-mono cb-tiny" style={{ marginLeft: 'auto', color: 'var(--cb-ink-3)' }}>
           Govt. Agmarknet · ₹ wholesale

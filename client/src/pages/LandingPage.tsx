@@ -36,6 +36,7 @@ import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 import { LiveShelf } from './consumer/LiveShelf';
 import { CartLink } from '../components/consumer/CartBar';
 import type { User } from '../types';
+import { ratesDateLabel, ratesTitle } from '../utils/ratesDate';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
@@ -561,7 +562,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
       <div className="st-banner-copy">
         <span className="cb-chip cb-chip-sage" style={{ marginBottom: 18 }}>
           <span className="cb-live-dot sm" />
-          {board?.live ? `Live govt mandi rates · ${board.date}` : 'Straight from the farm · escrow settled'}
+          {board?.live ? `Live govt mandi rates · ${ratesDateLabel(board.date)}` : 'Straight from the farm · escrow settled'}
         </span>
         <h1 className="st-banner-title">
           {t('Farm-fresh crops,')}<br />
@@ -646,7 +647,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <section className="st-rates">
         <div className="st-rates-head">
           <div className="st-rates-title">
-            <span className="cb-eyebrow">Today's mandi rates</span>
+            <span className="cb-eyebrow">Mandi rates</span>
           </div>
           <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
           <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
@@ -662,7 +663,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
-          <span className="cb-eyebrow">Today's mandi rates{board.live ? ' · live' : ''} · {board.date}</span>
+          <span className="cb-eyebrow">{ratesTitle(board.date)}{board.live ? ' · live' : ''} · {ratesDateLabel(board.date)}</span>
         </div>
         <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
         <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
