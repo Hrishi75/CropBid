@@ -280,8 +280,9 @@ function MandiSheet({ r, state, visible, onClose }: {
 // --- screen ---
 
 // Rendered inside MandiScreen (the Mandi section: Live rates ⇄ Forecast) —
-// a body, not a standalone route.
-export function RatesBody() {
+// a body, not a standalone route. onDate reports the feed's date, which the
+// screen's title depends on.
+export function RatesBody({ onDate }: { onDate?: (date: string | null) => void }) {
   const { t } = useTranslation();
   const [board, setBoard] = useState<AllRates | null>(null);
   const [failed, setFailed] = useState(false);
@@ -296,10 +297,10 @@ export function RatesBody() {
   useEffect(() => {
     let on = true;
     api.get(`/rates/all${state ? `?state=${encodeURIComponent(state)}` : ''}`)
-      .then(({ data }) => { if (on) { glide(); setBoard(data); setFailed(false); } })
-      .catch(() => { if (on) { setBoard(null); setFailed(true); } });
+      .then(({ data }) => { if (on) { glide(); setBoard(data); setFailed(false); onDate?.(data?.date ?? null); } })
+      .catch(() => { if (on) { setBoard(null); setFailed(true); onDate?.(null); } });
     return () => { on = false; };
-  }, [state]);
+  }, [state, onDate]);
 
   // Search matches the label and the feed's own name, so "karela", "bitter"
   // and "Bitter gourd" all find it.

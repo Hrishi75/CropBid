@@ -7,7 +7,8 @@
 // use (hidden with display:none) so scroll position, expanded cards and
 // fetched data survive toggling; the forecast body mounts lazily on first
 // open so the rates-only visit never calls the prediction engine. The native
-// header title follows the active tab via navigation.setOptions.
+// header title follows the active tab via navigation.setOptions, and on the
+// rates tab says "Today's" only when the feed's date is today.
 // Open directly on the forecast with navigate('Rates', { tab: 'forecast' }).
 
 import React, { useLayoutEffect, useState } from 'react';
@@ -18,6 +19,7 @@ import MandiTabs, { type MandiTab } from '../components/MandiTabs';
 import { RatesBody } from './RatesScreen';
 import { ForecastBody } from './ForecastScreen';
 import { design } from '../theme';
+import { ratesTitleKey } from '../lib/ratesDate';
 
 export default function MandiScreen() {
   const { t } = useTranslation();
@@ -28,10 +30,12 @@ export default function MandiScreen() {
 
   const [tab, setTab] = useState<MandiTab>(initial);
   const [forecastMounted, setForecastMounted] = useState(initial === 'forecast');
+  // The feed's date, not the calendar's: "Today's" only when they match.
+  const [ratesDate, setRatesDate] = useState<string | null>(null);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: tab === 'rates' ? t("Today's mandi rates") : t('Price forecast') });
-  }, [navigation, tab, t]);
+    navigation.setOptions({ title: tab === 'rates' ? t(ratesTitleKey(ratesDate)) : t('Price forecast') });
+  }, [navigation, tab, t, ratesDate]);
 
   const onChange = (next: MandiTab) => {
     if (next === 'forecast') setForecastMounted(true);
@@ -42,7 +46,7 @@ export default function MandiScreen() {
     <View style={styles.flex}>
       <MandiTabs active={tab} onChange={onChange} />
       <View style={[styles.flex, tab !== 'rates' && styles.hidden]}>
-        <RatesBody />
+        <RatesBody onDate={setRatesDate} />
       </View>
       {forecastMounted && (
         <View style={[styles.flex, tab !== 'forecast' && styles.hidden]}>

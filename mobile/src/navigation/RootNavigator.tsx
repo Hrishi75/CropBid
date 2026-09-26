@@ -145,7 +145,7 @@ function BuyerNavigator() {
       <RootStack.Screen
         name="Rates"
         component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Mandi rates'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Wallet"
@@ -247,7 +247,7 @@ function FarmerNavigator() {
       <FarmerStack.Screen
         name="Rates"
         component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Mandi rates'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Wallet"
@@ -366,7 +366,7 @@ function ConsumerNavigator() {
       <ConsumerStack.Screen
         name="Rates"
         component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Mandi rates'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <ConsumerStack.Screen
         name="Wallet"
@@ -431,7 +431,7 @@ function PartnerNavigator() {
       <PartnerStack.Screen
         name="Rates"
         component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Mandi rates'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <PartnerStack.Screen
         name="Wallet"
@@ -476,7 +476,7 @@ function GuestNavigator() {
       <GuestStack.Screen
         name="Rates"
         component={MandiScreen}
-        options={{ headerShown: true, title: t("Today's mandi rates"), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Mandi rates'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <GuestStack.Screen
         name="Wallet"

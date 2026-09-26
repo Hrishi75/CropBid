@@ -66,6 +66,7 @@ import { CartBar } from '../components/CartBar';
 import { QuantityStepper } from '../components/QuantityStepper';
 import type { Listing, RetailShop, Unit } from '../api/types';
 import { money, unitLabel } from '../lib/format';
+import { ratesTitleKey } from '../lib/ratesDate';
 import {
   CATEGORY_TILES, CHIPS, RAILS, TICKER,
   packVariants, railFor, shopPack, type RailId, type ShopPack,
@@ -976,7 +977,7 @@ function RatesRail({ board, onSeeAll }: { board: RatesBoardData | null; onSeeAll
     <View>
       <View style={styles.ratesHead}>
         {board.live ? <Pulse style={styles.liveDot} /> : null}
-        <Text style={styles.ratesTitle}>{t("Today's mandi rates")}</Text>
+        <Text style={styles.ratesTitle}>{t(ratesTitleKey(board.date))}</Text>
         <PressScale onPress={onSeeAll} scaleTo={0.94} cardStyle={styles.ratesSeeAll}>
           <Text style={styles.ratesSeeAllText}>{t('see all →')}</Text>
         </PressScale>
