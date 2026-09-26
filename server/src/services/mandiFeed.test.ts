@@ -12,6 +12,18 @@ vi.mock('../config', () => ({
   config: { dataGov: { apiKey: 'test-key', resourceId: 'test-resource', usingDemoKey: false } },
 }));
 
+// The database copy, faked: `saved` is what a restart finds, and every save
+// is recorded. mandiFeedStore.test.ts covers the real table.
+const store = vi.hoisted(() => ({
+  saved: null as import('./mandiFeed').MandiSnapshot | null,
+  load: vi.fn(),
+  save: vi.fn(),
+}));
+vi.mock('./mandiFeedStore', () => ({
+  loadMandiCopy: () => store.load(),
+  saveMandiCopy: (snap: unknown) => store.save(snap),
+}));
+
 import { fakeFeed, rec, WINDOW } from './mandiFeed.fake';
 
 type Feed = typeof import('./mandiFeed');
@@ -20,6 +32,11 @@ let feed: Feed;
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
+  store.saved = null;
+  store.load.mockReset();
+  store.load.mockImplementation(async () => store.saved);
+  store.save.mockReset();
+  store.save.mockImplementation(async () => true);
   vi.resetModules();
   feed = await import('./mandiFeed');
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -184,6 +201,120 @@ describe('when the feed fails', () => {
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
     expect(await feed.getMandiSnapshot()).toBe(good);
+  });
+});
+
+describe('across a restart', () => {
+  // Every deploy restarts the API. On 2026-09-26 data.gov.in was down, a
+  // deploy threw away the day's only complete copy, and the rates went to
+  // reference prices until the feed came back.
+  const savedDay = (fetchedAt: number) => ({
+    rows: [{ state: 'Maharashtra', district: 'D', market: 'Pune', commodity: 'Onion', variety: 'Other', grade: 'FAQ', date: '25/09/2026', min: 1600, max: 2400, modal: 2000 }],
+    fetchedAt,
+  });
+
+  it('saves every complete copy', async () => {
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
+    const snap = await feed.getMandiSnapshot();
+    await vi.waitFor(() => expect(store.save).toHaveBeenCalledWith(snap));
+  });
+
+  it('never saves a copy that was not complete', async () => {
+    vi.stubGlobal('fetch', fakeFeed(Array.from({ length: 30 }, () => rec('Onion', 'Punjab', 2000)), { cap: 10 }));
+    expect(await feed.getMandiSnapshot()).toBeNull();
+    expect(store.save).not.toHaveBeenCalled();
+  });
+
+  it('serves the saved copy at once while the feed is down', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    store.saved = savedDay(Date.parse('2026-09-26T08:00:00Z'));
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+
+    expect(await feed.getMandiSnapshot()).toBe(store.saved);
+  });
+
+  it('tells the subscribers about the saved copy, so "vs usual" is there after a restart', async () => {
+    store.saved = savedDay(Date.now() - 60_000);
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+    const seen = vi.fn();
+    feed.onMandiSnapshot(seen);
+
+    await feed.getMandiSnapshot();
+    expect(seen).toHaveBeenCalledWith(store.saved);
+  });
+
+  it('leaves a saved copy older than three days where it is', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    store.saved = savedDay(Date.parse('2026-09-22T08:00:00Z'));
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+
+    const pending = feed.getMandiSnapshot();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await pending).toBeNull();
+  });
+
+  it('does not put the saved copy back over a fresher download', async () => {
+    // The database is slow to answer and the feed is quick: the download
+    // lands first, and the older saved copy arriving after it is ignored.
+    let answer: (s: unknown) => void = () => {};
+    store.load.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 3000)]));
+
+    const pending = feed.getMandiSnapshot();
+    await vi.waitFor(() => expect(store.save).toHaveBeenCalled());
+    answer(savedDay(Date.now() - 60 * 60 * 1000));
+    const snap = await pending;
+
+    expect(snap?.rows[0].modal).toBe(3000);
+    expect((await feed.getMandiSnapshot())?.rows[0].modal).toBe(3000);
+  });
+
+  it('carries on without the saved copy when the database cannot be read', async () => {
+    store.load.mockImplementation(async () => { throw new Error('connection refused'); });
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
+
+    expect((await feed.getMandiSnapshot())?.rows).toHaveLength(1);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('could not read the saved mandi copy'));
+  });
+
+  it('does not hold the visitor past ten seconds when the database hangs and the feed is down', async () => {
+    // One deadline for both waits: the database read and the download.
+    vi.useFakeTimers();
+    store.load.mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+
+    let result: unknown = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(result).toBeNull();
+  });
+
+  it('keeps the ten-second limit when the wall clock is set back mid-wait', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-26T12:00:00Z'));
+    store.load.mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
+
+    let result: unknown = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.setSystemTime(new Date('2026-09-26T11:00:00Z')); // an NTP correction, say
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(result).toBeNull();
+  });
+
+  it('lets a fresh download release the visitor while the database hangs', async () => {
+    vi.useFakeTimers();
+    store.load.mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
+
+    let result: Awaited<ReturnType<typeof feed.getMandiSnapshot>> | 'still waiting' = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result).not.toBe('still waiting');
+    expect(result).toMatchObject({ rows: [expect.objectContaining({ modal: 2000 })] });
   });
 });
 

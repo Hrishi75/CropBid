@@ -31,6 +31,13 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
+// No saved copy of the feed: each test starts cold, from its own download.
+// mandiFeedStore.test.ts covers the real table.
+vi.mock('./mandiFeedStore', () => ({
+  loadMandiCopy: async () => null,
+  saveMandiCopy: async () => true,
+}));
+
 import { fakeFeed, rec } from './mandiFeed.fake';
 import { commodityFor } from './mandiCommodities';
 
