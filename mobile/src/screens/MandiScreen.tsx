@@ -19,7 +19,7 @@ import MandiTabs, { type MandiTab } from '../components/MandiTabs';
 import { RatesBody } from './RatesScreen';
 import { ForecastBody } from './ForecastScreen';
 import { design } from '../theme';
-import { ratesTitleKey } from '../lib/ratesDate';
+import { useRatesTitleKey, type RatesStamp } from '../lib/ratesDate';
 
 export default function MandiScreen() {
   const { t } = useTranslation();
@@ -31,11 +31,12 @@ export default function MandiScreen() {
   const [tab, setTab] = useState<MandiTab>(initial);
   const [forecastMounted, setForecastMounted] = useState(initial === 'forecast');
   // The feed's date, not the calendar's: "Today's" only when they match.
-  const [ratesDate, setRatesDate] = useState<string | null>(null);
+  const [ratesStamp, setRatesStamp] = useState<RatesStamp | null>(null);
+  const ratesTitle = useRatesTitleKey(ratesStamp);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: tab === 'rates' ? t(ratesTitleKey(ratesDate)) : t('Price forecast') });
-  }, [navigation, tab, t, ratesDate]);
+    navigation.setOptions({ title: tab === 'rates' ? t(ratesTitle) : t('Price forecast') });
+  }, [navigation, tab, t, ratesTitle]);
 
   const onChange = (next: MandiTab) => {
     if (next === 'forecast') setForecastMounted(true);
@@ -46,7 +47,7 @@ export default function MandiScreen() {
     <View style={styles.flex}>
       <MandiTabs active={tab} onChange={onChange} />
       <View style={[styles.flex, tab !== 'rates' && styles.hidden]}>
-        <RatesBody onDate={setRatesDate} />
+        <RatesBody onStamp={setRatesStamp} />
       </View>
       {forecastMounted && (
         <View style={[styles.flex, tab !== 'forecast' && styles.hidden]}>

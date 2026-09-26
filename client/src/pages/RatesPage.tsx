@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
-import { isToday, ratesDateLabel, ratesTitle, shortDate } from '../utils/ratesDate';
+import { shortDate, useRatesHeading } from '../utils/ratesDate';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
 
@@ -308,6 +308,7 @@ function MandiModal({ crop, state, onClose }: { crop: LiveRate; state: string; o
 
 export function RatesPage() {
   const [board, setBoard] = useState<AllRates | null>(null);
+  const heading = useRatesHeading(board);
   const [failed, setFailed] = useState(false);
   const [state, setState] = useState('');
   const [query, setQuery] = useState('');
@@ -365,9 +366,13 @@ export function RatesPage() {
               {board?.live && <span className="cb-live-dot sm" />}
               {board?.live ? 'Live' : 'Reference'} · Govt. Agmarknet · 4,600+ regulated mandis
             </span>
-            <h1 className="cb-h1">{board ? `${ratesTitle(board.date)} · ${ratesDateLabel(board.date)}` : 'Mandi rates'}</h1>
+            <h1 className="cb-h1">{heading.title}{heading.date ? ` · ${heading.date}` : ''}</h1>
             <p className="cb-body rp-lede">
-              Every crop the government's mandi report carried {board && !isToday(board.date) ? `on ${shortDate(board.date)}` : 'today'}
+              {heading.current
+                ? "Every crop the government's mandi report carried today"
+                : board?.live
+                  ? `Every crop the government's mandi report carried on ${shortDate(board.date)}`
+                  : "Every crop in the government's latest mandi report"}
               {reported > 0 ? `, ${reported} of them${state ? ` from ${state}` : ''}` : ''}: the modal
               price and the range most mandis sat in. Pick a crop to see every reporting mandi,
               market by market.

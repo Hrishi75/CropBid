@@ -36,7 +36,7 @@ import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 import { LiveShelf } from './consumer/LiveShelf';
 import { CartLink } from '../components/consumer/CartBar';
 import type { User } from '../types';
-import { ratesDateLabel, ratesTitle } from '../utils/ratesDate';
+import { useRatesHeading } from '../utils/ratesDate';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
@@ -528,6 +528,7 @@ const FLOAT_CHIP_PICKS = ['tomato', 'wheat', 'mango'];
 
 function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; board: RatesBoardData | null; currency: CurrencyCode; user: User | null }) {
   const { t } = useTranslation();
+  const ratesHeading = useRatesHeading(board);
   // Secondary hero action follows the viewer: guests are asked to join,
   // farmers are sent to list a crop, buyers to their working bids, shoppers to
   // their orders. A signed-in shopper must not fall through to the guest CTA —
@@ -562,7 +563,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
       <div className="st-banner-copy">
         <span className="cb-chip cb-chip-sage" style={{ marginBottom: 18 }}>
           <span className="cb-live-dot sm" />
-          {board?.live ? `Live govt mandi rates · ${ratesDateLabel(board.date)}` : 'Straight from the farm · escrow settled'}
+          {board?.live ? `Live govt mandi rates · ${ratesHeading.date}` : 'Straight from the farm · escrow settled'}
         </span>
         <h1 className="st-banner-title">
           {t('Farm-fresh crops,')}<br />
@@ -641,6 +642,7 @@ function RateSkeleton() {
 // its space from first paint and only its contents change, which is what keeps
 // the reload smooth. It collapses only if the feed is unreachable entirely.
 function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | null; pending: boolean; currency: CurrencyCode }) {
+  const heading = useRatesHeading(board);
   if (!board) {
     if (!pending) return null; // feed unreachable — nothing honest to show
     return (
@@ -663,7 +665,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
-          <span className="cb-eyebrow">{ratesTitle(board.date)}{board.live ? ' · live' : ''} · {ratesDateLabel(board.date)}</span>
+          <span className="cb-eyebrow">{heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}</span>
         </div>
         <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
         <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>

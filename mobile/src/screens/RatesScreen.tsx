@@ -22,6 +22,7 @@ import { PressScale, Pulse, glide } from '../components/motion';
 import { IconClose } from '../components/icons';
 import { colors, design, font } from '../theme';
 import { money, unitLabel } from '../lib/format';
+import type { RatesStamp } from '../lib/ratesDate';
 
 // --- data shapes (mirror server/src/services/rates.service.ts) ---
 
@@ -280,9 +281,9 @@ function MandiSheet({ r, state, visible, onClose }: {
 // --- screen ---
 
 // Rendered inside MandiScreen (the Mandi section: Live rates ⇄ Forecast) —
-// a body, not a standalone route. onDate reports the feed's date, which the
-// screen's title depends on.
-export function RatesBody({ onDate }: { onDate?: (date: string | null) => void }) {
+// a body, not a standalone route. onStamp reports the feed's date and whether
+// the rates are live, which the screen's title depends on.
+export function RatesBody({ onStamp }: { onStamp?: (stamp: RatesStamp | null) => void }) {
   const { t } = useTranslation();
   const [board, setBoard] = useState<AllRates | null>(null);
   const [failed, setFailed] = useState(false);
@@ -297,10 +298,10 @@ export function RatesBody({ onDate }: { onDate?: (date: string | null) => void }
   useEffect(() => {
     let on = true;
     api.get(`/rates/all${state ? `?state=${encodeURIComponent(state)}` : ''}`)
-      .then(({ data }) => { if (on) { glide(); setBoard(data); setFailed(false); onDate?.(data?.date ?? null); } })
-      .catch(() => { if (on) { setBoard(null); setFailed(true); onDate?.(null); } });
+      .then(({ data }) => { if (on) { glide(); setBoard(data); setFailed(false); onStamp?.(data ? { date: data.date, live: data.live } : null); } })
+      .catch(() => { if (on) { setBoard(null); setFailed(true); onStamp?.(null); } });
     return () => { on = false; };
-  }, [state, onDate]);
+  }, [state, onStamp]);
 
   // Search matches the label and the feed's own name, so "karela", "bitter"
   // and "Bitter gourd" all find it.
@@ -367,7 +368,7 @@ export function RatesBody({ onDate }: { onDate?: (date: string | null) => void }
         )}
 
         {failed && <Text style={styles.note}>{t('Could not reach the rates service — pull back and try again.')}</Text>}
-        {!board && !failed && <Text style={styles.note}>{t("Loading today's rates…")}</Text>}
+        {!board && !failed && <Text style={styles.note}>{t('Loading mandi rates…')}</Text>}
 
         {board && board.groups.map((group) => {
           const rates = shown.filter((r) => r.group === group.id);
