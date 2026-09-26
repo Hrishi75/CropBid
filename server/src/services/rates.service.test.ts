@@ -281,6 +281,14 @@ describe('vs usual', () => {
     expect(all.live).toBe(false);
   });
 
+  it('keeps those averages out of a state\'s view, since they are all-India prices', async () => {
+    db.usualRows = [onFile('Bitter gourd', '', 3000, 5)];
+    vi.stubGlobal('fetch', fakeFeed(Array.from({ length: 30 }, () => rec('Onion', 'Punjab', 2000)), { cap: 10 }));
+
+    const mh = await rates.getAllRates('Maharashtra');
+    expect(mh.rates.find((r) => r.commodity === 'Bitter gourd')).toBeUndefined();
+  });
+
   it('does not add reference rows among a day\'s reports', async () => {
     // With a copy, a crop that did not report today is left out: listed at
     // its average beside live prices it would read as one of them.
