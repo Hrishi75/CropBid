@@ -261,6 +261,36 @@ describe('vs usual', () => {
     expect(onion?.modal).toBe(40); // not the typed-in ₹18
   });
 
+  it('lists every crop it has an average for when there is no copy of the feed', async () => {
+    // 2026-09-26: data.gov.in down, the in-memory copy lost to a deploy, and
+    // /rates fell from about 220 crops to the 30 with typed-in prices.
+    db.usualRows = [
+      onFile('Bitter gourd', '', 3000, 5),
+      onFile('Bitter gourd', 'Maharashtra', 3200, 5),
+      onFile('Cardamom', '', 250000, 3),
+      onFile('Onion', '', 4000, 12),
+    ];
+    vi.stubGlobal('fetch', fakeFeed(Array.from({ length: 30 }, () => rec('Onion', 'Punjab', 2000)), { cap: 10 }));
+
+    const all = await rates.getAllRates();
+    const karela = all.rates.find((r) => r.commodity === 'Bitter gourd');
+    expect(karela).toMatchObject({ source: 'reference', modal: 30, mandis: 0, usual: null, changePct: null, state: null });
+    expect(all.rates.find((r) => r.commodity === 'Cardamom')?.source).toBe('reference');
+    // A board crop is listed once, through the board, not again from its average.
+    expect(all.rates.filter((r) => r.commodity === 'Onion')).toHaveLength(1);
+    expect(all.live).toBe(false);
+  });
+
+  it('does not add reference rows among a day\'s reports', async () => {
+    // With a copy, a crop that did not report today is left out: listed at
+    // its average beside live prices it would read as one of them.
+    db.usualRows = [onFile('Bitter gourd', '', 3000, 5)];
+    vi.stubGlobal('fetch', fakeFeed([rec('Tomato', 'Maharashtra', 2500)]));
+
+    const all = await rates.getAllRates();
+    expect(all.rates.find((r) => r.commodity === 'Bitter gourd')).toBeUndefined();
+  });
+
   it('hands every download to the averages, state by state, and takes the result back', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
