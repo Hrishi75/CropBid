@@ -279,14 +279,28 @@ describe('across a restart', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('could not read the saved mandi copy'));
   });
 
-  it('does not hold the visitor on a database that hangs', async () => {
+  it('does not hold the visitor past ten seconds when the database hangs and the feed is down', async () => {
+    // One deadline for both waits: the database read and the download.
     vi.useFakeTimers();
     store.load.mockImplementation(() => new Promise(() => {}));
     vi.stubGlobal('fetch', fakeFeed([], { fail: () => 502 }));
 
-    const pending = feed.getMandiSnapshot();
-    await vi.advanceTimersByTimeAsync(20_000);
-    expect(await pending).toBeNull();
+    let result: unknown = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(result).toBeNull();
+  });
+
+  it('lets a fresh download release the visitor while the database hangs', async () => {
+    vi.useFakeTimers();
+    store.load.mockImplementation(() => new Promise(() => {}));
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)]));
+
+    let result: Awaited<ReturnType<typeof feed.getMandiSnapshot>> | 'still waiting' = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { result = snap; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result).not.toBe('still waiting');
+    expect(result).toMatchObject({ rows: [expect.objectContaining({ modal: 2000 })] });
   });
 });
 

@@ -103,13 +103,6 @@ interface Page { total: number; limit: number; records: RawRecord[] }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// Waits for `p`, or `ms`, whichever is first.
-function within(p: Promise<void>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); });
-  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
-}
-
 async function fetchPage(filters: Record<string, string>): Promise<Page> {
   const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
   url.searchParams.set('api-key', config.dataGov.apiKey);
@@ -244,6 +237,7 @@ async function downloadDay(): Promise<MandiRow[] | null> {
 let current: MandiSnapshot | null = null;
 let refreshing: Promise<void> | null = null;
 let restoring: Promise<void> | null = null;
+let restored = false;
 let nextRefreshAt = 0;
 const waiters = new Set<() => void>();
 const subscribers = new Set<(snap: MandiSnapshot) => void>();
@@ -283,6 +277,9 @@ function restore(): Promise<void> {
         if (usable(saved)) publish(saved);
       } catch (err) {
         warnOnce('restore', `[rates] could not read the saved mandi copy: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        restored = true;
+        wakeWaiters();
       }
     })();
   }
@@ -319,7 +316,7 @@ function refresh(): Promise<void> {
         nextRefreshAt = Date.now() + FAILED_RETRY_MS;
       } finally {
         refreshing = null;
-        for (const w of waiters) w();
+        wakeWaiters();
       }
     })();
   }
@@ -336,22 +333,32 @@ export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   if (Date.now() >= nextRefreshAt) void refresh();
   if (usable(current)) return current;
 
-  // After a restart, the saved copy is the quickest way to something to
-  // serve: a database read against a download of a minute or more. The
-  // download is already under way behind it. Bounded, because a database
-  // that hangs rather than fails would otherwise hold the visitor with it.
-  await within(restore(), COLD_WAIT_MS);
-  if (usable(current)) return current;
-  if (!refreshing) return null;
+  // Nothing to serve yet. After a restart the saved copy is the quickest way
+  // to something (a database read against a download of a minute or more),
+  // and the download is already under way beside it. Whichever produces a
+  // copy first releases the visitor, and both share one deadline: neither a
+  // hung database nor a slow feed holds them past COLD_WAIT_MS.
+  void restore();
+  const deadline = Date.now() + COLD_WAIT_MS;
+  while (!usable(current)) {
+    const left = deadline - Date.now();
+    if (left <= 0 || (restored && !refreshing)) break;
+    await nextSettled(left);
+  }
+  return usable(current) ? current : null;
+}
 
-  // Nothing to serve yet: wait for the download to finish, but never hold a
-  // visitor longer than COLD_WAIT_MS.
-  await new Promise<void>((resolve) => {
+// Resolves when a restore or a download next finishes, or after `ms`.
+function nextSettled(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => {
     const done = () => { clearTimeout(timer); waiters.delete(done); resolve(); };
-    const timer = setTimeout(done, COLD_WAIT_MS);
+    const timer = setTimeout(done, ms);
     waiters.add(done);
   });
-  return usable(current) ? current : null;
+}
+
+function wakeWaiters() {
+  for (const w of [...waiters]) w();
 }
 
 /** Start the first download at boot, so the first visitor is not the one who waits. */
