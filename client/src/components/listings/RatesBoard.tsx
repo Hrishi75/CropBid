@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '../../lib/axios';
+import { useRatesHeading } from '../../utils/ratesDate';
 
 interface Rate {
   commodity: string;
@@ -53,6 +54,7 @@ function inr(n: number) {
 export function RatesBoard({ state }: { state?: string }) {
   const [board, setBoard] = useState<Board | null>(null);
   const [loading, setLoading] = useState(true);
+  const heading = useRatesHeading(board);
 
   useEffect(() => {
     // Cancellation flag: if the state filter changes while a fetch is in
@@ -72,7 +74,7 @@ export function RatesBoard({ state }: { state?: string }) {
   if (loading) {
     return (
       <div className="cb-card" style={{ padding: 16, marginBottom: 20 }}>
-        <div className="cb-eyebrow">Loading today's mandi rates…</div>
+        <div className="cb-eyebrow">Loading mandi rates…</div>
       </div>
     );
   }
@@ -85,7 +87,7 @@ export function RatesBoard({ state }: { state?: string }) {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--cb-forest)', display: 'inline-block' }} />
         )}
         <span className="cb-eyebrow">
-          Today's mandi rates {board.live ? '· live' : ''} · {board.date}
+          {heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}
         </span>
         <span className="cb-mono cb-tiny" style={{ marginLeft: 'auto', color: 'var(--cb-ink-3)' }}>
           Govt. Agmarknet · ₹ wholesale
