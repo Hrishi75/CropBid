@@ -2,14 +2,15 @@
 // Forecast Page — /forecast · demand & supply predictions, next 7 days
 // =============================================================================
 // The public face of the prediction engine (server/prediction.service.ts).
-// For every crop on the rates board: a 7-day price outlook with a forecast
+// For every crop on /rates (the whole day's report, not the 30-crop board,
+// which is all this page covered until 2026-09-27): a 7-day price outlook with a forecast
 // band, a supply index and a demand index — and, on tap, the exact drivers
 // that produced the numbers plus what the forecast means for a farmer and for
 // a buyer. The model is deterministic and explainable; this page's job is to
 // show its work, never to oversell it. Prices are ₹-native (India feed).
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
@@ -25,10 +26,10 @@ interface Prediction {
   label: string;
   emoji: string;
   unit: 'KG' | 'QUINTAL' | 'LITRE';
-  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+  group: string;
   modal: number;
-  usual: number;
-  changePct: number;
+  usual: number | null;
+  changePct: number | null;
   source: 'market' | 'state' | 'national' | 'reference';
   mandisReporting: number;
   supply: { score: number; level: 'tight' | 'balanced' | 'ample'; drivers: string[] };
@@ -144,6 +145,7 @@ export function ForecastPage() {
   const [board, setBoard] = useState<ForecastBoard | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let on = true;
@@ -152,6 +154,14 @@ export function ForecastPage() {
       .catch(() => { if (on) setFailed(true); });
     return () => { on = false; };
   }, []);
+
+  // Same match as /rates: the label and the feed's own name, so "karela",
+  // "bitter" and "Bitter gourd" all find it.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!board || !q) return board?.predictions ?? [];
+    return board.predictions.filter((p) => p.label.toLowerCase().includes(q) || p.commodity.toLowerCase().includes(q));
+  }, [board, query]);
 
   const counts = board
     ? {
@@ -191,28 +201,45 @@ export function ForecastPage() {
             <p className="cb-body rp-lede">
               A transparent model over today's live mandi data: price vs the usual band,
               how many mandis reported arrivals, India's harvest calendar, and live CropBid
-              activity. Every number comes with its reasons — tap a crop to see the drivers.
+              activity, for every crop in the day's mandi report
+              {board ? `, ${board.predictions.length} of them` : ''}. Every number comes with
+              its reasons — tap a crop to see the drivers.
             </p>
           </div>
-          {counts && (
-            <div className="fc-tally" aria-label="Forecast summary">
-              <div className="fc-tally-item"><span className="n pos">{counts.rise}</span><span className="cb-tiny">set to rise</span></div>
-              <div className="fc-tally-item"><span className="n flat">{counts.hold}</span><span className="cb-tiny">steady</span></div>
-              <div className="fc-tally-item"><span className="n neg">{counts.ease}</span><span className="cb-tiny">set to ease</span></div>
-            </div>
-          )}
+          <div className="rp-controls">
+            {counts && (
+              <div className="fc-tally" aria-label="Forecast summary">
+                <div className="fc-tally-item"><span className="n pos">{counts.rise}</span><span className="cb-tiny">set to rise</span></div>
+                <div className="fc-tally-item"><span className="n flat">{counts.hold}</span><span className="cb-tiny">steady</span></div>
+                <div className="fc-tally-item"><span className="n neg">{counts.ease}</span><span className="cb-tiny">set to ease</span></div>
+              </div>
+            )}
+            <label className="rp-state">
+              <span className="cb-eyebrow">Find a crop</span>
+              <input
+                type="search"
+                value={query}
+                placeholder="Onion, tur, karela…"
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+          </div>
         </div>
+
+        {board && query.trim() && shown.length === 0 && (
+          <div className="rp-detail-note">Nothing matches "{query.trim()}" today.</div>
+        )}
 
         {failed && <div className="rp-detail-note">Could not reach the prediction engine — check your connection and refresh.</div>}
         {!board && !failed && <div className="rp-detail-note">Running the model on today's mandi data…</div>}
 
         {board && GROUPS.map(({ dir, title, eyebrow }) => {
-          const rows = board.predictions.filter((p) => p.outlook.direction === dir);
+          const rows = shown.filter((p) => p.outlook.direction === dir);
           if (rows.length === 0) return null;
           return (
             <section key={dir} className="rp-cat">
               <div className="rp-cat-head">
-                <span className="cb-eyebrow">{eyebrow}</span>
+                <span className="cb-eyebrow">{eyebrow} · {rows.length}</span>
                 <h2 className="rp-cat-title">
                   <span className={`fc-h-arrow ${DIRECTION_META[dir].cls}`} aria-hidden="true">{DIRECTION_META[dir].arrow}</span> {title}
                 </h2>

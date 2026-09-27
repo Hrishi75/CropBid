@@ -1,5 +1,5 @@
 // =============================================================================
-// Prediction Service — demand & supply forecast for every crop on the board
+// Prediction Service — demand & supply forecast for every crop the feed reported
 // =============================================================================
 // WHY THIS EXISTS
 // The rates board answers "what is the crop worth TODAY". The next question
@@ -33,7 +33,8 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
-import { getBoard, getMarketBreakdown, CropRate } from './rates.service';
+import { getAllRates, getMarketBreakdown, type CommodityRate, type RateSource } from './rates.service';
+import type { Group } from './mandiCommodities';
 
 // -----------------------------------------------------------------------------
 // Public shapes
@@ -48,13 +49,13 @@ export interface CropPrediction {
   label: string;
   emoji: string;
   unit: 'KG' | 'QUINTAL' | 'LITRE';
-  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+  group: Group;         // the /rates page's grouping (mandiCommodities.ts)
 
-  // today's anchor (from the rates board)
+  // today's anchor (from /rates/all, all India)
   modal: number;        // ₹ per unit
-  usual: number;
-  changePct: number;    // today vs usual, %
-  source: CropRate['source'];
+  usual: number | null; // null until there is an earlier day to compare with
+  changePct: number | null;
+  source: RateSource;
   mandisReporting: number;
 
   supply: { score: number; level: SupplyLevel; drivers: string[] };
@@ -81,7 +82,9 @@ export interface ForecastBoard {
 }
 
 // -----------------------------------------------------------------------------
-// Seasonality — India's harvest calendar, per board crop (Agmarknet spelling).
+// Seasonality — India's harvest calendar, for the board crops (Agmarknet
+// spelling). Any other commodity simply gets no seasonal driver: a calendar
+// nobody has checked for it would be a guess presented as a reason.
 // peak = main arrival months (supply builds, prices soften);
 // lean = scarcity months (arrivals thin out, prices firm).
 // Sources: standard kharif/rabi cropping windows; labels are for driver copy.
@@ -256,7 +259,7 @@ async function getPlatformSignals(): Promise<Array<{ cropName: string; listings:
 // Per-crop prediction
 // -----------------------------------------------------------------------------
 function predictCrop(
-  rate: CropRate,
+  rate: CommodityRate,
   mandis: number,
   dispersion: number, // coefficient of variation of modal across mandis
   platform: PlatformSignal,
@@ -267,8 +270,8 @@ function predictCrop(
   const inLean = season.lean.includes(month);
   // No history yet (a crop's first day on record) means no gap to read,
   // which is not the same thing as a gap of zero.
-  const hasHistory = rate.source !== 'reference' && rate.usualDays > 0;
-  const pctVsUsual = hasHistory ? rate.changePct : 0;
+  const hasHistory = rate.source !== 'reference' && rate.changePct !== null && rate.usualDays > 0;
+  const pctVsUsual = hasHistory ? rate.changePct! : 0;
 
   // --- demand: is the market pulling? ---------------------------------------
   let demandScore = 50;
@@ -349,8 +352,9 @@ function predictCrop(
   const low = roundPrice(center * (1 - bandWidth), rate.unit);
   const high = roundPrice(center * (1 + bandWidth), rate.unit);
 
+  // A handful of mandis is not a market read, however far the price moved.
   const confidence: Confidence =
-    rate.source === 'reference' ? 'low' : mandis >= 12 ? 'high' : 'medium';
+    rate.source === 'reference' || mandis < 4 ? 'low' : mandis >= 12 ? 'high' : 'medium';
 
   // --- advice — two sides of the same forecast --------------------------------
   const move = `${Math.abs(pct7d).toFixed(1)}%`;
@@ -375,7 +379,7 @@ function predictCrop(
     label: rate.label,
     emoji: rate.emoji,
     unit: rate.unit,
-    cat: rate.cat,
+    group: rate.group,
     modal: rate.modal,
     usual: rate.usual,
     changePct: rate.changePct,
@@ -390,10 +394,14 @@ function predictCrop(
 }
 
 // -----------------------------------------------------------------------------
-// getForecastBoard — the whole board, predicted
+// getForecastBoard — every commodity on /rates, predicted
 // -----------------------------------------------------------------------------
+// The same list the full rates page shows (all India, about 220 commodities),
+// not the 30-crop board: a forecast page that stops at 30 leaves most of what
+// the feed reported with no outlook at all. Seasonality and the platform
+// signal cover the board crops only; everything else runs on the feed.
 export async function getForecastBoard(): Promise<ForecastBoard> {
-  const [board, platformRows] = await Promise.all([getBoard(), getPlatformSignals()]);
+  const [board, platformRows] = await Promise.all([getAllRates(), getPlatformSignals()]);
   const month = new Date().getMonth() + 1;
 
   // Aggregate EVERY platform row that resolves to the same board crop —
@@ -431,8 +439,15 @@ export async function getForecastBoard(): Promise<ForecastBoard> {
     })
   );
 
-  // Biggest expected movers first — that's what a forecast page is for.
-  predictions.sort((a, b) => Math.abs(b.outlook.pct7d) - Math.abs(a.outlook.pct7d));
+  // Biggest expected movers first, which is what a forecast page is for, but
+  // a well-reported crop before a thin one: with every commodity in, a crop
+  // two mandis reported can post the biggest move on the board, and the
+  // storefront strip takes the first ten.
+  const rank: Record<Confidence, number> = { high: 0, medium: 1, low: 2 };
+  predictions.sort((a, b) =>
+    (rank[a.outlook.confidence] - rank[b.outlook.confidence])
+    || (Math.abs(b.outlook.pct7d) - Math.abs(a.outlook.pct7d))
+    || (b.mandisReporting - a.mandisReporting));
 
   return {
     date: board.date,

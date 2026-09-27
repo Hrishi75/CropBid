@@ -39,7 +39,7 @@ export async function getAll(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-// GET /api/rates/predictions — demand & supply forecast for the whole board.
+// GET /api/rates/predictions — demand & supply forecast for every commodity on /rates.
 // Deterministic model over today's feed + seasonality + platform activity;
 // see prediction.service.ts for the model and its weights.
 export async function getPredictions(req: Request, res: Response, next: NextFunction) {
