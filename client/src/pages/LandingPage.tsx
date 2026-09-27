@@ -570,7 +570,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
           <span className="italic">{t('farmer-fair')}</span> {t('prices.')}
         </h1>
         <p className="st-banner-lede">
-          {t('Buy vegetables, fruits, grains and spices straight from the grower — today\'s real mandi price behind every pack, escrow-settled, delivered farm to door.')}
+          {t('Buy vegetables, fruits, grains and spices from local shops and farms near you, with today\'s real mandi price behind every pack and payment held in escrow.')}
         </p>
         <div className="st-banner-actions">
           <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
