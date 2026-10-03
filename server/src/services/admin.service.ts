@@ -69,13 +69,18 @@ export async function getPlatformStats() {
 // =============================================================================
 // LIST USERS — Paginated user list with search
 // =============================================================================
-// Phone numbers are stored exactly as typed at sign-up, minus spaces, so one
-// person may be `9822055667` and another `+919822055667` (CLAUDE.md §4). The
-// search is therefore reduced to its digits with any leading 91 country code
-// dropped, and matched as a substring, which finds the number either way and
-// whichever way support types it. Fewer than four digits is not a phone search:
-// "Ward 3" would otherwise match every account with a 3 in its number.
+// Phone numbers are stored as typed: sign-up drops spaces, the profile editor
+// keeps whatever it is given, so one person is `9822055667`, another
+// `+919822055667` and a third `98220-55667` (CLAUDE.md §4). Both sides are
+// therefore compared as digits only: the search with any leading 91 country
+// code dropped, the stored number with its punctuation stripped in the query,
+// matched as a substring so either form finds either.
+//
+// Only a search made of phone characters is a phone search, and only from four
+// digits: "Ward 2026" is somebody's name, and its digits would otherwise match
+// every account whose number contains 2026.
 export function phoneSearchDigits(search: string): string | null {
+  if (!/^[\s+\d()-]+$/.test(search)) return null;
   let digits = search.replace(/\D/g, '');
   const typedCountryCode = /^\s*(\+91|91[\s-])/.test(search);
   if (typedCountryCode || (digits.length === 12 && digits.startsWith('91'))) {
@@ -93,7 +98,14 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
       { email: { contains: search, mode: 'insensitive' } },
     ];
     const phone = phoneSearchDigits(search);
-    if (phone) where.OR.push({ phone: { contains: phone } });
+    if (phone) {
+      // Prisma cannot strip characters inside a where clause, so the ids come
+      // from raw SQL. `phone` is digits only, so it holds no LIKE wildcards.
+      const matches = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User"
+        WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || ${phone} || '%'`;
+      where.OR.push({ id: { in: matches.map((m) => m.id) } });
+    }
   }
 
   if (role && ['FARMER', 'BUYER', 'ADMIN'].includes(role)) {

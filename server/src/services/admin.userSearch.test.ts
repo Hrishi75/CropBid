@@ -13,7 +13,10 @@ import { getUsers, phoneSearchDigits } from './admin.service';
 
 const BARE = 'adm-search-bare';
 const PREFIXED = 'adm-search-prefixed';
-const EVERYONE = [BARE, PREFIXED];
+const PUNCTUATED = 'adm-search-punctuated';
+const NUMBERED = 'adm-search-numbered';
+const HAS_2026 = 'adm-search-has-2026';
+const EVERYONE = [BARE, PREFIXED, PUNCTUATED, NUMBERED, HAS_2026];
 
 async function reset() {
   await prisma.user.deleteMany({ where: { id: { in: EVERYONE } } });
@@ -25,6 +28,11 @@ beforeAll(async () => {
     data: [
       { id: BARE, name: 'Search test bare', phone: '9000011122', password: 'x', role: 'CONSUMER' },
       { id: PREFIXED, name: 'Search test prefixed', phone: '+919000033344', password: 'x', role: 'CONSUMER' },
+      // The profile editor stores the number as typed, punctuation included.
+      { id: PUNCTUATED, name: 'Search test punctuated', phone: '(90000) 55-566', password: 'x', role: 'CONSUMER' },
+      // A name with digits in it, and somebody else whose number holds them.
+      { id: NUMBERED, name: 'Search test Ward 2026', phone: '9000000001', password: 'x', role: 'CONSUMER' },
+      { id: HAS_2026, name: 'Search test other', phone: '9000202600', password: 'x', role: 'CONSUMER' },
     ],
   });
 });
@@ -48,6 +56,11 @@ describe('phoneSearchDigits', () => {
     expect(phoneSearchDigits('9198220')).toBe('9198220');
   });
 
+  it('is not a phone search when the text is not a phone number', () => {
+    expect(phoneSearchDigits('Ward 2026')).toBeNull();
+    expect(phoneSearchDigits('user2026@example.com')).toBeNull();
+  });
+
   it('is not a phone search below four digits', () => {
     expect(phoneSearchDigits('Ravi')).toBeNull();
     expect(phoneSearchDigits('Ward 3')).toBeNull();
@@ -63,6 +76,16 @@ describe('getUsers search by phone', () => {
     expect(await found('90000 33344')).toEqual([PREFIXED]);
   });
 
+  it('finds a number stored with punctuation, typed without it', async () => {
+    expect(await found('9000055566')).toEqual([PUNCTUATED]);
+  });
+
+  it('does not match a number against the digits in a name', async () => {
+    // One account has 2026 in its name, another in its number. Only the name
+    // is meant.
+    expect(await found('Ward 2026')).toEqual([NUMBERED]);
+  });
+
   it('finds on part of a number', async () => {
     expect(await found('900003')).toEqual([PREFIXED]);
   });
@@ -73,6 +96,6 @@ describe('getUsers search by phone', () => {
   });
 
   it('still searches by name', async () => {
-    expect(await found('Search test')).toEqual([BARE, PREFIXED]);
+    expect(await found('Search test')).toEqual([...EVERYONE].sort());
   });
 });
