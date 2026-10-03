@@ -69,6 +69,21 @@ export async function getPlatformStats() {
 // =============================================================================
 // LIST USERS — Paginated user list with search
 // =============================================================================
+// Phone numbers are stored exactly as typed at sign-up, minus spaces, so one
+// person may be `9822055667` and another `+919822055667` (CLAUDE.md §4). The
+// search is therefore reduced to its digits with any leading 91 country code
+// dropped, and matched as a substring, which finds the number either way and
+// whichever way support types it. Fewer than four digits is not a phone search:
+// "Ward 3" would otherwise match every account with a 3 in its number.
+export function phoneSearchDigits(search: string): string | null {
+  let digits = search.replace(/\D/g, '');
+  const typedCountryCode = /^\s*(\+91|91[\s-])/.test(search);
+  if (typedCountryCode || (digits.length === 12 && digits.startsWith('91'))) {
+    digits = digits.slice(2);
+  }
+  return digits.length >= 4 ? digits : null;
+}
+
 export async function getUsers(search?: string, role?: string, limit = 20, offset = 0) {
   const where: any = {};
 
@@ -77,6 +92,8 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
       { name: { contains: search, mode: 'insensitive' } },
       { email: { contains: search, mode: 'insensitive' } },
     ];
+    const phone = phoneSearchDigits(search);
+    if (phone) where.OR.push({ phone: { contains: phone } });
   }
 
   if (role && ['FARMER', 'BUYER', 'ADMIN'].includes(role)) {

@@ -213,6 +213,8 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 
 **Phone numbers are matched exactly as stored**, and nothing adds a country code. `98220 55667` is stored as `9822055667` and `+91 98220 55667` as `+919822055667`, so an account made one way cannot sign in typed the other way. This predates the sign-up form, but it bites more now that everyone types a number into a password form. Fixing it means choosing one canonical form (probably `+91` on any 10-digit number) and backfilling the column.
 
+**Admin → Users shows each account's phone and searches by it** (2026-10-03), because support is rung by people and a phone-only account has no email to look up. The search works around the problem above rather than fixing it: `phoneSearchDigits` in `admin.service.ts` reduces what was typed to digits, drops a leading `91`, and matches it as a substring, so `+91 98220 55667` finds `9822055667` and the other way round. Under four digits is not a phone search.
+
 **A business buyer may have no email on file.** Sign-up no longer asks a would-be buyer for one, and the buyer application (`completeBuyerOnboarding`) never did. The FAQ and privacy page used to say business buyers give an email; both are corrected. If order paperwork is to be emailed, the application form is where to ask.
 
 ### Everyone arrives as a shopper (fixed 2026-09-06)
