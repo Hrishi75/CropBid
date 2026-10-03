@@ -54,6 +54,7 @@ import NotificationPrefsScreen from '../screens/profile/NotificationPrefsScreen'
 import PolicyScreen from '../screens/profile/PolicyScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
 import ShopHomeScreen from '../screens/shop/ShopHomeScreen';
+import { WithStatusScrim } from '../components/StatusScrim';
 import BuyForShopScreen from '../screens/shop/BuyForShopScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
@@ -72,15 +73,24 @@ import { sellerWords } from '../lib/sellerType';
 
 // --- Buyer ---
 // --- Motion shared by every navigator ---
-// Tabs shift sideways with a fade, briefly: switching tabs is frequent, so it
-// has to feel instant. Pushed screens slide in from the right the iOS way on
-// both platforms, so a screen that opens is always one that came from the side
-// and goes back the same way. Screens that set their own animation (sheets
-// from the bottom) keep it.
-const TAB_MOTION = {
-  animation: 'shift' as const,
-  transitionSpec: { animation: 'timing' as const, config: { duration: 170 } },
-};
+// Pushed screens slide in from the right the iOS way on both platforms, so a
+// screen that opens is always one that came from the side and goes back the
+// same way. Screens that set their own animation (sheets from the bottom) keep
+// it.
+//
+// NO TAB ANIMATION. The bottom tabs' 'shift' left a tab blank the first time it
+// was opened (My Stock rendered nothing but the navigator's grey) on this
+// react-native-screens, which is a minor version behind what Expo 56 expects.
+// The tab bar's own sliding highlight carries the motion instead. Revisit after
+// `npx expo install --fix`.
+// Every tab screen but Home gets a page-coloured strip behind the status bar,
+// so content scrolled up does not run under the clock. Home draws its own
+// forest strip there.
+function tabScreenLayout({ children, route }: { children: React.ReactElement; route: { name: string } }) {
+  if (route.name === 'Home') return children;
+  return <WithStatusScrim>{children}</WithStatusScrim>;
+}
+
 const STACK_MOTION = { animation: 'ios_from_right' as const };
 
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
@@ -88,9 +98,8 @@ function BuyerTabs() {
   const { t } = useTranslation();
   return (
     <Tab.Navigator
-      // A quick slide-and-fade between tabs (shared TAB_MOTION) instead of a
-      // hard cut, so a switch reads as moving sideways within one app.
-      screenOptions={{ headerShown: false, ...TAB_MOTION }}
+      screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <BuyerTabBar {...props} />}
     >
       <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
@@ -204,9 +213,8 @@ function FarmerTabs() {
   const isShop = user?.farmerProfile?.sellerType === 'LOCAL_SHOP';
   return (
     <FarmerTab.Navigator
-      // A quick slide-and-fade between tabs (shared TAB_MOTION) instead of a
-      // hard cut, so a switch reads as moving sideways within one app.
-      screenOptions={{ headerShown: false, ...TAB_MOTION }}
+      screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
       <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
@@ -319,9 +327,8 @@ function ConsumerTabs() {
   const { t } = useTranslation();
   return (
     <ConsumerTab.Navigator
-      // A quick slide-and-fade between tabs (shared TAB_MOTION) instead of a
-      // hard cut, so a switch reads as moving sideways within one app.
-      screenOptions={{ headerShown: false, ...TAB_MOTION }}
+      screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <ConsumerTabBar {...props} />}
     >
       <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />

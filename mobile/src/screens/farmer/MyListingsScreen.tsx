@@ -249,7 +249,14 @@ export default function MyListingsScreen() {
                         {l.directSaleEnabled ? <Mono style={styles.tag}>HOMES TOO</Mono> : null}
                       </View>
                       <Text style={styles.price}>
-                        {money(l.pricePerUnitMin, l.currency)}–{money(l.pricePerUnitMax, l.currency)}
+                        {/* One price when there is no range: a shop's shelf price
+                            is sent as both ends, and "₹60–₹60" read as a typo. A
+                            shop shows what households actually pay. */}
+                        {isShop && l.retailPricePerUnit != null
+                          ? money(l.retailPricePerUnit, l.currency)
+                          : l.pricePerUnitMin === l.pricePerUnitMax
+                            ? money(l.pricePerUnitMin, l.currency)
+                            : `${money(l.pricePerUnitMin, l.currency)}–${money(l.pricePerUnitMax, l.currency)}`}
                         <Text style={styles.priceUnit}> /{unit}</Text>
                       </Text>
                     </View>

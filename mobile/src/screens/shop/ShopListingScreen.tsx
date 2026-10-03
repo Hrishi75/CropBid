@@ -231,7 +231,7 @@ export default function ShopListingScreen({ route, navigation }: Props) {
                   value={price}
                   onChangeText={setPrice}
                   keyboardType="numeric"
-                  placeholder="24"
+                  placeholder="0"
                   placeholderTextColor={design.ink3}
                 />
               </View>
@@ -244,7 +244,7 @@ export default function ShopListingScreen({ route, navigation }: Props) {
                   value={stock}
                   onChangeText={setStock}
                   keyboardType="numeric"
-                  placeholder="50"
+                  placeholder="0"
                   placeholderTextColor={design.ink3}
                 />
                 <Text style={styles.suffix}>kg</Text>
@@ -287,6 +287,7 @@ export default function ShopListingScreen({ route, navigation }: Props) {
         {/* ---- photo ----------------------------------------------------- */}
         <View style={styles.card}>
           <Mono style={styles.label}>PHOTOS · OPTIONAL</Mono>
+          {!isEdit || existing.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
             {existing.map((src) => {
               const uri = mediaUrl(src);
@@ -305,8 +306,16 @@ export default function ShopListingScreen({ route, navigation }: Props) {
               </Pressable>
             ) : null}
           </ScrollView>
+          ) : null}
           {!isEdit && photos.length === 0 ? (
             <Text style={styles.hint}>Without one, shoppers see a standard picture of the item.</Text>
+          ) : null}
+          {/* Editing sends no files (PUT /listings/:id is JSON), so the card
+              says so rather than sitting empty with nothing to tap. */}
+          {isEdit && existing.length === 0 ? (
+            <Text style={styles.hintPlain}>
+              No photo on this item, so shoppers see a standard picture. Photos can be added when you list an item.
+            </Text>
           ) : null}
         </View>
 
@@ -427,6 +436,7 @@ const styles = StyleSheet.create({
   },
   addPhotoText: { fontFamily: font.sans, fontSize: 11.5, color: design.ink3 },
   hint: { fontFamily: font.sans, fontSize: 12, color: design.ink3, marginTop: -6 },
+  hintPlain: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3 },
 
   where: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginTop: 12,
