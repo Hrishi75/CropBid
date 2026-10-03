@@ -27,6 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Wordmark } from '../../components/marks';
+import { Appear } from '../../components/motion';
 import { Eyebrow, GridBg, Mono } from '../../components/buyerKit';
 import { NotificationBell } from '../../components/NotificationBell';
 import { IconArrow, IconCheck, IconClock, IconPlus } from '../../components/icons';
@@ -198,14 +199,15 @@ export default function ShopHomeScreen() {
               </Text>
             </View>
           ) : (
-            toSend.map((o) => (
-              <OrderCard
-                key={o.key}
-                order={o}
-                busy={busy === o.key}
-                onSend={() => advance(o, 'IN_TRANSIT')}
-                onDelivered={() => advance(o, 'DELIVERED')}
-              />
+            toSend.map((o, i) => (
+              <Appear key={o.key} index={i}>
+                <OrderCard
+                  order={o}
+                  busy={busy === o.key}
+                  onSend={() => advance(o, 'IN_TRANSIT')}
+                  onDelivered={() => advance(o, 'DELIVERED')}
+                />
+              </Appear>
             ))
           )}
         </View>

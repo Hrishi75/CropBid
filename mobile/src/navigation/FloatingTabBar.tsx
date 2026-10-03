@@ -12,11 +12,17 @@
 // would mean every scrolling screen in three stacks adding the bar's height to
 // its padding, and the first one that forgets hides its last button under it.
 //
+// THE HIGHLIGHT SLIDES. One dark pill sits behind the tabs and springs to the
+// one tapped, rather than each tab filling and emptying on its own, so the eye
+// follows the move. Positioned from the bar's measured width, which is why
+// nothing draws until the first layout.
+//
 // Shared by the role tab bars, which differ only in their icons and badges.
 // =============================================================================
 
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pop } from '../components/motion';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import type { IcoProps } from '../components/icons';
@@ -31,10 +37,30 @@ export function FloatingTabBar({
   badgeFor?: (routeName: string) => number;
 }) {
   const insets = useSafeAreaInsets();
+  const n = state.routes.length;
+  const [width, setWidth] = useState(0);
+  // Each tab's width, from the pill's inner width less the gaps between tabs.
+  const tabW = width > 0 ? (width - PAD * 2 - GAP * (n - 1)) / n : 0;
+  const x = useRef(new Animated.Value(0)).current;
+  const placed = useRef(false);
+
+  useEffect(() => {
+    if (!tabW) return;
+    const to = PAD + state.index * (tabW + GAP);
+    // The first placement is a jump, not a slide across the bar on launch.
+    if (!placed.current) { x.setValue(to); placed.current = true; return; }
+    Animated.spring(x, { toValue: to, useNativeDriver: true, speed: 20, bounciness: 5 }).start();
+  }, [state.index, tabW, x]);
 
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 8, 10) }]}>
-      <View style={styles.pill}>
+      <View style={styles.pill} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        {tabW ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.highlight, { width: tabW, transform: [{ translateX: x }] }]}
+          />
+        ) : null}
         {state.routes.map((route, i) => {
           const sel = state.index === i;
           const Icon = icons[route.name] || IconHome;
@@ -51,17 +77,19 @@ export function FloatingTabBar({
               accessibilityRole="tab"
               accessibilityState={{ selected: sel }}
               accessibilityLabel={badge > 0 ? `${label}, ${badge}` : label}
-              style={({ pressed }) => [styles.item, sel && styles.itemOn, pressed && !sel && styles.itemPressed]}
+              style={({ pressed }) => [styles.item, pressed && !sel && styles.itemPressed]}
             >
               <View>
                 <Icon size={21} stroke={sel ? colors.surface : design.ink3} sw={sel ? 2 : 1.7} />
                 {badge > 0 ? (
-                  <View style={[styles.badge, sel && styles.badgeOn]}>
+                  // Pops when the count changes, so adding to the basket
+                  // visibly lands in the tab.
+                  <Pop value={badge} style={[styles.badge, sel && styles.badgeOn]}>
                     {/* Past nine the pill would stretch wider than the icon it
                         sits on; a household basket never gets there, but a
                         stuck one shouldn't wreck the row. */}
                     <Text style={styles.badgeText}>{badge > 9 ? '9+' : badge}</Text>
-                  </View>
+                  </Pop>
                 ) : null}
               </View>
               <Text
@@ -78,13 +106,16 @@ export function FloatingTabBar({
   );
 }
 
+const PAD = 6;
+const GAP = 4;
+
 const styles = StyleSheet.create({
   // The page colour, so the gap around the pill reads as the screen carrying on.
   wrap: { backgroundColor: design.bg, paddingHorizontal: 14, paddingTop: 6 },
   pill: {
     flexDirection: 'row',
-    gap: 4,
-    padding: 6,
+    gap: GAP,
+    padding: PAD,
     backgroundColor: design.paper,
     borderRadius: 26,
     borderWidth: 1,
@@ -102,7 +133,10 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
   },
-  itemOn: { backgroundColor: colors.forest },
+  highlight: {
+    position: 'absolute', top: PAD, bottom: PAD, left: 0,
+    borderRadius: 20, backgroundColor: colors.forest,
+  },
   itemPressed: { backgroundColor: design.paper2 },
   label: { fontFamily: font.sansMed, fontSize: 10.5, letterSpacing: -0.1, color: design.ink3 },
   labelOn: { fontFamily: font.sansSemi, color: colors.surface },

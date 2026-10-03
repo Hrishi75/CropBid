@@ -58,7 +58,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
 import { cropEmojiFor, cropImageFor, listingImage } from '../utils/cropImages';
 import { Wordmark } from '../components/marks';
-import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
+import { Appear, FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { browse, retailCities, retailShops, updateLocation } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
@@ -746,12 +746,13 @@ export default function StorefrontHomeScreen() {
                   {localShops.length} {localShops.length === 1 ? t('SHOP') : t('SHOPS')} ·{' '}
                   {city.toUpperCase()}
                 </Mono>
-                {localShops.map((sh) => (
-                  <ShopCard
-                    key={sh.id}
-                    shop={sh}
-                    onPress={() => nav.navigate('Shop', { id: sh.id, city })}
-                  />
+                {localShops.map((sh, i) => (
+                  <Appear key={sh.id} index={i}>
+                    <ShopCard
+                      shop={sh}
+                      onPress={() => nav.navigate('Shop', { id: sh.id, city })}
+                    />
+                  </Appear>
                 ))}
               </>
             ) : (

@@ -35,7 +35,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BillDetails } from '../../components/BillDetails';
 import { QuantityStepper } from '../../components/QuantityStepper';
 import { Mono } from '../../components/buyerKit';
-import { FadeInImage, PressScale } from '../../components/motion';
+import { Appear, FadeInImage, PressScale } from '../../components/motion';
 import { IconCheck, IconClock, IconClose, IconSprout } from '../../components/icons';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
@@ -241,8 +241,9 @@ export default function CartScreen() {
         {/* One block per shop, because each is its own delivery and its own
             fee. The fee and the nudge sit on the shop they belong to, BEFORE the
             pay button, so the charge is never discovered after it. */}
-        {bill.shops.map((shop) => (
-          <View key={shop.sellerId} style={styles.list}>
+        {bill.shops.map((shop, i) => (
+          <Appear key={shop.sellerId} index={i}>
+          <View style={styles.list}>
             <View style={styles.shopHead}>
               <View style={styles.shopTitleRow}>
                 <Text style={styles.shopName} numberOfLines={1}>{shop.sellerName ?? 'Seller'}</Text>
@@ -263,6 +264,7 @@ export default function CartScreen() {
               </View>
             ))}
           </View>
+          </Appear>
         ))}
 
         <BillDetails

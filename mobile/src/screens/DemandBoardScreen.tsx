@@ -35,7 +35,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Eyebrow, Mono } from '../components/buyerKit';
-import { PressScale, glide } from '../components/motion';
+import { Appear, PressScale, glide } from '../components/motion';
 import { RequirementCard } from '../components/RequirementCard';
 import { RequirementAnswerPanel } from '../components/RequirementAnswerPanel';
 import { IconArrowLeft, IconSearch } from '../components/icons';
@@ -274,14 +274,15 @@ export default function DemandBoardScreen() {
           </View>
         ) : null}
 
-        {rows.map((r) => (
+        {rows.map((r, i) => (
+          <Appear key={r.id} index={i}>
           <BoardRow
-            key={r.id}
             requirement={r}
             isFarmer={isFarmer}
             onOpen={() => nav.navigate('RequirementDetail', { id: r.id, preview: r })}
             onDone={() => load(1, 'replace')}
           />
+          </Appear>
         ))}
 
         {page < totalPages ? (

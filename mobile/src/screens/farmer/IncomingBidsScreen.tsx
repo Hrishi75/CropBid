@@ -23,6 +23,7 @@ import { errorMessage } from '../../api/client';
 import type { Bid, BidStatus } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import { cropEmojiFor } from '../../utils/cropImages';
+import { Appear } from '../../components/motion';
 import { IconCheck, IconClock } from '../../components/icons';
 
 const TABS: { value: '' | BidStatus; label: string }[] = [
@@ -143,8 +144,10 @@ export default function IncomingBidsScreen() {
           </View>
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 10 }}>
-            {visible.map((b) => (
-              <BidRow key={b.id} bid={b} showExplainer={b.id === firstPendingId} onChanged={load} />
+            {visible.map((b, i) => (
+              <Appear key={b.id} index={i}>
+                <BidRow bid={b} showExplainer={b.id === firstPendingId} onChanged={load} />
+              </Appear>
             ))}
           </View>
         )}

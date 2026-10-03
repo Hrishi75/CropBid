@@ -27,6 +27,7 @@ import { deleteListing, myListings } from '../../api/endpoints';
 import { errorMessage, mediaUrl } from '../../api/client';
 import { cropEmojiFor, cropImageFor } from '../../utils/cropImages';
 import { useAuth } from '../../context/AuthContext';
+import { Appear } from '../../components/motion';
 import { sellerWords } from '../../lib/sellerType';
 import type { Listing, ListingStatus } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
@@ -196,7 +197,7 @@ export default function MyListingsScreen() {
           </Text>
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 12 }}>
-            {shown.map((l) => {
+            {shown.map((l, i) => {
               const img = mediaUrl(l.images?.[0]) ?? cropImageFor(l.cropName);
               const bids = l._count?.bids ?? 0;
               const unit = unitLabel(l.unit);
@@ -204,8 +205,8 @@ export default function MyListingsScreen() {
               const leftPct = l.quantity > 0 ? (left / l.quantity) * 100 : 0;
               const ended = l.status !== 'ACTIVE' && l.status !== 'IN_AUCTION';
               return (
+                <Appear key={l.id} index={i}>
                 <Pressable
-                  key={l.id}
                   style={({ pressed }) => [styles.card, ended && styles.cardEnded, pressed && { opacity: 0.92 }]}
                   onPress={() => nav.navigate('CreateListing', { id: l.id })}
                   onLongPress={() => onDelete(l)}
@@ -292,6 +293,7 @@ export default function MyListingsScreen() {
                     </View>
                   </View>
                 </Pressable>
+                </Appear>
               );
             })}
           </View>
