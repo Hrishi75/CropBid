@@ -38,7 +38,7 @@ import { Eyebrow, Mono } from '../components/buyerKit';
 import { PressScale, glide } from '../components/motion';
 import { RequirementCard } from '../components/RequirementCard';
 import { RequirementAnswerPanel } from '../components/RequirementAnswerPanel';
-import { IconSearch } from '../components/icons';
+import { IconArrowLeft, IconSearch } from '../components/icons';
 import { useAuth } from '../context/AuthContext';
 import { requirementFeed, requirementFilters, type RequirementFeedParams } from '../api/endpoints';
 import { errorMessage } from '../api/client';
@@ -78,6 +78,10 @@ export default function DemandBoardScreen() {
   const [state, setState] = useState('');
   const [buyerType, setBuyerType] = useState('');
   const [sort, setSort] = useState<NonNullable<RequirementFeedParams['sort']>>('createdAt');
+  // Buyer type and delivery state sit behind "More filters": crop is the one a
+  // farmer reaches for, and four rows of chips pushed the first card off the
+  // screen before anything had been filtered.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Which crops, states and buyer types the board actually holds — so a filter
   // can never be picked that returns nothing.
@@ -134,20 +138,28 @@ export default function DemandBoardScreen() {
   }, [load]);
 
   const filtered = crop !== '' || state !== '' || buyerType !== '' || query !== '';
+  const hiddenActive = (buyerType !== '' ? 1 : 0) + (state !== '' ? 1 : 0);
 
   return (
     <View style={styles.flex}>
-      <View style={[styles.head, { paddingTop: insets.top + 12 }]}>
-        <Eyebrow>DEMAND BOARD</Eyebrow>
-        <Text style={styles.title}>
-          {isFarmer ? 'What buyers are asking for.' : "What the market is asking for."}
-        </Text>
-        <Text style={styles.lede}>
-          {isFarmer
-            ? 'Fill one at the posted price, or counter with your own. Partial fills are fine.'
-            : 'Read-only: volume, price and business type across the board. Names are withheld.'}
-        </Text>
-
+      <View style={[styles.head, { paddingTop: insets.top + 8 }]}>
+        {/* The screen hides the navigation header, so it brings its own way
+            back. Without it the board was a dead end on iOS unless you knew
+            to swipe from the edge. */}
+        <View style={styles.topBar}>
+          {nav.canGoBack() ? (
+            <Pressable
+              onPress={() => nav.goBack()}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+            >
+              <IconArrowLeft size={19} stroke={design.ink} />
+            </Pressable>
+          ) : null}
+          <Eyebrow>DEMAND BOARD</Eyebrow>
+        </View>
         <View style={styles.searchBar}>
           <IconSearch size={17} stroke={design.ink3} />
           <TextInput
@@ -173,6 +185,30 @@ export default function DemandBoardScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />
         }
       >
+        <View style={styles.intro}>
+          <Text style={styles.title}>
+            {isFarmer ? 'What buyers are asking for.' : "What the market is asking for."}
+          </Text>
+          <Text style={styles.lede}>
+            {isFarmer
+              ? 'Fill one at the posted price, or counter with your own. Partial fills are fine.'
+              : 'Read-only: volume, price and business type across the board. Names are withheld.'}
+          </Text>
+
+          <View style={styles.stats}>
+            <Stat value={loading ? '…' : String(total)} label={total === 1 ? 'open request' : 'open requests'} />
+            <View style={styles.statDivider} />
+            <Stat value={String(options.crops?.length ?? 0)} label={(options.crops?.length ?? 0) === 1 ? 'crop' : 'crops'} />
+            <View style={styles.statDivider} />
+            {/* Not a "best price": requirements are priced per kilo, quintal
+                or tonne, so the biggest number is just the biggest unit. */}
+            <Stat
+              value={String(options.states?.length ?? 0)}
+              label={(options.states?.length ?? 0) === 1 ? 'state to deliver to' : 'states to deliver to'}
+            />
+          </View>
+        </View>
+
         <ChipRow
           label="SORT"
           items={SORTS.map((s) => ({ value: s.key, label: s.label }))}
@@ -183,7 +219,20 @@ export default function DemandBoardScreen() {
         {options.crops?.length ? (
           <ChipRow label="CROP" items={options.crops.map((c) => ({ value: c, label: c }))} value={crop} onPick={setCrop} />
         ) : null}
-        {options.buyerTypes?.length ? (
+        {options.buyerTypes?.length || options.states?.length ? (
+          <Pressable
+            onPress={() => { glide(); setMoreOpen((o) => !o); }}
+            hitSlop={6}
+            style={styles.moreToggle}
+          >
+            <Text style={styles.moreToggleText}>
+              {moreOpen ? 'Fewer filters' : 'More filters'}
+              {hiddenActive > 0 && !moreOpen ? ` · ${hiddenActive} on` : ''}
+            </Text>
+            <Text style={styles.moreToggleChevron}>{moreOpen ? '▴' : '▾'}</Text>
+          </Pressable>
+        ) : null}
+        {moreOpen && options.buyerTypes?.length ? (
           <ChipRow
             label="BUYER"
             items={options.buyerTypes.map((b) => ({ value: b, label: companyTypeLabel(b) ?? b }))}
@@ -191,7 +240,7 @@ export default function DemandBoardScreen() {
             onPick={setBuyerType}
           />
         ) : null}
-        {options.states?.length ? (
+        {moreOpen && options.states?.length ? (
           <ChipRow label="DELIVER TO" items={options.states.map((s) => ({ value: s, label: s }))} value={state} onPick={setState} />
         ) : null}
 
@@ -244,6 +293,15 @@ export default function DemandBoardScreen() {
           </PressScale>
         ) : null}
       </ScrollView>
+    </View>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <View style={styles.stat}>
+      <Text style={styles.statValue} numberOfLines={1}>{value}</Text>
+      <Text style={styles.statLabel} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
@@ -332,7 +390,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: design.line,
   },
-  title: { fontFamily: font.sansBold, fontSize: 22, letterSpacing: -0.5, color: design.ink, marginTop: 6 },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  backBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line,
+  },
+  backBtnPressed: { backgroundColor: design.paper2 },
+  intro: { marginBottom: 2 },
+  title: { fontFamily: font.sansBold, fontSize: 22, letterSpacing: -0.5, color: design.ink },
+  stats: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.forest, borderRadius: 16,
+    paddingVertical: 12, paddingHorizontal: 14, marginTop: 14,
+  },
+  stat: { flex: 1, minWidth: 0 },
+  statValue: { fontFamily: font.sansBold, fontSize: 17, letterSpacing: -0.3, color: colors.textInverse },
+  statLabel: { fontFamily: font.sans, fontSize: 10.5, color: 'rgba(244,241,234,0.7)', marginTop: 1 },
+  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(244,241,234,0.14)', marginHorizontal: 12 },
+  moreToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 2 },
+  moreToggleText: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
+  moreToggleChevron: { fontSize: 11, color: colors.forest },
   lede: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3, marginTop: 4 },
   searchBar: {
     flexDirection: 'row',

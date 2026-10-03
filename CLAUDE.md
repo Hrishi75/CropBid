@@ -490,6 +490,24 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 
 **`window.confirm` is not the fix either.** Plenty of browser contexts suppress native dialogs; an embedded preview pane returns `false` from `confirm()` immediately without showing anything, which looks exactly like the no-op it replaced. So web queues into `components/AlertHost`, a React modal mounted at the root of `App.tsx`. Native keeps the platform dialog.
 
+### A local shop gets its own, smaller app (2026-10-04)
+
+**A local shop sells to households at a fixed shelf price, so the trade half of the seller app is taken away from it rather than relabelled.** Decided by `farmerProfile.sellerType === 'LOCAL_SHOP'`; farms and wholesalers keep everything.
+
+- **Tabs: Home, My Stock, My Shop, You.** No Offers tab: nothing is bargained over.
+- **My Shop is `screens/shop/ShopHomeScreen`**, not the farm dashboard: a sales board and the household orders to send, grouped by shop order (§3b) so "Mark on the way" and "Mark delivered" move every lot of one delivery together. An unpaid order shows no send button. **The sales figure is summed from paid orders on the client**, because `/transactions/stats` counts only RELEASED money, which needs the shopper's confirmation, so a shop that had delivered read ₹0.
+- **Adding stock is `screens/shop/ShopListingScreen`**: item, price per kg, stock, quality, organic, photos. The one shelf price is sent as floor, ceiling and retail, because the listing model is shared and the server requires all three. The place is the shop's own, never typed per item, and the form warns when that city is not on `RETAIL_CITIES`.
+- **Hidden for a shop:** the demand teaser, the bidding banner, forecast and schemes cards and the sell pitch on Home; offer counts on My Stock; offers, demand and the AI helper on the profile.
+- **Not built:** cancelling a shop order from the app (the website and the server have it), and a shop buying stock for itself, which roles being exclusive (§4) still prevents.
+
+### The rest of the app pass (2026-10-04)
+
+- **Signing in happens on a card that rises from the bottom** (`components/LoginSheet`), from the header's Log in and from a guest pressing ADD or a size, which used to do nothing. It calls the same `signIn` as `LoginScreen`, which still exists.
+- **The bottom tabs are a floating pill** (`navigation/FloatingTabBar`), shared by the shopper and seller bars; the buyer bar is still the old one. It keeps its own space rather than floating over the screen, so no screen has to pad its last row clear of it.
+- **Home scrolls as one page** with the search and category chips sticky, a notification bell with an unread count, and, for a farm or wholesaler, a "Buyers are asking" card leading to the demand board, which also gained a back button.
+- **The shopper and the seller profiles are separate layouts** (`screens/profile/ShopperProfile`, `SellerProfile`); buyers keep the old one. A shopper is shown no trust score; a seller is, and is asked for payout details while none are on file (§4a).
+- **Back buttons show only the arrow**, because iOS labelled them with route names like "ConsumerTabs".
+
 ### Also gone
 
 **Machines & equipment.** Screen, promo card, partner-status chip, five route types and five registrations, all removed.

@@ -66,11 +66,19 @@ export function DeliveryList({
   rows,
   cart,
   onOpen,
+  onGuestPick,
 }: {
   rows: DeliveryRow[];
   /** Null for anyone who is not a signed-in shopper: they read the list, they do not fill it. */
   cart: ((listing: Listing) => DeliveryRowCart) | null;
   onOpen: (listing: Listing) => void;
+  /**
+   * A signed-out visitor tapping a size. Given only for guests, who could
+   * become shoppers, so the chip asks them to log in instead of doing nothing.
+   * Left out for a signed-in farmer or buyer, whose account cannot fill a
+   * basket at all, so their chips stay read-only.
+   */
+  onGuestPick?: (listing: Listing, variant: PackVariant) => void;
 }) {
   if (rows.length === 0) return null;
 
@@ -83,6 +91,7 @@ export function DeliveryList({
           variants={variants}
           cart={cart ? cart(listing) : null}
           onOpen={() => onOpen(listing)}
+          onGuestPick={onGuestPick ? (v) => onGuestPick(listing, v) : undefined}
         />
       ))}
     </View>
@@ -94,11 +103,13 @@ function Row({
   variants,
   cart,
   onOpen,
+  onGuestPick,
 }: {
   listing: Listing;
   variants: PackVariant[];
   cart: DeliveryRowCart | null;
   onOpen: () => void;
+  onGuestPick?: (variant: PackVariant) => void;
 }) {
   const photo = listingImage(listing);
   // `Unit` is KG | QUINTAL | TONNE; there is no LITRE on a listing, so a litre
@@ -132,8 +143,9 @@ function Row({
         </View>
       </PressScale>
 
-      {/* The sizes. Read-only for a guest or a trader: the chips are the buy
-          control, so without a basket there is nothing for them to be. */}
+      {/* The sizes. They are the buy control: a shopper's add to the basket,
+          a guest's open the log-in card, and a trader's are read-only because
+          their account has no basket to add to. */}
       {cart ? (
         inCart > 0 ? (
           <View style={styles.inBasket}>
@@ -163,6 +175,17 @@ function Row({
             ))}
           </View>
         )
+      ) : onGuestPick ? (
+        <View style={styles.skus}>
+          {variants.map((v) => (
+            <SkuChip
+              key={v.label}
+              variant={v}
+              currency={listing.currency}
+              onPress={() => onGuestPick(v)}
+            />
+          ))}
+        </View>
       ) : (
         <View style={styles.skus}>
           {variants.map((v) => (

@@ -53,6 +53,7 @@ import AboutScreen from '../screens/profile/AboutScreen';
 import NotificationPrefsScreen from '../screens/profile/NotificationPrefsScreen';
 import PolicyScreen from '../screens/profile/PolicyScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
+import ShopHomeScreen from '../screens/shop/ShopHomeScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
 import MyRequirementsScreen from '../screens/buyer/MyRequirementsScreen';
@@ -90,7 +91,13 @@ const RootStack = createNativeStackNavigator<RootStackParamList>();
 function BuyerNavigator() {
   const { t } = useTranslation();
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+    <RootStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -172,7 +179,13 @@ function FarmerTabs() {
   const { t } = useTranslation();
   // A kirana store's tabs should not say "My Crops" and "My Farm". The labels
   // come off sellerType, which the server has always sent. See lib/sellerType.
-  const words = sellerWords(useAuth().user);
+  const { user } = useAuth();
+  const words = sellerWords(user);
+  // A local shop sells to households at its shelf price, so nothing is
+  // bargained over: no Offers tab, and My Shop is its own dashboard of sales
+  // and orders to send (screens/shop). Farms and wholesalers keep the trade
+  // tabs.
+  const isShop = user?.farmerProfile?.sellerType === 'LOCAL_SHOP';
   return (
     <FarmerTab.Navigator
       screenOptions={{ headerShown: false }}
@@ -180,8 +193,14 @@ function FarmerTabs() {
     >
       <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
       <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: t(words.stockTab) }} />
-      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
-      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: t(words.homeTab) }} />
+      {isShop ? null : (
+        <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
+      )}
+      <FarmerTab.Screen
+        name="Farm"
+        component={isShop ? ShopHomeScreen : FarmerHomeScreen}
+        options={{ title: t(words.homeTab) }}
+      />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </FarmerTab.Navigator>
   );
@@ -191,7 +210,13 @@ const FarmerStack = createNativeStackNavigator<FarmerStackParamList>();
 function FarmerNavigator() {
   const { t } = useTranslation();
   return (
-    <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
+    <FarmerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -289,7 +314,15 @@ const ConsumerStack = createNativeStackNavigator<ConsumerStackParamList>();
 function ConsumerNavigator() {
   const { t } = useTranslation();
   return (
-    <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
+    <ConsumerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Arrow only on the back button. iOS otherwise labels it with the
+        // previous route's NAME, which on a screen pushed over the tabs is an
+        // internal identifier ("ConsumerTabs", "GuestHome"), not a word.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
       {/* One local shop's counter. Pushed over the tabs rather than taking one:
           a shopper goes to a shop and comes back, they do not live in it. */}
@@ -397,7 +430,13 @@ const PartnerStack = createNativeStackNavigator<PartnerStackParamList>();
 function PartnerNavigator() {
   const { t } = useTranslation();
   return (
-    <PartnerStack.Navigator screenOptions={{ headerShown: false }}>
+    <PartnerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <PartnerStack.Screen name="PartnerStatus" component={PartnerStatusScreen} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -453,7 +492,15 @@ const GuestStack = createNativeStackNavigator<GuestStackParamList>();
 function GuestNavigator() {
   const { t } = useTranslation();
   return (
-    <GuestStack.Navigator screenOptions={{ headerShown: false }}>
+    <GuestStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        // Arrow only on the back button. iOS otherwise labels it with the
+        // previous route's NAME, which on a screen pushed over the tabs is an
+        // internal identifier ("ConsumerTabs", "GuestHome"), not a word.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
       {/* Open to guests: the shelf is public and the gate is at the basket, not
           the window. ShelfCard renders the ADD button only for a signed-in

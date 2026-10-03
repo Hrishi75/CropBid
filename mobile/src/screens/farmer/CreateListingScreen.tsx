@@ -33,6 +33,7 @@ import type { FarmerStackParamList } from '../../navigation/types';
 import { money, unitLabel } from '../../lib/format';
 import { mspForCrop } from '../../lib/msp';
 import { CROP_CATEGORIES } from '../../lib/crops';
+import ShopListingScreen from '../shop/ShopListingScreen';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -55,7 +56,16 @@ const GRADES: { v: string; label: string }[] = [
 
 type Props = NativeStackScreenProps<FarmerStackParamList, 'CreateListing'>;
 
-export default function CreateListingScreen({ route, navigation }: Props) {
+// A local shop gets its own, shorter form: one price, by the kilo, sold from
+// its own shop (screens/shop/ShopListingScreen). Farms and wholesalers keep
+// this one.
+export default function CreateListingScreen(props: Props) {
+  const { user } = useAuth();
+  if (user?.farmerProfile?.sellerType === 'LOCAL_SHOP') return <ShopListingScreen {...props} />;
+  return <FarmListingScreen {...props} />;
+}
+
+function FarmListingScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const editId = route.params?.id;

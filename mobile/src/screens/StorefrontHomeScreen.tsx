@@ -44,21 +44,24 @@ import {
 } from 'react-native';
 import { Alert } from '../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useScrollToTop } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { IconSearch } from '../components/icons';
+import { IconChevR, IconClock, IconPin, IconSearch, IconSprout } from '../components/icons';
 import { Mono } from '../components/buyerKit';
 import { LanguagePill } from '../components/LanguagePicker';
 import { WalletPill } from '../components/WalletPill';
 import { FreshBanner } from '../components/FreshBanner';
 import { ShopCard } from '../components/ShopCard';
 import { DeliveryList } from '../components/DeliveryList';
+import { DemandTeaser } from '../components/DemandTeaser';
+import { NotificationBell } from '../components/NotificationBell';
+import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
+import { cropEmojiFor, cropImageFor, listingImage } from '../utils/cropImages';
 import { Wordmark } from '../components/marks';
 import { FadeInImage, PressScale, Pulse, glide } from '../components/motion';
 import { colors, design, font } from '../theme';
 import { browse, retailCities, retailShops, updateLocation } from '../api/endpoints';
 import api, { errorMessage, mediaUrl } from '../api/client';
-import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
 import { sellerWords } from '../lib/sellerType';
 import { useCart, type CartPack } from '../context/CartContext';
@@ -183,7 +186,9 @@ function fromListing(l: Listing): CardVM {
     state: l.state,
     grade: l.qualityGrade,
     organic: l.organic,
-    trust: l.farmer?.user?.trustScore ?? null,
+    // Rounded here, once. The raw score is a float, and the card printed it
+    // whole: "★ 89.0658348402632 · LIVE LOT" over two lines.
+    trust: l.farmer?.user?.trustScore != null ? Math.round(l.farmer.user.trustScore) : null,
     low: l.quantity > 0 && l.remainingQuantity / l.quantity <= 0.25,
   };
 }
@@ -240,6 +245,9 @@ function pctOff(price: number, anchor: number): number {
 export default function StorefrontHomeScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  // Pressing the Home tab while already on Home scrolls back to the top.
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTop(scrollRef);
   const nav = useNavigation<any>();
   const { user, applyUser } = useAuth();
   const { add, quantityOf, setQuantity, remove, count: cartCount } = useCart();
@@ -254,8 +262,14 @@ export default function StorefrontHomeScreen() {
   // session. A signed-in shopper's comes off User.location, which the checkout
   // reads as the delivery default.
   const [guestCity, setGuestCity] = useState('');
+  const [citiesLoaded, setCitiesLoaded] = useState(false);
   const [savingCity, setSavingCity] = useState('');
   const [changingCity, setChangingCity] = useState(false);
+  // The log-in card: from the header's Log in (no item, straight to the form)
+  // or from a guest's ADD or size (the item they tapped). The item outlives
+  // `open` so the card keeps its content while it slides away.
+  const [askItem, setAskItem] = useState<LoginSheetItem | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
   // WHICH HALF OF THE SHELF. Local shops hold stock a few streets away and send
   // it round today; Fresh is the farm side, bought at tomorrow's mandi and
   // delivered next morning. Two genuinely different supply lines, so the
@@ -269,6 +283,10 @@ export default function StorefrontHomeScreen() {
 
   const role = user?.role;
   const isFarmer = role === 'FARMER';
+  // A local shop sells to households only, so the trade pieces of this screen
+  // (buyer demand, the bidding banner, sell-or-hold forecasts, farm schemes)
+  // are left out for it.
+  const isShop = isFarmer && user?.farmerProfile?.sellerType === 'LOCAL_SHOP';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
@@ -279,7 +297,16 @@ export default function StorefrontHomeScreen() {
   // Whoever is being sold a pack is also being promised a delivery, so the
   // shelf they see has to be one they can actually be delivered from.
   const city = shopping ? (user ? (user.location?.trim() ?? '') : guestCity) : '';
-  const needsCity = shopping && (city === '' || changingCity);
+  // Read off the served-city list rather than stored, so it can only name a
+  // state that city is actually listed under. Blank until that list arrives.
+  const servedCity = cities.find((c) => c.city.toLowerCase() === city.toLowerCase());
+  const cityState = servedCity?.state ?? '';
+  // A saved city CropBid no longer delivers to (Pune, from 2026-10-03) sends
+  // the shopper back to the picker instead of an empty shelf they cannot order
+  // from. Only once the list has arrived with something in it: before then, or
+  // when nothing is on sale anywhere, there is no list to judge the city by.
+  const cityDropped = city !== '' && citiesLoaded && cities.length > 0 && !servedCity;
+  const needsCity = shopping && (city === '' || changingCity || cityDropped);
 
   // Which cities can be served at all — needed before any produce is fetched
   // for a shopper, and again whenever they want to change city.
@@ -287,7 +314,7 @@ export default function StorefrontHomeScreen() {
     if (!shopping) return;
     let on = true;
     retailCities()
-      .then((rows) => { if (on) setCities(rows); })
+      .then((rows) => { if (on) { setCities(rows); setCitiesLoaded(true); } })
       .catch(() => { if (on) setCities([]); });
     return () => { on = false; };
   }, [shopping]);
@@ -497,6 +524,26 @@ export default function StorefrontHomeScreen() {
     };
   };
 
+  // The ADD a guest gets: the same lots a shopper could add (one seller, open
+  // for direct sale), but it opens the log-in card instead of the basket.
+  const guestAddFor = (v: CardVM) => {
+    const l = v.listing;
+    if (user || !shopping || v.sellers > 1 || !l || !l.directSaleEnabled || l.retailPricePerUnit == null) {
+      return undefined;
+    }
+    return () => askToLogIn({
+      name: v.name,
+      size: v.pack ? v.pack.label : `1 ${unitLabel(l.unit)}`,
+      price: money(v.pack ? v.pack.price : l.retailPricePerUnit!, l.currency),
+      image: listingImage(l),
+    });
+  };
+
+  const askToLogIn = (item: LoginSheetItem) => {
+    setAskItem(item);
+    setAskOpen(true);
+  };
+
   const pickCategory = (target: RailId | null) => {
     glide();
     setCategory(target);
@@ -524,74 +571,95 @@ export default function StorefrontHomeScreen() {
 
   return (
     <View style={styles.flex}>
-      {/* fixed top block — ticker + wordmark + search + chips, like the web's
-          sticky header */}
-      <View style={{ paddingTop: insets.top, backgroundColor: colors.forest }}>
-        <TickerStrip board={board} />
-      </View>
-      <View style={styles.header}>
-        <View style={styles.headerRow}>
-          <Wordmark size={19} />
-          <View style={styles.headerRight}>
-            {/* Renders nothing when signed out: a zero balance on an account
-                that does not exist is not a fact about anything. */}
-            <WalletPill />
-            <LanguagePill />
-            {user ? (
-              <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
-                {user.avatar ? (
-                  <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
-                ) : (
-                  <Text style={styles.avatarLetter}>{(user.name?.[0] ?? '·').toUpperCase()}</Text>
-                )}
-              </PressScale>
-            ) : (
-              <PressScale onPress={() => nav.navigate('Login')} cardStyle={styles.loginPill}>
-                <Text style={styles.loginPillText}>{t('Log in')}</Text>
-              </PressScale>
-            )}
-          </View>
-        </View>
+      {/* The status bar sits on a fixed forest strip, so whatever scrolls
+          up beneath it never runs under the clock and the notch. */}
+      <View style={{ height: insets.top, backgroundColor: colors.forest, zIndex: 2 }} />
 
-        <View style={styles.searchBar}>
-          <IconSearch size={17} stroke={design.ink3} />
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={(t) => { glide(); setSearch(t); }}
-            placeholder=""
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-          {search === '' ? <RotatingHint /> : null}
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsPad}>
-          {CHIPS.map((c) => (
-            <Chip
-              key={c.label}
-              label={c.label}
-              selected={category === c.target}
-              onPress={() => pickCategory(c.target)}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
+      {/* ONE SCROLL, WITH A STICKY SEARCH. The ticker and the logo row scroll
+          away with the page, and the search bar and category chips pin to the
+          top (stickyHeaderIndices). They used to be fixed, all four of them,
+          and held about a third of the screen while only the rest scrolled. */}
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[1]}
         contentContainerStyle={{ paddingBottom: cartCount > 0 ? 96 : 28 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
       >
+        <View style={styles.topBlock}>
+          <TickerStrip board={board} />
+          <View style={styles.headerRow}>
+            <Wordmark size={19} />
+            <View style={styles.headerRight}>
+              {/* Renders nothing when signed out: a zero balance on an account
+                  that does not exist is not a fact about anything. */}
+              <WalletPill />
+              <LanguagePill />
+              <NotificationBell />
+              {user ? (
+                <PressScale onPress={() => nav.navigate('You')} cardStyle={styles.avatar}>
+                  {user.avatar ? (
+                    <FadeInImage uri={mediaUrl(user.avatar)!} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={styles.avatarLetter}>{(user.name?.[0] ?? '·').toUpperCase()}</Text>
+                  )}
+                </PressScale>
+              ) : (
+                <PressScale onPress={() => { setAskItem(null); setAskOpen(true); }} cardStyle={styles.loginPill}>
+                  <Text style={styles.loginPillText}>{t('Log in')}</Text>
+                </PressScale>
+              )}
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.stickyBar}>
+          <View style={styles.searchBar}>
+            <IconSearch size={17} stroke={design.ink3} />
+            <TextInput
+              style={styles.searchInput}
+              value={search}
+              onChangeText={(t) => { glide(); setSearch(t); }}
+              placeholder=""
+              autoCapitalize="none"
+              returnKeyType="search"
+            />
+            {search === '' ? <RotatingHint /> : null}
+          </View>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsPad}>
+            {CHIPS.map((c) => (
+              <Chip
+                key={c.label}
+                label={c.label}
+                selected={category === c.target}
+                onPress={() => pickCategory(c.target)}
+              />
+            ))}
+          </ScrollView>
+        </View>
+
+        <View>
         {error ? <Text style={styles.errorLine}>{error}</Text> : null}
 
+        {/* Where the basket goes, as one tappable row rather than a sentence
+            with a small "change" link at the far edge: the whole bar is the
+            target, so changing city is never a hunt. */}
         {shopping && !needsCity ? (
-          <View style={styles.cityBar}>
-            <Text style={styles.cityBarText}>Delivering to {city}</Text>
-            <PressScale onPress={() => setChangingCity(true)} scaleTo={0.94}>
-              <Text style={styles.cityBarChange}>change</Text>
-            </PressScale>
-          </View>
+          <PressScale onPress={() => setChangingCity(true)} scaleTo={0.98} style={styles.cityBarWrap} cardStyle={styles.cityBar}>
+            <View style={styles.cityBarIcon}>
+              <IconPin size={17} stroke={colors.forest} />
+            </View>
+            <View style={styles.grow}>
+              <Mono style={styles.cityBarEyebrow}>DELIVERING TO</Mono>
+              <Text style={styles.cityBarText} numberOfLines={1}>
+                {city}
+                {cityState ? <Text style={styles.cityBarState}>, {cityState}</Text> : null}
+              </Text>
+            </View>
+            <Text style={styles.cityBarChange}>Change</Text>
+            <IconChevR size={11} stroke={colors.forest} />
+          </PressScale>
         ) : null}
 
         {/* TWO SUPPLY LINES, PICKED RATHER THAN DISCOVERED. Local shops hold
@@ -605,6 +673,7 @@ export default function StorefrontHomeScreen() {
         {shopping && !needsCity ? (
           <View style={styles.laneBar}>
             <LaneTab
+              icon="shops"
               label={t('Local shops')}
               sub={t('Today')}
               count={localShops.length}
@@ -612,6 +681,7 @@ export default function StorefrontHomeScreen() {
               onPress={() => { glide(); setLane('shops'); }}
             />
             <LaneTab
+              icon="fresh"
               label={t('Fresh')}
               sub={t('Tomorrow AM')}
               count={items.length}
@@ -630,23 +700,36 @@ export default function StorefrontHomeScreen() {
           /* Asked before any produce is shown. An order that cannot be
              delivered is worse than an empty shop, so the city comes first. */
           <View style={styles.cityGate}>
-            <Mono style={styles.cityGateEyebrow}>DELIVERY</Mono>
-            <Text style={styles.cityGateTitle}>Where should we deliver?</Text>
-            <Text style={styles.cityGateBody}>
-              Fresh produce travels short distances. Pick your city and we'll show
-              you the farms that can actually reach you.
-            </Text>
-            {cities.length === 0 ? (
-              <Text style={styles.cityGateNote}>
-                No farm is selling direct anywhere yet. Check back shortly — growers
-                open lots for retail as they harvest.
+            <View style={styles.cityGateCard}>
+              <View style={styles.cityGateIcon}>
+                <IconPin size={22} stroke={colors.forest} />
+              </View>
+              <Mono style={styles.cityGateEyebrow}>DELIVERY</Mono>
+              <Text style={styles.cityGateTitle}>Where should we deliver?</Text>
+              {cityDropped ? (
+                <Text style={styles.cityGateDropped}>
+                  We don't deliver to homes in {city} at the moment. Pick a city
+                  we serve to see what can reach you.
+                </Text>
+              ) : null}
+              {/* Shops and farms, not "farms": most of what a household is
+                  shown is a local shop's counter, which is not a farm. */}
+              <Text style={styles.cityGateBody}>
+                Fresh produce travels short distances. Pick your city and we'll
+                show you the shops and farms that can actually reach you.
               </Text>
-            ) : (
-              <CityRow cities={cities} current={city} saving={savingCity} onPick={chooseCity} />
-            )}
-            {city ? (
-              <PressScale onPress={() => setChangingCity(false)} scaleTo={0.94}>
-                <Text style={styles.cityGateCancel}>Cancel</Text>
+              {cities.length === 0 ? (
+                <Text style={styles.cityGateNote}>
+                  Nobody is selling for home delivery yet. Check back shortly:
+                  shops and farms open their shelves as stock comes in.
+                </Text>
+              ) : (
+                <CityList cities={cities} current={city} saving={savingCity} onPick={chooseCity} />
+              )}
+            </View>
+            {city && !cityDropped ? (
+              <PressScale onPress={() => setChangingCity(false)} scaleTo={0.94} style={styles.cityGateCancelWrap}>
+                <Text style={styles.cityGateCancel}>Keep {city}</Text>
               </PressScale>
             ) : null}
           </View>
@@ -685,44 +768,82 @@ export default function StorefrontHomeScreen() {
           </View>
         ) : browsing ? (
           <>
+            {/* What buyers are asking for, first, for a farmer: it is work they
+                can win today, and the board was otherwise only reachable from
+                the bottom of My Farm. */}
+            {isFarmer && !isShop ? <DemandTeaser onOpen={() => nav.navigate('Demand')} /> : null}
+
             {/* hero banner — the web banner with the mandi photo */}
-            <View style={styles.banner}>
-              <Image source={require('../../assets/mandi.jpg')} style={styles.bannerImg} resizeMode="cover" />
-              <View style={styles.bannerShade} />
-              <View style={styles.bannerContent}>
-                <View style={styles.bannerChip}>
-                  <Pulse style={styles.liveDot} />
-                  <Mono style={styles.bannerChipText}>
-                    {listings.length > 0
-                      ? `LIVE · ${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
-                      : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
-                  </Mono>
-                </View>
-                <Text style={styles.bannerTitle}>
-                  Farm-fresh crops,{'\n'}
-                  <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
-                </Text>
-                <View style={styles.bannerTicks}>
-                  <Text style={styles.bannerTick}>✓ {t('Open bidding & auctions')}</Text>
-                  <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
-                  <Text style={styles.bannerTick}>✓ {t('Farm to door')}</Text>
+            {!isShop ? (
+              <View style={styles.banner}>
+                <Image source={require('../../assets/mandi.jpg')} style={styles.bannerImg} resizeMode="cover" />
+                <View style={styles.bannerShade} />
+                <View style={styles.bannerContent}>
+                  <View style={styles.bannerChip}>
+                    <Pulse style={styles.liveDot} />
+                    <Mono style={styles.bannerChipText}>
+                      {listings.length > 0
+                        ? `LIVE · ${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                        : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
+                    </Mono>
+                  </View>
+                  <Text style={styles.bannerTitle}>
+                    Farm-fresh crops,{'\n'}
+                    <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
+                  </Text>
+                  <View style={styles.bannerTicks}>
+                    <Text style={styles.bannerTick}>✓ {t('Open bidding & auctions')}</Text>
+                    <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
+                    <Text style={styles.bannerTick}>✓ {t('Farm to door')}</Text>
+                  </View>
                 </View>
               </View>
-            </View>
+            ) : null}
 
             {/* today's live mandi rates — the shared price anchor, up front */}
             <RatesRail board={board} onSeeAll={() => nav.navigate('Rates')} />
 
             {/* promo rail — the web's sage/paper/ember cards */}
+            {/* A shop has one card here, so it runs full width rather than
+                sitting half-empty in a rail. */}
+            {isShop ? (
+              <View style={styles.promoSolo}>
+                <PromoCard
+                  wide
+                  tone="ember"
+                  emoji="🌾"
+                  title={t(sellerWords(user).listCta)}
+                  desc={t('Put an item on your shelf for households in your city.')}
+                  onPress={onSell}
+                />
+              </View>
+            ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoPad}>
+              {/* A seller's first card is the thing they came to do. Worded by
+                  seller kind (lib/sellerType), so a shop is not told to list a
+                  harvest. */}
+              {isFarmer ? (
+                <PromoCard
+                  tone="ember"
+                  emoji="🌾"
+                  title={t(sellerWords(user).listCta)}
+                  desc={t("Put a lot in front of buyers, priced against today's mandi rate.")}
+                  onPress={onSell}
+                />
+              ) : null}
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
-              <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t('Household packs at the farmer’s own price.')} />
-              <PromoCard tone="ember" emoji="🛡️" title={t('Escrow protected')} desc={t('Money stays held on-platform until the crop reaches you.')} />
+              {/* Household packs are a shopper's offer; a farmer or a bulk
+                  buyer is not buying by the pack. */}
+              {shopping ? (
+                <PromoCard tone="paper" emoji="🧺" title={t('Buy direct, no bidding')} desc={t('Household packs at the farmer’s own price.')} />
+              ) : null}
             </ScrollView>
+            )}
 
             {/* shop by category — web's tile row */}
-            <Text style={styles.sectionTitle}>{t('Shop by category')}</Text>
+            {/* A farmer or a buyer is browsing the market, not shopping. */}
+            <Text style={styles.sectionTitle}>{shopping ? t('Shop by category') : t('Browse by category')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
               {CATEGORY_TILES.map((c) => (
                 <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
@@ -772,7 +893,7 @@ export default function StorefrontHomeScreen() {
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
                     {railItems.map((v) => (
-                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
+                      <ProductCard key={v.key} vm={v} width={164} action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onGuestAdd={guestAddFor(v)} onPress={() => openCard(v)} />
                     ))}
                   </ScrollView>
                 </View>
@@ -798,39 +919,54 @@ export default function StorefrontHomeScreen() {
                   rows={deliverable}
                   cart={isConsumer ? deliveryCart : null}
                   onOpen={(l) => nav.navigate('ListingDetail', { id: l.id, preview: l })}
+                  onGuestPick={user ? undefined : (l, v) => askToLogIn({
+                    name: l.cropName,
+                    size: v.label,
+                    price: money(v.price, l.currency),
+                    image: listingImage(l),
+                  })}
                 />
               </>
             ) : null}
 
-            {/* how it works — compact strip + sell CTA, like the web footer run */}
-            <Text style={styles.sectionTitle}>How CropBid works</Text>
-            <View style={styles.howWrap}>
-              {[
-                ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
-                ['02', 'You buy at their price', 'A pack for the week or a whole lot — the price you see is the farmer\'s own.'],
-                ['03', 'Escrow keeps it safe', 'Money held on-platform; released when you confirm delivery.'],
-              ].map(([n, t, d]) => (
-                <View key={n} style={styles.howStep}>
-                  <Mono style={styles.howN}>{n}</Mono>
-                  <Text style={styles.howT}>{t}</Text>
-                  <Text style={styles.howD}>{d}</Text>
+            {/* how it works — compact strip + sell CTA, like the web footer run.
+                Not for a farmer: they already sell here, and the steps are
+                written from the buyer's side ("You buy at their price"). */}
+            {!isFarmer ? (
+              <>
+                <Text style={styles.sectionTitle}>How CropBid works</Text>
+                <View style={styles.howWrap}>
+                  {[
+                    ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
+                    ['02', 'You buy at their price', 'A pack for the week or a whole lot — the price you see is the farmer\'s own.'],
+                    ['03', 'Escrow keeps it safe', 'Money held on-platform; released when you confirm delivery.'],
+                  ].map(([n, t, d]) => (
+                    <View key={n} style={styles.howStep}>
+                      <Mono style={styles.howN}>{n}</Mono>
+                      <Text style={styles.howT}>{t}</Text>
+                      <Text style={styles.howD}>{d}</Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
-            </View>
+              </>
+            ) : null}
 
-            <View style={styles.sellCta}>
-              <Text style={styles.sellTitle}>
-                Grow it? <Text style={styles.sellItalic}>Sell it here.</Text>
-              </Text>
-              <Text style={styles.sellDesc}>
-                {isFarmer
-                  ? 'List your harvest in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'
-                  : 'Registered farmers list in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'}
-              </Text>
-              <PressScale onPress={onSell} cardStyle={styles.sellBtn}>
-                <Text style={styles.sellBtnText}>{isFarmer ? sellerWords(user).listCta : 'Become a seller'}</Text>
-              </PressScale>
-            </View>
+            {/* A shop is already selling here; the pitch is for everyone else. */}
+            {!isShop ? (
+              <View style={styles.sellCta}>
+                <Text style={styles.sellTitle}>
+                  Grow it? <Text style={styles.sellItalic}>Sell it here.</Text>
+                </Text>
+                <Text style={styles.sellDesc}>
+                  {isFarmer
+                    ? 'List your harvest in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'
+                    : 'Registered farmers list in two minutes and keep the margin — no mandi trips, priced to today\'s live rates.'}
+                </Text>
+                <PressScale onPress={onSell} cardStyle={styles.sellBtn}>
+                  <Text style={styles.sellBtnText}>{isFarmer ? sellerWords(user).listCta : 'Become a seller'}</Text>
+                </PressScale>
+              </View>
+            ) : null}
 
           </>
         ) : (
@@ -842,7 +978,7 @@ export default function StorefrontHomeScreen() {
             {results.length > 0 ? (
               <View style={styles.grid}>
                 {results.map((v) => (
-                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onPress={() => openCard(v)} />
+                  <ProductCard key={v.key} vm={v} grid action={actionLabel} liveWord={liveWord} shopping={shopping} cart={cartFor(v)} onGuestAdd={guestAddFor(v)} onPress={() => openCard(v)} />
                 ))}
               </View>
             ) : (
@@ -867,6 +1003,7 @@ export default function StorefrontHomeScreen() {
           <FooterLink label="Terms" onPress={() => nav.navigate('Policy', { kind: 'terms' })} />
         </View>
         <Mono style={styles.footerNote}>CROPBID · INDIA</Mono>
+        </View>
       </ScrollView>
 
       {/* The running basket, riding the bottom of the shelf. This screen is a
@@ -874,6 +1011,14 @@ export default function StorefrontHomeScreen() {
           to measure — hence overTabBar. It renders nothing for anyone but a
           shopper with something in it. */}
       <CartBar overTabBar />
+
+      <LoginSheet
+        item={askItem}
+        visible={askOpen}
+        onClose={() => setAskOpen(false)}
+        onForgot={() => nav.navigate('ForgotPassword')}
+        onSignup={() => nav.navigate('Signup')}
+      />
     </View>
   );
 }
@@ -894,24 +1039,81 @@ function FooterLink({ label, onPress }: { label: string; onPress: () => void }) 
  * shopper tap it just to find out there is nothing there.
  */
 function LaneTab({
-  label, sub, count, on, onPress,
-}: { label: string; sub: string; count: number; on: boolean; onPress: () => void }) {
+  icon, label, sub, count, on, onPress,
+}: {
+  icon: 'shops' | 'fresh';
+  label: string;
+  sub: string;
+  count: number;
+  on: boolean;
+  onPress: () => void;
+}) {
+  const tint = on ? colors.surface : colors.forest;
   return (
-    <PressScale onPress={onPress} scaleTo={0.97} cardStyle={[styles.laneTab, on && styles.laneTabOn]}>
-      <View style={styles.laneTabTop}>
-        <Text style={[styles.laneTabLabel, on && styles.laneTabLabelOn]} numberOfLines={1}>
-          {label}
-        </Text>
-        {/* A badge, not a loose digit. "Local shops" fills the tab, so
-            space-between had nothing left to distribute and the number ended up
-            flush against the final "s". A pill reads as a count at any label
-            length and cannot collide with the word. */}
-        <View style={[styles.laneTabBadge, on && styles.laneTabBadgeOn]}>
-          <Mono style={[styles.laneTabCount, on && styles.laneTabCountOn]}>{String(count)}</Mono>
-        </View>
+    // flex:1 on the Pressable as well as the card. PressScale puts cardStyle on
+    // the inner animated view, so with flex on the card alone the Pressable
+    // hugged its content and the label (itself flex:1) collapsed to nothing:
+    // "Local shops" rendered as a bare cursor-thin line beside its count.
+    <PressScale onPress={onPress} scaleTo={0.97} style={styles.grow} cardStyle={[styles.laneTab, on && styles.laneTabOn]}>
+      <View style={[styles.laneTabIcon, on && styles.laneTabIconOn]}>
+        {icon === 'shops' ? <IconClock size={16} stroke={tint} /> : <IconSprout size={16} stroke={tint} />}
       </View>
-      <Mono style={[styles.laneTabSub, on && styles.laneTabCountOn]}>{sub.toUpperCase()}</Mono>
+      <View style={styles.grow}>
+        <View style={styles.laneTabTop}>
+          <Text style={[styles.laneTabLabel, on && styles.laneTabLabelOn]} numberOfLines={1}>
+            {label}
+          </Text>
+          {/* A badge, not a loose digit: a pill reads as a count at any label
+              length and cannot collide with the word. */}
+          <View style={[styles.laneTabBadge, on && styles.laneTabBadgeOn]}>
+            <Mono style={[styles.laneTabCount, on && styles.laneTabCountOn]}>{String(count)}</Mono>
+          </View>
+        </View>
+        <Mono style={[styles.laneTabSub, on && styles.laneTabSubOn]}>
+          {sub.toUpperCase()}
+        </Mono>
+      </View>
     </PressScale>
+  );
+}
+
+// The city gate's picker: one full-width row per served city. Bigger targets
+// than the pills, and room to say which city is the current one.
+function CityList({
+  cities, current, saving, onPick,
+}: {
+  cities: Array<{ city: string; state: string }>;
+  current: string;
+  saving: string;
+  onPick: (city: string) => void;
+}) {
+  return (
+    <View style={styles.cityList}>
+      {cities.map((c) => {
+        const on = current.toLowerCase() === c.city.toLowerCase();
+        return (
+          <PressScale
+            key={`${c.city}-${c.state}`}
+            onPress={() => onPick(c.city)}
+            scaleTo={0.98}
+            cardStyle={[styles.cityRow, on && styles.cityRowOn]}
+          >
+            <View style={[styles.cityRowIcon, on && styles.cityRowIconOn]}>
+              <IconPin size={16} stroke={on ? colors.surface : colors.forest} />
+            </View>
+            <View style={styles.grow}>
+              <Text style={[styles.cityRowName, on && styles.cityRowNameOn]}>
+                {saving === c.city ? 'Saving…' : c.city}
+              </Text>
+              <Mono style={[styles.cityRowState, on && styles.cityRowStateOn]}>
+                {on ? `${c.state.toUpperCase()} · CURRENT` : c.state.toUpperCase()}
+              </Mono>
+            </View>
+            <IconChevR size={12} stroke={on ? colors.surface : design.ink3} />
+          </PressScale>
+        );
+      })}
+    </View>
   );
 }
 
@@ -1079,16 +1281,18 @@ function CityRow({
 }
 
 function PromoCard({
-  tone, emoji, title, desc, onPress,
+  tone, emoji, title, desc, onPress, wide,
 }: {
   tone: 'sage' | 'paper' | 'ember';
   emoji: string;
   title: string;
   desc: string;
   onPress?: () => void;
+  /** Full width, for when it is the only card and a rail would leave a gap. */
+  wide?: boolean;
 }) {
   const body = (
-    <View style={[styles.promo, styles[`promo_${tone}`]]}>
+    <View style={[styles.promo, styles[`promo_${tone}`], wide && styles.promoWide]}>
       <Text style={styles.promoEmoji}>{emoji}</Text>
       <Text style={styles.promoTitle}>{title}</Text>
       <Text style={styles.promoDesc}>{desc}</Text>
@@ -1133,7 +1337,7 @@ interface CardCart {
 // overlaid, live line, name, meta, stock, price + struck anchor + the ADD
 // control (or, once the lot is in the basket, the stepper that replaces it).
 function ProductCard({
-  vm, onPress, width, grid, action, liveWord, shopping, cart,
+  vm, onPress, width, grid, action, liveWord, shopping, cart, onGuestAdd,
 }: {
   vm: CardVM;
   onPress: () => void;
@@ -1143,6 +1347,8 @@ function ProductCard({
   liveWord: string;
   shopping: boolean;
   cart?: CardCart;
+  /** A signed-out visitor pressing ADD: asks them to log in. Guests only. */
+  onGuestAdd?: () => void;
 }) {
   const pack = vm.pack;
   // Off the same pair of numbers the card prints below — a grouped card can
@@ -1166,7 +1372,7 @@ function ProductCard({
           <FadeInImage uri={img} style={styles.cardPhoto} />
         ) : (
           <View style={[styles.cardPhoto, styles.photoEmpty]}>
-            <Text style={styles.photoEmoji}>{vm.emoji ?? vm.name[0]}</Text>
+            <Text style={styles.photoEmoji}>{vm.emoji ?? cropEmojiFor(vm.name)}</Text>
           </View>
         )}
         {pct > 0 ? (
@@ -1239,6 +1445,18 @@ function ProductCard({
             >
               <Text style={styles.buyBtnText}>ADD</Text>
             </Pressable>
+          ) : onGuestAdd ? (
+            // A guest's ADD is a real button that asks them to log in, rather
+            // than a label that falls through to opening the lot: they pressed
+            // ADD, so the answer is about adding.
+            <Pressable
+              onPress={onGuestAdd}
+              hitSlop={6}
+              accessibilityLabel={`Add ${vm.name} to cart`}
+              style={styles.buyBtn}
+            >
+              <Text style={styles.buyBtnText}>ADD</Text>
+            </Pressable>
           ) : (
             <View style={styles.buyBtn}>
               <Text style={styles.buyBtnText}>{label}</Text>
@@ -1261,6 +1479,7 @@ function ProductCard({
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
+  grow: { flex: 1 },
 
   // ticker — forest marquee strip
   ticker: { backgroundColor: colors.forest, paddingVertical: 6, overflow: 'hidden' },
@@ -1271,7 +1490,8 @@ const styles = StyleSheet.create({
   tickDelta: { fontSize: 9 },
 
   // header — cream, like the web's sticky header
-  header: {
+  topBlock: { backgroundColor: design.bg },
+  stickyBar: {
     backgroundColor: design.bg,
     borderBottomWidth: 1,
     borderBottomColor: design.line,
@@ -1286,27 +1506,42 @@ const styles = StyleSheet.create({
   },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
-  laneBar: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
-  laneTab: {
-    flex: 1,
-    backgroundColor: design.paper,
-    borderWidth: 1, borderColor: design.line, borderRadius: 12,
-    paddingHorizontal: 13, paddingVertical: 11,
+  // One segmented control, not two loose cards: the two lanes are a choice
+  // between alternatives, and a shared track says so.
+  laneBar: {
+    flexDirection: 'row', gap: 4,
+    marginHorizontal: 16, marginTop: 10, padding: 4,
+    backgroundColor: design.paper2, borderRadius: 16,
   },
-  laneTabOn: { backgroundColor: colors.forest, borderColor: colors.forest },
-  laneTabTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // flex:1 so the label owns the leftover width and the badge is pushed to the
-  // edge, rather than both hugging their content in the middle.
-  laneTabLabel: { flex: 1, fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink },
+  laneTab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 10,
+  },
+  laneTabOn: {
+    backgroundColor: colors.forest,
+    shadowColor: colors.forest, shadowOpacity: 0.18, shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 }, elevation: 2,
+  },
+  laneTabIcon: {
+    width: 30, height: 30, borderRadius: 15,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: design.mint,
+  },
+  laneTabIconOn: { backgroundColor: 'rgba(244,241,234,0.14)' },
+  laneTabTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // flexShrink, not flex:1, so the count sits right after the word instead of
+  // being pushed to the far edge of a half-width segment.
+  laneTabLabel: { flexShrink: 1, fontFamily: font.sansSemi, fontSize: 14, color: design.ink },
   laneTabLabelOn: { color: colors.surface },
   laneTabBadge: {
     minWidth: 20, paddingHorizontal: 6, paddingVertical: 1,
-    borderRadius: 999, backgroundColor: design.paper2, alignItems: 'center',
+    borderRadius: 999, backgroundColor: design.paper, alignItems: 'center',
   },
   laneTabBadgeOn: { backgroundColor: 'rgba(244,241,234,0.18)' },
-  laneTabCount: { fontSize: 10.5, color: design.ink3 },
-  laneTabCountOn: { color: colors.sage2 },
+  laneTabCount: { fontSize: 10.5, color: design.ink2 },
+  laneTabCountOn: { color: colors.surface },
   laneTabSub: { fontSize: 9, letterSpacing: 0.6, color: design.ink3, marginTop: 3 },
+  laneTabSubOn: { color: colors.sage2 },
 
   shopsPad: { paddingHorizontal: 16, paddingTop: 14 },
   shopsLabel: { fontSize: 10, letterSpacing: 1.2, color: design.ink3, marginBottom: 12 },
@@ -1369,21 +1604,59 @@ const styles = StyleSheet.create({
   },
 
   // --- delivery city ---
+  cityBarWrap: { marginHorizontal: 16, marginTop: 12 },
   cityBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: design.paper,
+    borderWidth: 1, borderColor: design.line, borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 9,
   },
-  cityBarText: { fontFamily: font.sansMed, fontSize: 12.5, color: design.ink2 },
-  cityBarChange: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
-  cityGate: { paddingHorizontal: 16, paddingTop: 24, gap: 8 },
+  cityBarIcon: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
+  },
+  cityBarEyebrow: { fontSize: 9, letterSpacing: 0.9, color: design.ink3 },
+  cityBarText: { fontFamily: font.sansSemi, fontSize: 15, color: design.ink, marginTop: 1 },
+  cityBarState: { fontFamily: font.sans, color: design.ink3 },
+  cityBarChange: { fontFamily: font.sansSemi, fontSize: 13, color: colors.forest },
+  cityGate: { paddingHorizontal: 16, paddingTop: 18 },
+  cityGateCard: {
+    backgroundColor: design.paper,
+    borderWidth: 1, borderColor: design.line, borderRadius: 20,
+    padding: 18, gap: 8,
+  },
+  cityGateIcon: {
+    width: 44, height: 44, borderRadius: 22, marginBottom: 6,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
+  },
   cityGateEyebrow: { fontSize: 10, letterSpacing: 1, color: design.ink3 },
-  cityGateTitle: { fontFamily: font.sansSemi, fontSize: 21, letterSpacing: -0.3, color: design.ink },
+  cityGateTitle: { fontFamily: font.sansSemi, fontSize: 22, letterSpacing: -0.3, color: design.ink },
   cityGateBody: { fontFamily: font.sans, fontSize: 14, lineHeight: 20, color: design.ink2 },
+  cityGateDropped: {
+    fontFamily: font.sansMed, fontSize: 13.5, lineHeight: 19, color: colors.ember,
+    backgroundColor: 'rgba(200,96,43,0.08)', borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
   cityGateNote: { fontFamily: font.sans, fontSize: 13, lineHeight: 19, color: design.ink3, marginTop: 6 },
-  cityGateCancel: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink3, marginTop: 14 },
+  cityGateCancelWrap: { alignSelf: 'center', marginTop: 14, paddingVertical: 6, paddingHorizontal: 12 },
+  cityGateCancel: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink3 },
+  cityList: { gap: 8, marginTop: 10 },
+  cityRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: design.bg,
+    borderWidth: 1, borderColor: design.line, borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 12,
+  },
+  cityRowOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  cityRowIcon: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
+  },
+  cityRowIconOn: { backgroundColor: 'rgba(244,241,234,0.14)' },
+  cityRowName: { fontFamily: font.sansSemi, fontSize: 16, color: design.ink },
+  cityRowNameOn: { color: colors.surface },
+  cityRowState: { fontSize: 9.5, letterSpacing: 0.7, color: design.ink3, marginTop: 2 },
+  cityRowStateOn: { color: colors.sage2 },
   cityWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   cityPill: {
     flexDirection: 'row',
@@ -1498,6 +1771,8 @@ const styles = StyleSheet.create({
 
   promoPad: { paddingHorizontal: 16, gap: 10, marginTop: 12 },
   promo: { width: 200, borderRadius: 16, borderWidth: 1, borderColor: design.line, padding: 14 },
+  promoWide: { width: undefined },
+  promoSolo: { paddingHorizontal: 16, marginTop: 12 },
   promo_sage: { backgroundColor: 'rgba(107,142,78,0.14)' },
   promo_paper: { backgroundColor: design.paper },
   promo_ember: { backgroundColor: 'rgba(200,96,43,0.10)' },
@@ -1533,7 +1808,7 @@ const styles = StyleSheet.create({
   deliverCount: { fontSize: 10, letterSpacing: 1, color: design.ink3 },
   railEyebrow: { fontSize: 9, letterSpacing: 0.8, color: design.ink3 },
   railTitle: { fontFamily: font.sansSemi, fontSize: 18, letterSpacing: -0.35, color: design.ink, marginTop: 3 },
-  seeAll: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest },
+  seeAll: { fontFamily: font.sansSemi, fontSize: 12.5, color: colors.forest, marginBottom: 3 },
   railPad: { paddingHorizontal: 16, gap: 10 },
 
   // cards — web .st-card

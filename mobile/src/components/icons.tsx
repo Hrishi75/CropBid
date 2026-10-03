@@ -119,6 +119,14 @@ export const IconSprout = (p: IcoProps) => (
   </Ico>
 );
 
+// A map pin: where the basket is delivered to.
+export const IconPin = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" />
+    <Circle cx={12} cy={10} r={2.3} />
+  </Ico>
+);
+
 export const IconLeaf = (p: IcoProps) => (
   <Ico {...p}>
     <Path d="M4 20c0-8 5-13 16-13 0 9-5 13-13 13H4z" />
@@ -136,5 +144,43 @@ export const IconBell2 = (p: IcoProps) => (
   <Ico {...p}>
     <Path d="M18 8a6 6 0 10-12 0c0 6-2 7-2 7h16s-2-1-2-7" />
     <Path d="M10.3 21a2 2 0 003.4 0" />
+  </Ico>
+);
+
+// --- account-menu set: help, share, info, language, log out ---
+
+export const IconHelp = (p: IcoProps) => (
+  <Ico {...p}>
+    <Circle cx={12} cy={12} r={8.5} />
+    <Path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7" />
+    <Path d="M12 17.2v.1" />
+  </Ico>
+);
+
+export const IconShare = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M12 15V4M8 8l4-4 4 4" />
+    <Path d="M6 12v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-6" />
+  </Ico>
+);
+
+export const IconInfo = (p: IcoProps) => (
+  <Ico {...p}>
+    <Circle cx={12} cy={12} r={8.5} />
+    <Path d="M12 11v5.5M12 7.8v.1" />
+  </Ico>
+);
+
+export const IconGlobe = (p: IcoProps) => (
+  <Ico {...p}>
+    <Circle cx={12} cy={12} r={8.5} />
+    <Path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5s1.2-6.1 3.5-8.5z" />
+  </Ico>
+);
+
+export const IconLogout = (p: IcoProps) => (
+  <Ico {...p}>
+    <Path d="M14 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />
+    <Path d="M10 16l-4-4 4-4M6 12h9" />
   </Ico>
 );

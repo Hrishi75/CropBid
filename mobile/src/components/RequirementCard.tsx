@@ -25,6 +25,7 @@ import { PressScale } from './motion';
 import { money, unitLabel } from '../lib/format';
 import { mspForCrop } from '../lib/msp';
 import { companyTypeLabel } from '../lib/companyType';
+import { cropEmojiFor } from '../utils/cropImages';
 import type { BuyerRequirement, RequirementStatus } from '../api/types';
 import { colors, design, font } from '../theme';
 
@@ -57,11 +58,14 @@ function Chip({ text, tone }: { text: string; tone?: 'sage' | 'ember' }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label, value, sub, urgent,
+}: { label: string; value: string; sub?: string; urgent?: boolean }) {
   return (
     <View style={styles.metric}>
       <Mono style={styles.metricLabel}>{label}</Mono>
-      <Text style={styles.metricValue} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.metricValue, urgent && styles.metricUrgent]} numberOfLines={1}>{value}</Text>
+      {sub ? <Text style={styles.metricSub}>{sub}</Text> : null}
     </View>
   );
 }
@@ -91,16 +95,36 @@ export function RequirementCard({
 
   const company = companyTypeLabel(r.buyer?.buyerProfile?.companyType);
 
+  // "in 5 days" reads faster than a date when deciding whether you can make
+  // it; the date stays underneath for anyone planning a truck.
+  const daysLeft = r.neededBy
+    ? Math.ceil((new Date(r.neededBy).getTime() - Date.now()) / 86400000)
+    : null;
+  const dueLabel = daysLeft == null
+    ? null
+    : daysLeft < 0 ? 'Past due' : daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `In ${daysLeft} days`;
+
   const body = (
     <>
       <View style={styles.head}>
-        <View style={styles.headLeft}>
-          <Mono style={styles.ref}>#{r.id.slice(-6).toUpperCase()}</Mono>
+        <View style={styles.cropTile}>
+          <Text style={styles.cropEmoji}>{cropEmojiFor(r.cropName)}</Text>
+        </View>
+        <View style={styles.headText}>
           <Text style={styles.crop} numberOfLines={1}>
             {r.cropName}{r.cropVariety ? ` · ${r.cropVariety}` : ''}
           </Text>
+          <View style={styles.headMeta}>
+            <Mono style={[styles.status, { color: status.color }]}>● {status.label}</Mono>
+            <Mono style={styles.ref}>#{r.id.slice(-6).toUpperCase()}</Mono>
+          </View>
         </View>
-        <Mono style={[styles.status, { color: status.color }]}>● {status.label}</Mono>
+        {/* The buyer's price is the number the farmer decides on, so it is
+            the biggest thing on the card. */}
+        <View style={styles.priceBox}>
+          <Text style={styles.price}>{money(r.pricePerUnit, r.currency)}</Text>
+          <Mono style={styles.priceUnit}>PER {unit.toUpperCase()}</Mono>
+        </View>
       </View>
 
       <View style={styles.chips}>
@@ -111,13 +135,14 @@ export function RequirementCard({
       </View>
 
       <View style={styles.metrics}>
-        <Metric label="WANTS" value={`${money(r.pricePerUnit, r.currency)}/${unit}`} />
         <Metric label="STILL NEEDED" value={`${r.remainingQuantity.toLocaleString('en-IN')} ${unit}`} />
-        <Metric label="DELIVER TO" value={`${r.deliveryLocation}, ${r.deliveryState}`} />
+        <Metric label="DELIVER TO" value={r.deliveryLocation} sub={r.deliveryState} />
         {r.neededBy ? (
           <Metric
             label="NEEDED BY"
-            value={new Date(r.neededBy).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+            value={dueLabel ?? ''}
+            sub={new Date(r.neededBy).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            urgent={daysLeft != null && daysLeft <= 3}
           />
         ) : null}
       </View>
@@ -134,18 +159,18 @@ export function RequirementCard({
         </View>
       ) : null}
 
+      {r.description ? (
+        <View style={styles.desc}>
+          <Text style={styles.descText}>{r.description}</Text>
+        </View>
+      ) : null}
+
       {r.buyer ? (
         <Text style={styles.who} numberOfLines={1}>
           {r.buyer.buyerProfile?.companyName || r.buyer.name}
           {r.buyer.buyerProfile?.verified ? ' · verified' : ''}
           {r.buyer.trustScore != null ? ` · trust ${Math.round(r.buyer.trustScore)}` : ''}
         </Text>
-      ) : null}
-
-      {r.description ? (
-        <View style={styles.desc}>
-          <Text style={styles.descText}>{r.description}</Text>
-        </View>
       ) : null}
 
       {children}
@@ -164,17 +189,26 @@ export function RequirementCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: design.paper,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: design.line,
     padding: 16,
-    gap: 11,
+    gap: 12,
   },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  headLeft: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  ref: { fontSize: 10, letterSpacing: 0.5, color: design.ink3 },
-  crop: { flex: 1, fontFamily: font.sansSemi, fontSize: 15.5, color: design.ink },
-  status: { fontSize: 10, letterSpacing: 0.6 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cropTile: {
+    width: 46, height: 46, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
+  },
+  cropEmoji: { fontSize: 24 },
+  headText: { flex: 1, minWidth: 0 },
+  crop: { fontFamily: font.sansBold, fontSize: 16, letterSpacing: -0.2, color: design.ink },
+  headMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 3 },
+  ref: { fontSize: 9.5, letterSpacing: 0.5, color: design.ink3 },
+  status: { fontSize: 9.5, letterSpacing: 0.6 },
+  priceBox: { alignItems: 'flex-end' },
+  price: { fontFamily: font.sansBold, fontSize: 18, letterSpacing: -0.4, color: colors.forest },
+  priceUnit: { fontSize: 8.5, letterSpacing: 0.6, color: design.ink3, marginTop: 1 },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {
@@ -189,16 +223,21 @@ const styles = StyleSheet.create({
   chipTextSage: { color: colors.forest },
   chipTextEmber: { color: colors.ember },
 
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  metric: { minWidth: 92 },
-  metricLabel: { fontSize: 9.5, letterSpacing: 0.6, color: design.ink3 },
-  metricValue: { fontFamily: font.sansSemi, fontSize: 14, color: design.ink, marginTop: 2 },
+  metrics: {
+    flexDirection: 'row', gap: 10,
+    backgroundColor: design.bg, borderRadius: 12, padding: 12,
+  },
+  metric: { flex: 1, minWidth: 0 },
+  metricLabel: { fontSize: 8.5, letterSpacing: 0.6, color: design.ink3 },
+  metricValue: { fontFamily: font.sansSemi, fontSize: 13.5, color: design.ink, marginTop: 3 },
+  metricUrgent: { color: colors.ember },
+  metricSub: { fontFamily: font.sans, fontSize: 11, color: design.ink3, marginTop: 1 },
 
   progressText: { fontFamily: font.sans, fontSize: 11.5, color: design.ink3, marginBottom: 5 },
-  track: { height: 4, borderRadius: 999, backgroundColor: design.paper2, overflow: 'hidden' },
+  track: { height: 5, borderRadius: 999, backgroundColor: design.paper2, overflow: 'hidden' },
   fill: { height: '100%', backgroundColor: colors.sage },
 
   who: { fontFamily: font.sans, fontSize: 12, color: design.ink3 },
-  desc: { backgroundColor: design.paper2, borderRadius: 8, padding: 10 },
+  desc: { borderLeftWidth: 2, borderLeftColor: design.mint, paddingLeft: 10 },
   descText: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink2 },
 });
