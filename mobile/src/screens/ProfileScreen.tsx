@@ -36,6 +36,7 @@ import { errorMessage, mediaUrl } from '../api/client';
 import { accountTags, sellerDisplayName, sellerWords } from '../lib/sellerType';
 import { ShopperProfile } from './profile/ShopperProfile';
 import { SellerProfile } from './profile/SellerProfile';
+import { ModeSwitch } from '../components/ModeSwitch';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -300,6 +301,11 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+        </View>
+
+        {/* A shop in buying mode lands here; this is the way back to selling. */}
+        <View style={[styles.sidePad, { marginTop: 12 }]}>
+          <ModeSwitch />
         </View>
 
         {/* language */}

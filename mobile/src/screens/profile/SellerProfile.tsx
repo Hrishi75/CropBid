@@ -37,6 +37,8 @@ import type { ProfileParamList } from '../../navigation/types';
 import { accountTags, sellerDisplayName, sellerWords } from '../../lib/sellerType';
 import { colors, design, font } from '../../theme';
 import { MenuRow, SectionTitle, Tile, profileStyles as p } from './ShopperProfile';
+import { ModeSwitch } from '../../components/ModeSwitch';
+import { IconBasket, IconChevR } from '../../components/icons';
 
 export function SellerProfile({
   user, photo, uploading, refreshing, signingOut,
@@ -123,6 +125,11 @@ export function SellerProfile({
         </View>
       </View>
 
+      {/* Selling | Buying, once the shop is approved to buy as well. */}
+      <View style={[p.pad, { marginTop: 12 }]}>
+        <ModeSwitch />
+      </View>
+
       {/* ---- the three things a seller checks ------------------------------- */}
       <View style={[p.pad, p.tiles]}>
         <Tile Icon={IconDoc} label={t(words.stockTab)} sub={t('On sale')} onPress={() => nav.navigate('Listings')} />
@@ -133,6 +140,31 @@ export function SellerProfile({
         )}
         <Tile Icon={IconWallet} label={t('Sales')} sub={t('Your deals')} onPress={() => nav.navigate('Contracts')} />
       </View>
+
+      {/* A shop buying stock for itself: apply, or see where that stands.
+          Gone once approved, where the switch above takes over. */}
+      {isShop && user.buyerProfile?.status !== 'APPROVED' ? (
+        <View style={p.pad}>
+          <PressScale onPress={() => nav.navigate('BuyForShop')} scaleTo={0.98} cardStyle={styles.buyCard}>
+            <View style={styles.buyIcon}><IconBasket size={18} stroke={colors.forest} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.payoutTitle}>
+                {!user.buyerProfile
+                  ? t('Buy stock for your shop')
+                  : user.buyerProfile.status === 'SUBMITTED' || user.buyerProfile.status === 'UNDER_REVIEW'
+                    ? t('Buying: application under review')
+                    : t('Buying: your application needs attention')}
+              </Text>
+              <Text style={styles.payoutBody}>
+                {!user.buyerProfile
+                  ? t('Apply once, then switch between selling and buying.')
+                  : t('Tap to see where it stands.')}
+              </Text>
+            </View>
+            <IconChevR size={12} stroke={design.ink3} />
+          </PressScale>
+        </View>
+      ) : null}
 
       {!hasPayout ? (
         <View style={p.pad}>
@@ -297,6 +329,15 @@ const styles = StyleSheet.create({
   payoutIcon: {
     width: 36, height: 36, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(200,96,43,0.12)',
+  },
+  buyCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12,
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line,
+    borderRadius: 16, padding: 14,
+  },
+  buyIcon: {
+    width: 36, height: 36, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
   },
   payoutTitle: { fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink },
   payoutBody: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 17, color: design.ink2, marginTop: 2 },

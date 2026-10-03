@@ -54,6 +54,7 @@ import NotificationPrefsScreen from '../screens/profile/NotificationPrefsScreen'
 import PolicyScreen from '../screens/profile/PolicyScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
 import ShopHomeScreen from '../screens/shop/ShopHomeScreen';
+import BuyForShopScreen from '../screens/shop/BuyForShopScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
 import MyRequirementsScreen from '../screens/buyer/MyRequirementsScreen';
@@ -252,6 +253,7 @@ function FarmerNavigator() {
       {/* Work to win: what buyers are asking for, and what this farmer has
           already offered against it. */}
       <FarmerStack.Screen name="Demand" component={DemandBoardScreen} options={{ animation: 'slide_from_right' }} />
+      <FarmerStack.Screen name="BuyForShop" component={BuyForShopScreen} options={{ animation: 'slide_from_right' }} />
       <FarmerStack.Screen
         name="RequirementDetail"
         component={RequirementDetailScreen as React.ComponentType<any>}

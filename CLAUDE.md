@@ -257,6 +257,16 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **Unresolved, and now more visible:** roles are exclusive, so an approved seller cannot use the cart (`/cart`, `/checkout`, `/orders` are `allowedRoles={['CONSUMER']}`; `POST /bids/direct-purchase` is `requireRole('CONSUMER')`). `ShopScreen` renders the shelf read-only for them rather than 403ing at checkout, and `JoinScreen` warns before they apply, but both are plasters. If selling should stack on top of shopping, that is a role-to-capabilities refactor nobody has decided.
 
+### A seller can also buy, in a second mode (shipped 2026-10-04)
+
+**One account, two sides, switched in the app. Built for a local shop buying stock for itself; the server allows any seller.** The user's call: apply to buy, and once approved switch between selling and buying, rather than a second account with its own login and wallet.
+
+- **The role does not change.** The account stays `FARMER`; its buyer application is filed alongside (`CAN_APPLY_AS_BUYER` now includes FARMER) and reviewed in the same queue, and approval only approves the buyer profile, because `reviewPartnerApplication` promotes a row still at CONSUMER and nothing else.
+- **Buying mode is a header, decided by the database.** While the app is on the buying side it sends `X-Act-As: BUYER`. `authenticate` honours it only after reading an APPROVED buyer profile for that account, then sets `req.user.role = 'BUYER'` and keeps the real role as `accountRole`. So every `requireRole('BUYER')` and every service that branches on the role works unchanged, the seller side is closed while buying, and the header is worth nothing alone. Seven tests in `auth.actAs.test.ts`, and the two refusal tests were watched failing with the check removed.
+- **The app shows the account as a buyer** in that mode (`AuthContext` hands out `user` with role BUYER and sends the header in the same render), so the existing buyer tabs and screens appear without knowing modes exist. The side is remembered on the device, reset on sign-out, and dropped if the buyer approval is revoked.
+- **Self-dealing was already refused**: a bid on your own lot and filling your own requirement both 400.
+- **Not covered:** the live-auction socket authenticates separately and ignores the header, so auctions are not open in buying mode; a shop still cannot use the household cart; the website has no switch.
+
 ### 4a. Where a seller's money goes (shipped 2026-09-21)
 
 **A UPI id, or a bank account, and at least one before anybody can be paid.** Money had been reaching escrow since payments went live with nowhere to send it afterwards: `FarmerProfile.bankDetails` existed, was never written by anything, and the only code that touched it cleared it on account deletion. Four typed columns replace it (`payoutUpiId`, `payoutAccountName`, `payoutAccountNumber`, `payoutIfsc`); the JSON column is left in place, unused, because dropping a column is a destructive migration and it costs nothing to keep.
@@ -498,7 +508,8 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 - **My Shop is `screens/shop/ShopHomeScreen`**, not the farm dashboard: a sales board and the household orders to send, grouped by shop order (§3b) so "Mark on the way" and "Mark delivered" move every lot of one delivery together. An unpaid order shows no send button. **The sales figure is summed from paid orders on the client**, because `/transactions/stats` counts only RELEASED money, which needs the shopper's confirmation, so a shop that had delivered read ₹0.
 - **Adding stock is `screens/shop/ShopListingScreen`**: item, price per kg, stock, quality, organic, photos. The one shelf price is sent as floor, ceiling and retail, because the listing model is shared and the server requires all three. The place is the shop's own, never typed per item, and the form warns when that city is not on `RETAIL_CITIES`.
 - **Hidden for a shop:** the demand teaser, the bidding banner, forecast and schemes cards and the sell pitch on Home; offer counts on My Stock; offers, demand and the AI helper on the profile.
-- **Not built:** cancelling a shop order from the app (the website and the server have it), and a shop buying stock for itself, which roles being exclusive (§4) still prevents.
+- **Buying stock for the shop** is a second mode on the same account (§4, "A seller can also buy"): a card on the shop's profile to apply, then a Selling | Buying switch.
+- **Not built:** cancelling a shop order from the app (the website and the server have it).
 
 ### The rest of the app pass (2026-10-04)
 

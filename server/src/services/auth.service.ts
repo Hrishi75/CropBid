@@ -1172,7 +1172,10 @@ function validateSellerApplication(input: FarmerOnboardingInput): void {
 //
 // Nothing here grants the role. reviewPartnerApplication does that, on approval.
 const CAN_APPLY_AS_SELLER = ['CONSUMER', 'FARMER'];
-const CAN_APPLY_AS_BUYER = ['CONSUMER', 'BUYER'];
+// A seller may apply as well (FARMER): a local shop buying stock for itself.
+// Approval leaves its role alone and only approves the buyer profile, which is
+// what lets it act as a buyer (middleware/auth, X-Act-As).
+const CAN_APPLY_AS_BUYER = ['CONSUMER', 'BUYER', 'FARMER'];
 
 export async function completeFarmerOnboarding(userId: string, input: FarmerOnboardingInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -1350,7 +1353,8 @@ export async function updateBuyerProfile(userId: string, input: UpdateBuyerProfi
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
-  if (user.role !== 'BUYER') {
+  // A seller with an approved buyer profile edits it from buying mode.
+  if (user.role !== 'BUYER' && !(user.role === 'FARMER' && user.buyerProfile?.status === 'APPROVED')) {
     throw new ApiError(403, 'Only buyers can update a buyer profile');
   }
   if (!user.buyerProfile) {

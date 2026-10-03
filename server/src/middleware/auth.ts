@@ -22,6 +22,17 @@
 // it is, change the password, and sign out. Everything else is 403 with a code
 // the clients route on.
 //
+// BUYING MODE (X-Act-As: BUYER). A seller whose buyer application has also
+// been approved, a local shop buying stock for itself, keeps one account and
+// switches sides in the app. The token always carries the account's real role;
+// while the app is in buying mode it sends this header, and the request is
+// treated as a buyer's only after the database confirms an APPROVED buyer
+// profile on that account. So every requireRole('BUYER') and every service
+// that branches on req.user.role works unchanged, and nobody reaches the buyer
+// side by setting a header. `accountRole` keeps the real role for anything
+// that needs it. The live-auction socket authenticates separately and does not
+// read this, so auctions are not open in buying mode.
+//
 // USAGE IN ROUTES:
 //   router.get('/profile', authenticate, getProfile);    // Must be logged in
 //   router.get('/listings', getListings);                 // Public, no auth
@@ -30,6 +41,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { ApiError } from '../utils/ApiError';
+import { prisma } from '../lib/prisma';
 
 // Extend Express Request type to include our user data
 // This lets TypeScript know that req.user exists on authenticated routes
@@ -42,6 +54,8 @@ declare global {
         mustChangePassword?: boolean;
         /** Which reset this session belongs to; see utils/jwt. */
         resetAt?: number;
+        /** The account's own role when `role` is a mode it is acting in. */
+        accountRole?: string;
       };
     }
   }
@@ -95,5 +109,33 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     throw new ApiError(403, 'Choose a new password before you carry on', 'PASSWORD_CHANGE_REQUIRED');
   }
 
-  next();
+  const actAs = req.headers['x-act-as'];
+  if (actAs === undefined || actAs === '') return next();
+
+  // Async only on this path, so every request without the header stays exactly
+  // as it was. Express 5 would forward a rejected promise, but next(err) says
+  // so outright.
+  actAsBuyer(req, String(actAs)).then(() => next(), next);
+}
+
+async function actAsBuyer(req: Request, actAs: string): Promise<void> {
+  if (actAs !== 'BUYER') {
+    throw new ApiError(400, 'X-Act-As can only be BUYER');
+  }
+  const user = req.user!;
+  // Already a buyer: nothing to switch.
+  if (user.role === 'BUYER') return;
+  if (user.role !== 'FARMER') {
+    throw new ApiError(403, 'This account cannot buy', 'BUYER_MODE_NOT_APPROVED');
+  }
+
+  const profile = await prisma.buyerProfile.findUnique({
+    where: { userId: user.userId },
+    select: { status: true },
+  });
+  if (profile?.status !== 'APPROVED') {
+    throw new ApiError(403, 'Your buyer application has not been approved yet', 'BUYER_MODE_NOT_APPROVED');
+  }
+
+  req.user = { ...user, role: 'BUYER', accountRole: user.role };
 }
