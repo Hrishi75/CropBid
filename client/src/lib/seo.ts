@@ -56,7 +56,7 @@ export const ROUTES: RouteMeta[] = [
     path: '/',
     title: 'CropBid: Sell & Buy Crops Direct at Live Mandi Rates',
     description:
-      "India's crop exchange. Sell direct to buyers at live mandi rates from 4,600+ mandis, with escrow payments and auctions. List free today.",
+      "India's crop exchange. Sell direct to buyers at live mandi rates from 4,600+ mandis, with escrow payments and auctions. Join free today.",
     priority: '1.0',
     changefreq: 'daily',
   },
