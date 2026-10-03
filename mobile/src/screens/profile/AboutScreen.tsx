@@ -62,7 +62,7 @@ export default function AboutScreen() {
         />
         <Block
           label={t('WHERE WE DELIVER')}
-          text={t('Household delivery runs in Pune and Nagpur. Wholesale lots travel nationally, because a lot can be freighted and a few kilos cannot.')}
+          text={t('Household delivery runs in Nagpur only for now. Wholesale lots travel nationally, because a lot can be freighted and a few kilos cannot.')}
         />
 
         <View style={styles.note}>

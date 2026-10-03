@@ -13,6 +13,7 @@
 
 import { prisma } from '../lib/prisma';
 import { KG_PER_UNIT } from '../utils/units';
+import { isRetailCity, retailCityFilter } from '../utils/retailCities';
 import { PUBLIC_SELLER_SELECT } from './publicSeller';
 
 
@@ -247,9 +248,10 @@ export async function smartMatch(context: SmartMatchContext, limitResults: numbe
 // =============================================================================
 // RETAIL CITIES — where the shop can actually deliver from
 // =============================================================================
-// Powers the consumer storefront's city picker. Only cities with live
-// direct-sale stock are returned, so a shopper can never pick their way into an
-// empty shelf — the same rule the requirement feed's filters follow.
+// Powers the consumer storefront's city picker. A city is returned only when
+// it is one CropBid delivers to (RETAIL_CITIES) AND it has live direct-sale
+// stock, so a shopper can never pick their way into an empty shelf, nor into a
+// city where shops hold stock but nobody delivers.
 //
 // Deliberately NOT every city with a listing: a town with only bulk lots cannot
 // serve a household, and offering it would promise a shop that isn't there.
@@ -259,6 +261,7 @@ export async function getRetailCities() {
       status: 'ACTIVE',
       directSaleEnabled: true,
       remainingQuantity: { gt: 0 },
+      ...retailCityFilter(),
     },
     select: { location: true, state: true },
     distinct: ['location'],
@@ -349,6 +352,9 @@ export interface RetailShopQuery {
  * reading them and folding them here is far below a second round trip.
  */
 export async function listRetailShops(query: RetailShopQuery) {
+  // A city nobody delivers to has no shops, whatever stock sits in it.
+  if (!isRetailCity(query.city)) return [];
+
   const listings = await prisma.listing.findMany({
     where: {
       ...RETAIL_STOCK,
@@ -454,8 +460,9 @@ export async function listRetailShops(query: RetailShopQuery) {
  * can switch off by leaving out an argument.
  */
 export async function getRetailShop(sellerId: string, city: string) {
-  // Refuse rather than widen. The caller has to know where the shopper is.
-  if (city.trim() === '') return null;
+  // Refuse rather than widen. The caller has to know where the shopper is,
+  // and it has to be somewhere CropBid delivers.
+  if (!isRetailCity(city)) return null;
 
   const seller = await prisma.farmerProfile.findUnique({
     where: { id: sellerId },

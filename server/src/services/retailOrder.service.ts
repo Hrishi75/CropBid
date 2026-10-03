@@ -38,6 +38,7 @@ import {
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 import { orderContactDefaults } from './bid.service';
+import { isRetailCity } from '../utils/retailCities';
 
 export const RETAIL_DELIVERY = {
   /** A shop's items worth at least this many rupees travel free. */
@@ -186,6 +187,12 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
   const buyerCity = buyer?.location?.trim() ?? '';
   if (buyerCity === '') {
     throw new ApiError(400, 'Choose your delivery city before ordering.');
+  }
+  // A city with shops holding stock is not a city anybody delivers to. Checked
+  // here so that a shopper whose saved city has been dropped (Pune, 2026-10-03)
+  // cannot order from it through any client, old app builds included.
+  if (!isRetailCity(buyerCity)) {
+    throw new ApiError(400, `We don't deliver to homes in ${buyerCity} yet. Choose a delivery city we serve.`);
   }
 
   const listings = await prisma.listing.findMany({

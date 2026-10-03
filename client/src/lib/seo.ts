@@ -138,7 +138,7 @@ export const ROUTES: RouteMeta[] = [
     path: '/faq',
     title: 'CropBid FAQ: Buying, Selling, Delivery and Payment',
     description:
-      'Answers on household delivery in Pune and Nagpur, buying by the kilo, how seller approval works, escrow payment, the 2% fee, and where the live mandi rates come from.',
+      'Answers on household delivery in Nagpur, buying by the kilo, how seller approval works, escrow payment, the 2% fee, and where the live mandi rates come from.',
     priority: '0.7',
     changefreq: 'monthly',
     // The FAQPage block lives HERE, on the page that actually renders these

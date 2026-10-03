@@ -598,7 +598,7 @@ function BuyDirect() {
 
           <p className="hiw-note">
             <strong>The small print, up front.</strong> Household delivery runs in
-            <strong> Pune and Nagpur</strong> today, and you can only buy from sellers in
+            <strong> Nagpur only</strong> for now, and you can only buy from sellers in
             your own city, because a few kilos of vegetables cannot be freighted across the
             country. Produce is priced by the kilo and sold from 500 g up. Your basket is
             ordered one shop at a time, because each shop makes its own delivery, and

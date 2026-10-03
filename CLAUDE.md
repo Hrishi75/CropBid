@@ -23,7 +23,7 @@ An agricultural marketplace connecting Indian farmers directly with buyers, with
 |---|---|---|
 | **Wholesale** | Processors, exporters, retailers, restaurants, FMCG | Bid, counter, or timed auction on a whole lot. National. |
 | **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer |
-| **Retail** | Households | Browse by shop, buy by the kilo. Pune and Nagpur only. |
+| **Retail** | Households | Browse by shop, buy by the kilo. Nagpur only. |
 
 Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. §11 says how those rates are read, and why the obvious way is wrong. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
 
@@ -38,7 +38,7 @@ Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number,
 - The footer must not say "CropBid, **Inc.**", a US suffix on an unincorporated Indian business. It did for a long time.
 - **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a. Households also pay a delivery fee on small shop orders, see §3b; the 2% is never taken on it.
 - **Household delivery: free from ₹200 of one shop's items, ₹30 below that** (`RETAIL_DELIVERY`, `retailOrder.service.ts`). There is **no minimum order** any more. §3b has the whole of it.
-- **Retail footprint: Pune and Nagpur.** Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
+- **Retail footprint: Nagpur only (since 2026-10-03; it was Pune and Nagpur).** `RETAIL_CITIES` in `server/src/utils/retailCities.ts` is the one list, and it is a decision, not a count of stock: Pune shops still hold stock and the seed still loads them, but `/browse/cities`, the shop list, a shop's page and `createRetailOrder` all refuse a city not on it, so no client can order into one. The app sends a shopper whose saved city was dropped back to the city picker and says why. Adding a city means adding it there and changing `/terms` §8, `/how-it-works`, the FAQ, the FAQ's SEO description and the app's About screen in the same PR. Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
 
 ### 2a. Freight is ours (shipped 2026-09-06)
 
@@ -165,7 +165,7 @@ How it holds together:
 - **"Everything we deliver"** (`components/DeliveryList`) is the full list with **multiple SKUs per row**. Sizes come off a fixed ladder (100 g → 10 kg) anchored to each crop's own base pack, so a spice never starts at a kilo and a staple never starts at 100 g; doubling a 200 g paneer pack would give 400 g and 800 g, which no shop sells. Sizes above remaining stock are dropped. The caller computes the variants so the heading's count matches the rows that actually render.
 - **Farmers and buyers see no lanes.** They get the crop-rail market, which is the right view for a by-the-tonne national trade.
 
-**The seed carries the Fresh lane.** Indian farmers are spread across fifteen cities for the wholesale market and only Pune and Nagpur are retail cities, so almost no farm lot landed anywhere a household could be delivered from and the lane showed one item. `seed.ts` §7c adds four farms in the two retail cities.
+**The seed carries the Fresh lane.** Indian farmers are spread across fifteen cities for the wholesale market and only Pune and Nagpur were retail cities when this was written (Nagpur alone since 2026-10-03, §2), so almost no farm lot landed anywhere a household could be delivered from and the lane showed one item. `seed.ts` §7c adds four farms in the two retail cities.
 
 ### Routes worth not confusing
 

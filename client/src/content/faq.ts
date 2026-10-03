@@ -17,7 +17,7 @@
 //   - Every claim must be true of the code TODAY. Numbers here are load-bearing:
 //     the 2% is PLATFORM_FEE_PERCENT in transaction.service, the languages are
 //     the Language enum, the 500 g floor is STEP_KG in QuantityStepper, and the
-//     delivery cities are RETAIL_CITIES in prisma/seed.
+//     delivery cities are RETAIL_CITIES in server/src/utils/retailCities.
 //   - No promises about things we have not built. An FAQ is the page people
 //     quote back at you.
 // =============================================================================
@@ -40,7 +40,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'Which cities do you deliver to?',
-        a: 'Household delivery runs in Pune and Nagpur today. Fresh food does not travel well across a state and a few kilos cannot be freighted economically, so we only show you shops that can actually reach you. The wholesale side of CropBid, where lots move by the tonne, works across India.',
+        a: 'Household delivery runs in Nagpur only for now. Fresh food does not travel well across a state and a few kilos cannot be freighted economically, so we only show you shops that can actually reach you. The wholesale side of CropBid, where lots move by the tonne, works across India.',
       },
       {
         q: 'How soon will my order arrive?',
