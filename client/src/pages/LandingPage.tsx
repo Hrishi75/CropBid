@@ -649,7 +649,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <section className="st-rates">
         <div className="st-rates-head">
           <div className="st-rates-title">
-            <span className="cb-eyebrow">Mandi rates</span>
+            <h2 className="cb-eyebrow">Mandi rates</h2>
           </div>
           <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
           <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
@@ -665,7 +665,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
-          <span className="cb-eyebrow">{heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}</span>
+          <h2 className="cb-eyebrow">{heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}</h2>
         </div>
         <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
         <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
@@ -740,7 +740,7 @@ function ForecastStrip() {
       <section className="st-fc">
         <div className="st-rates-head">
           <div className="st-rates-title">
-            <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+            <h2 className="cb-eyebrow">CropBid forecast · where prices go next</h2>
           </div>
           <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
           <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
@@ -759,7 +759,7 @@ function ForecastStrip() {
     <section className="st-fc">
       <div className="st-rates-head">
         <div className="st-rates-title">
-          <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+          <h2 className="cb-eyebrow">CropBid forecast · where prices go next</h2>
         </div>
         <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
         <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
