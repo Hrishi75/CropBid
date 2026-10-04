@@ -490,3 +490,43 @@ export interface WalletTopupOrder {
   currency: string;
   keyId: string;
 }
+
+// Business credit (server: services/credit.service). CropBid does not lend: an
+// application is read by a person and taken to a lending partner.
+export type CreditStatus = 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'DECLINED';
+
+export interface CreditApplication {
+  id: string;
+  businessName: string;
+  gstin: string | null;
+  yearsInBusiness: number;
+  monthlyPurchase: number;
+  amountWanted: number;
+  repaymentDays: number;
+  purpose: string | null;
+  contactPhone: string;
+  status: CreditStatus;
+  approvedLimit: number | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreditRules {
+  minAmount: number;
+  maxAmount: number;
+  repaymentDays: number[];
+}
+
+export interface CreditApplicationInput {
+  businessName: string;
+  gstin?: string | null;
+  yearsInBusiness: number;
+  monthlyPurchase: number;
+  amountWanted: number;
+  repaymentDays: number;
+  purpose?: string | null;
+  contactPhone: string;
+  consent: boolean;
+}

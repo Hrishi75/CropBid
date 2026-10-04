@@ -35,6 +35,7 @@ import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import WalletScreen from '../screens/WalletScreen';
+import CreditApplyScreen from '../screens/buyer/CreditApplyScreen';
 import FarmerHomeScreen from '../screens/farmer/HomeScreen';
 import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
@@ -187,6 +188,11 @@ function BuyerNavigator() {
         name="Wallet"
         component={WalletScreen}
         options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
+        name="CreditApply"
+        component={CreditApplyScreen}
+        options={{ headerShown: true, title: t('Business credit'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Schemes"
@@ -626,8 +632,16 @@ function needsApplication(user: User): boolean {
 export default function RootNavigator() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
+  // ONE KEY PER TREE, so switching trees starts a fresh history. The container
+  // otherwise hands the old history to the new tree, which keeps any screen
+  // whose name it also has: a buyer signed out on the Wallet screen landed on
+  // the guest Wallet with no back button and nothing behind it.
+  const tree = !user ? 'guest'
+    : needsApplication(user) ? 'apply'
+      : isPendingPartner(user) ? 'pending'
+        : user.role;
   return (
-    <NavigationContainer>
+    <NavigationContainer key={tree}>
       {!user ? (
         <GuestNavigator />
       ) : needsApplication(user) ? (

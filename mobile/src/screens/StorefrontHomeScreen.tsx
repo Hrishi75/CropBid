@@ -605,9 +605,7 @@ export default function StorefrontHomeScreen() {
             <View style={styles.headerRight}>
               {/* Renders nothing when signed out: a zero balance on an account
                   that does not exist is not a fact about anything. */}
-              {/* Not for a buyer: credits cannot pay for a lot yet (§6), so
-                  a balance in a trader's header is a number with no use. */}
-              {isBuyer ? null : <WalletPill />}
+              <WalletPill />
               <LanguagePill />
               <NotificationBell />
               {user ? (

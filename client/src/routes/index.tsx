@@ -50,6 +50,7 @@ import { AdminPartners } from '../pages/admin/AdminPartners';
 import { AdminListings } from '../pages/admin/AdminListings';
 import { AdminTransactions } from '../pages/admin/AdminTransactions';
 import { AdminEnquiries } from '../pages/admin/AdminEnquiries';
+import { AdminCredit } from '../pages/admin/AdminCredit';
 import { AdminInputs } from '../pages/admin/AdminInputs';
 import { AdminEquipment } from '../pages/admin/AdminEquipment';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
@@ -566,6 +567,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminEnquiries />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/credit"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminCredit />
           </ProtectedRoute>
         }
       />

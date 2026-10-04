@@ -19,6 +19,7 @@ vi.mock('../lib/prisma', () => {
     user: { delete: vi.fn(), update: vi.fn() },
     farmerProfile: { update: vi.fn() },
     buyerProfile: { deleteMany: vi.fn() },
+    creditApplication: { deleteMany: vi.fn() },
     bid: { deleteMany: vi.fn(), updateMany: vi.fn() },
     listing: { deleteMany: vi.fn(), updateMany: vi.fn() },
     agentConfig: { updateMany: vi.fn() },
@@ -99,6 +100,12 @@ describe('anonymising a seller who has settled deals', () => {
       payoutAccountNumber: null,
       payoutIfsc: null,
     });
+  });
+
+  it('removes a business credit application with the account', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+
+    expect(tx.creditApplication.deleteMany).toHaveBeenCalledWith({ where: { userId: 'seller-1' } });
   });
 });
 

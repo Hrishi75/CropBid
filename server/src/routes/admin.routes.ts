@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
 import * as adminController from '../controllers/admin.controller';
+import * as creditController from '../controllers/credit.controller';
 
 const router = Router();
 
@@ -53,6 +54,11 @@ router.get('/enquiries', adminController.getEnquiries);
 // PATCH /api/admin/enquiries/:id — Move a lead through the triage queue.
 // Body carries { status, kind }, kind defaulting to EQUIPMENT.
 router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
+
+// GET   /api/admin/credit-applications?status= — business credit applications
+// PATCH /api/admin/credit-applications/:id     — move one along (audited)
+router.get('/credit-applications', creditController.adminList);
+router.patch('/credit-applications/:id', creditController.adminReview);
 
 // --- Seeds & fertiliser: the /inputs catalogue, including what the licence
 // gate hides from farmers, and adding to it. ---

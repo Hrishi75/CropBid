@@ -990,6 +990,9 @@ export async function deleteAccount(userId: string, password: string) {
         });
       }
       await tx.buyerProfile.deleteMany({ where: { userId } });
+      // A credit application is business details shared for one purpose,
+      // and the account it was for is going.
+      await tx.creditApplication.deleteMany({ where: { userId } });
       // Negotiations on settled deals may still reference the agent config —
       // switch it off instead of deleting.
       await tx.agentConfig.updateMany({

@@ -74,6 +74,8 @@ export type RootStackParamList = {
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Wallet: undefined;
+  // Business credit, opened from the card on a buyer's wallet.
+  CreditApply: undefined;
   Schemes: undefined;
   Notifications: undefined;
 };
