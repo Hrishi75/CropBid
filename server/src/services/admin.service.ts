@@ -85,7 +85,7 @@ export async function getPlatformStats() {
 export function phoneSearchDigits(search: string): string | null {
   if (/[\p{L}@]/u.test(search)) return null;
   let digits = search.replace(/\D/g, '');
-  const typedCountryCode = /^\s*(\+91|91[\s-])/.test(search);
+  const typedCountryCode = /^\s*(\+91|91\D)/.test(search);
   if (typedCountryCode || (digits.length === 12 && digits.startsWith('91'))) {
     digits = digits.slice(2);
   }

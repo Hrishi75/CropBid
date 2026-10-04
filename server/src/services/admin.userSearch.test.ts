@@ -50,6 +50,8 @@ describe('phoneSearchDigits', () => {
     expect(phoneSearchDigits('+91 98220 55667')).toBe('9822055667');
     expect(phoneSearchDigits('919822055667')).toBe('9822055667');
     expect(phoneSearchDigits('91-98220')).toBe('98220');
+    expect(phoneSearchDigits('91.98220')).toBe('98220');
+    expect(phoneSearchDigits('91/98220')).toBe('98220');
   });
 
   it('leaves a number that merely starts with 91 alone', () => {
