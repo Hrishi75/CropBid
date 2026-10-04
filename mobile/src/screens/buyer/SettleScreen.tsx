@@ -34,15 +34,6 @@ import type { DeliveryStatus, Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import RazorpayCheckout from '../../components/RazorpayCheckout';
 
-const PAYMENT_LABEL: Record<Transaction['paymentStatus'], string> = {
-  AWAITING_PAYMENT: 'To pay',
-  ESCROW: 'Paid',
-  RELEASED: 'Settled',
-  REFUNDED: 'Refunded',
-  // Retail only, where a shop order can be called off before dispatch. A trade
-  // deal has a contract behind it and never reaches this state.
-  CANCELLED: 'Cancelled',
-};
 const DELIVERY_LABEL: Record<Transaction['deliveryStatus'], string> = {
   PENDING: 'Awaiting shipment',
   IN_TRANSIT: 'In transit',
@@ -50,6 +41,18 @@ const DELIVERY_LABEL: Record<Transaction['deliveryStatus'], string> = {
   CONFIRMED: 'Confirmed',
   CANCELLED: 'Cancelled',
 };
+
+// The one word for where a deal is, from both columns together. The pill used
+// to show payment alone, so a delivered deal still read "Paid".
+function stageLabel(tx: Transaction): string {
+  if (tx.paymentStatus === 'REFUNDED') return 'Refunded';
+  if (tx.paymentStatus === 'CANCELLED' || tx.deliveryStatus === 'CANCELLED') return 'Cancelled';
+  if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'To pay';
+  if (tx.paymentStatus === 'RELEASED' || tx.deliveryStatus === 'CONFIRMED') return 'Settled';
+  if (tx.deliveryStatus === 'DELIVERED') return 'Delivered';
+  if (tx.deliveryStatus === 'IN_TRANSIT') return 'On the way';
+  return 'Paid';
+}
 
 function statusTone(tx: Transaction): 'ember' | 'sage' | 'paper' {
   // Orange only for "you still have to pay"; paid and settled are good news.
@@ -107,10 +110,25 @@ export default function SettleScreen() {
   // Deals still needing someone, and deals that are over.
   const isDone = (t: Transaction) =>
     t.paymentStatus === 'RELEASED' || t.paymentStatus === 'REFUNDED' || t.paymentStatus === 'CANCELLED';
-  const shown = txs.filter((t) => (filter === 'all' ? true : filter === 'done' ? isDone(t) : !isDone(t)));
+  // What this viewer has to do on a deal, if anything. Mirrors deliveryAction
+  // and the pay rule below, for a deal that is not the open one.
+  const needsMe = (t: Transaction): string | null => {
+    const buyer = user?.id === t.buyerId;
+    const seller = user?.id === t.farmerId;
+    if (buyer && t.paymentStatus === 'AWAITING_PAYMENT') return `Pay ${money(t.totalAmount, t.currency)}`;
+    if (buyer && t.deliveryStatus === 'DELIVERED') return 'Confirm it arrived';
+    if (seller && t.paymentStatus === 'ESCROW' && t.deliveryStatus === 'PENDING') return 'Mark it shipped';
+    if (seller && t.deliveryStatus === 'IN_TRANSIT') return 'Mark it delivered';
+    return null;
+  };
+  // Deals waiting on this viewer first, then the rest newest first.
+  const shown = txs
+    .filter((t) => (filter === 'all' ? true : filter === 'done' ? isDone(t) : !isDone(t)))
+    .sort((a, b) => Number(!!needsMe(b)) - Number(!!needsMe(a)) || b.createdAt.localeCompare(a.createdAt));
   // The open card: the one tapped, else the first that needs something.
   const tx =
     txs.find((t) => t.id === selectedId) ??
+    shown.find((t) => !!needsMe(t)) ??
     shown.find((t) => !isDone(t)) ??
     shown[0] ??
     null;
@@ -234,6 +252,7 @@ export default function SettleScreen() {
   const terms: [string, string][] = tx
     ? [
         [isBuyer ? 'Seller' : 'Buyer', isBuyer ? (tx.farmer?.name ?? '-') : (tx.buyer?.name ?? '-')],
+        ['From', [tx.listing?.location, tx.listing?.state].filter(Boolean).join(', ') || '-'],
         ['Quantity', tx.bid ? `${tx.bid.quantity.toLocaleString('en-IN')} ${unitLabel(tx.listing?.unit ?? '')}` : '-'],
         ['Price', `${money(tx.finalPricePerUnit, tx.currency)} / ${unitLabel(tx.listing?.unit ?? 'unit')}`],
         // The 2% comes off the seller's side, so only the seller sees it; to a
@@ -266,6 +285,29 @@ export default function SettleScreen() {
           ) : null}
           <Text style={styles.h1}>{user?.role === 'BUYER' ? 'Contracts' : 'Your sales'}</Text>
           <Text style={styles.lede}>Every deal, its payment and its delivery.</Text>
+          {/* What this viewer owes and has to do, before any card is opened. */}
+          {txs.length > 0 ? (
+            <View style={styles.summary}>
+              <View style={styles.sumCell}>
+                <Mono style={styles.sumLabel}>{user?.role === 'BUYER' ? 'TO PAY' : 'AWAITING PAYMENT'}</Mono>
+                <Text style={styles.sumVal}>
+                  {money(txs.filter((t) => t.paymentStatus === 'AWAITING_PAYMENT').reduce((n, t) => n + t.totalAmount, 0), txs[0].currency)}
+                </Text>
+              </View>
+              <View style={styles.sumDivider} />
+              <View style={styles.sumCell}>
+                <Mono style={styles.sumLabel}>NEEDS YOU</Mono>
+                <Text style={[styles.sumVal, txs.some((t) => !!needsMe(t)) && styles.sumHot]}>
+                  {txs.filter((t) => !!needsMe(t)).length}
+                </Text>
+              </View>
+              <View style={styles.sumDivider} />
+              <View style={styles.sumCell}>
+                <Mono style={styles.sumLabel}>SETTLED</Mono>
+                <Text style={styles.sumVal}>{txs.filter((t) => t.paymentStatus === 'RELEASED').length}</Text>
+              </View>
+            </View>
+          ) : null}
           {txs.length > 0 ? (
             <View style={styles.filters}>
               {([['all', 'All'], ['todo', 'In progress'], ['done', 'Done']] as const).map(([k, label]) => (
@@ -310,7 +352,7 @@ export default function SettleScreen() {
                       </View>
                       <View style={{ alignItems: 'flex-end', gap: 4 }}>
                         <Text style={styles.total}>{money(t.totalAmount, t.currency)}</Text>
-                        <StatusPill tone={statusTone(t)}>{PAYMENT_LABEL[t.paymentStatus].toLowerCase()}</StatusPill>
+                        <StatusPill tone={needsMe(t) ? 'ember' : statusTone(t)}>{stageLabel(t).toLowerCase()}</StatusPill>
                       </View>
                     </Pressable>
 
@@ -324,6 +366,13 @@ export default function SettleScreen() {
                           </View>
                         ))}
                       </View>
+                    ) : null}
+
+                    {!open && needsMe(t) ? (
+                      <Pressable onPress={() => setSelectedId(t.id)} style={styles.nudge}>
+                        <View style={styles.nudgeDot} />
+                        <Text style={styles.nudgeText}>Needs you: {needsMe(t)}</Text>
+                      </Pressable>
                     ) : null}
 
                     {open ? (
@@ -428,6 +477,21 @@ const styles = StyleSheet.create({
   chipTextOn: { color: colors.textInverse },
   chipCount: { fontFamily: font.monoMed, fontSize: 11, color: design.ink3 },
   chipCountOn: { color: design.leaf },
+  summary: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 14,
+    backgroundColor: colors.forest, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14,
+  },
+  sumCell: { flex: 1, minWidth: 0 },
+  sumLabel: { fontSize: 8.5, letterSpacing: 0.7, color: 'rgba(244,241,234,0.6)' },
+  sumVal: { fontFamily: font.sansBold, fontSize: 17, letterSpacing: -0.3, color: colors.textInverse, marginTop: 2 },
+  sumHot: { color: '#f0a36f' },
+  sumDivider: { width: 1, alignSelf: 'stretch', backgroundColor: 'rgba(244,241,234,0.14)', marginHorizontal: 10 },
+  nudge: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: 'rgba(200,96,43,0.08)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  nudgeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.ember },
+  nudgeText: { fontFamily: font.sansSemi, fontSize: 13, color: colors.ember },
   errorText: { fontFamily: font.sans, fontSize: 13, color: design.ink3, paddingHorizontal: 4, paddingTop: 8, textAlign: 'center' },
 
   emptyCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 18, padding: 22, alignItems: 'center', gap: 8 },
