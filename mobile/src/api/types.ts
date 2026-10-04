@@ -116,7 +116,9 @@ export interface Listing {
 
 export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
 export type RequirementOfferStatus =
-  | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+  | 'PENDING' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+// PENDING waits on the buyer; COUNTERED waits on the seller, who accepts the
+// buyer's price (buyerCounterPrice) or sends a new one.
 /** INSTANT filled at the buyer's own price; COUNTER proposed the farmer's. */
 export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
 
@@ -173,6 +175,12 @@ export interface BuyerRequirement {
   maxMoisturePct?: number | null;
   packing?: string | null;
   requiredDocs?: string[];
+  /** A restaurant's request: every fill is negotiated, none at the posted price. */
+  negotiateOnly?: boolean;
+  /** Repeat orders: posts a fresh copy every N days; nextRepeatAt is when. */
+  repeatEveryDays?: number | null;
+  nextRepeatAt?: string | null;
+  seriesId?: string | null;
   status: RequirementStatus;
   createdAt: string;
   updatedAt?: string;
@@ -195,6 +203,8 @@ export interface RequirementOffer {
   currency: string;
   message: string | null;
   status: RequirementOfferStatus;
+  /** The buyer's price back while COUNTERED. */
+  buyerCounterPrice?: number | null;
   listingId: string | null;
   bidId: string | null;
   createdAt: string;

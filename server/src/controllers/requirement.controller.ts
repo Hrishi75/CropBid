@@ -50,6 +50,8 @@ const createRequirementSchema = z.object({
   maxMoisturePct: z.number().nullable().optional(),
   packing: z.string().max(200).nullable().optional(),
   requiredDocs: z.array(z.enum(DOC_CODES)).max(DOC_CODES.length).optional(),
+  // Every N days (3, 7 or 14, checked in the service), or null for once.
+  repeatEveryDays: z.number().int().nullable().optional(),
 });
 
 // `currency` is omitted on purpose, joining status/remainingQuantity/buyerId as
@@ -65,6 +67,9 @@ const createRequirementSchema = z.object({
 // that changed nothing.
 const updateRequirementSchema = createRequirementSchema.partial().omit({
   currency: true, forExport: true, exportPort: true, maxMoisturePct: true, packing: true, requiredDocs: true,
+  // Repeating has its own endpoint (PUT /:id/repeat), because it is allowed on
+  // a FULFILLED request too and the edit path is not.
+  repeatEveryDays: true,
 });
 
 // GET /api/requirements/export-options — the ports and documents an export
@@ -410,6 +415,73 @@ export async function rejectOffer(req: Request, res: Response, next: NextFunctio
       metadata: { requirementId: offer.requirementId, farmerId: offer.farmerId },
     });
     res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const priceSchema = z.object({ pricePerUnit: z.coerce.number().positive('Enter a price') });
+
+// PUT /api/requirements/offers/:offerId/counter — Buyer sends a price back
+export async function counterOffer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = priceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const offer = await requirementService.counterOffer(paramOfferId(req), req.user!.userId, parsed.data.pricePerUnit);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.counter',
+      entityType: 'RequirementOffer',
+      entityId: offer.id,
+      metadata: { requirementId: offer.requirementId, counterPrice: offer.buyerCounterPrice },
+    });
+    res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/offers/:offerId/revise — Seller answers a counter with a new price
+export async function reviseOffer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = priceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const offer = await requirementService.reviseOffer(paramOfferId(req), req.user!.userId, parsed.data.pricePerUnit);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.revise',
+      entityType: 'RequirementOffer',
+      entityId: offer.id,
+      metadata: { requirementId: offer.requirementId, pricePerUnit: offer.pricePerUnit },
+    });
+    res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/offers/:offerId/accept-counter — Seller takes the buyer's price
+export async function acceptCounter(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await requirementService.acceptCounter(paramOfferId(req), req.user!.userId);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.accept_counter',
+      entityType: 'RequirementOffer',
+      entityId: result.offer.id,
+      metadata: { requirementId: result.offer.requirementId, transactionId: result.transaction.id },
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/:id/repeat — Buyer starts, changes or stops repeating
+const repeatSchema = z.object({ repeatEveryDays: z.number().int().nullable() });
+export async function setRepeat(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = repeatSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Send repeatEveryDays: 3, 7, 14 or null' });
+    const r = await requirementService.setRepeat(paramId(req), req.user!.userId, parsed.data.repeatEveryDays);
+    res.json(r);
   } catch (error) {
     next(error);
   }

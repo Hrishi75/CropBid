@@ -534,6 +534,8 @@ export interface RequirementInput {
   maxMoisturePct?: number | null;
   packing?: string | null;
   requiredDocs?: string[];
+  /** 3, 7 or 14 to repeat; omitted or null for once. */
+  repeatEveryDays?: number | null;
 }
 
 // The ports and documents an export request can name. Served, not copied.
@@ -565,6 +567,28 @@ export async function offersForRequirement(id: string): Promise<RequirementOffer
 
 export async function acceptRequirementOffer(offerId: string): Promise<RequirementOffer> {
   const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/accept`);
+  return data;
+}
+
+// The back-and-forth on an offer. The buyer counters with a lower price; the
+// seller accepts that price (which makes the deal) or sends a new one.
+export async function counterRequirementOffer(offerId: string, pricePerUnit: number): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/counter`, { pricePerUnit });
+  return data;
+}
+
+export async function reviseRequirementOffer(offerId: string, pricePerUnit: number): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/revise`, { pricePerUnit });
+  return data;
+}
+
+export async function acceptBuyerCounter(offerId: string): Promise<void> {
+  await api.put(`/requirements/offers/${offerId}/accept-counter`);
+}
+
+/** Start, change or stop a request repeating. null stops it. */
+export async function setRequirementRepeat(id: string, repeatEveryDays: number | null): Promise<BuyerRequirement> {
+  const { data } = await api.put<BuyerRequirement>(`/requirements/${id}/repeat`, { repeatEveryDays });
   return data;
 }
 

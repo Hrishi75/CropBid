@@ -68,7 +68,8 @@ export type RootStackParamList = {
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyRequirements: undefined;
-  CreateRequirement: undefined;
+  // `crop` prefills the crop, from a lot a restaurant cannot bid on.
+  CreateRequirement: { crop?: string } | undefined;
   Auction: { listingId?: string } | undefined;
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
@@ -172,7 +173,8 @@ export type DemandStackParamList = {
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyOffers: undefined;
   MyRequirements: undefined;
-  CreateRequirement: undefined;
+  // `crop` prefills the crop, from a lot a restaurant cannot bid on.
+  CreateRequirement: { crop?: string } | undefined;
 };
 
 // Partner app — where a seller or buyer waits while their application is

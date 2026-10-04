@@ -23,6 +23,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { Alert } from '../lib/alert';
@@ -36,6 +37,8 @@ import { useAuth } from '../context/AuthContext';
 import {
   acceptRequirementOffer,
   closeRequirement,
+  counterRequirementOffer,
+  setRequirementRepeat,
   fetchRequirement,
   offersForRequirement,
   rejectRequirementOffer,
@@ -54,6 +57,7 @@ type Props = NativeStackScreenProps<DemandStackParamList, 'RequirementDetail'>;
 
 const OFFER_STATUS: Record<RequirementOfferStatus, { label: string; color: string }> = {
   PENDING: { label: 'NEW OFFER', color: colors.ember },
+  COUNTERED: { label: 'YOU COUNTERED', color: '#b7791f' },
   ACCEPTED: { label: 'ACCEPTED', color: colors.sage },
   REJECTED: { label: 'REJECTED', color: design.ink3 },
   WITHDRAWN: { label: 'WITHDRAWN', color: design.ink3 },
@@ -70,6 +74,9 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [answering, setAnswering] = useState<'fill' | 'counter' | null>(null);
+  // The offer whose counter field is open, and what is typed in it.
+  const [countering, setCountering] = useState<string | null>(null);
+  const [counterPrice, setCounterPrice] = useState('');
 
   const isFarmer = user?.role === 'FARMER';
   const isOwner = user?.role === 'BUYER' && requirement?.buyerId === user.id;
@@ -118,10 +125,36 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
     }
   }
 
+  async function sendCounter(offer: RequirementOffer) {
+    const price = Number(counterPrice);
+    if (!(price > 0)) { Alert.alert('Enter a price', 'Type the price per unit you would pay.'); return; }
+    setBusy(offer.id);
+    try {
+      await counterRequirementOffer(offer.id, price);
+      setCountering(null);
+      setCounterPrice('');
+      await load();
+    } catch (e) {
+      Alert.alert('Could not send that', errorMessage(e, 'Please try again'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeRepeat(days: number | null) {
+    try {
+      setRequirement(await setRequirementRepeat(id, days));
+    } catch (e) {
+      Alert.alert('Could not change that', errorMessage(e, 'Please try again'));
+    }
+  }
+
   function confirmClose() {
     Alert.alert(
       'Withdraw this requirement?',
-      'It stops appearing on the board. Offers already accepted are unaffected.',
+      requirement?.nextRepeatAt
+        ? 'It stops appearing on the board and stops repeating. Offers already accepted are unaffected.'
+        : 'It stops appearing on the board. Offers already accepted are unaffected.',
       [
         { text: 'Keep it open', style: 'cancel' },
         {
@@ -156,10 +189,26 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
     <ScrollView
       style={styles.flex}
       contentContainerStyle={styles.body}
+      // Send lands on the first tap with the number pad up, rather than the
+      // first tap only closing the keyboard.
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.forest} />}
     >
       <RequirementCard requirement={r} showMspWarning={isFarmer}>
-        {answerable ? (
+        {/* A restaurant negotiates every order, so its request has no "fill
+            at the posted price": the only answer is an offer. */}
+        {answerable && r.negotiateOnly ? (
+          <View style={{ gap: 8 }}>
+            <Text style={styles.negNote}>This buyer negotiates every order. Send your price; they may counter.</Text>
+            <PressScale
+              onPress={() => setAnswering(answering === 'counter' ? null : 'counter')}
+              cardStyle={[styles.actionBtn, styles.actionPrimary]}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>Make an offer</Text>
+            </PressScale>
+          </View>
+        ) : answerable ? (
           <View style={styles.actions}>
             <PressScale
               onPress={() => setAnswering(answering === 'fill' ? null : 'fill')}
@@ -274,7 +323,36 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
 
                     {/* Only a PENDING counter is still a decision. An INSTANT fill
                         arrives already accepted: the deal closed when it was made. */}
-                    {o.status === 'PENDING' ? (
+                    {o.status === 'COUNTERED' && o.buyerCounterPrice != null ? (
+                      <Text style={styles.waitLine}>
+                        You offered {money(o.buyerCounterPrice, o.currency)}/{unit}. Waiting for the seller to accept it or send a new price.
+                      </Text>
+                    ) : null}
+
+                    {o.status === 'PENDING' && countering === o.id ? (
+                      <View style={styles.counterRow}>
+                        <TextInput
+                          style={styles.counterInput}
+                          value={counterPrice}
+                          onChangeText={(t) => setCounterPrice(t.replace(/[^0-9.]/g, ''))}
+                          keyboardType="decimal-pad"
+                          placeholder={`Below ${money(o.pricePerUnit, o.currency)}`}
+                          placeholderTextColor={design.ink3}
+                          autoFocus
+                        />
+                        <PressScale
+                          onPress={busy ? undefined : () => void sendCounter(o)}
+                          cardStyle={[styles.actionBtn, styles.actionPrimary, styles.offerBtnTall, busy === o.id && styles.dim]}
+                        >
+                          <Text style={[styles.actionText, styles.actionTextPrimary]}>Send /{unit}</Text>
+                        </PressScale>
+                        <PressScale onPress={() => { setCountering(null); setCounterPrice(''); }} cardStyle={[styles.actionBtn, styles.offerBtnTall, styles.closeBtn]}>
+                          <Text style={styles.actionText}>×</Text>
+                        </PressScale>
+                      </View>
+                    ) : null}
+
+                    {o.status === 'PENDING' && countering !== o.id ? (
                       <View style={styles.offerBtns}>
                         <PressScale
                           onPress={busy ? undefined : () => decide(o, true)}
@@ -287,6 +365,15 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
                               Accept {money(o.totalAmount, o.currency)}
                             </Text>
                           </View>
+                        </PressScale>
+                        {/* Countering is how a restaurant buys, so it is offered
+                            on every pending offer. */}
+                        <PressScale
+                          onPress={busy ? undefined : () => { setCountering(o.id); setCounterPrice(''); }}
+                          style={styles.reject}
+                          cardStyle={[styles.actionBtn, styles.offerBtnTall, busy === o.id && styles.dim]}
+                        >
+                          <Text style={styles.actionText}>Counter</Text>
                         </PressScale>
                         <PressScale
                           onPress={busy ? undefined : () => decide(o, false)}
@@ -302,6 +389,30 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
               );
             })
           )}
+        </View>
+      ) : null}
+
+      {/* Repeat orders: a kitchen buys the same things every week. */}
+      {isOwner && (r.status === 'OPEN' || r.status === 'FULFILLED') ? (
+        <View style={styles.card}>
+          <Mono style={styles.eyebrow}>REPEAT THIS ORDER</Mono>
+          <View style={styles.repeatRow}>
+            {([null, 3, 7, 14] as const).map((d) => {
+              const on = (r.nextRepeatAt ? r.repeatEveryDays ?? null : null) === d;
+              return (
+                <PressScale key={String(d)} onPress={on ? undefined : () => void changeRepeat(d)} cardStyle={[styles.repeatChip, on && styles.repeatChipOn]}>
+                  <Text style={[styles.repeatText, on && styles.repeatTextOn]}>
+                    {d == null ? 'Once' : d === 7 ? 'Weekly' : d === 14 ? 'Every 2 weeks' : `Every ${d} days`}
+                  </Text>
+                </PressScale>
+              );
+            })}
+          </View>
+          <Text style={styles.repeatHint}>
+            {r.nextRepeatAt
+              ? `Posts again on ${new Date(r.nextRepeatAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}, with the full quantity. If this one is still open then, it closes.`
+              : 'Posts a fresh copy on a schedule, so sellers keep seeing it without you posting again.'}
+          </Text>
         </View>
       ) : null}
 
@@ -386,6 +497,21 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2, borderLeftColor: design.mint, paddingLeft: 10,
   },
   offerBtns: { flexDirection: 'row', gap: 9 },
+  negNote: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3 },
+  waitLine: { fontFamily: font.sansMed, fontSize: 13, lineHeight: 19, color: '#8a5a12', backgroundColor: 'rgba(183,121,31,0.1)', borderRadius: 10, padding: 10 },
+  counterRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  // A fixed width: as a shrinkable row item the × was squeezed to a sliver.
+  closeBtn: { width: 46, paddingHorizontal: 0, alignItems: 'center' },
+  counterInput: {
+    flex: 1, borderWidth: 1, borderColor: design.line, borderRadius: 12, backgroundColor: design.bg,
+    paddingHorizontal: 12, paddingVertical: 11, fontFamily: font.sans, fontSize: 15, color: design.ink,
+  },
+  repeatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 4 },
+  repeatChip: { borderWidth: 1, borderColor: design.line, backgroundColor: design.bg, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
+  repeatChipOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  repeatText: { fontFamily: font.sansMed, fontSize: 12.5, color: design.ink2 },
+  repeatTextOn: { color: colors.textInverse },
+  repeatHint: { fontFamily: font.sans, fontSize: 12, lineHeight: 17, color: design.ink3, marginTop: 10 },
   offerBtnTall: { paddingVertical: 13, borderRadius: 13 },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   reject: { flex: 0.6 },

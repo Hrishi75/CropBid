@@ -125,7 +125,7 @@ export function BuyerProfile({
           <MenuRow
             Icon={IconPlus}
             label={t('Post what you need')}
-            hint={t('Sellers fill it at your price, or counter')}
+            hint={user.buyerProfile?.companyType === 'RESTAURANT' ? t('Sellers offer their price, you negotiate') : t('Sellers fill it at your price, or counter')}
             onPress={() => nav.navigate('CreateRequirement')}
           />
           <MenuRow

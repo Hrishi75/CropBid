@@ -78,6 +78,22 @@ export async function orderContactDefaults(
 }
 
 // =============================================================================
+// Who may bid on the market
+// =============================================================================
+// A restaurant negotiates, it does not buy off the shelf: it posts what its
+// kitchen needs and haggles with the sellers who answer (requirement offers,
+// with counters). So a RESTAURANT buyer may browse lots and their prices but
+// not bid on one, here or in a live auction. Read from the buyer profile at
+// the moment of bidding, so a changed company type takes effect at once.
+export const RESTAURANT_NO_BIDS =
+  'Restaurants buy by posting what the kitchen needs and negotiating with sellers. Post a request for this crop instead.';
+
+export async function bidsOnMarket(userId: string): Promise<boolean> {
+  const profile = await prisma.buyerProfile.findUnique({ where: { userId }, select: { companyType: true } });
+  return profile?.companyType !== 'RESTAURANT';
+}
+
+// =============================================================================
 // PLACE BID — Buyer submits a bid on a listing
 // =============================================================================
 export async function placeBid(buyerId: string, input: PlaceBidInput) {
@@ -100,6 +116,8 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   if (listing.farmer.userId === buyerId) {
     throw new ApiError(400, 'You cannot bid on your own listing');
   }
+
+  if (!(await bidsOnMarket(buyerId))) throw new ApiError(403, RESTAURANT_NO_BIDS, 'RESTAURANT_NO_BIDS');
 
   // Rule: Bid price must meet the floor price
   if (input.bidPricePerUnit < listing.pricePerUnitMin) {

@@ -306,12 +306,15 @@ export default function StorefrontHomeScreen() {
   const isBuyer = role === 'BUYER';
   // An exporter gets the export-ready filters (components/ExportFilters).
   const isExporter = isBuyer && user?.buyerProfile?.companyType === 'EXPORTER';
+  // A restaurant negotiates through its requests and does not bid on lots
+  // (the server refuses it), so the market is a price board for it.
+  const isRestaurant = isBuyer && user?.buyerProfile?.companyType === 'RESTAURANT';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
   const shopping = role !== 'BUYER' && !isFarmer && role !== 'ADMIN';
   // Card action mirrors what ListingDetail offers each role.
-  const actionLabel = role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'ADD';
+  const actionLabel = isRestaurant ? 'VIEW' : role === 'BUYER' ? 'BID' : isFarmer ? 'VIEW' : 'ADD';
   const liveWord = role === 'CONSUMER' ? 'FARM DIRECT' : 'LIVE LOT';
   // Whoever is being sold a pack is also being promised a delivery, so the
   // shelf they see has to be one they can actually be delivered from.
@@ -828,7 +831,12 @@ export default function StorefrontHomeScreen() {
                         : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                     </Mono>
                   </View>
-                  {isBuyer ? (
+                  {isRestaurant ? (
+                    <Text style={styles.bannerTitle}>
+                      Know the rate,{'\n'}
+                      <Text style={styles.bannerItalic}>then</Text> negotiate.
+                    </Text>
+                  ) : isBuyer ? (
                     <Text style={styles.bannerTitle}>
                       Source by the lot,{'\n'}
                       <Text style={styles.bannerItalic}>priced</Text> to the mandi.
@@ -845,8 +853,9 @@ export default function StorefrontHomeScreen() {
                     </Text>
                   )}
                   <View style={styles.bannerTicks}>
-                    <Text style={styles.bannerTick}>✓ {isBuyer ? t('Bid or counter on any lot') : t('Open bidding & auctions')}</Text>
-                    <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
+                    <Text style={styles.bannerTick}>✓ {isRestaurant ? t('Post what the kitchen needs') : isBuyer ? t('Bid or counter on any lot') : t('Open bidding & auctions')}</Text>
+                    {isRestaurant ? <Text style={styles.bannerTick}>✓ {t('Sellers offer, you counter')}</Text> : null}
+                    {isRestaurant ? null : <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>}
                     <Text style={styles.bannerTick}>✓ {isWholesaler || isBuyer ? t('Delivery booked for you') : t('Farm to door')}</Text>
                   </View>
                 </View>

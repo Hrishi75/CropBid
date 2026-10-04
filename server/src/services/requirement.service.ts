@@ -47,7 +47,19 @@ import {
   notifyRequirementOfferAccepted,
   notifyRequirementOfferRejected,
   notifyRequirementClosed,
+  notifyOfferCountered,
+  notifyCounterAnswered,
+  notifyRequirementReposted,
 } from './notification.helpers';
+
+// An offer is live while either side still has a move: PENDING waits on the
+// buyer, COUNTERED on the seller. Every sweep that retires offers (a fill, a
+// close, an edit, a repost) has to retire both, or a countered offer survives
+// on a request that can no longer be filled.
+const LIVE_OFFER = { in: ['PENDING', 'COUNTERED'] as ('PENDING' | 'COUNTERED')[] };
+
+/** How often a request can repeat, in days. */
+export const REPEAT_DAYS = [3, 7, 14] as const;
 import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 
@@ -73,9 +85,10 @@ export interface CreateRequirementInput {
   maxMoisturePct?: number | null;
   packing?: string | null;
   requiredDocs?: ExportDocCode[];
+  repeatEveryDays?: number | null;
 }
 
-export type UpdateRequirementInput = Partial<Omit<CreateRequirementInput, 'forExport' | 'exportPort' | 'maxMoisturePct' | 'packing' | 'requiredDocs'>>;
+export type UpdateRequirementInput = Partial<Omit<CreateRequirementInput, 'forExport' | 'exportPort' | 'maxMoisturePct' | 'packing' | 'requiredDocs' | 'repeatEveryDays'>>;
 
 export interface RequirementFeedQuery {
   crop?: string;
@@ -421,7 +434,7 @@ async function settleIfFilled(tx: Prisma.TransactionClient, requirementId: strin
   // Capture the pending offers BEFORE the bulk update, otherwise we lose track
   // of whom to notify.
   const expired = await tx.requirementOffer.findMany({
-    where: { requirementId, status: 'PENDING' },
+    where: { requirementId, status: LIVE_OFFER },
     select: { id: true, farmerId: true },
   });
 
@@ -430,7 +443,7 @@ async function settleIfFilled(tx: Prisma.TransactionClient, requirementId: strin
     data: { status: 'FULFILLED' },
   });
   await tx.requirementOffer.updateMany({
-    where: { requirementId, status: 'PENDING' },
+    where: { requirementId, status: LIVE_OFFER },
     data: { status: 'EXPIRED', respondedAt: new Date() },
   });
 
@@ -482,6 +495,8 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
   // For export, the port is the delivery address (utils/exportSpec).
   const exp = exportFields(input, input.organic ?? false);
 
+  const repeatEveryDays = parseRepeat(input.repeatEveryDays);
+
   const requirement = await prisma.buyerRequirement.create({
     data: {
       buyerId,
@@ -503,6 +518,10 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
       deliveryTerms: input.deliveryTerms || null,
       ...exp.fields,
       ...(exp.delivery ?? {}),
+      // A restaurant negotiates every fill (CLAUDE.md §9).
+      negotiateOnly: buyerProfile.companyType === 'RESTAURANT',
+      repeatEveryDays,
+      nextRepeatAt: repeatEveryDays ? addDays(new Date(), repeatEveryDays) : null,
     },
     include: { buyer: { select: PUBLIC_BUYER_SELECT } },
   });
@@ -835,6 +854,11 @@ export async function acceptRequirementNow(
     farmerUserId,
     input.quantity,
   );
+  // Checked again inside the claim below, so a request can never be filled at
+  // its posted price while it is negotiate-only.
+  if (requirement.negotiateOnly) {
+    throw new ApiError(400, 'This buyer negotiates every order. Send an offer with your price instead.');
+  }
   const contact = await requirementOrderContact(requirement);
 
   const result = await prisma.$transaction(async (tx) => {
@@ -849,6 +873,7 @@ export async function acceptRequirementNow(
       where: {
         id: requirement.id,
         status: 'OPEN',
+        negotiateOnly: false,
         remainingQuantity: { gte: input.quantity },
         OR: [{ neededBy: null }, { neededBy: { gte: new Date() } }],
       },
@@ -962,7 +987,7 @@ export async function createOffer(
   // for listings. Enforced here rather than with a partial unique index because
   // Prisma can't express a filtered index, so the next migrate would drop it.
   const existing = await prisma.requirementOffer.findFirst({
-    where: { requirementId, farmerId: farmerUserId, status: 'PENDING' },
+    where: { requirementId, farmerId: farmerUserId, status: LIVE_OFFER },
   });
   if (existing) {
     throw new ApiError(
@@ -1005,19 +1030,41 @@ export async function createOffer(
 // =============================================================================
 // ACCEPT OFFER — Buyer takes a farmer's counter-offer
 // =============================================================================
-export async function acceptOffer(offerId: string, buyerUserId: string) {
+export function acceptOffer(offerId: string, buyerUserId: string) {
+  return finaliseOffer(offerId, 'BUYER', buyerUserId);
+}
+
+// =============================================================================
+// ACCEPT COUNTER — The seller takes the buyer's price back
+// =============================================================================
+// The same deal-making path as the buyer accepting, at the buyer's counter
+// price, so there is one place an offer becomes a Listing, Bid and Transaction.
+export function acceptCounter(offerId: string, farmerUserId: string) {
+  return finaliseOffer(offerId, 'FARMER', farmerUserId);
+}
+
+async function finaliseOffer(offerId: string, side: 'BUYER' | 'FARMER', userId: string) {
   const offer = await prisma.requirementOffer.findUnique({
     where: { id: offerId },
     include: { requirement: true },
   });
 
   if (!offer) throw new ApiError(404, 'Offer not found');
-  if (offer.requirement.buyerId !== buyerUserId) {
+  // Whose move it is decides who may close it: the buyer takes a PENDING
+  // offer at the seller's price; the seller takes a COUNTERED one at the
+  // buyer's.
+  const expected = side === 'BUYER' ? 'PENDING' : 'COUNTERED';
+  if (side === 'BUYER' && offer.requirement.buyerId !== userId) {
     throw new ApiError(403, 'You can only accept offers on your own requirements');
   }
-  if (offer.status !== 'PENDING') {
+  if (side === 'FARMER' && offer.farmerId !== userId) {
+    throw new ApiError(403, 'You can only answer counters on your own offers');
+  }
+  if (offer.status !== expected) {
     throw new ApiError(400, `Cannot accept ${statusPhrase(offer.status)} offer`);
   }
+  const price = side === 'BUYER' ? offer.pricePerUnit : offer.buyerCounterPrice;
+  if (price == null) throw new ApiError(400, 'There is no counter price on this offer');
   if (offer.requirement.status !== 'OPEN') {
     throw new ApiError(400, `Cannot accept offers on ${statusPhrase(offer.requirement.status)} requirement`);
   }
@@ -1064,11 +1111,13 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
       );
     }
 
+    // Conditional on the state the decision was made from: a revise or a
+    // counter landing in between makes this miss, and nothing is filled.
     const claimedOffer = await tx.requirementOffer.updateMany({
-      where: { id: offer.id, status: 'PENDING' },
-      data: { status: 'ACCEPTED', respondedAt: new Date() },
+      where: { id: offer.id, status: expected, ...(side === 'FARMER' ? { buyerCounterPrice: price } : { pricePerUnit: price }) },
+      data: { status: 'ACCEPTED', respondedAt: new Date(), pricePerUnit: price, totalAmount: money(price * offer.quantity) },
     });
-    if (claimedOffer.count === 0) throw new ApiError(409, 'This offer is no longer pending.');
+    if (claimedOffer.count === 0) throw new ApiError(409, 'This offer changed a moment ago. Reload to see where it stands.');
 
     const settled = await settleIfFilled(tx, offer.requirementId);
 
@@ -1076,7 +1125,7 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
       requirement: offer.requirement,
       farmerProfile,
       quantity: offer.quantity,
-      pricePerUnit: offer.pricePerUnit,
+      pricePerUnit: price,
       // The offer's own snapshot, taken when the farmer submitted it — not the
       // requirement's current value. price, quantity and currency then all come
       // from the same agreement rather than two points in time.
@@ -1097,16 +1146,23 @@ export async function acceptOffer(offerId: string, buyerUserId: string) {
     return { offer: updated, ...deal, expired: settled.expired.filter((e) => e.id !== offer.id) };
   });
 
-  notifyRequirementOfferAccepted(
-    offer.farmerId,
-    offer.requirement.cropName,
-    offer.pricePerUnit,
-    offer.requirement.currency,
-    offer.requirement.unit,
-    offer.requirementId,
-    offer.id,
-    result.transaction.id,
-  ).catch(() => {});
+  if (side === 'BUYER') {
+    notifyRequirementOfferAccepted(
+      offer.farmerId,
+      offer.requirement.cropName,
+      price,
+      offer.requirement.currency,
+      offer.requirement.unit,
+      offer.requirementId,
+      offer.id,
+      result.transaction.id,
+    ).catch(() => {});
+  } else {
+    notifyCounterAnswered(
+      offer.requirement.buyerId, farmerProfile.user.name, offer.requirement.cropName, true,
+      price, offer.requirement.currency, offer.requirement.unit, offer.requirementId, offer.id,
+    ).catch(() => {});
+  }
   void alertNewOrder(result.bid.id, 'REQUIREMENT_FILL');
   notifyExpiredOffers(result.expired, offer.requirement.cropName, offer.requirementId);
 
@@ -1126,7 +1182,7 @@ export async function rejectOffer(offerId: string, buyerUserId: string) {
   if (offer.requirement.buyerId !== buyerUserId) {
     throw new ApiError(403, 'You can only reject offers on your own requirements');
   }
-  if (offer.status !== 'PENDING') {
+  if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
     throw new ApiError(400, `Cannot reject ${statusPhrase(offer.status)} offer`);
   }
 
@@ -1136,7 +1192,7 @@ export async function rejectOffer(offerId: string, buyerUserId: string) {
   // Bid and payable Transaction behind it — back to REJECTED, hiding a real deal
   // from both parties.
   const claimed = await prisma.requirementOffer.updateMany({
-    where: { id: offerId, status: 'PENDING' },
+    where: { id: offerId, status: LIVE_OFFER },
     data: { status: 'REJECTED', respondedAt: new Date() },
   });
   if (claimed.count === 0) {
@@ -1171,7 +1227,7 @@ export async function withdrawOffer(offerId: string, farmerUserId: string) {
   if (offer.status === 'ACCEPTED') {
     throw new ApiError(400, 'Cannot withdraw an accepted offer');
   }
-  if (offer.status !== 'PENDING') {
+  if (offer.status !== 'PENDING' && offer.status !== 'COUNTERED') {
     throw new ApiError(400, `Cannot withdraw ${statusPhrase(offer.status)} offer`);
   }
 
@@ -1184,7 +1240,7 @@ export async function withdrawOffer(offerId: string, farmerUserId: string) {
   // is the BUYER's, so the two genuinely run at once. Losing it means the farmer
   // sees WITHDRAWN while a payable Transaction sits behind the offer.
   const claimed = await prisma.requirementOffer.updateMany({
-    where: { id: offerId, status: 'PENDING' },
+    where: { id: offerId, status: LIVE_OFFER },
     data: { status: 'WITHDRAWN', respondedAt: new Date() },
   });
   if (claimed.count === 0) {
@@ -1195,6 +1251,191 @@ export async function withdrawOffer(offerId: string, farmerUserId: string) {
   }
 
   return prisma.requirementOffer.findUniqueOrThrow({ where: { id: offerId } });
+}
+
+// =============================================================================
+// COUNTER OFFER — The buyer sends a price back
+// =============================================================================
+// A restaurant negotiates rather than taking a price, so a seller's offer can
+// go back and forth: the buyer counters, the seller accepts that price
+// (acceptCounter) or revises theirs (reviseOffer), and either can walk away.
+export async function counterOffer(offerId: string, buyerUserId: string, price: number) {
+  if (!(price > 0)) throw new ApiError(400, 'Enter the price you would pay');
+  const offer = await prisma.requirementOffer.findUnique({ where: { id: offerId }, include: { requirement: true } });
+  if (!offer) throw new ApiError(404, 'Offer not found');
+  if (offer.requirement.buyerId !== buyerUserId) throw new ApiError(403, 'You can only counter offers on your own requirements');
+  if (offer.status !== 'PENDING') throw new ApiError(400, `Cannot counter ${statusPhrase(offer.status)} offer`);
+  if (offer.requirement.status !== 'OPEN') throw new ApiError(400, `Cannot counter on ${statusPhrase(offer.requirement.status)} requirement`);
+  if (price >= offer.pricePerUnit) throw new ApiError(400, 'A counter is a lower price than theirs. To pay what they ask, accept the offer.');
+
+  const rounded = money(price);
+  const claimed = await prisma.requirementOffer.updateMany({
+    where: { id: offerId, status: 'PENDING', pricePerUnit: offer.pricePerUnit },
+    data: { status: 'COUNTERED', buyerCounterPrice: rounded },
+  });
+  if (claimed.count === 0) throw new ApiError(409, 'This offer changed a moment ago. Reload to see where it stands.');
+
+  notifyOfferCountered(
+    offer.farmerId, offer.requirement.cropName, rounded, offer.currency, offer.requirement.unit, offer.requirementId, offer.id,
+  ).catch(() => {});
+  return prisma.requirementOffer.findUniqueOrThrow({ where: { id: offerId }, include: { farmer: { select: PUBLIC_OFFER_FARMER_SELECT } } });
+}
+
+// =============================================================================
+// REVISE OFFER — The seller answers a counter with a new price
+// =============================================================================
+export async function reviseOffer(offerId: string, farmerUserId: string, price: number) {
+  if (!(price > 0)) throw new ApiError(400, 'Enter your new price');
+  const offer = await prisma.requirementOffer.findUnique({ where: { id: offerId }, include: { requirement: true } });
+  if (!offer) throw new ApiError(404, 'Offer not found');
+  if (offer.farmerId !== farmerUserId) throw new ApiError(403, 'You can only revise your own offers');
+  if (offer.status !== 'COUNTERED' || offer.buyerCounterPrice == null) {
+    throw new ApiError(400, 'You can send a new price once the buyer has countered');
+  }
+  if (offer.requirement.status !== 'OPEN') throw new ApiError(400, `Cannot revise on ${statusPhrase(offer.requirement.status)} requirement`);
+  // Between their counter and your last price: at or below theirs, accept it
+  // instead; at or above your last, nothing moved.
+  if (price <= offer.buyerCounterPrice) throw new ApiError(400, 'That meets their price. Accept their counter instead.');
+  if (price >= offer.pricePerUnit) throw new ApiError(400, 'Come down from your last price, or leave it with them.');
+
+  const rounded = money(price);
+  const claimed = await prisma.requirementOffer.updateMany({
+    where: { id: offerId, status: 'COUNTERED', buyerCounterPrice: offer.buyerCounterPrice },
+    data: { status: 'PENDING', pricePerUnit: rounded, totalAmount: money(rounded * offer.quantity), buyerCounterPrice: null },
+  });
+  if (claimed.count === 0) throw new ApiError(409, 'This offer changed a moment ago. Reload to see where it stands.');
+
+  const seller = await prisma.user.findUnique({ where: { id: farmerUserId }, select: { name: true } });
+  notifyCounterAnswered(
+    offer.requirement.buyerId, seller?.name ?? 'The seller', offer.requirement.cropName, false,
+    rounded, offer.currency, offer.requirement.unit, offer.requirementId, offer.id,
+  ).catch(() => {});
+  return prisma.requirementOffer.findUniqueOrThrow({ where: { id: offerId } });
+}
+
+// =============================================================================
+// REPEAT ORDERS
+// =============================================================================
+// A request with a repeat interval posts a fresh copy of itself when it falls
+// due: same crop, grade, price, place and terms, the full quantity again, and
+// a deadline moved on by the interval. The copy carries the series forward;
+// the old one stops repeating, and if it is still open it is closed, because
+// last week's unfilled need is not this week's, and its live offers expire
+// exactly as a close expires them.
+
+function addDays(d: Date, days: number) {
+  return new Date(d.getTime() + days * 86_400_000);
+}
+
+function parseRepeat(value: number | null | undefined): number | null {
+  if (value == null) return null;
+  if (!(REPEAT_DAYS as readonly number[]).includes(value)) {
+    throw new ApiError(400, `Repeat every ${REPEAT_DAYS.join(', ')} days, or not at all`);
+  }
+  return value;
+}
+
+/** Turn repeating on, change the interval, or stop it, on the newest copy. */
+export async function setRepeat(id: string, buyerId: string, everyDays: number | null) {
+  const days = parseRepeat(everyDays);
+  const r = await prisma.buyerRequirement.findUnique({ where: { id } });
+  if (!r) throw new ApiError(404, 'Requirement not found');
+  if (r.buyerId !== buyerId) throw new ApiError(403, 'You can only change your own requirements');
+  if (r.status !== 'OPEN' && r.status !== 'FULFILLED') {
+    throw new ApiError(400, `Cannot repeat ${statusPhrase(r.status)} requirement`);
+  }
+  // Only the newest copy of a series repeats; an older one has handed on.
+  if (r.seriesId || r.repeatEveryDays) {
+    const newer = await prisma.buyerRequirement.count({
+      where: { seriesId: r.seriesId ?? r.id, createdAt: { gt: r.createdAt } },
+    });
+    if (newer > 0) throw new ApiError(400, 'A newer copy of this request exists. Change the repeat there.');
+  }
+  const base = r.createdAt > new Date() ? r.createdAt : new Date();
+  return prisma.buyerRequirement.update({
+    where: { id },
+    data: { repeatEveryDays: days, nextRepeatAt: days ? addDays(base, days) : null },
+  });
+}
+
+/**
+ * Post the next copy of every repeating request that has fallen due.
+ *
+ * Each one is CLAIMED with a conditional update on the nextRepeatAt it was
+ * read with, inside the transaction that creates the copy, so two processes
+ * running this at once (a deploy's overlap) cannot both repost it.
+ */
+export async function repostDueRequirements(now = new Date()): Promise<number> {
+  const due = await prisma.buyerRequirement.findMany({
+    where: { nextRepeatAt: { lte: now }, repeatEveryDays: { not: null }, status: { in: ['OPEN', 'FULFILLED'] } },
+    take: 100,
+  });
+  let posted = 0;
+  for (const old of due) {
+    try {
+      const out = await prisma.$transaction(async (tx) => {
+        const claim = await tx.buyerRequirement.updateMany({
+          where: { id: old.id, nextRepeatAt: old.nextRepeatAt, status: { in: ['OPEN', 'FULFILLED'] } },
+          data: { nextRepeatAt: null },
+        });
+        if (claim.count === 0) return null;
+
+        let expired: { id: string; farmerId: string }[] = [];
+        if (old.status === 'OPEN') {
+          await tx.buyerRequirement.updateMany({ where: { id: old.id, status: 'OPEN' }, data: { status: 'CLOSED' } });
+          expired = await tx.requirementOffer.findMany({ where: { requirementId: old.id, status: LIVE_OFFER }, select: { id: true, farmerId: true } });
+          await tx.requirementOffer.updateMany({ where: { requirementId: old.id, status: LIVE_OFFER }, data: { status: 'EXPIRED', respondedAt: now } });
+        }
+
+        const every = old.repeatEveryDays!;
+        let neededBy = old.neededBy;
+        while (neededBy && neededBy <= now) neededBy = addDays(neededBy, every);
+
+        const copy = await tx.buyerRequirement.create({
+          data: {
+            buyerId: old.buyerId,
+            cropName: old.cropName,
+            cropVariety: old.cropVariety,
+            quantity: old.quantity,
+            remainingQuantity: old.quantity,
+            unit: old.unit,
+            qualityGrade: old.qualityGrade,
+            pricePerUnit: old.pricePerUnit,
+            currency: old.currency,
+            deliveryLocation: old.deliveryLocation,
+            deliveryState: old.deliveryState,
+            deliveryCountry: old.deliveryCountry,
+            neededBy,
+            description: old.description,
+            organic: old.organic,
+            paymentTerms: old.paymentTerms,
+            deliveryTerms: old.deliveryTerms,
+            forExport: old.forExport,
+            exportPort: old.exportPort,
+            maxMoisturePct: old.maxMoisturePct,
+            packing: old.packing,
+            requiredDocs: old.requiredDocs,
+            negotiateOnly: old.negotiateOnly,
+            repeatEveryDays: every,
+            nextRepeatAt: addDays(now, every),
+            seriesId: old.seriesId ?? old.id,
+          },
+          include: { buyer: { select: PUBLIC_BUYER_SELECT } },
+        });
+        return { copy, expired };
+      });
+      if (!out) continue;
+      posted += 1;
+      notifyExpiredOffers(out.expired, old.cropName, old.id);
+      notifyRequirementReposted(old.buyerId, old.cropName, old.repeatEveryDays!, out.copy.id).catch(() => {});
+      const profile = await prisma.buyerProfile.findUnique({ where: { userId: old.buyerId }, select: { companyName: true } });
+      void announceRequirement(out.copy, profile?.companyName ?? '');
+    } catch (err) {
+      // One bad row must not stop the rest; it stays due and is retried.
+      console.error('[repeat] could not repost', old.id, err);
+    }
+  }
+  return posted;
 }
 
 // =============================================================================
@@ -1316,11 +1557,11 @@ export async function updateRequirement(
     let staleExpired: { id: string; farmerId: string }[] = [];
     if (materialTermsChanged(current, updated)) {
       staleExpired = await tx.requirementOffer.findMany({
-        where: { requirementId: id, status: 'PENDING' },
+        where: { requirementId: id, status: LIVE_OFFER },
         select: { id: true, farmerId: true },
       });
       await tx.requirementOffer.updateMany({
-        where: { requirementId: id, status: 'PENDING' },
+        where: { requirementId: id, status: LIVE_OFFER },
         data: { status: 'EXPIRED', respondedAt: new Date() },
       });
     }
@@ -1354,18 +1595,20 @@ export async function closeRequirement(id: string, buyerId: string) {
   }
 
   const { requirement, expired } = await prisma.$transaction(async (tx) => {
+    // Withdrawing a request also stops it repeating: the buyer said they no
+    // longer want it.
     const claim = await tx.buyerRequirement.updateMany({
       where: { id, status: 'OPEN' },
-      data: { status: 'CLOSED' },
+      data: { status: 'CLOSED', nextRepeatAt: null },
     });
     if (claim.count === 0) throw new ApiError(409, 'This requirement is no longer open.');
 
     const pending = await tx.requirementOffer.findMany({
-      where: { requirementId: id, status: 'PENDING' },
+      where: { requirementId: id, status: LIVE_OFFER },
       select: { id: true, farmerId: true },
     });
     await tx.requirementOffer.updateMany({
-      where: { requirementId: id, status: 'PENDING' },
+      where: { requirementId: id, status: LIVE_OFFER },
       data: { status: 'EXPIRED', respondedAt: new Date() },
     });
 

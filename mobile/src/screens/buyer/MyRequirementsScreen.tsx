@@ -29,6 +29,7 @@ import { myRequirements } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
 import type { BuyerRequirement, RequirementStatus } from '../../api/types';
 import { colors, design, font } from '../../theme';
+import { useAuth } from '../../context/AuthContext';
 
 const TABS: Array<{ value: RequirementStatus | ''; label: string }> = [
   { value: 'OPEN', label: 'Open' },
@@ -39,6 +40,8 @@ const TABS: Array<{ value: RequirementStatus | ''; label: string }> = [
 
 export default function MyRequirementsScreen() {
   const nav = useNavigation<any>();
+  const { user } = useAuth();
+  const isRestaurant = user?.buyerProfile?.companyType === 'RESTAURANT';
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<BuyerRequirement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +106,9 @@ export default function MyRequirementsScreen() {
             </PressScale>
           </View>
           <Text style={styles.lede}>
-            What you have asked for. Sellers fill it at your price, or offer theirs.
+            {isRestaurant
+              ? 'What your kitchen needs. Sellers send their price; you accept, counter or decline.'
+              : 'What you have asked for. Sellers fill it at your price, or offer theirs.'}
           </Text>
 
           {rows.length > 0 ? (

@@ -358,19 +358,23 @@ function BoardRow({
     <RequirementCard requirement={r} onPress={mode ? undefined : onOpen} showMspWarning={isFarmer}>
       {answerable ? (
         <View style={styles.actions}>
-          <Pressable
-            onPress={() => setMode(mode === 'fill' ? null : 'fill')}
-            style={[styles.actionBtn, styles.actionPrimary, mode === 'fill' && styles.actionOn]}
-          >
-            <Text style={[styles.actionText, styles.actionTextPrimary]}>
-              Fill at {money(r.pricePerUnit, r.currency)}
-            </Text>
-          </Pressable>
+          {/* A restaurant negotiates every order: no fill at the posted
+              price (the server refuses it), only an offer. */}
+          {r.negotiateOnly ? null : (
+            <Pressable
+              onPress={() => setMode(mode === 'fill' ? null : 'fill')}
+              style={[styles.actionBtn, styles.actionPrimary, mode === 'fill' && styles.actionOn]}
+            >
+              <Text style={[styles.actionText, styles.actionTextPrimary]}>
+                Fill at {money(r.pricePerUnit, r.currency)}
+              </Text>
+            </Pressable>
+          )}
           <Pressable
             onPress={() => setMode(mode === 'counter' ? null : 'counter')}
-            style={[styles.actionBtn, mode === 'counter' && styles.actionOn]}
+            style={[styles.actionBtn, r.negotiateOnly && styles.actionPrimary, mode === 'counter' && styles.actionOn]}
           >
-            <Text style={styles.actionText}>Counter</Text>
+            <Text style={[styles.actionText, r.negotiateOnly && styles.actionTextPrimary]}>{r.negotiateOnly ? 'Make an offer' : 'Counter'}</Text>
           </Pressable>
         </View>
       ) : null}

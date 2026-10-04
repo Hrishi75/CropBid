@@ -167,6 +167,7 @@ enum RequirementStatus {
 
 enum RequirementOfferStatus {
   PENDING // Awaiting the buyer's decision
+  COUNTERED // The buyer sent a price back; awaiting the seller (buyerCounterPrice)
   ACCEPTED // Buyer took it — a Listing + Bid + Transaction now exist
   REJECTED // Buyer declined
   WITHDRAWN // Farmer pulled it before the buyer decided
@@ -620,6 +621,18 @@ model BuyerRequirement {
   packing        String? // in the exporter's words, e.g. "50 kg new jute bags"
   requiredDocs   String[] @default([]) // LAB_REPORT | ORGANIC_CERT | GST_INVOICE
 
+  // A restaurant's request is negotiated, never filled at the posted price:
+  // every fill is an offer the buyer agrees to. Set at posting from the buyer's
+  // company type, so it holds even if that type later changes.
+  negotiateOnly Boolean @default(false)
+
+  // Repeat orders. A request with a repeat interval posts a fresh copy of
+  // itself every repeatEveryDays; nextRepeatAt is when, and only the newest
+  // copy of a series carries it. seriesId is the first request's id.
+  repeatEveryDays Int?
+  nextRepeatAt    DateTime?
+  seriesId        String?
+
   status RequirementStatus @default(OPEN)
 
   createdAt DateTime @default(now())
@@ -632,6 +645,7 @@ model BuyerRequirement {
   @@index([status, createdAt])
   @@index([cropName, status])
   @@index([deliveryState, status])
+  @@index([nextRepeatAt])
   @@index([buyerId, createdAt])
 }
 
@@ -666,6 +680,10 @@ model RequirementOffer {
   message      String?
 
   status RequirementOfferStatus @default(PENDING)
+
+  // The buyer's price back, while the offer is COUNTERED. Cleared when the
+  // seller revises; becomes the deal price when the seller accepts it.
+  buyerCounterPrice Float?
 
   // Set the moment the offer becomes a real deal. Nullable because a PENDING /
   // REJECTED / WITHDRAWN offer never produces one. @unique means the database

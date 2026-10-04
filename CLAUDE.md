@@ -22,7 +22,7 @@ An agricultural marketplace connecting Indian farmers directly with buyers, with
 | Channel | Who | How they buy |
 |---|---|---|
 | **Wholesale** | Processors, exporters, retailers, restaurants, FMCG | Bid, counter, or timed auction on a whole lot. National. |
-| **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer |
+| **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer (a restaurant's request takes offers only, §9) |
 | **Retail** | Households | Browse by shop, buy by the kilo. Nagpur only. |
 
 Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. §11 says how those rates are read, and why the obvious way is wrong. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
@@ -485,6 +485,18 @@ Web has none of these. They are `mobile/` only.
 - **Computed on the phone from `GET /transactions`**, which already carries the bid's quantity, the lot's unit and state, and the shipment status (never the carrier, §2a). Cancelled and refunded deals are left out.
 - **It never says "shipment to port".** A deal struck on a listing is delivered where the deal says; only an export request names a port.
 - **Seed data can link one deal to two buyers.** The seed attached a deal for one buyer to another buyer's bid. A bid holds one deal, and making one is idempotent, so accepting that bid "succeeds" without giving its buyer anything. Only the seed can produce this; test with fresh bids.
+
+### A restaurant negotiates, and its orders repeat (2026-10-05)
+
+**The user's words: restaurants "dont buy on the things they just negotiate".** Asked what that covers, they chose all three: a restaurant counters a seller's offer, its requests cannot be filled at the posted price, and it does not bid on listed lots. Repeat orders were the feature they picked before that, from four options, because a kitchen buys the same onions every week.
+
+- **Counter, and back again.** A seller's offer on a request is PENDING (the buyer's move). The buyer can now counter with a lower price, which makes it COUNTERED (the seller's move, `buyerCounterPrice`). The seller accepts that price (`PUT /offers/:id/accept-counter`, which makes the deal at it) or sends a new one between the two (`/revise`, back to PENDING). Either side can still decline or withdraw. Open to every buyer, not only restaurants, since nothing about countering is restaurant-specific.
+- **One deal-making path.** The buyer accepting and the seller accepting a counter both go through `finaliseOffer`, which claims the offer conditional on its status and on the price the decision was made at, so a revise landing during an accept makes the accept miss rather than fill at a stale price. A test races the two six rounds and checks the winner's price survives; it was watched failing with the condition removed.
+- **COUNTERED is a live offer.** Every sweep that retires offers (a fill, a close, an edit, a repost) retires PENDING and COUNTERED alike (`LIVE_OFFER`), and a seller with a countered offer cannot open a second one on the same request.
+- **Negotiate-only requests.** A RESTAURANT buyer's request is posted with `negotiateOnly`, from the company type at posting. An instant fill is refused, in the claim's own WHERE as well as up front, so no request can fill at its posted price while negotiate-only. The app shows sellers "Make an offer" and no "Fill at".
+- **No bids on the market for a restaurant.** `POST /bids` and the live-auction socket both refuse it (`bidsOnMarket`, read from the profile at the moment of bidding, 403 `RESTAURANT_NO_BIDS`). The app shows lots as VIEW, and a lot's page offers "Ask sellers for this", which opens the request form with the crop filled in. The banner reads "Know the rate, then negotiate."
+- **Repeat orders.** A request can repeat every 3, 7 or 14 days (`repeatEveryDays`, `nextRepeatAt`, `seriesId`); a restaurant's form starts on weekly. Every 15 minutes the API posts a fresh copy of each one that has fallen due: same terms, the full quantity, the deadline moved on, and the series handed to the copy. The old one stops repeating and, if still open, is closed with its live offers expired, because last week's unfilled need is not this week's. Each repost is claimed on the `nextRepeatAt` it was read with, inside the transaction that creates the copy, so a deploy's two processes cannot both post it (tested, and watched failing unclaimed). Withdrawing a request stops it; the request page has Once / every 3 days / weekly / every 2 weeks. The repeat is not a field on the edit endpoint because it is also allowed on a FULFILLED request.
+- **Not built:** the website shows none of this (no counter, no repeat, no negotiate-only note) and still offers a restaurant's request a fill button the server refuses. Repeating does not skip a week the kitchen is shut.
 
 ### Business credit: applied for on the wallet, decided by a person (2026-10-04)
 

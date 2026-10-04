@@ -27,6 +27,7 @@
 // for an MVP. Production would use Redis for shared state across servers.
 // =============================================================================
 
+import { bidsOnMarket, RESTAURANT_NO_BIDS } from '../services/bid.service';
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { config } from '../config';
@@ -259,6 +260,10 @@ export function initializeSocket(httpServer: HttpServer) {
       try {
         if (!(await isCurrentBuyer(userId))) {
           return socket.emit('auction:error', 'Your account is no longer authorized to bid');
+        }
+        // Same rule as POST /bids: a restaurant negotiates, it does not bid.
+        if (!(await bidsOnMarket(userId))) {
+          return socket.emit('auction:error', RESTAURANT_NO_BIDS);
         }
       } catch (err) {
         // A Prisma rejection here would otherwise escape this async Socket.IO

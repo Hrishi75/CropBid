@@ -56,12 +56,18 @@ router.get('/export-options', requireRole('BUYER', 'FARMER'), requireApprovedPar
 router.get('/offers/my', requireRole('FARMER'), requireApprovedPartner, requirementController.getMyOffers);
 router.put('/offers/:offerId/accept', requireRole('BUYER'), requireApprovedPartner, requirementController.acceptOffer);
 router.put('/offers/:offerId/reject', requireRole('BUYER'), requireApprovedPartner, requirementController.rejectOffer);
+// The back-and-forth on an offer: the buyer counters, the seller revises or
+// accepts the buyer's price.
+router.put('/offers/:offerId/counter', requireRole('BUYER'), requireApprovedPartner, requirementController.counterOffer);
+router.put('/offers/:offerId/revise', requireRole('FARMER'), requireApprovedPartner, requirementController.reviseOffer);
+router.put('/offers/:offerId/accept-counter', requireRole('FARMER'), requireApprovedPartner, requirementController.acceptCounter);
 router.delete('/offers/:offerId', requireRole('FARMER'), requireApprovedPartner, requirementController.withdrawOffer);
 
 // --- Buyer CRUD ---
 router.post('/', requireRole('BUYER'), requireApprovedPartner, requirementController.createRequirement);
 router.put('/:id', requireRole('BUYER'), requireApprovedPartner, requirementController.updateRequirement);
 router.put('/:id/close', requireRole('BUYER'), requireApprovedPartner, requirementController.closeRequirement);
+router.put('/:id/repeat', requireRole('BUYER'), requireApprovedPartner, requirementController.setRepeat);
 router.get('/:id/offers', requireRole('BUYER'), requireApprovedPartner, requirementController.getOffersForRequirement);
 
 // --- Farmer actions ---

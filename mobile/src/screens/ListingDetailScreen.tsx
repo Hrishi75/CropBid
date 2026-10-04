@@ -72,6 +72,9 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }
   const isGuest = !user;
   const isBuyer = user?.role === 'BUYER';
+  // A restaurant negotiates through its requests and the server refuses its
+  // bids, so it is shown the way it does buy instead of a bid card.
+  const isRestaurant = isBuyer && user?.buyerProfile?.companyType === 'RESTAURANT';
   const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
   const canDirectBuy =
@@ -146,6 +149,19 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           <Text style={styles.note}>You're browsing as a guest — log in to buy this lot or place a bid.</Text>
         ) : isOwner ? (
           <Text style={styles.note}>This is your listing.</Text>
+        ) : isRestaurant ? (
+          <View style={styles.askCard}>
+            <Text style={styles.askTitle}>Need {listing.cropName} for the kitchen?</Text>
+            <Text style={styles.askBody}>
+              Restaurants buy by posting what they need. Sellers, this one included, send you their price and you negotiate.
+            </Text>
+            <Pressable
+              onPress={() => (navigation as any).navigate('CreateRequirement', { crop: listing.cropName })}
+              style={({ pressed }) => [styles.askBtn, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.askBtnText}>Ask sellers for {listing.cropName}</Text>
+            </Pressable>
+          </View>
         ) : isBuyer ? (
           <BidPanel listing={listing} />
         ) : isConsumer && !canDirectBuy ? (
@@ -376,6 +392,11 @@ function BuyBar({ listing, pack }: { listing: Listing; pack: ShopPack | null }) 
 }
 
 const styles = StyleSheet.create({
+  askCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16, gap: 8 },
+  askTitle: { fontFamily: font.sansBold, fontSize: 17, color: design.ink },
+  askBody: { fontFamily: font.sans, fontSize: 13.5, lineHeight: 19, color: design.ink2 },
+  askBtn: { marginTop: 6, backgroundColor: colors.forest, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  askBtnText: { fontFamily: font.sansSemi, fontSize: 15, color: colors.surface },
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
   container: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   hero: { width: '100%', height: 200, borderRadius: radius.lg, backgroundColor: colors.surfaceHover },

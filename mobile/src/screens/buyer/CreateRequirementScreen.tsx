@@ -41,7 +41,7 @@ import {
   View,
 } from 'react-native';
 import { Alert } from '../../lib/alert';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { Mono } from '../../components/buyerKit';
 import { Button } from '../../components/ui';
 import { createRequirement, fetchExportOptions } from '../../api/endpoints';
@@ -73,8 +73,13 @@ export default function CreateRequirementScreen() {
   const nav = useNavigation<any>();
   const { user } = useAuth();
   const isExporter = user?.buyerProfile?.companyType === 'EXPORTER';
+  // A restaurant negotiates every order and buys the same things weekly, so
+  // its form offers repeating and says up front that sellers send offers.
+  const isRestaurant = user?.buyerProfile?.companyType === 'RESTAURANT';
+  const route = useRoute<any>();
+  const [repeatEvery, setRepeatEvery] = useState<number | null>(isRestaurant ? 7 : null);
 
-  const [cropName, setCropName] = useState('');
+  const [cropName, setCropName] = useState<string>(route.params?.crop ?? '');
   const [cropVariety, setCropVariety] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<Unit>('QUINTAL');
@@ -178,6 +183,7 @@ export default function CreateRequirementScreen() {
         organic,
         paymentTerms: paymentTerms ?? undefined,
         deliveryTerms: deliveryTerms ?? undefined,
+        repeatEveryDays: repeatEvery,
         ...(isExporter
           ? {
               forExport: true,
@@ -419,6 +425,29 @@ export default function CreateRequirementScreen() {
             </Text>
           </View>
         ) : null}
+
+        <View style={styles.card}>
+          <Mono style={styles.eyebrow}>HOW OFTEN</Mono>
+          <View style={styles.pillRow}>
+            {([null, 3, 7, 14] as const).map((d) => (
+              <Pressable key={String(d)} onPress={() => setRepeatEvery(d)} style={[styles.pill, repeatEvery === d && styles.pillOn]}>
+                <Text style={[styles.pillText, repeatEvery === d && styles.pillTextOn]}>
+                  {d == null ? 'Just once' : d === 7 ? 'Every week' : d === 14 ? 'Every 2 weeks' : `Every ${d} days`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.hint}>
+            {repeatEvery
+              ? `Posts again every ${repeatEvery} days with the full quantity, so sellers keep seeing it. Stop it any time from the request.`
+              : 'Posted once. You can set it to repeat later from the request.'}
+          </Text>
+          {isRestaurant ? (
+            <Text style={styles.hint}>
+              Sellers send you their price and you negotiate. Nothing is bought until you agree to an offer.
+            </Text>
+          ) : null}
+        </View>
 
         <View style={styles.card}>
           <Mono style={styles.eyebrow}>ANYTHING ELSE</Mono>

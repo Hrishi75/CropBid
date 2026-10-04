@@ -132,6 +132,10 @@ export function RequirementCard({
       <View style={styles.chips}>
         {company ? <Chip text={company} /> : null}
         <Chip text={`Grade ${r.qualityGrade}`} />
+        {r.negotiateOnly ? <Chip text="Negotiated" /> : null}
+        {r.nextRepeatAt && r.repeatEveryDays ? (
+          <Chip text={r.repeatEveryDays === 7 ? 'Repeats weekly' : `Every ${r.repeatEveryDays} days`} tone="sage" />
+        ) : null}
         {r.forExport ? <Chip text="For export" tone="sage" /> : null}
         {r.organic ? <Chip text="Organic only" tone="sage" /> : null}
         {belowMsp ? <Chip text={`Below MSP ${money(msp!, r.currency)}`} tone="ember" /> : null}
