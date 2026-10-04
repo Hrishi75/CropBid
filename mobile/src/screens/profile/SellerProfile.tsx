@@ -141,16 +141,17 @@ export function SellerProfile({
         <Tile Icon={IconWallet} label={t('Sales')} sub={t('Your deals')} onPress={() => nav.navigate('Contracts')} />
       </View>
 
-      {/* A shop buying stock for itself: apply, or see where that stands.
+      {/* A shop or a wholesaler buying stock for itself: apply, or see where
+          that stands.
           Gone once approved, where the switch above takes over. */}
-      {isShop && user.buyerProfile?.status !== 'APPROVED' ? (
+      {(isShop || farm?.sellerType === 'WHOLESALER') && user.buyerProfile?.status !== 'APPROVED' ? (
         <View style={p.pad}>
           <PressScale onPress={() => nav.navigate('BuyForShop')} scaleTo={0.98} cardStyle={styles.buyCard}>
             <View style={styles.buyIcon}><IconBasket size={18} stroke={colors.forest} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.payoutTitle}>
                 {!user.buyerProfile
-                  ? t('Buy stock for your shop')
+                  ? (isShop ? t('Buy stock for your shop') : t('Buy stock for your business'))
                   : user.buyerProfile.status === 'SUBMITTED' || user.buyerProfile.status === 'UNDER_REVIEW'
                     ? t('Buying: application under review')
                     : t('Buying: your application needs attention')}

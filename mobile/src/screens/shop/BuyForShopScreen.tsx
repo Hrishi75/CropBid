@@ -1,5 +1,5 @@
 // =============================================================================
-// BuyForShopScreen — a local shop applying to buy stock for itself
+// BuyForShopScreen — a local shop or a wholesaler applying to buy stock
 // =============================================================================
 // The buyer application, cut down to what a shop needs to say: the name it
 // buys under (its own, by default) and, optionally, a GSTIN. It is filed as a
@@ -31,6 +31,10 @@ export default function BuyForShopScreen() {
   const nav = useNavigation<any>();
   const { user, refreshUser, switchMode } = useAuth();
   const app = user?.buyerProfile ?? null;
+  // A wholesaler is filed as a wholesale buyer and called a business; a shop
+  // as a small business and called a shop.
+  const isWholesaler = user?.farmerProfile?.sellerType === 'WHOLESALER';
+  const place = isWholesaler ? 'business' : 'shop';
   const status = app?.status;
   // Asked again only when a reviewer sent it back.
   const filing = !app || status === 'NEEDS_INFO' || status === 'REJECTED';
@@ -41,14 +45,14 @@ export default function BuyForShopScreen() {
 
   async function submit() {
     if (name.trim().length < 2) {
-      Alert.alert('Name missing', 'Enter the name your shop buys under.');
+      Alert.alert('Name missing', `Enter the name your ${place} buys under.`);
       return;
     }
     setSaving(true);
     try {
       await buyerOnboarding({
         companyName: name.trim(),
-        companyType: 'SMALL_BUSINESS',
+        companyType: isWholesaler ? 'WHOLESALER' : 'SMALL_BUSINESS',
         taxId: gstin.trim() || undefined,
       });
       await refreshUser();
@@ -70,9 +74,9 @@ export default function BuyForShopScreen() {
             <IconArrowLeft size={19} stroke={design.ink} />
           </Pressable>
           <View style={styles.iconTile}><IconBasket size={24} stroke={colors.forest} /></View>
-          <Text style={styles.h1}>Buy stock for your shop</Text>
+          <Text style={styles.h1}>Buy stock for your {place}</Text>
           <Text style={styles.lede}>
-            Buy from farms and wholesalers at mandi-linked prices, with the same account. Once
+            Buy from farms and {isWholesaler ? 'other wholesalers' : 'wholesalers'} at mandi-linked prices, with the same account. Once
             CropBid approves it, switch between selling and buying from your profile.
           </Text>
         </View>
@@ -117,7 +121,7 @@ export default function BuyForShopScreen() {
               style={styles.input}
               value={name}
               onChangeText={setName}
-              placeholder="Your shop's name"
+              placeholder={`Your ${place}'s name`}
               placeholderTextColor={design.ink3}
             />
             <Mono style={[styles.label, { marginTop: 6 }]}>GSTIN · OPTIONAL</Mono>
@@ -129,7 +133,9 @@ export default function BuyForShopScreen() {
               placeholder="22AAAAA0000A1Z5"
               placeholderTextColor={design.ink3}
             />
-            <Text style={styles.hint}>Filed as a small business. Your selling stays exactly as it is.</Text>
+            <Text style={styles.hint}>
+              Filed as {isWholesaler ? 'a wholesale buyer' : 'a small business'}. Your selling stays exactly as it is.
+            </Text>
           </View>
         ) : null}
       </ScrollView>

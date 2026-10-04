@@ -509,6 +509,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 - **Adding stock is `screens/shop/ShopListingScreen`**: item, price per kg, stock, quality, organic, photos. The one shelf price is sent as floor, ceiling and retail, because the listing model is shared and the server requires all three. The place is the shop's own, never typed per item, and the form warns when that city is not on `RETAIL_CITIES`.
 - **Hidden for a shop:** the demand teaser, the bidding banner, forecast and schemes cards and the sell pitch on Home; offer counts on My Stock; offers, demand and the AI helper on the profile.
 - **Buying stock for the shop** is a second mode on the same account (§4, "A seller can also buy"): a card on the shop's profile to apply, then a Selling | Buying switch.
+- **A wholesaler gets the same two sides** (2026-10-04): the apply card says "Buy stock for your business" and files it as a WHOLESALER buyer, and its Home trades the farm wording for trade wording ("Trade by the lot, priced to the mandi", no farm-schemes card, no "Grow it? Sell it here").
 - **Not built:** cancelling a shop order from the app (the website and the server have it).
 
 ### The rest of the app pass (2026-10-04)

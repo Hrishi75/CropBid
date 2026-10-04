@@ -22,13 +22,16 @@ export function ModeSwitch() {
   // `user` may be the buying-mode view; the account itself is the seller.
   const real = user && accountRole ? { ...user, role: accountRole } : null;
   if (!canSwitchToBuying(real)) return null;
+  const kind = user?.farmerProfile?.sellerType;
+  const shop = kind === 'LOCAL_SHOP';
+  const wholesale = kind === 'WHOLESALER';
 
   return (
     <View style={styles.card}>
       <Mono style={styles.label}>YOU ARE</Mono>
       <View style={styles.track}>
-        <Side on={mode === 'SELL'} label="Selling" sub="To households" Icon={IconDoc} onPress={() => switchMode('SELL')} />
-        <Side on={mode === 'BUY'} label="Buying" sub="Stock for your shop" Icon={IconBasket} onPress={() => switchMode('BUY')} />
+        <Side on={mode === 'SELL'} label="Selling" sub={wholesale ? 'Your lots' : shop ? 'To households' : 'Your crops'} Icon={IconDoc} onPress={() => switchMode('SELL')} />
+        <Side on={mode === 'BUY'} label="Buying" sub={shop ? 'Stock for your shop' : 'Stock for your business'} Icon={IconBasket} onPress={() => switchMode('BUY')} />
       </View>
     </View>
   );

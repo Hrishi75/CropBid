@@ -287,6 +287,9 @@ export default function StorefrontHomeScreen() {
   // (buyer demand, the bidding banner, sell-or-hold forecasts, farm schemes)
   // are left out for it.
   const isShop = isFarmer && user?.farmerProfile?.sellerType === 'LOCAL_SHOP';
+  // A wholesaler trades lots it did not grow, so the farm wording (farmer
+  // lots, farm-fresh, farm schemes, "Grow it?") is swapped for trade wording.
+  const isWholesaler = isFarmer && user?.farmerProfile?.sellerType === 'WHOLESALER';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
@@ -784,18 +787,25 @@ export default function StorefrontHomeScreen() {
                     <Pulse style={styles.liveDot} />
                     <Mono style={styles.bannerChipText}>
                       {listings.length > 0
-                        ? `LIVE · ${listings.length} FARMER ${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                        ? `LIVE · ${listings.length} ${isWholesaler ? '' : 'FARMER '}${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
                         : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                     </Mono>
                   </View>
-                  <Text style={styles.bannerTitle}>
-                    Farm-fresh crops,{'\n'}
-                    <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
-                  </Text>
+                  {isWholesaler ? (
+                    <Text style={styles.bannerTitle}>
+                      Trade by the lot,{'\n'}
+                      <Text style={styles.bannerItalic}>priced</Text> to the mandi.
+                    </Text>
+                  ) : (
+                    <Text style={styles.bannerTitle}>
+                      Farm-fresh crops,{'\n'}
+                      <Text style={styles.bannerItalic}>farmer-fair</Text> prices.
+                    </Text>
+                  )}
                   <View style={styles.bannerTicks}>
                     <Text style={styles.bannerTick}>✓ {t('Open bidding & auctions')}</Text>
                     <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
-                    <Text style={styles.bannerTick}>✓ {t('Farm to door')}</Text>
+                    <Text style={styles.bannerTick}>✓ {isWholesaler ? t('Delivery booked for you') : t('Farm to door')}</Text>
                   </View>
                 </View>
               </View>
@@ -833,7 +843,8 @@ export default function StorefrontHomeScreen() {
                 />
               ) : null}
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
-              <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} />
+              {/* Farm schemes (PM-Kisan, fasal bima) are for growers. */}
+              {!isWholesaler ? <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} /> : null}
               {/* Household packs are a shopper's offer; a farmer or a bulk
                   buyer is not buying by the pack. */}
               {shopping ? (
@@ -952,8 +963,9 @@ export default function StorefrontHomeScreen() {
               </>
             ) : null}
 
-            {/* A shop is already selling here; the pitch is for everyone else. */}
-            {!isShop ? (
+            {/* A shop or a wholesaler is already selling here, and "Grow it?"
+                is not a question for either; the pitch is for everyone else. */}
+            {!isShop && !isWholesaler ? (
               <View style={styles.sellCta}>
                 <Text style={styles.sellTitle}>
                   Grow it? <Text style={styles.sellItalic}>Sell it here.</Text>
