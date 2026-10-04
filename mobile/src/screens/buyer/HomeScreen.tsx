@@ -1,31 +1,19 @@
 // Buyer app · Home / dashboard — wired to live API data.
 // KPIs from /transactions/stats + /bids/my, agent row from /agent/config,
 // "needs your decision" from countered bids and live auctions.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import { Wordmark, MARKS } from '../../components/marks';
-import { IconArrow, IconBell } from '../../components/icons';
-import { Eyebrow, GridBg, LiveDot, MiniChart, Mono, StatusPill } from '../../components/buyerKit';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Wordmark } from '../../components/marks';
+import { IconArrow } from '../../components/icons';
+import { Eyebrow, GridBg, LiveDot, Mono, StatusPill } from '../../components/buyerKit';
+import { NotificationBell } from '../../components/NotificationBell';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
-import { getAgentConfig, listAuctions, myBids, myNegotiations, transactionStats, unreadNotificationCount } from '../../api/endpoints';
-import type { AgentConfig, Auction, Bid, Negotiation, TransactionStats } from '../../api/types';
+import { listAuctions, myBids, myNegotiations, transactionStats } from '../../api/endpoints';
+import type { Auction, Bid, Negotiation, TransactionStats } from '../../api/types';
 import { money, timeAgo } from '../../lib/format';
-
-const SPARK = [4, 6, 5, 8, 7, 10, 9, 12, 11, 14, 16];
-
-function outcomeTone(o: Negotiation['finalOutcome']): 'ember' | 'sage' | 'paper' {
-  if (o === 'IN_PROGRESS') return 'ember';
-  if (o === 'DEAL') return 'sage';
-  return 'paper';
-}
-function outcomeLabel(o: Negotiation['finalOutcome']): string {
-  if (o === 'IN_PROGRESS') return 'negotiating';
-  if (o === 'DEAL') return 'deal';
-  return 'no deal';
-}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -35,31 +23,25 @@ export default function HomeScreen() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [stats, setStats] = useState<TransactionStats | null>(null);
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
-  const [agent, setAgent] = useState<AgentConfig | null>(null);
   const [auctions, setAuctions] = useState<Auction[]>([]);
-  const [unread, setUnread] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [b, s, n, a, au, u] = await Promise.allSettled([
+    const [b, s, n, au] = await Promise.allSettled([
       myBids(),
       transactionStats(),
       myNegotiations(),
-      getAgentConfig(),
       listAuctions(),
-      unreadNotificationCount(),
     ]);
     if (b.status === 'fulfilled') setBids(Array.isArray(b.value) ? b.value : []);
     if (s.status === 'fulfilled') setStats(s.value);
     if (n.status === 'fulfilled') setNegotiations(Array.isArray(n.value) ? n.value : []);
-    if (a.status === 'fulfilled') setAgent(a.value);
     if (au.status === 'fulfilled') setAuctions(Array.isArray(au.value) ? au.value : []);
-    if (u.status === 'fulfilled') setUnread(u.value);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // On focus, not only on mount: a bid accepted or a deal paid elsewhere must
+  // show when the buyer comes back to this tab.
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -82,8 +64,6 @@ export default function HomeScreen() {
   const decisionBid = countered[0] ?? null;
   const decisionAuction = !decisionBid && auctions.length > 0 ? auctions[0] : null;
 
-  const recentNegotiations = negotiations.slice(0, 3);
-  const glyphs = ['sprout', 'bars', 'kernel'];
 
   return (
     <View style={styles.flex}>
@@ -96,10 +76,7 @@ export default function HomeScreen() {
         <View style={styles.headerPad}>
           <View style={styles.rowBetween}>
             <Wordmark size={17} glyph="arc" />
-            <Pressable onPress={() => nav.navigate('Notifications')}>
-              <IconBell size={22} stroke={design.ink2} />
-              {needsYou > 0 || unread > 0 ? <View style={styles.bellDot} /> : null}
-            </Pressable>
+            <NotificationBell />
           </View>
           <View style={{ marginTop: 18 }}>
             <Text style={styles.greeting}>{greeting}, {firstName}</Text>
@@ -117,7 +94,10 @@ export default function HomeScreen() {
             <View>
               <View style={styles.rowBetweenTop}>
                 <View>
-                  <Mono style={styles.portfolioLabel}>SETTLED · ALL TIME</Mono>
+                  {/* What this buyer has paid on deals that completed. Nothing
+                      sits under it: the sparkline that used to was made-up
+                      numbers, a rising line on an account that had spent ₹0. */}
+                  <Mono style={styles.portfolioLabel}>SPENT · COMPLETED DEALS</Mono>
                   <Text style={styles.portfolioValue}>{money(stats?.totalRevenue ?? 0, currency)}</Text>
                 </View>
                 <View style={styles.benchRow}>
@@ -125,7 +105,6 @@ export default function HomeScreen() {
                   <Mono style={styles.benchText}> {stats?.released ?? 0} released</Mono>
                 </View>
               </View>
-              <MiniChart width={330} height={46} data={SPARK} color={design.leaf} fill />
               <View style={styles.statsRow}>
                 {[
                   [String(stats?.total ?? 0), 'contracts'],
@@ -164,8 +143,8 @@ export default function HomeScreen() {
                 {decisionBid.listing?.cropVariety ? ` · ${decisionBid.listing.cropVariety}` : ''}
               </Text>
               <Text style={styles.cardSub}>
-                Your bid {money(decisionBid.bidPricePerUnit, decisionBid.currency)} · farmer countered{' '}
-                {decisionBid.counterPrice != null ? money(decisionBid.counterPrice, decisionBid.currency) : '—'}
+                Your bid {money(decisionBid.bidPricePerUnit, decisionBid.currency)} · the seller asks{' '}
+                {decisionBid.counterPrice != null ? money(decisionBid.counterPrice, decisionBid.currency) : 'a different price'}
               </Text>
               <View style={styles.actionBtns}>
                 <Pressable
@@ -198,70 +177,14 @@ export default function HomeScreen() {
               </View>
             </View>
           ) : (
-            <View style={styles.emptyCard}>
+            <Pressable
+              style={({ pressed }) => [styles.emptyCard, pressed && styles.pressed]}
+              onPress={() => nav.navigate('Home')}
+            >
               <Text style={styles.emptyText}>Nothing waiting on you. Browse the market to start a deal.</Text>
-            </View>
+              <Text style={styles.emptyLink}>Open the market →</Text>
+            </Pressable>
           )}
-        </View>
-
-        {/* agent + recent negotiations */}
-        <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
-          <Eyebrow>Your agent</Eyebrow>
-          <Pressable onPress={() => nav.navigate('Agents')}>
-            <Text style={styles.manage}>Manage</Text>
-          </Pressable>
-        </View>
-        <View style={[styles.sidePad, { gap: 10 }]}>
-          {agent ? (
-            <View style={styles.agentRow}>
-              <View style={styles.agentIcon}>
-                {(() => {
-                  const Mark = MARKS['sprout'];
-                  return <Mark size={22} color={colors.forest} accent={colors.ember} />;
-                })()}
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.agentName}>Buyer agent · {agent.negotiationStyle.toLowerCase()}</Text>
-                <Text style={styles.agentCrop} numberOfLines={1}>
-                  {agent.preferredCrops.length > 0 ? agent.preferredCrops.join(' · ') : 'No crop preferences set'}
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <StatusPill tone={agent.active ? 'sage' : 'paper'}>{agent.active ? 'active' : 'paused'}</StatusPill>
-                <Mono style={styles.agentLots}>
-                  {agent.maxPrice != null ? `cap ${money(agent.maxPrice, currency)}` : 'no cap'}
-                </Mono>
-              </View>
-            </View>
-          ) : null}
-          {recentNegotiations.map((n, i) => {
-            const Mark = MARKS[glyphs[i % glyphs.length]];
-            return (
-              <View key={n.id} style={styles.agentRow}>
-                <View style={styles.agentIcon}>
-                  <Mark size={22} color={colors.forest} accent={colors.ember} />
-                </View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.agentName} numberOfLines={1}>
-                    {n.listing?.cropName ?? 'Negotiation'}
-                    {n.listing?.cropVariety ? ` · ${n.listing.cropVariety}` : ''}
-                  </Text>
-                  <Text style={styles.agentCrop} numberOfLines={1}>
-                    vs {n.listing?.farmer?.user?.name ?? 'farmer'} · {Array.isArray(n.rounds) ? n.rounds.length : 0} rounds
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <StatusPill tone={outcomeTone(n.finalOutcome)}>{outcomeLabel(n.finalOutcome)}</StatusPill>
-                  <Mono style={styles.agentLots}>{timeAgo(n.startedAt)}</Mono>
-                </View>
-              </View>
-            );
-          })}
-          {!agent && recentNegotiations.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyText}>Configure your agent to negotiate while you sleep.</Text>
-            </View>
-          ) : null}
         </View>
 
         {/* Demand — the exchange run the other way. Instead of hunting the
@@ -294,7 +217,6 @@ const styles = StyleSheet.create({
   sidePadHead: { paddingHorizontal: 20 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rowBetweenTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  bellDot: { position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: 999, backgroundColor: colors.ember, borderWidth: 1.5, borderColor: design.bg },
   greeting: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3 },
   h1: { marginTop: 2, fontFamily: font.sansMed, fontSize: 27, letterSpacing: -0.7, color: design.ink, lineHeight: 32 },
   h1Serif: { fontFamily: font.serifItalic, fontSize: 30, color: colors.forest },
@@ -322,6 +244,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
 
   emptyCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  emptyLink: { fontFamily: font.sansSemi, fontSize: 13.5, color: colors.forest, marginTop: 8 },
   emptyText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3 },
 
   manage: { fontFamily: font.sansMed, fontSize: 13, color: colors.forest },

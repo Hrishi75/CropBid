@@ -290,6 +290,9 @@ export default function StorefrontHomeScreen() {
   // A wholesaler trades lots it did not grow, so the farm wording (farmer
   // lots, farm-fresh, farm schemes, "Grow it?") is swapped for trade wording.
   const isWholesaler = isFarmer && user?.farmerProfile?.sellerType === 'WHOLESALER';
+  // A business buyer (or a seller in buying mode) is here to source, so the
+  // farm-facing pieces (schemes, the sell pitch) are left out for it too.
+  const isBuyer = role === 'BUYER';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
@@ -817,7 +820,19 @@ export default function StorefrontHomeScreen() {
             {/* promo rail — the web's sage/paper/ember cards */}
             {/* A shop has one card here, so it runs full width rather than
                 sitting half-empty in a rail. */}
-            {isShop ? (
+            {/* A buyer has one card here too, the forecast, worded for buying. */}
+            {isBuyer ? (
+              <View style={styles.promoSolo}>
+                <PromoCard
+                  wide
+                  tone="paper"
+                  emoji="📈"
+                  title={t('Where prices go next')}
+                  desc={t('7-day outlook for every crop: buy now, or wait?')}
+                  onPress={() => nav.navigate('Rates', { tab: 'forecast' })}
+                />
+              </View>
+            ) : isShop ? (
               <View style={styles.promoSolo}>
                 <PromoCard
                   wide
@@ -844,7 +859,7 @@ export default function StorefrontHomeScreen() {
               ) : null}
               <PromoCard tone="paper" emoji="📈" title={t('Where prices go next')} desc={t('7-day outlook for every crop — sell now or hold?')} onPress={() => nav.navigate('Rates', { tab: 'forecast' })} />
               {/* Farm schemes (PM-Kisan, fasal bima) are for growers. */}
-              {!isWholesaler ? <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} /> : null}
+              {!isWholesaler && !isBuyer ? <PromoCard tone="sage" emoji="🏛️" title={t('Sarkari Yojana')} desc={t("PM-Kisan, fasal bima, KCC loans — find every govt scheme you're owed.")} onPress={() => nav.navigate('Schemes')} /> : null}
               {/* Household packs are a shopper's offer; a farmer or a bulk
                   buyer is not buying by the pack. */}
               {shopping ? (
@@ -965,7 +980,7 @@ export default function StorefrontHomeScreen() {
 
             {/* A shop or a wholesaler is already selling here, and "Grow it?"
                 is not a question for either; the pitch is for everyone else. */}
-            {!isShop && !isWholesaler ? (
+            {!isShop && !isWholesaler && !isBuyer ? (
               <View style={styles.sellCta}>
                 <Text style={styles.sellTitle}>
                   Grow it? <Text style={styles.sellItalic}>Sell it here.</Text>

@@ -519,6 +519,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 - **Home scrolls as one page** with the search and category chips sticky, a notification bell with an unread count, and, for a farm or wholesaler, a "Buyers are asking" card leading to the demand board, which also gained a back button.
 - **The shopper and the seller profiles are separate layouts** (`screens/profile/ShopperProfile`, `SellerProfile`); buyers keep the old one. A shopper is shown no trust score; a seller is, and is asked for payout details while none are on file (§4a).
 - **Back buttons show only the arrow**, because iOS labelled them with route names like "ConsumerTabs".
+- **The buyer side (2026-10-04): no Agents tab.** The user's call: the buying agent is off the app for now, and its tab is **Requests** (the buyer's posted needs and the offers on them). The dashboard lost its agent card and a sparkline drawn from hard-coded numbers, a rising line on an account that had spent ₹0. Buyers get their own profile layout (`screens/profile/BuyerProfile`), the floating tab bar, and no farm-schemes card or sell pitch on Home. Contracts no longer says confirming delivery "releases payment to the farmer" (§6: it marks the seller due). The seller's AI helper is untouched.
 
 ### Also gone
 

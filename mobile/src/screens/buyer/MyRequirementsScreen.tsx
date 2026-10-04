@@ -70,7 +70,7 @@ export default function MyRequirementsScreen() {
         <Eyebrow>YOUR DEMAND</Eyebrow>
         <Text style={styles.title}>What you have asked for.</Text>
         <Text style={styles.lede}>
-          Post what you need and farmers come to you — at your price, or with a counter.
+          Post what you need and sellers come to you, at your price or with a counter.
         </Text>
         <PressScale onPress={() => nav.navigate('CreateRequirement')} cardStyle={styles.postBtn}>
           <Text style={styles.postBtnText}>Post a requirement</Text>
@@ -101,7 +101,7 @@ export default function MyRequirementsScreen() {
               {tab === 'OPEN' ? 'Nothing open right now' : 'Nothing here'}
             </Text>
             <Text style={styles.emptyBody}>
-              Say what you need, how much of it and what you will pay. Farmers who can supply it
+              Say what you need, how much of it and what you will pay. Sellers who can supply it
               are notified.
             </Text>
           </View>

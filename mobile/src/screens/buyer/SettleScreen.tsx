@@ -140,7 +140,7 @@ export default function SettleScreen() {
     advanceDelivery(
       'CONFIRMED',
       'Confirm delivery',
-      `This releases ${money(tx.totalAmount, tx.currency)} from escrow to the farmer. Confirm you received the goods?`,
+      `This marks the seller due their ${money(tx.totalAmount, tx.currency)}. Confirm you received the goods?`,
     );
   const onShip = () =>
     advanceDelivery('IN_TRANSIT', 'Mark as shipped', 'Confirm the crop has been dispatched to the buyer?');
@@ -186,8 +186,8 @@ export default function SettleScreen() {
       return 'This contract was refunded to the buyer.';
     }
     if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'Tap Pay to fund escrow. Your money is held safely until you confirm delivery.';
-    if (tx.paymentStatus === 'ESCROW') return 'Funds are held in escrow. Confirming delivery releases payment to the farmer.';
-    if (tx.paymentStatus === 'RELEASED') return 'This contract is settled. Payment was released to the farmer.';
+    if (tx.paymentStatus === 'ESCROW') return 'Your payment is held by CropBid. Confirming delivery marks the seller due their money.';
+    if (tx.paymentStatus === 'RELEASED') return 'This contract is settled. The seller is due their payment.';
     return 'This contract was refunded to you.';
   }
 
@@ -228,7 +228,7 @@ export default function SettleScreen() {
           <View style={{ paddingHorizontal: 16, paddingTop: 14 }}>
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
-                No contracts yet. When a bid is accepted — by you or your agent — the escrow deal shows up here.
+                No contracts yet. When a seller accepts your bid or fills one of your requests, the deal shows up here with its payment and delivery.
               </Text>
             </View>
           </View>

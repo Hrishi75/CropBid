@@ -36,6 +36,7 @@ import { errorMessage, mediaUrl } from '../api/client';
 import { accountTags, sellerDisplayName, sellerWords } from '../lib/sellerType';
 import { ShopperProfile } from './profile/ShopperProfile';
 import { SellerProfile } from './profile/SellerProfile';
+import { BuyerProfile } from './profile/BuyerProfile';
 import { ModeSwitch } from '../components/ModeSwitch';
 
 export default function ProfileScreen() {
@@ -216,6 +217,19 @@ export default function ProfileScreen() {
           are one implementation for every role. */}
       {isConsumer ? (
         <ShopperProfile
+          user={user}
+          photo={photo}
+          uploading={uploading}
+          refreshing={refreshing}
+          signingOut={signingOut}
+          onRefresh={onRefresh}
+          onAvatarPress={onAvatarPress}
+          onShare={shareApp}
+          onSignOut={onSignOutPress}
+          onDelete={onDeletePress}
+        />
+      ) : user.role === 'BUYER' ? (
+        <BuyerProfile
           user={user}
           photo={photo}
           uploading={uploading}

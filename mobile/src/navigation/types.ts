@@ -50,7 +50,8 @@ export type TabParamList = {
 export type BuyerTabParamList = {
   Home: undefined;
   Dashboard: undefined;
-  Agents: undefined;
+  /** What this buyer has asked for, and the offers on it. */
+  Requests: undefined;
   Contracts: undefined;
   You: undefined;
 };

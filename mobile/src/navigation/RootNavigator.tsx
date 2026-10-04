@@ -9,7 +9,7 @@
 // 403s. Every role's HOME tab is the shared StorefrontHomeScreen (the web homepage
 // mirrored on mobile); the old farmer and buyer dashboards live on their own
 // tabs (My Farm / Dashboard). Farmers get Home/My Crops/Offers/Farm/You (their
-// AI helper is pushed from Profile), buyers get Home/Dashboard/Agents/
+// AI helper is pushed from Profile), buyers get Home/Dashboard/Requests/
 // Contracts/You + Auction in the stack, consumers (instant-buy any quantity,
 // no bidding) get Home/Cart/Orders/You, with Checkout pushed over the tabs.
 // The demand board (buyers post what they need, farmers answer) is pushed in
@@ -104,7 +104,11 @@ function BuyerTabs() {
     >
       <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
       <Tab.Screen name="Dashboard" component={BuyerDashboardScreen} options={{ title: t('Dashboard') }} />
-      <Tab.Screen name="Agents" component={BriefScreen} options={{ title: t('Agents') }} />
+      {/* Requests, not Agents: the buying agent is off the app for now (the
+          user's call, 2026-10-04), and the buyer's own posted needs are the
+          thing they come back to. MyRequirementsScreen is still pushed from
+          elsewhere as well. */}
+      <Tab.Screen name="Requests" component={MyRequirementsScreen} options={{ title: t('Requests') }} />
       <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: t('Contracts') }} />
       <Tab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </Tab.Navigator>
