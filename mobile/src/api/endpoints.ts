@@ -352,6 +352,17 @@ export async function placeBid(input: {
   return data;
 }
 
+/** Change the price of a bid that is still open. Puts it back to PENDING. */
+export async function updateBid(id: string, bidPricePerUnit: number): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/update`, { bidPricePerUnit });
+  return data;
+}
+
+/** Take back a bid that has not been accepted. */
+export async function withdrawBid(id: string): Promise<void> {
+  await api.delete(`/bids/${id}`);
+}
+
 export async function myBids(): Promise<Bid[]> {
   const { data } = await api.get<Bid[]>('/bids/my');
   return data;

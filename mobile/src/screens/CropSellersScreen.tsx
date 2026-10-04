@@ -127,7 +127,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
                 <Mono style={styles.heroEyebrow}>FARM DIRECT · COMPARE & PICK</Mono>
                 <Text style={styles.heroName}>{crop}</Text>
                 <Text style={styles.heroLine}>
-                  {t(lots.length === 1 ? '{{n}} farmer selling today' : '{{n}} farmers selling today', { n: lots.length })}
+                  {t(lots.length === 1 ? '{{n}} seller today' : '{{n}} sellers today', { n: lots.length })}
                   {cheapest != null ? ` · ${t('from')} ${money(cheapest)}/${unitLabel(lots[0].unit)}` : ''}
                 </Text>
               </View>
@@ -136,7 +136,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
             {error ? <Text style={styles.errorLine}>{error}</Text> : null}
 
             {lots.length > 0 ? (
-              <Text style={styles.sectionTitle}>{t('Choose your farmer')}</Text>
+              <Text style={styles.sectionTitle}>{t('Choose your seller')}</Text>
             ) : null}
           </View>
         }
@@ -208,13 +208,13 @@ function SellerCard({
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.farmerName} numberOfLines={1}>{farmer?.name ?? t('CropBid farmer')}</Text>
+          <Text style={styles.farmerName} numberOfLines={1}>{farmer?.name ?? t('CropBid seller')}</Text>
           <Text style={styles.meta} numberOfLines={1}>
             {lot.location}, {lot.state} · {timeAgo(lot.createdAt)}
           </Text>
         </View>
         {farmer?.trustScore != null ? (
-          <Mono style={styles.trust}>★ {farmer.trustScore}</Mono>
+          <Mono style={styles.trust}>★ {Math.round(farmer.trustScore)}</Mono>
         ) : null}
       </View>
 
