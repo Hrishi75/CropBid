@@ -24,7 +24,7 @@ import toast from 'react-hot-toast';
 interface AdminUser {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   phone: string | null;
   location: string | null;
@@ -202,7 +202,7 @@ export function AdminUsers() {
           <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Search</div>
             <Input
-              placeholder="Name or email"
+              placeholder="Name, email or phone"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             />
@@ -254,7 +254,8 @@ export function AdminUsers() {
                           {u.suspended && (
                             <span className="cb-tiny" style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: 'var(--cb-ember)', color: '#fff', fontWeight: 500 }}>suspended</span>
                           )}
-                          <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>
+                          {u.email && <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>}
+                          {u.phone && <span className="cb-mono cb-tiny" style={{ marginLeft: 8 }}>{u.phone}</span>}
                         </div>
                         <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role.toLowerCase()}</span>
                       </div>
