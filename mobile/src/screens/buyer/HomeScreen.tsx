@@ -9,6 +9,8 @@ import { Wordmark } from '../../components/marks';
 import { IconArrow } from '../../components/icons';
 import { Eyebrow, GridBg, LiveDot, Mono, StatusPill } from '../../components/buyerKit';
 import { NotificationBell } from '../../components/NotificationBell';
+import { ExportBook } from '../../components/ExportBook';
+import { portName, useExportOptions } from '../../lib/exportOptions';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { listAuctions, myBids, myNegotiations, myRequirements, myTransactions, transactionStats } from '../../api/endpoints';
@@ -58,6 +60,10 @@ export default function HomeScreen() {
   }, [load]);
 
   const currency = user?.currency || 'INR';
+  // An exporter also gets the export book: tonnes by crop and by source state,
+  // and where every unfinished deal is (components/ExportBook).
+  const isExporter = user?.buyerProfile?.companyType === 'EXPORTER';
+  const exportOpts = useExportOptions(isExporter);
   const firstName = user?.name?.split(/\s+/)[0] || 'there';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -174,6 +180,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* What needs a decision stays first: the book is a view, the list is work. */}
         {/* ---- needs your decision ----------------------------------- */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
           <Eyebrow>Needs your decision</Eyebrow>
@@ -211,6 +218,8 @@ export default function HomeScreen() {
           )}
         </View>
 
+        {isExporter ? <ExportBook txs={txs} onOpenContracts={() => nav.navigate('Contracts')} /> : null}
+
         {/* ---- your demand: what this buyer has asked for --------------- */}
         <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
           <Eyebrow>Your open requests</Eyebrow>
@@ -240,7 +249,7 @@ export default function HomeScreen() {
                     ) : null}
                   </View>
                   <Text style={styles.todoSub} numberOfLines={1}>
-                    {money(r.pricePerUnit, r.currency)}/{unitLabel(r.unit)} · to {r.deliveryLocation}
+                    {money(r.pricePerUnit, r.currency)}/{unitLabel(r.unit)} · to {r.forExport ? `${portName(exportOpts, r.exportPort)} port` : r.deliveryLocation}
                   </Text>
                   <View style={styles.track}><View style={[styles.trackFill, { width: `${Math.max(pct, 2)}%` }]} /></View>
                   <Mono style={styles.reqMeta}>

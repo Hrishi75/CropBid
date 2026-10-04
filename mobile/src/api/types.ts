@@ -263,6 +263,9 @@ export interface Transaction {
   // shopper pays for. Null for trade deals and for retail orders placed
   // before shop orders existed.
   retailOrder?: RetailOrderSummary | null;
+  // The carrier booking, once ops has made one (CLAUDE.md §2a). Carrier
+  // identity is stripped by the server; only the status reaches a trader.
+  shipment?: { status: string } | null;
   createdAt: string;
 }
 

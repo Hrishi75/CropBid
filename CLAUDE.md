@@ -458,7 +458,7 @@ Web has none of these. They are `mobile/` only.
 
 ### An exporter's market is export-ready lots (2026-10-05)
 
-**A buyer whose company type is EXPORTER gets a filter row under the market's category chips: Grade A, Organic, and a smallest lot size (any, 10+, 50+, 100+ quintals).** The user's pick of four options for what makes the exporter side different; the export request form followed (below), and an exporter dashboard is not built.
+**A buyer whose company type is EXPORTER gets a filter row under the market's category chips: Grade A, Organic, and a smallest lot size (any, 10+, 50+, 100+ quintals).** The user's pick of four options for what makes the exporter side different; the export request form and the exporter dashboard followed (below).
 
 - **Grade A and 10+ quintals are on when an exporter arrives.** They are chips on screen, so what is hidden is never a secret, and the count under the row ("32 lots match") is the server's total for those filters.
 - **The filters run on the server** (`GET /browse` with `quality`, `organic`, `minQuintals`), not over the page on the phone, because the market loads one page and a filter over that hides every match on the next.
@@ -476,6 +476,15 @@ Web has none of these. They are `mobile/` only.
 - **Nothing checks any of it.** Moisture, packing and documents are what the exporter asked for, not what anyone verified (§2b).
 - **Payment and delivery terms are pickers now** (Letter of credit / 7 days / 15 days; FOB / CIF), for every buyer. They were free-text boxes over a server that accepts only those codes, so anything typed there failed the whole request.
 - **Web only shows the base request.** The website's demand pages ignore the new fields, so an export request reads there as an ordinary one delivering to the port's city.
+
+**An exporter's dashboard has an export book (2026-10-05)** (`components/ExportBook`), under "Needs your decision", which stays first because it is work and the book is a view.
+
+- **Tonnes, whatever unit each lot was listed in:** contracted across every deal, and received (deals the exporter has confirmed), because an exporter plans containers, not rupees.
+- **By crop and sourced from**, as tonnes and shares. The source state is what decides inland freight and the nearest port.
+- **On the way:** every unfinished deal by where it is: to pay, booking transport (ops books it, §2a), being collected, on the road, arrived. Read off the deal's own payment, delivery and shipment states, so it cannot disagree with Contracts. A deal the seller marked in transit with no shipment row counts as on the road.
+- **Computed on the phone from `GET /transactions`**, which already carries the bid's quantity, the lot's unit and state, and the shipment status (never the carrier, §2a). Cancelled and refunded deals are left out.
+- **It never says "shipment to port".** A deal struck on a listing is delivered where the deal says; only an export request names a port.
+- **Seed data can link one deal to two buyers.** The seed attached a deal for one buyer to another buyer's bid. A bid holds one deal, and making one is idempotent, so accepting that bid "succeeds" without giving its buyer anything. Only the seed can produce this; test with fresh bids.
 
 ### Business credit: applied for on the wallet, decided by a person (2026-10-04)
 
