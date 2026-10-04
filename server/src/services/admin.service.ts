@@ -76,11 +76,14 @@ export async function getPlatformStats() {
 // code dropped, the stored number with its punctuation stripped in the query,
 // matched as a substring so either form finds either.
 //
-// Only a search made of phone characters is a phone search, and only from four
-// digits: "Ward 2026" is somebody's name, and its digits would otherwise match
-// every account whose number contains 2026.
+// Only a search with no letters and no @ in it is a phone search, and only from
+// four digits: "Ward 2026" is somebody's name, and its digits would otherwise
+// match every account whose number contains 2026. Any other punctuation is let
+// through, because the profile editor accepts any, so `98220.55667` is a real
+// stored number an admin may paste back in. Letters in any script count, so a
+// name typed in Devanagari is a name too.
 export function phoneSearchDigits(search: string): string | null {
-  if (!/^[\s+\d()-]+$/.test(search)) return null;
+  if (/[\p{L}@]/u.test(search)) return null;
   let digits = search.replace(/\D/g, '');
   const typedCountryCode = /^\s*(\+91|91[\s-])/.test(search);
   if (typedCountryCode || (digits.length === 12 && digits.startsWith('91'))) {

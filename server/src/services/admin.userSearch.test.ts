@@ -59,6 +59,12 @@ describe('phoneSearchDigits', () => {
   it('is not a phone search when the text is not a phone number', () => {
     expect(phoneSearchDigits('Ward 2026')).toBeNull();
     expect(phoneSearchDigits('user2026@example.com')).toBeNull();
+    expect(phoneSearchDigits('वार्ड 2026')).toBeNull();
+  });
+
+  it('reads a number pasted with any punctuation the profile editor kept', () => {
+    expect(phoneSearchDigits('98220.55667')).toBe('9822055667');
+    expect(phoneSearchDigits('98220/55667')).toBe('9822055667');
   });
 
   it('is not a phone search below four digits', () => {
