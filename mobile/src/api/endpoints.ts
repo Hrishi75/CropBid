@@ -513,9 +513,9 @@ export interface RequirementInput {
   deliveryTerms?: string;
 }
 
-export async function myRequirements(status?: string): Promise<RequirementFeedPage> {
+export async function myRequirements(status?: string, limit?: number): Promise<RequirementFeedPage> {
   const { data } = await api.get<RequirementFeedPage>('/requirements/my', {
-    params: status ? { status } : undefined,
+    params: { ...(status ? { status } : {}), ...(limit ? { limit } : {}) },
   });
   return data;
 }
