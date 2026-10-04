@@ -195,11 +195,15 @@ function fromListing(l: Listing): CardVM {
 
 // Collapse every live lot of one crop into a single card: the cheapest lot
 // fronts it (photo, price, grade), quantity is the combined stock, and the
-// meta line says how many farms are selling and where. Lots of one crop can
+// meta line says how many sellers there are and where. Lots of one crop can
 // be listed in different units, so "cheapest" compares ₹ per kg.
+//
+// When the lots disagree on a unit the card needs one of its own: kilograms
+// for a household, quintals for anyone trading lots, because "12,400 kg" and
+// "₹17/kg" are not how a processor reads a wholesale onion lot.
 const KG_PER_UNIT: Record<string, number> = { KG: 1, QUINTAL: 100, TONNE: 1000 };
 
-function fromGroup(group: Listing[]): CardVM {
+function fromGroup(group: Listing[], mixedUnit: 'KG' | 'QUINTAL' = 'KG'): CardVM {
   const perKg = (l: Listing) =>
     (l.retailPricePerUnit ?? l.pricePerUnitMin) / (KG_PER_UNIT[l.unit] ?? 1);
   const sorted = [...group].sort((a, b) => perKg(a) - perKg(b));
@@ -207,9 +211,11 @@ function fromGroup(group: Listing[]): CardVM {
   if (sorted.length === 1) return base;
   // Stock and price in the shared unit when all lots agree, else per kg.
   const sameUnit = sorted.every((l) => l.unit === sorted[0].unit);
-  const kgFactor = KG_PER_UNIT[sorted[0].unit] ?? 1;
-  const inStockUnit = (l: Listing, n: number) => (sameUnit ? n : n * (KG_PER_UNIT[l.unit] ?? 1));
-  const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0));
+  // How many of the card's unit one of this lot's units is.
+  const toCommon = (l: Listing) => (sameUnit ? 1 : (KG_PER_UNIT[l.unit] ?? 1) / KG_PER_UNIT[mixedUnit]);
+  const baseFactor = toCommon(sorted[0]);
+  const inStockUnit = (l: Listing, n: number) => n * toCommon(l);
+  const qty = Math.round(sorted.reduce((s, l) => s + inStockUnit(l, l.remainingQuantity), 0) * 10) / 10;
   const total = sorted.reduce((s, l) => s + inStockUnit(l, l.quantity), 0);
   const states = [...new Set(sorted.map((l) => l.state))];
   // The cheapest lot need not be the cheapest one on the shelf — a farmer can
@@ -225,13 +231,13 @@ function fromGroup(group: Listing[]): CardVM {
     shop,
     sellers: sorted.length,
     sellersMeta: states.length === 1
-      ? `${sorted.length} farms · ${states[0]}`
-      : `${sorted.length} farms · ${states.length} states`,
-    unit: sameUnit ? base.unit : 'KG',
-    price: sameUnit ? base.price : base.price / kgFactor,
-    anchor: sameUnit ? base.anchor : base.anchor / kgFactor,
-    floor: sameUnit ? base.floor : base.floor / kgFactor,
-    retail: base.retail == null ? null : sameUnit ? base.retail : base.retail / kgFactor,
+      ? `${sorted.length} sellers · ${states[0]}`
+      : `${sorted.length} sellers · ${states.length} states`,
+    unit: sameUnit ? base.unit : mixedUnit,
+    price: base.price / baseFactor,
+    anchor: base.anchor / baseFactor,
+    floor: base.floor / baseFactor,
+    retail: base.retail == null ? null : base.retail / baseFactor,
     qty,
     low: total > 0 && qty / total <= 0.25,
   };
@@ -420,7 +426,7 @@ export default function StorefrontHomeScreen() {
       if (group) group.push(l);
       else byCrop.set(key, [l]);
     }
-    const all = [...byCrop.values()].map(fromGroup);
+    const all = [...byCrop.values()].map((g) => fromGroup(g, shopping ? 'KG' : 'QUINTAL'));
     if (!shopping) return all;
     // Price the household pack off whichever number the lot actually carries —
     // the farmer's own retail price, or the floor plus the shelf margin. A lot
@@ -599,7 +605,9 @@ export default function StorefrontHomeScreen() {
             <View style={styles.headerRight}>
               {/* Renders nothing when signed out: a zero balance on an account
                   that does not exist is not a fact about anything. */}
-              <WalletPill />
+              {/* Not for a buyer: credits cannot pay for a lot yet (§6), so
+                  a balance in a trader's header is a number with no use. */}
+              {isBuyer ? null : <WalletPill />}
               <LanguagePill />
               <NotificationBell />
               {user ? (
@@ -634,7 +642,9 @@ export default function StorefrontHomeScreen() {
           </View>
 
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsPad}>
-            {CHIPS.map((c) => (
+            {/* A buyer is offered only the categories with a lot open in
+                them: a chip that leads to an empty rail is a dead end. */}
+            {CHIPS.filter((c) => !isBuyer || c.target == null || items.some((v) => v.cat === c.target)).map((c) => (
               <Chip
                 key={c.label}
                 label={c.label}
@@ -790,11 +800,16 @@ export default function StorefrontHomeScreen() {
                     <Pulse style={styles.liveDot} />
                     <Mono style={styles.bannerChipText}>
                       {listings.length > 0
-                        ? `LIVE · ${listings.length} ${isWholesaler ? '' : 'FARMER '}${listings.length === 1 ? 'LOT' : 'LOTS'}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                        ? `LIVE · ${listings.length} ${isWholesaler || isBuyer ? '' : 'FARMER '}${listings.length === 1 ? 'LOT' : 'LOTS'}${isBuyer ? ' OPEN' : ''}${city ? ` IN ${city.toUpperCase()}` : ''}`
                         : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                     </Mono>
                   </View>
-                  {isWholesaler ? (
+                  {isBuyer ? (
+                    <Text style={styles.bannerTitle}>
+                      Source by the lot,{'\n'}
+                      <Text style={styles.bannerItalic}>priced</Text> to the mandi.
+                    </Text>
+                  ) : isWholesaler ? (
                     <Text style={styles.bannerTitle}>
                       Trade by the lot,{'\n'}
                       <Text style={styles.bannerItalic}>priced</Text> to the mandi.
@@ -806,9 +821,9 @@ export default function StorefrontHomeScreen() {
                     </Text>
                   )}
                   <View style={styles.bannerTicks}>
-                    <Text style={styles.bannerTick}>✓ {t('Open bidding & auctions')}</Text>
+                    <Text style={styles.bannerTick}>✓ {isBuyer ? t('Bid or counter on any lot') : t('Open bidding & auctions')}</Text>
                     <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>
-                    <Text style={styles.bannerTick}>✓ {isWholesaler ? t('Delivery booked for you') : t('Farm to door')}</Text>
+                    <Text style={styles.bannerTick}>✓ {isWholesaler || isBuyer ? t('Delivery booked for you') : t('Farm to door')}</Text>
                   </View>
                 </View>
               </View>
@@ -870,12 +885,19 @@ export default function StorefrontHomeScreen() {
 
             {/* shop by category — web's tile row */}
             {/* A farmer or a buyer is browsing the market, not shopping. */}
-            <Text style={styles.sectionTitle}>{shopping ? t('Shop by category') : t('Browse by category')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
-              {CATEGORY_TILES.map((c) => (
-                <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
-              ))}
-            </ScrollView>
+            {/* Not for a buyer: the chips under the search already pick a
+                category, and a second row of the same choices is in the way of
+                the lots. */}
+            {isBuyer ? null : (
+              <>
+                <Text style={styles.sectionTitle}>{shopping ? t('Shop by category') : t('Browse by category')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
+                  {CATEGORY_TILES.map((c) => (
+                    <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
             {/* the market — every LIVE listing, in the web's rails. Nothing
                 backfills an empty rail, so when there is no stock the whole
@@ -911,7 +933,13 @@ export default function StorefrontHomeScreen() {
                 <View key={rail.id}>
                   <View style={styles.railHead}>
                     <View>
-                      <Mono style={styles.railEyebrow}>{rail.eyebrow.toUpperCase()}</Mono>
+                      {/* A buyer gets what is open, not "picked this week":
+                          nothing checks when a lot was harvested (§2b). */}
+                      <Mono style={styles.railEyebrow}>
+                        {isBuyer
+                          ? `${railItems.length} ${railItems.length === 1 ? 'CROP' : 'CROPS'} · ${railItems.reduce((n, v) => n + v.sellers, 0)} LOTS OPEN`
+                          : rail.eyebrow.toUpperCase()}
+                      </Mono>
                       <Text style={styles.railTitle}>{rail.title}</Text>
                     </View>
                     <PressScale onPress={() => pickCategory(rail.id)} scaleTo={0.94}>
@@ -959,7 +987,9 @@ export default function StorefrontHomeScreen() {
             {/* how it works — compact strip + sell CTA, like the web footer run.
                 Not for a farmer: they already sell here, and the steps are
                 written from the buyer's side ("You buy at their price"). */}
-            {!isFarmer ? (
+            {/* Nor for a buyer: they were approved to trade here, and the
+                steps are written for a household buying a pack. */}
+            {!isFarmer && !isBuyer ? (
               <>
                 <Text style={styles.sectionTitle}>How CropBid works</Text>
                 <View style={styles.howWrap}>
@@ -1382,7 +1412,11 @@ function ProductCard({
   // Off the same pair of numbers the card prints below — a grouped card can
   // price its pack off one farmer's lot and its bulk line off another's, and a
   // badge computed from the other lot would advertise a discount nobody gets.
-  const pct = pack ? pctOff(pack.price, pack.anchor) : pctOff(vm.price, vm.anchor);
+  //
+  // Nothing for anyone trading lots: on a bidding lot the two numbers are the
+  // seller's floor and ceiling, so "6% OFF ₹47,000" would call their opening
+  // range a discount.
+  const pct = !shopping ? 0 : pack ? pctOff(pack.price, pack.anchor) : pctOff(vm.price, vm.anchor);
   const img = vm.image ? mediaUrl(vm.image) : null;
   // Whatever the next screen will actually offer: the pack goes in the basket,
   // a direct-sale lot with no household pack (cotton, maize) is bought whole by
@@ -1417,7 +1451,7 @@ function ProductCard({
           <Pulse style={styles.liveDotSm} />
           <Mono style={styles.liveText}>
             {vm.sellers > 1
-              ? `${vm.sellers} FARMERS · ${liveWord}`
+              ? `${vm.sellers} SELLERS · ${liveWord}`
               : vm.trust != null
                 ? `★ ${vm.trust} · ${liveWord}`
                 : liveWord}
@@ -1881,7 +1915,9 @@ const styles = StyleSheet.create({
   stock: { fontFamily: font.sansMed, fontSize: 10.5, color: design.ink3, marginTop: 3 },
   stockLow: { color: colors.ember },
   priceFoot: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4 },
+  // Wraps, so "₹44,000 /tonne" drops its unit to the next line instead of
+  // running under the button.
+  priceRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 4 },
   price: { fontFamily: font.sansBold, fontSize: 14, color: design.ink },
   perUnit: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3 },
   fromWord: { fontFamily: font.sans, fontSize: 10.5, color: design.ink3 },
