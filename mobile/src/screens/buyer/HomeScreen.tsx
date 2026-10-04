@@ -11,9 +11,11 @@ import { Eyebrow, GridBg, LiveDot, Mono, StatusPill } from '../../components/buy
 import { NotificationBell } from '../../components/NotificationBell';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
-import { listAuctions, myBids, myNegotiations, transactionStats } from '../../api/endpoints';
-import type { Auction, Bid, Negotiation, TransactionStats } from '../../api/types';
-import { money, timeAgo } from '../../lib/format';
+import { listAuctions, myBids, myNegotiations, myRequirements, myTransactions, transactionStats } from '../../api/endpoints';
+import type { Auction, Bid, BuyerRequirement, Negotiation, Transaction, TransactionStats } from '../../api/types';
+import { cropEmojiFor } from '../../utils/cropImages';
+import { IconChevR } from '../../components/icons';
+import { money, timeAgo, unitLabel } from '../../lib/format';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -24,19 +26,25 @@ export default function HomeScreen() {
   const [stats, setStats] = useState<TransactionStats | null>(null);
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [txs, setTxs] = useState<Transaction[]>([]);
+  const [reqs, setReqs] = useState<BuyerRequirement[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [b, s, n, au] = await Promise.allSettled([
+    const [b, s, n, au, tx, rq] = await Promise.allSettled([
       myBids(),
       transactionStats(),
       myNegotiations(),
       listAuctions(),
+      myTransactions(),
+      myRequirements('OPEN'),
     ]);
     if (b.status === 'fulfilled') setBids(Array.isArray(b.value) ? b.value : []);
     if (s.status === 'fulfilled') setStats(s.value);
     if (n.status === 'fulfilled') setNegotiations(Array.isArray(n.value) ? n.value : []);
     if (au.status === 'fulfilled') setAuctions(Array.isArray(au.value) ? au.value : []);
+    if (tx.status === 'fulfilled') setTxs(Array.isArray(tx.value) ? tx.value : []);
+    if (rq.status === 'fulfilled') setReqs(rq.value.requirements ?? []);
   }, []);
 
   // On focus, not only on mount: a bid accepted or a deal paid elsewhere must
@@ -57,12 +65,49 @@ export default function HomeScreen() {
   const activeBids = bids.filter((b) => b.status === 'PENDING' || b.status === 'COUNTERED');
   const countered = bids.filter((b) => b.status === 'COUNTERED');
   const liveNegotiations = negotiations.filter((n) => n.finalOutcome === 'IN_PROGRESS');
-  const needsYou = countered.length;
+  // EVERYTHING WAITING ON THIS BUYER, most urgent first. Each is a real state
+  // in the data with somewhere to act on it, not a nudge: a deal to pay, a
+  // delivery to confirm (which is what marks the seller due), a seller's
+  // counter, offers on a posted request, and a live auction.
+  const toPay = txs.filter((t) => t.paymentStatus === 'AWAITING_PAYMENT');
+  const toConfirm = txs.filter((t) => t.deliveryStatus === 'DELIVERED');
+  const withOffers = reqs.filter((r) => (r._count?.offers ?? 0) > 0);
+  type Todo = { key: string; tone: 'ember' | 'sage'; emoji: string; title: string; sub: string; go: () => void };
+  const todos: Todo[] = [
+    ...toPay.map((t) => ({
+      key: `pay-${t.id}`, tone: 'ember' as const, emoji: cropEmojiFor(t.listing?.cropName),
+      title: `Pay for ${t.listing?.cropName ?? 'your deal'}`,
+      sub: `${money(t.totalAmount, t.currency)} · the seller sends it once you pay`,
+      go: () => nav.navigate('Contracts'),
+    })),
+    ...toConfirm.map((t) => ({
+      key: `confirm-${t.id}`, tone: 'sage' as const, emoji: cropEmojiFor(t.listing?.cropName),
+      title: `Did the ${t.listing?.cropName ?? 'delivery'} arrive?`,
+      sub: 'Confirm it so the seller is due their money',
+      go: () => nav.navigate('Contracts'),
+    })),
+    ...countered.map((b) => ({
+      key: `counter-${b.id}`, tone: 'ember' as const, emoji: cropEmojiFor(b.listing?.cropName),
+      title: `Counter on ${b.listing?.cropName ?? 'your bid'}`,
+      sub: `You bid ${money(b.bidPricePerUnit, b.currency)} · the seller asks ${b.counterPrice != null ? money(b.counterPrice, b.currency) : 'more'}`,
+      go: () => nav.navigate('ListingDetail', { id: b.listingId }),
+    })),
+    ...withOffers.map((r) => ({
+      key: `offers-${r.id}`, tone: 'sage' as const, emoji: cropEmojiFor(r.cropName),
+      title: `${r._count!.offers} ${r._count!.offers === 1 ? 'offer' : 'offers'} on your ${r.cropName} request`,
+      sub: 'Accept one, or wait for better',
+      go: () => nav.navigate('RequirementDetail', { id: r.id, preview: r }),
+    })),
+    ...auctions.slice(0, 1).map((a) => ({
+      key: `auction-${a.listingId}`, tone: 'ember' as const, emoji: cropEmojiFor(a.cropName),
+      title: `${a.cropName} auction is live`,
+      sub: `Now ${money(a.currentPrice, a.currency)} · ${a.participantCount} in the room`,
+      go: () => nav.navigate('Auction', { listingId: a.listingId }),
+    })),
+  ];
+  const needsYou = todos.length;
   const working = liveNegotiations.length + activeBids.length;
 
-  // Top decision item: a countered bid beats a live auction.
-  const decisionBid = countered[0] ?? null;
-  const decisionAuction = !decisionBid && auctions.length > 0 ? auctions[0] : null;
 
 
   return (
@@ -81,8 +126,16 @@ export default function HomeScreen() {
           <View style={{ marginTop: 18 }}>
             <Text style={styles.greeting}>{greeting}, {firstName}</Text>
             <Text style={styles.h1}>
-              {working > 0 ? `${working} ${working === 1 ? 'deal' : 'deals'} working,` : 'All quiet on the desk,'}{'\n'}
-              <Text style={styles.h1Serif}>{needsYou > 0 ? `${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you.` : 'nothing needs you.'}</Text>
+              {/* "All quiet" only when nothing is waiting either: it used to
+                  read "All quiet on the desk, 1 needs you." */}
+              {needsYou > 0
+                ? `${needsYou} ${needsYou === 1 ? 'thing needs' : 'things need'} you,`
+                : working > 0
+                  ? `${working} ${working === 1 ? 'deal' : 'deals'} working,`
+                  : 'All quiet on the desk,'}{'\n'}
+              <Text style={styles.h1Serif}>
+                {needsYou > 0 ? 'starting below.' : 'nothing needs you.'}
+              </Text>
             </Text>
           </View>
         </View>
@@ -106,76 +159,47 @@ export default function HomeScreen() {
                 </View>
               </View>
               <View style={styles.statsRow}>
-                {[
-                  [String(stats?.total ?? 0), 'contracts'],
-                  [String(stats?.inEscrow ?? 0), 'in escrow'],
-                  [String(activeBids.length), 'bids open'],
-                ].map(([n, l]) => (
-                  <View key={l} style={{ flex: 1 }}>
+                {([
+                  [String(stats?.total ?? 0), 'contracts', 'Contracts'],
+                  [String(stats?.inEscrow ?? 0), 'paid, in progress', 'Contracts'],
+                  [String(reqs.length), reqs.length === 1 ? 'open request' : 'open requests', 'Requests'],
+                ] as const).map(([n, l, to]) => (
+                  <Pressable key={l} style={{ flex: 1 }} onPress={() => nav.navigate(to)} hitSlop={6}>
                     <Text style={styles.statN}>{n}</Text>
                     <Text style={styles.statL}>{l}</Text>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             </View>
           </View>
         </View>
 
-        {/* action required */}
+        {/* ---- needs your decision ----------------------------------- */}
         <View style={[styles.sectionHead, styles.sidePadHead]}>
           <Eyebrow>Needs your decision</Eyebrow>
-          {decisionBid || decisionAuction ? (
+          {needsYou > 0 ? (
             <View style={styles.liveRow}>
               <LiveDot size={6} />
-              <Mono style={styles.liveText}> {decisionAuction ? `${auctions.length} live` : `${countered.length} waiting`}</Mono>
+              <Mono style={styles.liveText}> {needsYou} waiting</Mono>
             </View>
           ) : null}
         </View>
-        <View style={styles.sidePad}>
-          {decisionBid ? (
-            <View style={styles.actionCard}>
-              <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
-                <StatusPill tone="ember" dot>Counter received</StatusPill>
-                <Mono style={styles.muted12}>{timeAgo(decisionBid.createdAt)}</Mono>
-              </View>
-              <Text style={styles.cardTitle}>
-                {decisionBid.listing?.cropName ?? 'Listing'}
-                {decisionBid.listing?.cropVariety ? ` · ${decisionBid.listing.cropVariety}` : ''}
-              </Text>
-              <Text style={styles.cardSub}>
-                Your bid {money(decisionBid.bidPricePerUnit, decisionBid.currency)} · the seller asks{' '}
-                {decisionBid.counterPrice != null ? money(decisionBid.counterPrice, decisionBid.currency) : 'a different price'}
-              </Text>
-              <View style={styles.actionBtns}>
-                <Pressable
-                  style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
-                  onPress={() => nav.navigate('ListingDetail', { id: decisionBid.listingId })}
-                >
-                  <Text style={styles.btnPrimaryText}>Review &amp; respond </Text>
-                  <IconArrow size={13} stroke={colors.textInverse} />
-                </Pressable>
-              </View>
-            </View>
-          ) : decisionAuction ? (
-            <View style={styles.actionCard}>
-              <View style={[styles.rowBetween, { marginBottom: 10, alignItems: 'center' }]}>
-                <StatusPill tone="ember" dot>Live auction</StatusPill>
-                <Mono style={styles.muted12}>{decisionAuction.bidCount} bids</Mono>
-              </View>
-              <Text style={styles.cardTitle}>{decisionAuction.cropName}</Text>
-              <Text style={styles.cardSub}>
-                Now at {money(decisionAuction.currentPrice, decisionAuction.currency)} · {decisionAuction.participantCount} in the room
-              </Text>
-              <View style={styles.actionBtns}>
-                <Pressable
-                  style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
-                  onPress={() => nav.navigate('Auction', { listingId: decisionAuction.listingId })}
-                >
-                  <Text style={styles.btnPrimaryText}>Watch live </Text>
-                  <IconArrow size={13} stroke={colors.textInverse} />
-                </Pressable>
-              </View>
-            </View>
+        <View style={[styles.sidePad, { gap: 10 }]}>
+          {todos.length > 0 ? (
+            todos.slice(0, 5).map((d) => (
+              <Pressable
+                key={d.key}
+                onPress={d.go}
+                style={({ pressed }) => [styles.todo, d.tone === 'ember' && styles.todoHot, pressed && styles.pressed]}
+              >
+                <View style={styles.todoTile}><Text style={styles.todoEmoji}>{d.emoji}</Text></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.todoTitle} numberOfLines={1}>{d.title}</Text>
+                  <Text style={styles.todoSub} numberOfLines={1}>{d.sub}</Text>
+                </View>
+                <IconChevR size={12} stroke={design.ink3} />
+              </Pressable>
+            ))
           ) : (
             <Pressable
               style={({ pressed }) => [styles.emptyCard, pressed && styles.pressed]}
@@ -187,22 +211,51 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Demand — the exchange run the other way. Instead of hunting the
-            market for a lot that happens to fit, say what is needed and let
-            farmers come to it. */}
+        {/* ---- your demand: what this buyer has asked for --------------- */}
         <View style={[styles.sectionHead, styles.sidePadHead, { paddingTop: 24 }]}>
-          <Eyebrow>Your demand</Eyebrow>
-          <Pressable onPress={() => nav.navigate('Demand')}>
-            <Text style={styles.manage}>See the board</Text>
-          </Pressable>
+          <Eyebrow>Your open requests</Eyebrow>
+          {reqs.length > 0 ? (
+            <Pressable onPress={() => nav.navigate('Requests')} hitSlop={8}>
+              <Text style={styles.manage}>See all</Text>
+            </Pressable>
+          ) : null}
         </View>
-        <View style={[styles.sidePad, styles.demandRow]}>
-          <Pressable style={({ pressed }) => [styles.demandPrimary, pressed && styles.pressed]} onPress={() => nav.navigate('CreateRequirement')}>
+        <View style={[styles.sidePad, { gap: 10 }]}>
+          {reqs.slice(0, 3).map((r) => {
+            const filled = r.quantity - r.remainingQuantity;
+            const pct = r.quantity > 0 ? (filled / r.quantity) * 100 : 0;
+            const offers = r._count?.offers ?? 0;
+            return (
+              <Pressable
+                key={r.id}
+                onPress={() => nav.navigate('RequirementDetail', { id: r.id, preview: r })}
+                style={({ pressed }) => [styles.req, pressed && styles.pressed]}
+              >
+                <View style={styles.todoTile}><Text style={styles.todoEmoji}>{cropEmojiFor(r.cropName)}</Text></View>
+                <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.todoTitle} numberOfLines={1}>{r.cropName}</Text>
+                    {offers > 0 ? (
+                      <View style={styles.offerBadge}><Text style={styles.offerBadgeText}>{offers} new</Text></View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.todoSub} numberOfLines={1}>
+                    {money(r.pricePerUnit, r.currency)}/{unitLabel(r.unit)} · to {r.deliveryLocation}
+                  </Text>
+                  <View style={styles.track}><View style={[styles.trackFill, { width: `${Math.max(pct, 2)}%` }]} /></View>
+                  <Mono style={styles.reqMeta}>
+                    {filled.toLocaleString('en-IN')} OF {r.quantity.toLocaleString('en-IN')} {unitLabel(r.unit).toUpperCase()} FILLED
+                  </Mono>
+                </View>
+              </Pressable>
+            );
+          })}
+          <Pressable
+            style={({ pressed }) => [styles.demandPrimary, pressed && styles.pressed]}
+            onPress={() => nav.navigate('CreateRequirement')}
+          >
             <Text style={styles.demandPrimaryText}>Post what you need </Text>
             <IconArrow size={13} stroke="#f4f1ea" />
-          </Pressable>
-          <Pressable style={({ pressed }) => [styles.demandGhost, pressed && styles.pressed]} onPress={() => nav.navigate('MyRequirements')}>
-            <Text style={styles.demandGhostText}>Your requirements</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -244,6 +297,24 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
 
   emptyCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
+  todo: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 12,
+  },
+  todoHot: { borderColor: 'rgba(200,96,43,0.4)' },
+  todoTile: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint },
+  todoEmoji: { fontSize: 21 },
+  todoTitle: { flexShrink: 1, fontFamily: font.sansSemi, fontSize: 15, color: design.ink },
+  todoSub: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
+  req: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 12,
+  },
+  offerBadge: { backgroundColor: 'rgba(200,96,43,0.12)', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  offerBadgeText: { fontFamily: font.sansSemi, fontSize: 11, color: colors.ember },
+  track: { height: 5, borderRadius: 3, backgroundColor: design.paper2, overflow: 'hidden' },
+  trackFill: { height: 5, borderRadius: 3, backgroundColor: colors.sage },
+  reqMeta: { fontSize: 9, letterSpacing: 0.5, color: design.ink3 },
   emptyLink: { fontFamily: font.sansSemi, fontSize: 13.5, color: colors.forest, marginTop: 8 },
   emptyText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3 },
 
