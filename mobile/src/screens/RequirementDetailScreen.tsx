@@ -45,6 +45,10 @@ import { money, timeAgo, unitLabel } from '../lib/format';
 import type { BuyerRequirement, RequirementOffer, RequirementOfferStatus } from '../api/types';
 import type { DemandStackParamList } from '../navigation/types';
 import { colors, design, font } from '../theme';
+import { ExportTerms } from '../components/ExportTerms';
+
+// The server's codes, as a seller reads them.
+const PAYMENT_LABEL: Record<string, string> = { LC: 'Letter of credit', NET7: 'Within 7 days', NET15: 'Within 15 days' };
 
 type Props = NativeStackScreenProps<DemandStackParamList, 'RequirementDetail'>;
 
@@ -188,10 +192,13 @@ export default function RequirementDetailScreen({ route, navigation }: Props) {
 
       {/* Terms the card has no room for. Blank ones are left out rather than
           printed as an em dash — an absent payment term is not a term. */}
+      {/* What an export request asks of the seller. Nothing for any other. */}
+      <ExportTerms r={r} />
+
       {r.paymentTerms || r.deliveryTerms ? (
         <View style={styles.card}>
           <Mono style={styles.eyebrow}>TERMS</Mono>
-          {r.paymentTerms ? <Term label="Payment" value={r.paymentTerms} /> : null}
+          {r.paymentTerms ? <Term label="Payment" value={PAYMENT_LABEL[r.paymentTerms] ?? r.paymentTerms} /> : null}
           {r.deliveryTerms ? <Term label="Delivery" value={r.deliveryTerms} /> : null}
         </View>
       ) : null}

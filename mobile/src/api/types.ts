@@ -166,6 +166,13 @@ export interface BuyerRequirement {
   organic: boolean;
   paymentTerms: string | null;
   deliveryTerms: string | null;
+  // An exporter's request (server utils/exportSpec). When forExport is true the
+  // delivery address above IS the port's city.
+  forExport?: boolean;
+  exportPort?: string | null;
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
   status: RequirementStatus;
   createdAt: string;
   updatedAt?: string;
@@ -511,6 +518,12 @@ export interface CreditApplication {
   reviewedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ExportOptions {
+  ports: Array<{ code: string; name: string; city: string; state: string }>;
+  docs: Array<{ code: string; label: string }>;
+  moisture: { min: number; max: number };
 }
 
 export interface CreditRules {

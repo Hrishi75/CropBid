@@ -50,6 +50,9 @@ router.use(authenticate);
 router.get('/feed', requireRole('FARMER', 'BUYER'), requireApprovedPartner, requirementController.getRequirementFeed);
 router.get('/filters', requireRole('FARMER', 'BUYER'), requireApprovedPartner, requirementController.getFeedFilters);
 router.get('/my', requireRole('BUYER'), requireApprovedPartner, requirementController.getMyRequirements);
+// The ports and documents an export request can name (utils/exportSpec). Sellers
+// read it too, to show what an export request asks of them.
+router.get('/export-options', requireRole('BUYER', 'FARMER'), requireApprovedPartner, requirementController.getExportOptions);
 router.get('/offers/my', requireRole('FARMER'), requireApprovedPartner, requirementController.getMyOffers);
 router.put('/offers/:offerId/accept', requireRole('BUYER'), requireApprovedPartner, requirementController.acceptOffer);
 router.put('/offers/:offerId/reject', requireRole('BUYER'), requireApprovedPartner, requirementController.rejectOffer);

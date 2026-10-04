@@ -37,6 +37,7 @@
 
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
+import { exportFields, type ExportDocCode, type ExportPortCode } from '../utils/exportSpec';
 import { ApiError } from '../utils/ApiError';
 import { orderContactDefaults } from './bid.service';
 import {
@@ -67,9 +68,14 @@ export interface CreateRequirementInput {
   organic?: boolean;
   paymentTerms?: string;
   deliveryTerms?: string;
+  forExport?: boolean;
+  exportPort?: ExportPortCode;
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: ExportDocCode[];
 }
 
-export type UpdateRequirementInput = Partial<CreateRequirementInput>;
+export type UpdateRequirementInput = Partial<Omit<CreateRequirementInput, 'forExport' | 'exportPort' | 'maxMoisturePct' | 'packing' | 'requiredDocs'>>;
 
 export interface RequirementFeedQuery {
   crop?: string;
@@ -473,6 +479,9 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
     if (neededBy < new Date()) throw new ApiError(400, 'Needed-by date must be in the future');
   }
 
+  // For export, the port is the delivery address (utils/exportSpec).
+  const exp = exportFields(input, input.organic ?? false);
+
   const requirement = await prisma.buyerRequirement.create({
     data: {
       buyerId,
@@ -492,6 +501,8 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
       organic: input.organic ?? false,
       paymentTerms: input.paymentTerms || null,
       deliveryTerms: input.deliveryTerms || null,
+      ...exp.fields,
+      ...(exp.delivery ?? {}),
     },
     include: { buyer: { select: PUBLIC_BUYER_SELECT } },
   });

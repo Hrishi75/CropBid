@@ -13,6 +13,7 @@ import * as requirementService from '../services/requirement.service';
 import { auditFromRequest } from '../services/audit.service';
 import { queueRequirementTranslation } from '../services/translation.service';
 import { ApiError } from '../utils/ApiError';
+import { DOC_CODES, EXPORT_DOCS, EXPORT_PORTS, MOISTURE_RANGE, PORT_CODES } from '../utils/exportSpec';
 
 function paramId(req: Request): string {
   return req.params.id as string;
@@ -42,6 +43,13 @@ const createRequirementSchema = z.object({
   organic: z.boolean().optional(),
   paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
   deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  // An exporter's request (utils/exportSpec.ts). The ranges and the rule that
+  // a port is required live in the service, so they bind any caller.
+  forExport: z.boolean().optional(),
+  exportPort: z.enum(PORT_CODES).optional(),
+  maxMoisturePct: z.number().nullable().optional(),
+  packing: z.string().max(200).nullable().optional(),
+  requiredDocs: z.array(z.enum(DOC_CODES)).max(DOC_CODES.length).optional(),
 });
 
 // `currency` is omitted on purpose, joining status/remainingQuantity/buyerId as
@@ -50,7 +58,20 @@ const createRequirementSchema = z.object({
 // those disagree with each other. The service never persisted it either, so this
 // only makes an existing invariant visible: previously a client could PUT a new
 // currency, get a 200, and believe it had changed.
-const updateRequirementSchema = createRequirementSchema.partial().omit({ currency: true });
+//
+// The export details are omitted too: they are set when the request is posted.
+// Editing them would move the delivery address under offers already made to
+// the old port, and accepting them here only to ignore them would be a 200
+// that changed nothing.
+const updateRequirementSchema = createRequirementSchema.partial().omit({
+  currency: true, forExport: true, exportPort: true, maxMoisturePct: true, packing: true, requiredDocs: true,
+});
+
+// GET /api/requirements/export-options — the ports and documents an export
+// request can name, so the app keeps no copy of either list.
+export function getExportOptions(_req: Request, res: Response) {
+  res.json({ ports: EXPORT_PORTS, docs: EXPORT_DOCS, moisture: MOISTURE_RANGE });
+}
 
 const acceptNowSchema = z.object({
   quantity: z.number().positive('Quantity must be positive'),

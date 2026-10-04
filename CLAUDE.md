@@ -458,13 +458,24 @@ Web has none of these. They are `mobile/` only.
 
 ### An exporter's market is export-ready lots (2026-10-05)
 
-**A buyer whose company type is EXPORTER gets a filter row under the market's category chips: Grade A, Organic, and a smallest lot size (any, 10+, 50+, 100+ quintals).** The user's pick of four options for what makes the exporter side different; the others (an export request form, an exporter dashboard) are not built.
+**A buyer whose company type is EXPORTER gets a filter row under the market's category chips: Grade A, Organic, and a smallest lot size (any, 10+, 50+, 100+ quintals).** The user's pick of four options for what makes the exporter side different; the export request form followed (below), and an exporter dashboard is not built.
 
 - **Grade A and 10+ quintals are on when an exporter arrives.** They are chips on screen, so what is hidden is never a secret, and the count under the row ("32 lots match") is the server's total for those filters.
 - **The filters run on the server** (`GET /browse` with `quality`, `organic`, `minQuintals`), not over the page on the phone, because the market loads one page and a filter over that hides every match on the next.
 - **The size floor is converted per unit.** Lots are listed in kg, quintals or tonnes, so 50 quintals is matched as 5,000 kg and 5 tonnes, on remaining stock. Compared raw, "50" would let a 60 kg lot through and shut out a 6 tonne one. `browse.minQuintals.test.ts` runs it on a real Postgres.
 - **`quality` is now checked against A, B and C.** Anything else used to go straight into the Prisma WHERE clause and come back as a 500.
 - **"Grade A" is the seller's own grade.** Nothing checks it (§2b), so the row filters on what the listing says, and no copy may call these lots inspected or certified for export.
+
+**An exporter's request goes to a port (2026-10-05).** For a buyer whose company type is EXPORTER, the post-a-request form swaps the city and state boxes for a port picker and adds a card of what the seller must meet: a moisture limit, the packing, and the documents to hand over. The request is stored on `BuyerRequirement` (`forExport`, `exportPort`, `maxMoisturePct`, `packing`, `requiredDocs`), and the rules live in `server/src/utils/exportSpec.ts`.
+
+- **The port is the delivery address.** The server writes the port's city and state into `deliveryLocation`/`deliveryState` whatever the request sent, so the two cannot disagree and a seller sees one place to deliver to. The demand card says "TO PORT".
+- **Eight ports and three documents, served** at `GET /requirements/export-options` (buyers and sellers), so the app keeps no copy. The documents are the ones a seller can produce: a residue lab report, an NPOP organic certificate, a GST invoice. The phytosanitary certificate and shipping bill are the exporter's own filings, and the form says so rather than asking a farmer for them.
+- **An organic certificate only on an organic request**, refused otherwise, because no conventional seller could meet it. The form greys the box out until Organic is on.
+- **Set when posted, not editable.** Changing the port would move the delivery address under offers already made to the old one, so the edit schema does not accept the export fields at all rather than accepting and ignoring them.
+- **A request not for export carries no export details**, even if a client sends some.
+- **Nothing checks any of it.** Moisture, packing and documents are what the exporter asked for, not what anyone verified (§2b).
+- **Payment and delivery terms are pickers now** (Letter of credit / 7 days / 15 days; FOB / CIF), for every buyer. They were free-text boxes over a server that accepts only those codes, so anything typed there failed the whole request.
+- **Web only shows the base request.** The website's demand pages ignore the new fields, so an export request reads there as an ordinary one delivering to the port's city.
 
 ### Business credit: applied for on the wallet, decided by a person (2026-10-04)
 

@@ -139,7 +139,9 @@ export default function CreditApplyScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      {/* Scrolling closes the keyboard: the number pad has no Done key, so it
+          was otherwise the only way out of a quantity or price field. */}
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.intro}>
           {t('Tell us about your business. A person reads every application and, with your permission, takes it to a lending partner. CropBid does not lend money.')}
         </Text>

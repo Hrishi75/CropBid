@@ -612,6 +612,14 @@ model BuyerRequirement {
   paymentTerms  String? // LC | NET7 | NET15 — validated at the API boundary
   deliveryTerms String? // FOB | CIF — validated at the API boundary
 
+  // An exporter's request (utils/exportSpec.ts). The port is also written into
+  // deliveryLocation/deliveryState, so a seller sees one place to deliver to.
+  forExport      Boolean  @default(false)
+  exportPort     String? // JNPT | MUNDRA | ... validated at the API boundary
+  maxMoisturePct Float? // the driest the exporter will accept, in percent
+  packing        String? // in the exporter's words, e.g. "50 kg new jute bags"
+  requiredDocs   String[] @default([]) // LAB_REPORT | ORGANIC_CERT | GST_INVOICE
+
   status RequirementStatus @default(OPEN)
 
   createdAt DateTime @default(now())

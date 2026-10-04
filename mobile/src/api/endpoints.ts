@@ -1,7 +1,7 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
-  CreditApplication, CreditApplicationInput, CreditRules,
+  CreditApplication, CreditApplicationInput, CreditRules, ExportOptions,
   Address,
   AddressInput,
   AgentConfig,
@@ -527,8 +527,19 @@ export interface RequirementInput {
   neededBy?: string;
   description?: string;
   organic: boolean;
-  paymentTerms?: string;
-  deliveryTerms?: string;
+  paymentTerms?: 'LC' | 'NET7' | 'NET15';
+  deliveryTerms?: 'FOB' | 'CIF';
+  forExport?: boolean;
+  exportPort?: string;
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
+}
+
+// The ports and documents an export request can name. Served, not copied.
+export async function fetchExportOptions(): Promise<ExportOptions> {
+  const { data } = await api.get<ExportOptions>('/requirements/export-options');
+  return data;
 }
 
 export async function myRequirements(status?: string, limit?: number): Promise<RequirementFeedPage> {

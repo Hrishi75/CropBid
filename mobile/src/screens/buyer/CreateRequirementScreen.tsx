@@ -14,10 +14,21 @@
 // best predictor that no farmer will answer — so it is said plainly, once,
 // before the post goes out.
 //
-// Mirrors client/src/pages/buyer/CreateRequirement.tsx.
+// AN EXPORTER POSTS TO A PORT. For a buyer whose company type is EXPORTER the
+// delivery card is a port picker (the server writes the port's city and state
+// as the delivery address), and an export card asks what the seller must meet:
+// a moisture limit, the packing, and the documents to hand over. The ports and
+// documents come from GET /requirements/export-options; this screen keeps no
+// list of either.
+//
+// PAYMENT AND DELIVERY TERMS ARE PICKERS. They were free-text boxes over a
+// server that accepts only LC / NET7 / NET15 and FOB / CIF, so anything a buyer
+// typed there refused the whole request with an error about enum values.
+//
+// Mirrors client/src/pages/buyer/CreateRequirement.tsx (which has no export card).
 // =============================================================================
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -33,18 +44,35 @@ import { Alert } from '../../lib/alert';
 import { useNavigation } from '@react-navigation/native';
 import { Mono } from '../../components/buyerKit';
 import { Button } from '../../components/ui';
-import { createRequirement } from '../../api/endpoints';
+import { createRequirement, fetchExportOptions } from '../../api/endpoints';
+import { useAuth } from '../../context/AuthContext';
 import { errorMessage } from '../../api/client';
 import { mspForCrop } from '../../lib/msp';
 import { money, unitLabel } from '../../lib/format';
-import type { QualityGrade, Unit } from '../../api/types';
+import type { ExportOptions, QualityGrade, Unit } from '../../api/types';
 import { colors, design, font } from '../../theme';
 
 const UNITS: Unit[] = ['KG', 'QUINTAL', 'TONNE'];
 const GRADES: QualityGrade[] = ['A', 'B', 'C'];
 
+type PaymentTerms = 'LC' | 'NET7' | 'NET15';
+type DeliveryTerms = 'FOB' | 'CIF';
+
+// What the server accepts, said so a buyer knows what they are choosing.
+const PAYMENT_TERMS: Array<{ value: PaymentTerms; label: string }> = [
+  { value: 'LC', label: 'Letter of credit' },
+  { value: 'NET7', label: 'Pay in 7 days' },
+  { value: 'NET15', label: 'Pay in 15 days' },
+];
+const DELIVERY_TERMS: Array<{ value: DeliveryTerms; label: string }> = [
+  { value: 'FOB', label: 'FOB' },
+  { value: 'CIF', label: 'CIF' },
+];
+
 export default function CreateRequirementScreen() {
   const nav = useNavigation<any>();
+  const { user } = useAuth();
+  const isExporter = user?.buyerProfile?.companyType === 'EXPORTER';
 
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
@@ -57,8 +85,26 @@ export default function CreateRequirementScreen() {
   const [neededBy, setNeededBy] = useState('');
   const [description, setDescription] = useState('');
   const [organic, setOrganic] = useState(false);
-  const [paymentTerms, setPaymentTerms] = useState('');
-  const [deliveryTerms, setDeliveryTerms] = useState('');
+  const [paymentTerms, setPaymentTerms] = useState<PaymentTerms | null>(null);
+  const [deliveryTerms, setDeliveryTerms] = useState<DeliveryTerms | null>(null);
+
+  // Export details, for an exporter only.
+  const [exportOptions, setExportOptions] = useState<ExportOptions | null>(null);
+  const [exportPort, setExportPort] = useState<string | null>(null);
+  const [moisture, setMoisture] = useState('');
+  const [packing, setPacking] = useState('');
+  const [docs, setDocs] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isExporter) return;
+    fetchExportOptions().then(setExportOptions).catch(() => setExportOptions(null));
+  }, [isExporter]);
+
+  // An organic certificate only makes sense on an organic request, and the
+  // server refuses the pair otherwise, so turning organic off drops it.
+  useEffect(() => {
+    if (!organic) setDocs((d) => d.filter((c) => c !== 'ORGANIC_CERT'));
+  }, [organic]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +121,17 @@ export default function CreateRequirementScreen() {
     if (!cropName.trim()) return 'Which crop do you need?';
     if (!(qty > 0)) return 'Enter how much you need';
     if (!(price > 0)) return 'Enter what you will pay per unit';
-    if (!deliveryLocation.trim()) return 'Where should it be delivered?';
-    if (!deliveryState.trim()) return 'Which state is that in?';
+    if (isExporter) {
+      if (!exportOptions) return 'Still loading the ports. Try again in a moment.';
+      if (!exportPort) return 'Which port should it reach?';
+      const m = moisture.trim();
+      if (m && !(Number(m) >= exportOptions.moisture.min && Number(m) <= exportOptions.moisture.max)) {
+        return `Moisture limit should be between ${exportOptions.moisture.min}% and ${exportOptions.moisture.max}%`;
+      }
+    } else {
+      if (!deliveryLocation.trim()) return 'Where should it be delivered?';
+      if (!deliveryState.trim()) return 'Which state is that in?';
+    }
     if (!dateOk) return 'Write the date as YYYY-MM-DD, or leave it blank';
     return null;
   }
@@ -114,17 +169,28 @@ export default function CreateRequirementScreen() {
         qualityGrade,
         pricePerUnit: price,
         currency: 'INR',
-        deliveryLocation: deliveryLocation.trim(),
-        deliveryState: deliveryState.trim(),
+        // For export the server writes the port's own city and state here;
+        // these only satisfy the shape of the request.
+        deliveryLocation: isExporter ? port?.city ?? '' : deliveryLocation.trim(),
+        deliveryState: isExporter ? port?.state ?? '' : deliveryState.trim(),
         neededBy: neededBy.trim() || undefined,
         description: description.trim() || undefined,
         organic,
-        paymentTerms: paymentTerms.trim() || undefined,
-        deliveryTerms: deliveryTerms.trim() || undefined,
+        paymentTerms: paymentTerms ?? undefined,
+        deliveryTerms: deliveryTerms ?? undefined,
+        ...(isExporter
+          ? {
+              forExport: true,
+              exportPort: exportPort ?? undefined,
+              maxMoisturePct: moisture.trim() ? Number(moisture) : null,
+              packing: packing.trim() || null,
+              requiredDocs: docs,
+            }
+          : {}),
       });
       Alert.alert(
         'Requirement posted',
-        'Farmers who can supply it have been notified. Offers arrive under your demand.',
+        'Sellers who can supply it have been told. Their offers appear under your request.',
         [{ text: 'OK', onPress: () => nav.goBack() }],
       );
     } catch (e) {
@@ -134,9 +200,13 @@ export default function CreateRequirementScreen() {
     }
   }
 
+  const port = exportOptions?.ports.find((p) => p.code === exportPort) ?? null;
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      {/* Scrolling closes the keyboard: the number pad has no Done key, so it
+          was otherwise the only way out of a quantity or price field. */}
+      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <View style={styles.card}>
           <Mono style={styles.eyebrow}>WHAT DO YOU NEED?</Mono>
 
@@ -229,8 +299,28 @@ export default function CreateRequirementScreen() {
         </View>
 
         <View style={styles.card}>
-          <Mono style={styles.eyebrow}>WHERE, AND BY WHEN</Mono>
+          <Mono style={styles.eyebrow}>{isExporter ? 'WHICH PORT, AND BY WHEN' : 'WHERE, AND BY WHEN'}</Mono>
 
+          {isExporter ? (
+            <Field label="Deliver to the port">
+              {exportOptions ? (
+                <View style={styles.pillRow}>
+                  {exportOptions.ports.map((p) => (
+                    <Pressable
+                      key={p.code}
+                      onPress={() => { setError(null); setExportPort(p.code); }}
+                      style={[styles.pill, exportPort === p.code && styles.pillOn]}
+                    >
+                      <Text style={[styles.pillText, exportPort === p.code && styles.pillTextOn]}>{p.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.switchHint}>Loading ports…</Text>
+              )}
+              {port ? <Text style={styles.hint}>{port.city}, {port.state}. Sellers deliver here.</Text> : null}
+            </Field>
+          ) : (
           <View style={styles.row}>
             <View style={styles.rowField}>
               <Field label="Deliver to">
@@ -255,6 +345,7 @@ export default function CreateRequirementScreen() {
               </Field>
             </View>
           </View>
+          )}
 
           <Field label="Needed by (optional)">
             <TextInput
@@ -267,6 +358,67 @@ export default function CreateRequirementScreen() {
             />
           </Field>
         </View>
+
+        {isExporter ? (
+          <View style={styles.card}>
+            <Mono style={styles.eyebrow}>WHAT THE SELLER MUST MEET</Mono>
+
+            <View style={styles.row}>
+              <View style={{ width: 130 }}>
+                <Field label="Max moisture (%)">
+                  <TextInput
+                    style={styles.input}
+                    value={moisture}
+                    onChangeText={(t) => { setError(null); setMoisture(t.replace(/[^0-9.]/g, '')); }}
+                    keyboardType="decimal-pad"
+                    placeholder="12"
+                    placeholderTextColor={design.ink3}
+                  />
+                </Field>
+              </View>
+              <View style={styles.rowField}>
+                <Field label="Packing (optional)">
+                  <TextInput
+                    style={styles.input}
+                    value={packing}
+                    onChangeText={setPacking}
+                    maxLength={200}
+                    placeholder="50 kg new jute bags"
+                    placeholderTextColor={design.ink3}
+                  />
+                </Field>
+              </View>
+            </View>
+
+            <Field label="Documents the seller hands over">
+              {(exportOptions?.docs ?? []).map((d) => {
+                const on = docs.includes(d.code);
+                const blocked = d.code === 'ORGANIC_CERT' && !organic;
+                return (
+                  <Pressable
+                    key={d.code}
+                    disabled={blocked}
+                    onPress={() => setDocs((cur) => (on ? cur.filter((c) => c !== d.code) : [...cur, d.code]))}
+                    style={[styles.docRow, blocked && { opacity: 0.45 }]}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: on, disabled: blocked }}
+                  >
+                    <View style={[styles.box, on && styles.boxOn]}>
+                      {on ? <Text style={styles.tick}>✓</Text> : null}
+                    </View>
+                    <Text style={styles.docText}>
+                      {d.label}
+                      {blocked ? <Text style={styles.switchHint}>  turn on Organic only</Text> : null}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </Field>
+            <Text style={styles.hint}>
+              The phytosanitary certificate and shipping papers are yours to file. These are what the seller provides.
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Mono style={styles.eyebrow}>ANYTHING ELSE</Mono>
@@ -282,24 +434,33 @@ export default function CreateRequirementScreen() {
             />
           </Field>
 
+          {/* Tap a chosen one again to clear it: both are optional. */}
           <Field label="Payment terms (optional)">
-            <TextInput
-              style={styles.input}
-              value={paymentTerms}
-              onChangeText={setPaymentTerms}
-              placeholder="Escrow released on delivery"
-              placeholderTextColor={design.ink3}
-            />
+            <View style={styles.pillRow}>
+              {PAYMENT_TERMS.map((o) => (
+                <Pressable
+                  key={o.value}
+                  onPress={() => setPaymentTerms((v) => (v === o.value ? null : o.value))}
+                  style={[styles.pill, paymentTerms === o.value && styles.pillOn]}
+                >
+                  <Text style={[styles.pillText, paymentTerms === o.value && styles.pillTextOn]}>{o.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </Field>
 
           <Field label="Delivery terms (optional)">
-            <TextInput
-              style={styles.input}
-              value={deliveryTerms}
-              onChangeText={setDeliveryTerms}
-              placeholder="Farm gate pickup, or delivered to the warehouse"
-              placeholderTextColor={design.ink3}
-            />
+            <View style={styles.pillRow}>
+              {DELIVERY_TERMS.map((o) => (
+                <Pressable
+                  key={o.value}
+                  onPress={() => setDeliveryTerms((v) => (v === o.value ? null : o.value))}
+                  style={[styles.pill, deliveryTerms === o.value && styles.pillOn]}
+                >
+                  <Text style={[styles.pillText, deliveryTerms === o.value && styles.pillTextOn]}>{o.label}</Text>
+                </Pressable>
+              ))}
+            </View>
           </Field>
         </View>
 
@@ -366,5 +527,14 @@ const styles = StyleSheet.create({
   switchHint: { fontFamily: font.sans, fontSize: 11.5, color: design.ink3, marginTop: 2 },
 
   total: { fontFamily: font.sansBold, fontSize: 15, color: design.ink, marginTop: 16 },
+  hint: { fontFamily: font.sans, fontSize: 12, lineHeight: 17, color: design.ink3, marginTop: 8 },
+  docRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8 },
+  box: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: design.line,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.bg,
+  },
+  boxOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  tick: { color: colors.surface, fontSize: 13, fontFamily: font.sansBold },
+  docText: { flex: 1, fontFamily: font.sans, fontSize: 13.5, color: design.ink },
   error: { fontFamily: font.sansMed, fontSize: 13, color: colors.error },
 });

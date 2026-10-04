@@ -28,6 +28,7 @@ import { companyTypeLabel } from '../lib/companyType';
 import { cropEmojiFor } from '../utils/cropImages';
 import type { BuyerRequirement, RequirementStatus } from '../api/types';
 import { colors, design, font } from '../theme';
+import { portName, useExportOptions } from '../lib/exportOptions';
 
 const STATUS_META: Record<RequirementStatus, { label: string; color: string }> = {
   OPEN: { label: 'OPEN', color: colors.sage },
@@ -97,6 +98,7 @@ export function RequirementCard({
 
   // "in 5 days" reads faster than a date when deciding whether you can make
   // it; the date stays underneath for anyone planning a truck.
+  const exportOpts = useExportOptions(!!r.forExport);
   const daysLeft = r.neededBy
     ? Math.ceil((new Date(r.neededBy).getTime() - Date.now()) / 86400000)
     : null;
@@ -130,13 +132,21 @@ export function RequirementCard({
       <View style={styles.chips}>
         {company ? <Chip text={company} /> : null}
         <Chip text={`Grade ${r.qualityGrade}`} />
+        {r.forExport ? <Chip text="For export" tone="sage" /> : null}
         {r.organic ? <Chip text="Organic only" tone="sage" /> : null}
         {belowMsp ? <Chip text={`Below MSP ${money(msp!, r.currency)}`} tone="ember" /> : null}
       </View>
 
       <View style={styles.metrics}>
         <Metric label="STILL NEEDED" value={`${r.remainingQuantity.toLocaleString('en-IN')} ${unit}`} />
-        <Metric label="DELIVER TO" value={r.deliveryLocation} sub={r.deliveryState} />
+        {/* An export request lands at a port, so the card names the port. */}
+        <Metric
+          label={r.forExport ? 'TO PORT' : 'DELIVER TO'}
+          value={r.forExport ? portName(exportOpts, r.exportPort) : r.deliveryLocation}
+          // The port's city only when it differs from the port's name
+          // (Nhava Sheva is in Navi Mumbai); "Chennai / Chennai" says nothing.
+          sub={r.forExport && portName(exportOpts, r.exportPort) !== r.deliveryLocation ? r.deliveryLocation : r.deliveryState}
+        />
         {r.neededBy ? (
           <Metric
             label="NEEDED BY"
