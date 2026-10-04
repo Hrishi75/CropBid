@@ -177,7 +177,10 @@ export default function ShopHomeScreen() {
             <Text style={styles.boardValue}>{money(sales, currency)}</Text>
             <View style={styles.boardStats}>
               <BoardStat n={orders.length} label={orders.length === 1 ? 'order' : 'orders'} />
-              <BoardStat n={toSend.length} label="to send" hot={toSend.length > 0} />
+              {/* Paid and still to go out, the same count as the headline. An
+                  unpaid order is not one to send, and counting it here said
+                  "1 to send" under "No orders waiting". */}
+              <BoardStat n={sendable} label="to send" hot={sendable > 0} />
               <BoardStat n={onShelf} label="on your shelf" />
             </View>
           </View>

@@ -542,6 +542,11 @@ async function announceRequirement(
     // union of two listing queries would not give for free.
     const farmers = await prisma.farmerProfile.findMany({
       where: {
+        // Not local shops. A kirana sells to households at a shelf price; a
+        // restaurant chain wanting 40 quintal is not work it takes, and the app
+        // shows a shop no demand board to fill it from, so the alert was noise
+        // in its bell.
+        sellerType: { not: 'LOCAL_SHOP' },
         OR: [
           {
             listings: {
