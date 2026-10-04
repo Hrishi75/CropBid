@@ -30,6 +30,9 @@ interface BrowseQuery {
   priceMax?: number;
   quality?: string;
   organic?: boolean;
+  // Smallest lot worth showing, in quintals, whatever unit each lot is listed
+  // in. An exporter filling a container has no use for a 40 kg lot.
+  minQuintals?: number;
   search?: string;
   directSale?: boolean; // Only listings open for consumer instant-buy, with stock left
   // Pagination
@@ -42,6 +45,8 @@ interface BrowseQuery {
 // =============================================================================
 // BROWSE — Filtered, paginated listing search
 // =============================================================================
+const QUALITY_GRADES = ['A', 'B', 'C'] as const;
+
 export async function browseListings(query: BrowseQuery) {
   const page = Math.max(1, query.page || 1);
   const limit = Math.min(50, Math.max(1, query.limit || 20));
@@ -83,7 +88,9 @@ export async function browseListings(query: BrowseQuery) {
     where.country = { equals: query.country, mode: 'insensitive' };
   }
 
-  if (query.quality) {
+  // Only a real grade reaches the query. Anything else used to go straight
+  // into the WHERE clause and come back as a 500 from Prisma.
+  if (query.quality && (QUALITY_GRADES as readonly string[]).includes(query.quality)) {
     where.qualityGrade = query.quality;
   }
 
@@ -96,10 +103,25 @@ export async function browseListings(query: BrowseQuery) {
     where.remainingQuantity = { gt: 0 };
   }
 
+  // Minimum lot size. Lots are listed in kg, quintals or tonnes, so the floor
+  // is converted into each unit rather than compared against a raw number:
+  // 50 quintals is 5,000 kg and 5 tonnes. Remaining stock, not the original
+  // size, because what is left is what can still be bought.
+  if (query.minQuintals !== undefined && query.minQuintals > 0) {
+    const q = query.minQuintals;
+    where.AND = [...(where.AND ?? []), {
+      OR: [
+        { unit: 'KG', remainingQuantity: { gte: q * 100 } },
+        { unit: 'QUINTAL', remainingQuantity: { gte: q } },
+        { unit: 'TONNE', remainingQuantity: { gte: q / 10 } },
+      ],
+    }];
+  }
+
   // Price range filter — matches if the listing's price range overlaps
   // with the buyer's desired range
   if (query.priceMin !== undefined || query.priceMax !== undefined) {
-    where.AND = [];
+    where.AND = where.AND ?? [];
     if (query.priceMin !== undefined) {
       // Listing's max price must be >= buyer's min (otherwise too cheap)
       where.AND.push({ pricePerUnitMax: { gte: query.priceMin } });

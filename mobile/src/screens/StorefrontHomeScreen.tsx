@@ -50,6 +50,7 @@ import { IconChevR, IconClock, IconPin, IconSearch, IconSprout } from '../compon
 import { Mono } from '../components/buyerKit';
 import { LanguagePill } from '../components/LanguagePicker';
 import { WalletPill } from '../components/WalletPill';
+import { EXPORT_DEFAULT, ExportFilters, isFiltering, type ExportFilter } from '../components/ExportFilters';
 import { FreshBanner } from '../components/FreshBanner';
 import { ShopCard } from '../components/ShopCard';
 import { DeliveryList } from '../components/DeliveryList';
@@ -258,6 +259,10 @@ export default function StorefrontHomeScreen() {
   const { user, applyUser } = useAuth();
   const { add, quantityOf, setQuantity, remove, count: cartCount } = useCart();
   const [listings, setListings] = useState<Listing[]>([]);
+  // How many lots the server holds for this view, which a page of them is not:
+  // the market loads one page, and its length was being shown as the count.
+  const [total, setTotal] = useState<number | null>(null);
+  const [exportFilter, setExportFilter] = useState<ExportFilter>(EXPORT_DEFAULT);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -299,6 +304,8 @@ export default function StorefrontHomeScreen() {
   // A business buyer (or a seller in buying mode) is here to source, so the
   // farm-facing pieces (schemes, the sell pitch) are left out for it too.
   const isBuyer = role === 'BUYER';
+  // An exporter gets the export-ready filters (components/ExportFilters).
+  const isExporter = isBuyer && user?.buyerProfile?.companyType === 'EXPORTER';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
@@ -337,9 +344,25 @@ export default function StorefrontHomeScreen() {
     try {
       // Shoppers only see lots opened for direct retail, in their own city;
       // farmers and buyers see the whole open market, nationwide.
-      const data = await browse(shopping ? { directSale: true, location: city } : {});
+      // A trader gets the largest page the server gives (50), and an exporter
+      // has their filters applied there, across the whole market.
+      const data = await browse(
+        shopping
+          ? { directSale: true, location: city }
+          : {
+              limit: 50,
+              ...(isExporter
+                ? {
+                    quality: exportFilter.gradeA ? 'A' as const : undefined,
+                    organic: exportFilter.organic ? true : undefined,
+                    minQuintals: exportFilter.minQuintals || undefined,
+                  }
+                : {}),
+            },
+      );
       glide();
       setListings(data.listings ?? []);
+      setTotal(data.pagination?.total ?? data.listings?.length ?? 0);
       setError(null);
     } catch (e) {
       setError(errorMessage(e, 'Could not reach the market. Pull down to try again.'));
@@ -347,7 +370,7 @@ export default function StorefrontHomeScreen() {
     } finally {
       setLoaded(true);
     }
-  }, [shopping, city, needsCity]);
+  }, [shopping, city, needsCity, isExporter, exportFilter]);
 
   // The city's shops, for the Local shops lane.
   //
@@ -651,6 +674,9 @@ export default function StorefrontHomeScreen() {
               />
             ))}
           </ScrollView>
+          {isExporter ? (
+            <ExportFilters value={exportFilter} onChange={(f) => { glide(); setTotal(null); setExportFilter(f); }} total={total} />
+          ) : null}
         </View>
 
         <View>
@@ -798,7 +824,7 @@ export default function StorefrontHomeScreen() {
                     <Pulse style={styles.liveDot} />
                     <Mono style={styles.bannerChipText}>
                       {listings.length > 0
-                        ? `LIVE · ${listings.length} ${isWholesaler || isBuyer ? '' : 'FARMER '}${listings.length === 1 ? 'LOT' : 'LOTS'}${isBuyer ? ' OPEN' : ''}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                        ? `LIVE · ${total ?? listings.length} ${isWholesaler || isBuyer ? '' : 'FARMER '}${(total ?? listings.length) === 1 ? 'LOT' : 'LOTS'}${isExporter && isFiltering(exportFilter) ? ' EXPORT-READY' : isBuyer ? ' OPEN' : ''}${city ? ` IN ${city.toUpperCase()}` : ''}`
                         : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                     </Mono>
                   </View>
@@ -906,13 +932,22 @@ export default function StorefrontHomeScreen() {
                 <Text style={styles.emptyMarketTitle}>
                   {shopping
                     ? `No farm near ${city} is selling direct yet.`
-                    : 'No lots are open right now.'}
+                    : isExporter && isFiltering(exportFilter)
+                      ? 'No lots match these filters.'
+                      : 'No lots are open right now.'}
                 </Text>
                 <Text style={styles.emptyMarketBody}>
                   {shopping
                     ? 'We only show produce that can actually reach you. Pull down to refresh, or pick another city.'
-                    : 'Pull down to refresh — new lots appear here the moment a farmer lists one.'}
+                    : isExporter && isFiltering(exportFilter)
+                      ? 'Try a smaller lot size, or turn off Grade A or Organic above.'
+                      : 'Pull down to refresh — new lots appear here the moment a farmer lists one.'}
                 </Text>
+                {isExporter && isFiltering(exportFilter) ? (
+                  <PressScale onPress={() => setExportFilter({ gradeA: false, organic: false, minQuintals: 0 })} scaleTo={0.96} cardStyle={styles.clearBtn}>
+                    <Text style={styles.clearBtnText}>Show every lot</Text>
+                  </PressScale>
+                ) : null}
                 {shopping && cities.length > 0 ? (
                   <CityRow
                     cities={cities}
@@ -1643,6 +1678,11 @@ const styles = StyleSheet.create({
   hint: { fontFamily: font.sans, fontSize: 14.5, color: design.ink3 },
 
   chipsPad: { paddingHorizontal: 16, gap: 8, marginTop: 10 },
+  clearBtn: {
+    marginTop: 14, alignSelf: 'center', backgroundColor: colors.forest,
+    borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10,
+  },
+  clearBtnText: { fontFamily: font.sansSemi, fontSize: 14, color: colors.surface },
   chip: {
     backgroundColor: design.paper,
     borderWidth: 1,

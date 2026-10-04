@@ -260,6 +260,12 @@ export async function browse(params?: {
   // City, matched exactly. Retail orders are small enough that a farm outside
   // the shopper's own city can never deliver them — see browse.service.
   location?: string;
+  // The trade filters (an exporter's export-ready lots): grade, organic, and
+  // the smallest lot in quintals whatever unit each lot is listed in.
+  quality?: 'A' | 'B' | 'C';
+  organic?: boolean;
+  minQuintals?: number;
+  limit?: number;
 }): Promise<Paginated<Listing>> {
   const { data } = await api.get<Paginated<Listing>>('/browse', { params });
   return data;
