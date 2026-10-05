@@ -10,7 +10,8 @@
 // =============================================================================
 
 import { useNavigate } from 'react-router-dom';
-import { canSwitchToBuying, useAuth, type AccountMode } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
+import { canSwitchToBuying, type AccountMode } from '../../utils/accountMode';
 
 export function ModeSwitch({ onSwitched }: { onSwitched?: () => void }) {
   const { user, accountRole, mode, switchMode } = useAuth();

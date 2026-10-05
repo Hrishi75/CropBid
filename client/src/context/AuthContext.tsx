@@ -30,6 +30,7 @@ import {
   watchIdle,
 } from '../lib/idle';
 import type { User } from '../types';
+import { canSwitchToBuying, type AccountMode } from '../utils/accountMode';
 
 interface AuthContextType {
   user: User | null;
@@ -55,13 +56,7 @@ interface AuthContextType {
   switchMode: (m: AccountMode) => void;
 }
 
-export type AccountMode = 'SELL' | 'BUY';
 const MODE_KEY = 'cb-mode';
-
-/** A seller whose buyer application has also been approved. */
-export function canSwitchToBuying(u: User | null | undefined): boolean {
-  return u?.role === 'FARMER' && u.buyerProfile?.status === 'APPROVED';
-}
 
 interface SignupData {
   name: string;
