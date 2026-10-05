@@ -17,25 +17,8 @@ import { EmptyState } from '../../components/dashboard/DashboardPieces';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import { formatCurrency } from '../../utils/currency';
+import { type Contract, CONTRACT_STATUS as STATUS, contractDay as day } from '../../components/contracts/contract';
 
-interface Contract {
-  id: string; buyerId: string; farmerId: string; cropName: string; cropVariety: string | null;
-  unit: string; qualityGrade: string; pricePerUnit: number; totalQuantity: number; batchQuantity: number;
-  everyDays: number; startsAt: string; message: string | null; status: 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'DECLINED' | 'CANCELLED';
-  nextBatchAt: string | null;
-  buyer?: { name: string; buyerProfile?: { companyName?: string | null } | null };
-  farmer?: { name: string; farmerProfile?: { businessName?: string | null } | null };
-  batches: Array<{ id: string; transactions: Array<{ id: string; paymentStatus: string; deliveryStatus: string }> }>;
-}
-
-const STATUS: Record<Contract['status'], { label: string; color: string }> = {
-  PROPOSED: { label: 'PROPOSED', color: 'var(--cb-ember)' },
-  ACTIVE: { label: 'ACTIVE', color: 'var(--cb-sage)' },
-  COMPLETED: { label: 'ALL BATCHES MADE', color: 'var(--cb-sage)' },
-  DECLINED: { label: 'DECLINED', color: 'var(--cb-ink-3)' },
-  CANCELLED: { label: 'ENDED', color: 'var(--cb-ink-3)' },
-};
-const day = (d: string) => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
 
 export function ContractsPage() {
   const { user } = useAuth();

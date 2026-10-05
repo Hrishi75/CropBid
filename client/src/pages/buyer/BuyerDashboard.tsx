@@ -23,6 +23,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { Section, EmptyState, MarketRates } from '../../components/dashboard/DashboardPieces';
 import { CreditCard } from '../../components/credit/CreditCard';
+import { ContractsPanel } from '../../components/contracts/ContractsPanel';
 import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
 import { timeAgo, greeting } from '../../utils/time';
@@ -61,6 +62,16 @@ interface Req {
 interface Stats { total?: number; inEscrow?: number; released?: number; totalRevenue?: number }
 
 type Tone = 'hot' | 'calm';
+
+// A bid's state as a pill: the colour says whether it needs you.
+const BID_PILL: Record<string, { label: string; tone: string }> = {
+  PENDING: { label: 'Waiting', tone: 'wait' },
+  COUNTERED: { label: 'Countered', tone: 'hot' },
+  ACCEPTED: { label: 'Accepted', tone: 'good' },
+  REJECTED: { label: 'Declined', tone: 'off' },
+  WITHDRAWN: { label: 'Withdrawn', tone: 'off' },
+  EXPIRED: { label: 'Expired', tone: 'off' },
+};
 interface Todo { key: string; tone: Tone; title: string; sub: string; to: string; cta: string }
 
 export function BuyerDashboard() {
@@ -180,6 +191,8 @@ export function BuyerDashboard() {
             )}
           </Section>
 
+          <ContractsPanel side="BUYER" />
+
           {/* ---- open requests --------------------------------------------- */}
           <Section
             eyebrow="Demand · yours"
@@ -256,13 +269,15 @@ export function BuyerDashboard() {
                         <tr key={b.id}>
                           <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{timeAgo(b.createdAt)}</td>
                           <td><Link to={`/listings/${b.listingId}`} style={{ color: 'var(--cb-ink)' }}>{b.listing?.cropName || '—'}</Link></td>
-                          <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.farmer?.businessName || b.listing?.farmer?.user?.name || '—'}</td>
+                          <td style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.farmer?.businessName || b.listing?.farmer?.user?.name || '—'}</td>
                           <td className="num cb-mono">
                             {formatCurrency(b.bidPricePerUnit, 'INR')}
                             {b.listing?.unit ? `/${UNIT_LABEL[b.listing.unit] ?? b.listing.unit}` : ''}
                           </td>
-                          <td className="cb-mono cb-tiny" style={{ color: b.status === 'COUNTERED' ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
-                            {b.status.toLowerCase()}
+                          <td>
+                            <span className={`cb-pill-status ${BID_PILL[b.status]?.tone ?? 'off'}`}>
+                              {BID_PILL[b.status]?.label ?? b.status.toLowerCase()}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -277,17 +292,31 @@ export function BuyerDashboard() {
         <aside className="cb-bd-side">
           {/* The one dark card: what has been spent and what is in flight. */}
           <div className="cb-bd-summary">
-            <div className="cb-mono cb-tiny cb-bd-summary-label">SPENT · COMPLETED DEALS</div>
-            <div className="cb-bd-summary-value">
-              {failed.includes('stats') ? '—' : loading ? '…' : formatCurrency(stats?.totalRevenue ?? 0, 'INR')}
-            </div>
+            {/* What is owed leads when there is any: it is the number that needs
+                doing something about. Otherwise what has been spent. */}
+            {toPay > 0 ? (
+              <>
+                <div className="cb-mono cb-tiny cb-bd-summary-label">TO PAY · {todos.filter((d) => d.key.startsWith('pay-')).length} DEALS</div>
+                <div className="cb-bd-summary-value">{formatCurrency(toPay, 'INR')}</div>
+                <div className="cb-bd-summary-sub">
+                  {(stats?.totalRevenue ?? 0) > 0 ? `Spent so far ${formatCurrency(stats!.totalRevenue!, 'INR')}. ` : ''}Each seller sends once you pay.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="cb-mono cb-tiny cb-bd-summary-label">SPENT · COMPLETED DEALS</div>
+                <div className="cb-bd-summary-value">
+                  {failed.includes('stats') ? '—' : loading ? '…' : formatCurrency(stats?.totalRevenue ?? 0, 'INR')}
+                </div>
+              </>
+            )}
             <div className="cb-bd-summary-row">
               <Link to="/transactions"><strong>{num(stats?.total, 'stats')}</strong><span>deals</span></Link>
               <Link to="/transactions"><strong>{num(stats?.inEscrow, 'stats')}</strong><span>paid, in progress</span></Link>
               <Link to="/buyer/requirements"><strong>{num(reqs.length, 'requests')}</strong><span>open requests</span></Link>
             </div>
             {toPay > 0 && (
-              <Link to="/transactions" className="cb-bd-summary-due">{formatCurrency(toPay, 'INR')} to pay →</Link>
+              <Link to={todos.find((d) => d.key.startsWith('pay-'))?.to ?? '/transactions'} className="cb-bd-summary-due">Pay now →</Link>
             )}
           </div>
 
@@ -300,7 +329,7 @@ export function BuyerDashboard() {
 
         <div className="cb-bd-late">
           <CreditCard />
-          <Section eyebrow="Mandi · today" title="Rates you bid on">
+          <Section eyebrow="Mandi rates" title="Rates you bid on" action={{ to: '/rates', label: 'All rates' }}>
             <MarketRates crops={crops} cropsUnavailable={failed.includes('bids')} limit={4} />
           </Section>
         </div>

@@ -3204,3 +3204,23 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 .cb-rq-export { padding: 10px 12px; border-radius: 10px; background: #e6efd9; border: 1px solid rgba(77, 102, 56, 0.2); }
 .cb-rq-export .cb-mono { color: #3d5a2c; letter-spacing: 0.06em; margin-bottom: 4px; }
 .cb-rq-export ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--cb-ink); }
+
+/* ---- Dashboard polish (2026-10-05) ----------------------------------------
+   The pay button sits under the amount it pays, before the counts. */
+.cb-bd-summary-row { order: 2; }
+.cb-bd-summary-sub { font-size: 12.5px; color: rgba(244, 241, 234, 0.62); line-height: 1.45; }
+
+/* A state as a coloured pill rather than a grey word. */
+.cb-pill-status { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.cb-pill-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.cb-pill-status.good { background: #e6efd9; color: #3d5a2c; }
+.cb-pill-status.hot { background: rgba(200, 96, 43, 0.12); color: #c8602b; }
+.cb-pill-status.wait { background: rgba(196, 160, 74, 0.16); color: #8a6a1c; }
+.cb-pill-status.off { background: var(--cb-paper-2); color: var(--cb-ink-3); }
+
+/* Supply contracts on a dashboard (components/contracts/ContractsPanel). */
+.cb-bd-contracts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.cb-bd-contract { padding: 14px 16px; display: flex; flex-direction: column; gap: 7px; text-decoration: none; color: inherit; transition: box-shadow 160ms ease, transform 160ms ease; }
+.cb-bd-contract:hover { box-shadow: 0 6px 18px rgba(20, 20, 15, 0.06); transform: translateY(-1px); }
+.cb-bd-contract.hot { border-color: rgba(200, 96, 43, 0.4); }
+.cb-bd-contract-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
