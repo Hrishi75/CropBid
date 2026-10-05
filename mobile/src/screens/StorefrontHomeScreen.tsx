@@ -393,6 +393,9 @@ export default function StorefrontHomeScreen() {
           ? { directSale: true, location: city }
           : {
               limit: 50,
+              // A seller on its buying side never sees its own lots: it cannot
+              // bid on them. Filtered on the server, so the total is right too.
+              ...(isBuyer && user ? { excludeSellerUserId: user.id } : {}),
               ...(isSmall && reach === 'city' && buyerCity ? { location: buyerCity } : {}),
               ...(isSmall && reach === 'state' && buyerState ? { state: buyerState } : {}),
               ...(isExporter
@@ -405,13 +408,9 @@ export default function StorefrontHomeScreen() {
             },
       );
       glide();
-      // A seller on its buying side never sees its own lots: it cannot bid on
-      // them (the server refuses), and its shop's 40 kg of wheat was showing
-      // up as something to buy. Taken off the count too.
       const all = data.listings ?? [];
-      const mine = isBuyer && user ? all.filter((l) => l.farmer?.user?.id === user.id).length : 0;
-      setListings(mine ? all.filter((l) => l.farmer?.user?.id !== user!.id) : all);
-      setTotal(Math.max(0, (data.pagination?.total ?? all.length) - mine));
+      setListings(all);
+      setTotal(data.pagination?.total ?? all.length);
       setError(null);
     } catch (e) {
       setError(errorMessage(e, 'Could not reach the market. Pull down to try again.'));

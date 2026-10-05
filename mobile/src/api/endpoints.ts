@@ -265,6 +265,8 @@ export async function browse(params?: {
   quality?: 'A' | 'B' | 'C';
   organic?: boolean;
   minQuintals?: number;
+  // Leave this account's own lots out of the page and the total.
+  excludeSellerUserId?: string;
   limit?: number;
 }): Promise<Paginated<Listing>> {
   const { data } = await api.get<Paginated<Listing>>('/browse', { params });
@@ -558,9 +560,9 @@ export async function fetchExportOptions(): Promise<ExportOptions> {
   return data;
 }
 
-export async function myRequirements(status?: string, limit?: number): Promise<RequirementFeedPage> {
+export async function myRequirements(status?: string, limit?: number, page?: number): Promise<RequirementFeedPage> {
   const { data } = await api.get<RequirementFeedPage>('/requirements/my', {
-    params: { ...(status ? { status } : {}), ...(limit ? { limit } : {}) },
+    params: { ...(status ? { status } : {}), ...(limit ? { limit } : {}), ...(page ? { page } : {}) },
   });
   return data;
 }

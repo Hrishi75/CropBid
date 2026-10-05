@@ -165,12 +165,28 @@ async function notifyAdminsNewApplication(businessName: string, amount: number, 
 // Admin
 // -----------------------------------------------------------------------------
 
-/** Every application, newest first, optionally one status. */
-export function listApplications(status?: CreditApplicationStatus) {
+/**
+ * Applications newest first, optionally one status, a page at a time. It used
+ * to return the newest 200 and nothing past them, so older applications could
+ * not be reached from the admin page at all.
+ */
+export const CREDIT_PAGE_SIZE = 50;
+export async function listApplications(status?: CreditApplicationStatus, page = 1) {
+  const where = status ? { status } : undefined;
+  const p = Math.max(1, Math.floor(page) || 1);
+  const [total, applications] = await Promise.all([
+    prisma.creditApplication.count({ where }),
+    listApplicationRows(where, p),
+  ]);
+  return { applications, pagination: { page: p, total, totalPages: Math.max(1, Math.ceil(total / CREDIT_PAGE_SIZE)) } };
+}
+
+function listApplicationRows(where: { status: CreditApplicationStatus } | undefined, page: number) {
   return prisma.creditApplication.findMany({
-    where: status ? { status } : undefined,
-    orderBy: { createdAt: 'desc' },
-    take: 200,
+    where,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    skip: (page - 1) * CREDIT_PAGE_SIZE,
+    take: CREDIT_PAGE_SIZE,
     include: {
       user: {
         select: {

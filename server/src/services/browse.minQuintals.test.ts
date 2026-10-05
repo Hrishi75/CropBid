@@ -75,3 +75,17 @@ describe('grade', () => {
     await expect(browseListings({ crop: CROP, quality: 'Z' })).resolves.toBeTruthy();
   });
 });
+
+describe('leaving out the viewer\'s own lots', () => {
+  it('drops them from the page and the total', async () => {
+    // A seller on its buying side cannot buy its own lots; the app used to
+    // trim them from one page and leave them in the count across every page.
+    const all = await browseListings({ crop: CROP, limit: 1 });
+    expect(all.pagination.total).toBe(lots.length);
+    const none = await browseListings({ crop: CROP, limit: 1, excludeSellerUserId: SELLER });
+    expect(none.pagination.total).toBe(0);
+    expect(none.listings).toHaveLength(0);
+    const other = await browseListings({ crop: CROP, limit: 50, excludeSellerUserId: 'someone-else' });
+    expect(other.pagination.total).toBe(lots.length);
+  });
+});

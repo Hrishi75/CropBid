@@ -1463,10 +1463,24 @@ export async function setRepeat(id: string, buyerId: string, everyDays: number |
     if (newer > 0) throw new ApiError(400, 'A newer copy of this request exists. Change the repeat there.');
   }
   const base = r.createdAt > new Date() ? r.createdAt : new Date();
-  return prisma.buyerRequirement.update({
-    where: { id },
+  // Conditional on the repeat as it was read. The repost job claims a request
+  // by clearing its nextRepeatAt in the same transaction that posts the copy,
+  // so if it got there first this write misses, instead of saving "Once" on
+  // the old request while the new copy carries on repeating. And if this
+  // commits first, the job's claim misses on the date it read.
+  const { count } = await prisma.buyerRequirement.updateMany({
+    where: {
+      id,
+      repeatEveryDays: r.repeatEveryDays,
+      nextRepeatAt: r.nextRepeatAt,
+      status: { in: ['OPEN', 'FULFILLED'] },
+    },
     data: { repeatEveryDays: days, nextRepeatAt: days ? addDays(base, days) : null },
   });
+  if (count === 0) {
+    throw new ApiError(409, 'This request was just reposted. Change the repeat on the new copy.');
+  }
+  return prisma.buyerRequirement.findUniqueOrThrow({ where: { id } });
 }
 
 /**

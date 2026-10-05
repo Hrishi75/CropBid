@@ -54,10 +54,16 @@ export default function MyRequirementsScreen() {
 
   const load = useCallback(async () => {
     try {
-      // The server's largest page. Past 50 requests the counts would be of the
-      // newest 50, which is a limit worth paging past when a buyer reaches it.
-      const data = await myRequirements(undefined, 50);
-      setRows(data.requirements);
+      // Every page, not the newest 50: the tabs, counts and list groups are all
+      // worked out here, so a request past the first page vanished from every
+      // tab with its offers. Capped so a runaway account cannot loop forever.
+      const first = await myRequirements(undefined, 50, 1);
+      let all = first.requirements;
+      const pages = Math.min(first.pagination?.totalPages ?? 1, 20);
+      for (let p = 2; p <= pages; p++) {
+        all = all.concat((await myRequirements(undefined, 50, p)).requirements);
+      }
+      setRows(all);
       setError(null);
     } catch (e) {
       setError(errorMessage(e, 'Could not load your requirements'));
@@ -80,10 +86,19 @@ export default function MyRequirementsScreen() {
 
   const offersOf = (r: BuyerRequirement) => r._count?.offers ?? 0;
   const count = (v: RequirementStatus | '') => (v ? rows.filter((r) => r.status === v).length : rows.length);
-  // Requests with offers waiting first, then newest.
-  const shown = rows
-    .filter((r) => !tab || r.status === tab)
-    .sort((a, b) => Number(offersOf(b) > 0) - Number(offersOf(a) > 0) || b.createdAt.localeCompare(a.createdAt));
+  // Requests with offers waiting first, then newest, ordered as groups: a
+  // restock list's items move together, or one item with an offer would jump
+  // ahead and leave its list heading over only some of them.
+  const groups = new Map<string, BuyerRequirement[]>();
+  for (const r of rows.filter((x) => !tab || x.status === tab)) {
+    const k = r.listId ?? r.id;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  const hot = (g: BuyerRequirement[]) => Number(g.some((r) => offersOf(r) > 0));
+  const newest = (g: BuyerRequirement[]) => g.reduce((m, r) => (r.createdAt > m ? r.createdAt : m), '');
+  const shown = [...groups.values()]
+    .sort((a, b) => hot(b) - hot(a) || newest(b).localeCompare(newest(a)))
+    .flat();
   const open = rows.filter((r) => r.status === 'OPEN');
   const waiting = open.reduce((n, r) => n + offersOf(r), 0);
 

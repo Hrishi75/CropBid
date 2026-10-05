@@ -36,14 +36,15 @@ interface AdminUser {
   // Why this account cannot be deleted, or null when it can. Worked out by
   // the server with the same rule the delete applies, so the button is only
   // offered when the delete will go through.
-  deleteBlocker: 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | null;
+  deleteBlocker: 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | 'CONTRACTS' | null;
 }
 
 // What an admin reads in place of the button. Admins get nothing, the same as
 // Suspend: there is no action on another admin here at all.
-const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET', string> = {
+const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET' | 'CONTRACTS', string> = {
   TRANSACTIONS: "Has deals, so can't be deleted",
   WALLET: "Has wallet history, so can't be deleted",
+  CONTRACTS: "Has a live supply contract, so can't be deleted",
 };
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -315,7 +316,7 @@ export function AdminUsers() {
                                 onConfirm={() => handleDelete(u)}
                               />
                             )}
-                            {(u.deleteBlocker === 'TRANSACTIONS' || u.deleteBlocker === 'WALLET') && (
+                            {(u.deleteBlocker === 'TRANSACTIONS' || u.deleteBlocker === 'WALLET' || u.deleteBlocker === 'CONTRACTS') && (
                               <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{DELETE_BLOCKED[u.deleteBlocker]}</span>
                             )}
                           </>
