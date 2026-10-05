@@ -100,7 +100,7 @@ function lot(id: string, extra: Record<string, unknown> = {}) {
     remainingQuantity: 100,
     // Matches the buyer's city in beforeEach. Retail is city-scoped, so a
     // fixture without a location is a fixture that can never be bought.
-    location: 'Pune',
+    location: 'Nagpur',
     farmer: { userId: SHOP },
     ...extra,
   };
@@ -123,7 +123,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   bidCounter = 0;
   listingFindMany.mockResolvedValue([lot('tomato')]);
-  userFindUnique.mockResolvedValue({ name: 'Anita', location: 'Pune' });
+  userFindUnique.mockResolvedValue({ name: 'Anita', location: 'Nagpur' });
   bidFindFirst.mockResolvedValue(null);
   bidFindMany.mockResolvedValue([]);
   bidFindOrThrow.mockResolvedValue({ id: 'bid-new-1', quantity: 2 });
@@ -172,7 +172,7 @@ function placedOrder(extra: Record<string, unknown> = {}) {
 const shopper = { userId: CONSUMER, role: 'CONSUMER' };
 const shop = { userId: SHOP, role: 'FARMER' };
 
-const contact = { deliveryAddress: '12 MG Road, Pune', contactPhone: '9876543210' };
+const contact = { deliveryAddress: '12 MG Road, Nagpur', contactPhone: '9876543210' };
 
 // The fee lands in retailOrder.create; this reads it back.
 const createdOrder = () => tx.retailOrder.create.mock.calls[0][0].data;
@@ -488,7 +488,7 @@ describe('createDirectPurchase — without a key', () => {
 
 describe('locality', () => {
   it('refuses a lot that ships from another city', async () => {
-    listingFindMany.mockResolvedValue([lot('tomato', { location: 'Nagpur' })]);
+    listingFindMany.mockResolvedValue([lot('tomato', { location: 'Pune' })]);
 
     await expect(createDirectPurchase(CONSUMER, input()))
       .rejects.toMatchObject({ statusCode: 400 });
@@ -505,8 +505,19 @@ describe('locality', () => {
     expect(tx.listing.updateMany).not.toHaveBeenCalled();
   });
 
+  // Pune shops still hold stock after delivery there stopped. A shopper whose
+  // saved city is Pune must not be able to buy it, even from a Pune shop.
+  it('refuses a buyer in a city CropBid does not deliver to', async () => {
+    userFindUnique.mockResolvedValue({ name: 'Anita', location: 'Pune' });
+    listingFindMany.mockResolvedValue([lot('tomato', { location: 'Pune' })]);
+
+    await expect(createDirectPurchase(CONSUMER, input()))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(tx.listing.updateMany).not.toHaveBeenCalled();
+  });
+
   it('matches the city case-insensitively', async () => {
-    listingFindMany.mockResolvedValue([lot('tomato', { location: 'pune' })]);
+    listingFindMany.mockResolvedValue([lot('tomato', { location: 'nagpur' })]);
     await expect(createDirectPurchase(CONSUMER, input())).resolves.toBeDefined();
   });
 });

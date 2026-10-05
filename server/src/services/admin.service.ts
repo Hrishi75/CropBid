@@ -428,21 +428,26 @@ export async function deleteListing(listingId: string) {
 // What decides whether an account can go. The user list sends the answer on
 // every row and deleteUser applies it, from this one function, so the panel
 // can never offer a delete the server then refuses.
+// A proposed or running supply contract blocks it too: the contract cascades
+// with either party, so deleting one would silently end the other side's
+// agreement before its first batch was ever a deal.
+const LIVE_CONTRACT = { where: { status: { in: ['PROPOSED', 'ACTIVE'] as ('PROPOSED' | 'ACTIVE')[] } } };
 const DELETE_BLOCKER_SELECT = {
-  _count: { select: { farmerTransactions: true, buyerTransactions: true } },
+  _count: { select: { farmerTransactions: true, buyerTransactions: true, contractsAsBuyer: LIVE_CONTRACT, contractsAsSeller: LIVE_CONTRACT } },
   wallet: { select: { _count: { select: { entries: true } } } },
 } as const;
 
-export type UserDeleteBlocker = 'ADMIN' | 'TRANSACTIONS' | 'WALLET';
+export type UserDeleteBlocker = 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | 'CONTRACTS';
 
 export function userDeleteBlocker(u: {
   role: string;
-  _count: { farmerTransactions: number; buyerTransactions: number };
+  _count: { farmerTransactions: number; buyerTransactions: number; contractsAsBuyer?: number; contractsAsSeller?: number };
   wallet: { _count: { entries: number } } | null;
 }): UserDeleteBlocker | null {
   if (u.role === 'ADMIN') return 'ADMIN';
   if (u._count.farmerTransactions + u._count.buyerTransactions > 0) return 'TRANSACTIONS';
   if ((u.wallet?._count.entries ?? 0) > 0) return 'WALLET';
+  if ((u._count.contractsAsBuyer ?? 0) + (u._count.contractsAsSeller ?? 0) > 0) return 'CONTRACTS';
   return null;
 }
 
@@ -481,6 +486,8 @@ export async function deleteUser(userId: string, actingAdminId: string) {
         throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
       case 'WALLET':
         throw new ApiError(409, 'User has wallet history and cannot be hard-deleted: that is money they paid us');
+      case 'CONTRACTS':
+        throw new ApiError(409, 'User has a proposed or running supply contract. End it first.');
     }
 
     const agent = await tx.agentConfig.findUnique({ where: { userId } });

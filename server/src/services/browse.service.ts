@@ -13,6 +13,7 @@
 
 import { prisma } from '../lib/prisma';
 import { KG_PER_UNIT } from '../utils/units';
+import { isRetailCity, retailCityFilter } from '../utils/retailCities';
 import { PUBLIC_SELLER_SELECT } from './publicSeller';
 
 
@@ -29,8 +30,15 @@ interface BrowseQuery {
   priceMax?: number;
   quality?: string;
   organic?: boolean;
+  // Smallest lot worth showing, in quintals, whatever unit each lot is listed
+  // in. An exporter filling a container has no use for a 40 kg lot.
+  minQuintals?: number;
   search?: string;
   directSale?: boolean; // Only listings open for consumer instant-buy, with stock left
+  // A seller buying stock never sees its own lots, and they must be left out
+  // of the total as well as the page, or the count promises lots it cannot
+  // buy. A plain filter: it can only hide lots, so it needs no sign-in.
+  excludeSellerUserId?: string;
   // Pagination
   page?: number;
   limit?: number;
@@ -41,6 +49,8 @@ interface BrowseQuery {
 // =============================================================================
 // BROWSE — Filtered, paginated listing search
 // =============================================================================
+const QUALITY_GRADES = ['A', 'B', 'C'] as const;
+
 export async function browseListings(query: BrowseQuery) {
   const page = Math.max(1, query.page || 1);
   const limit = Math.min(50, Math.max(1, query.limit || 20));
@@ -78,11 +88,17 @@ export async function browseListings(query: BrowseQuery) {
     where.location = { equals: query.location, mode: 'insensitive' };
   }
 
+  if (query.excludeSellerUserId) {
+    where.farmer = { is: { userId: { not: query.excludeSellerUserId } } };
+  }
+
   if (query.country) {
     where.country = { equals: query.country, mode: 'insensitive' };
   }
 
-  if (query.quality) {
+  // Only a real grade reaches the query. Anything else used to go straight
+  // into the WHERE clause and come back as a 500 from Prisma.
+  if (query.quality && (QUALITY_GRADES as readonly string[]).includes(query.quality)) {
     where.qualityGrade = query.quality;
   }
 
@@ -95,10 +111,25 @@ export async function browseListings(query: BrowseQuery) {
     where.remainingQuantity = { gt: 0 };
   }
 
+  // Minimum lot size. Lots are listed in kg, quintals or tonnes, so the floor
+  // is converted into each unit rather than compared against a raw number:
+  // 50 quintals is 5,000 kg and 5 tonnes. Remaining stock, not the original
+  // size, because what is left is what can still be bought.
+  if (query.minQuintals !== undefined && query.minQuintals > 0) {
+    const q = query.minQuintals;
+    where.AND = [...(where.AND ?? []), {
+      OR: [
+        { unit: 'KG', remainingQuantity: { gte: q * 100 } },
+        { unit: 'QUINTAL', remainingQuantity: { gte: q } },
+        { unit: 'TONNE', remainingQuantity: { gte: q / 10 } },
+      ],
+    }];
+  }
+
   // Price range filter — matches if the listing's price range overlaps
   // with the buyer's desired range
   if (query.priceMin !== undefined || query.priceMax !== undefined) {
-    where.AND = [];
+    where.AND = where.AND ?? [];
     if (query.priceMin !== undefined) {
       // Listing's max price must be >= buyer's min (otherwise too cheap)
       where.AND.push({ pricePerUnitMax: { gte: query.priceMin } });
@@ -247,9 +278,10 @@ export async function smartMatch(context: SmartMatchContext, limitResults: numbe
 // =============================================================================
 // RETAIL CITIES — where the shop can actually deliver from
 // =============================================================================
-// Powers the consumer storefront's city picker. Only cities with live
-// direct-sale stock are returned, so a shopper can never pick their way into an
-// empty shelf — the same rule the requirement feed's filters follow.
+// Powers the consumer storefront's city picker. A city is returned only when
+// it is one CropBid delivers to (RETAIL_CITIES) AND it has live direct-sale
+// stock, so a shopper can never pick their way into an empty shelf, nor into a
+// city where shops hold stock but nobody delivers.
 //
 // Deliberately NOT every city with a listing: a town with only bulk lots cannot
 // serve a household, and offering it would promise a shop that isn't there.
@@ -259,6 +291,7 @@ export async function getRetailCities() {
       status: 'ACTIVE',
       directSaleEnabled: true,
       remainingQuantity: { gt: 0 },
+      ...retailCityFilter(),
     },
     select: { location: true, state: true },
     distinct: ['location'],
@@ -349,6 +382,9 @@ export interface RetailShopQuery {
  * reading them and folding them here is far below a second round trip.
  */
 export async function listRetailShops(query: RetailShopQuery) {
+  // A city nobody delivers to has no shops, whatever stock sits in it.
+  if (!isRetailCity(query.city)) return [];
+
   const listings = await prisma.listing.findMany({
     where: {
       ...RETAIL_STOCK,
@@ -454,8 +490,9 @@ export async function listRetailShops(query: RetailShopQuery) {
  * can switch off by leaving out an argument.
  */
 export async function getRetailShop(sellerId: string, city: string) {
-  // Refuse rather than widen. The caller has to know where the shopper is.
-  if (city.trim() === '') return null;
+  // Refuse rather than widen. The caller has to know where the shopper is,
+  // and it has to be somewhere CropBid delivers.
+  if (!isRetailCity(city)) return null;
 
   const seller = await prisma.farmerProfile.findUnique({
     where: { id: sellerId },

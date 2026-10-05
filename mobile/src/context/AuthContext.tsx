@@ -10,11 +10,15 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
+import { Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import api, {
   getRefreshToken,
   setAccessToken,
+  setActAs,
   setOnLogout,
   setRefreshToken,
 } from '../api/client';
@@ -33,8 +37,50 @@ import {
 import type { User } from '../api/types';
 import { markSynced } from '../lib/idle';
 
+/** Which side a seller who is also approved to buy is working on. */
+export type AccountMode = 'SELL' | 'BUY';
+
+const MODE_KEY = 'cropbid.mode';
+
+// The device remembers which side the account was on, so reopening the app
+// lands where they left off. A preference, not a credential: plain storage.
+async function readMode(): Promise<AccountMode> {
+  try {
+    const v = Platform.OS === 'web'
+      ? globalThis.localStorage?.getItem(MODE_KEY)
+      : await SecureStore.getItemAsync(MODE_KEY);
+    return v === 'BUY' ? 'BUY' : 'SELL';
+  } catch {
+    return 'SELL';
+  }
+}
+async function writeMode(m: AccountMode): Promise<void> {
+  try {
+    if (Platform.OS === 'web') globalThis.localStorage?.setItem(MODE_KEY, m);
+    else await SecureStore.setItemAsync(MODE_KEY, m);
+  } catch {
+    // Not remembering the side is not worth telling anyone about.
+  }
+}
+
+/** A seller whose buyer application has also been approved. */
+export function canSwitchToBuying(u: User | null | undefined): boolean {
+  return u?.role === 'FARMER' && u.buyerProfile?.status === 'APPROVED';
+}
+
 interface AuthState {
+  /**
+   * The account as the app should treat it. In buying mode a seller appears
+   * as a BUYER, so every screen, tab and check that reads `user.role` shows
+   * the buyer side without knowing modes exist. The server agrees because the
+   * API client sends X-Act-As at the same moment.
+   */
   user: User | null;
+  /** The account's own role, whatever mode it is in. */
+  accountRole: User['role'] | null;
+  mode: AccountMode;
+  /** Switch sides. Only takes effect for an account that may buy. */
+  switchMode: (m: AccountMode) => void;
   loading: boolean; // bootstrap (silent refresh) in progress
   signIn: (identifier: string, password: string) => Promise<void>; // phone or email
   // Resolves to 'verification-required' for buyers — they are NOT signed in
@@ -53,6 +99,28 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState<AccountMode>('SELL');
+
+  // The remembered side, read once at launch.
+  useEffect(() => { readMode().then(setMode); }, []);
+
+  // Buying mode applies only while the account may actually buy. If a reviewer
+  // revokes the buyer approval, the next /auth/me puts the account back on the
+  // selling side instead of leaving it on screens that would all 403.
+  const buying = mode === 'BUY' && canSwitchToBuying(user);
+  // Set during render, not in an effect: the first request any buyer screen
+  // makes on mount must already carry the header.
+  setActAs(buying ? 'BUYER' : null);
+
+  const switchMode = useCallback((m: AccountMode) => {
+    setMode(m);
+    void writeMode(m);
+  }, []);
+
+  const effectiveUser = useMemo<User | null>(
+    () => (user && buying ? { ...user, role: 'BUYER' } : user),
+    [user, buying],
+  );
 
   // A refresh that fails inside the interceptor must drop the session.
   useEffect(() => {
@@ -127,7 +195,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // the app would sit on a signed-in UI with no credentials behind it.
     }
     setUser(null);
-  }, []);
+    switchMode('SELL');
+  }, [switchMode]);
 
   // For flows where the server session no longer exists (account deletion):
   // clear tokens and state without calling /logout, which would just 401.
@@ -135,12 +204,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAccessToken(null);
     await setRefreshToken(null);
     setUser(null);
-  }, []);
+    switchMode('SELL');
+  }, [switchMode]);
 
   return (
     <AuthContext.Provider
       value={{
-        user, loading, signIn, signUp, verifySignUp, resendSignUpCode,
+        user: effectiveUser, accountRole: user?.role ?? null, mode: buying ? 'BUY' : 'SELL', switchMode,
+        loading, signIn, signUp, verifySignUp, resendSignUpCode,
         refreshUser, applyUser, signOut, dropSession,
       }}
     >

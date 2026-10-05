@@ -413,3 +413,36 @@ export async function notifySellersMissingPayoutDetails(sellerIds: string[]) {
     }),
   );
 }
+
+// A restaurant (or any buyer) sent a price back on a seller's offer.
+export async function notifyOfferCountered(farmerId: string, cropName: string, price: number, currency: string, unit: string, requirementId: string, offerId: string) {
+  await createNotification({
+    userId: farmerId,
+    type: 'REQUIREMENT_OFFER_COUNTERED',
+    title: `The buyer countered on ${cropName}`,
+    message: `They would take it at ${currency} ${price}/${unit}. Accept, or send a new price.`,
+    data: { requirementId, offerId },
+  });
+}
+
+// The seller answered the buyer's counter: accepted it, or sent a new price.
+export async function notifyCounterAnswered(buyerId: string, farmerName: string, cropName: string, accepted: boolean, price: number, currency: string, unit: string, requirementId: string, offerId: string) {
+  await createNotification({
+    userId: buyerId,
+    type: accepted ? 'REQUIREMENT_COUNTER_ACCEPTED' : 'REQUIREMENT_OFFER',
+    title: accepted ? `${farmerName} accepted your price on ${cropName}` : `${farmerName} sent a new price on ${cropName}`,
+    message: accepted ? `The deal is made at ${currency} ${price}/${unit}.` : `Now ${currency} ${price}/${unit}. Accept it or counter again.`,
+    data: { requirementId, offerId },
+  });
+}
+
+// A repeating request posted its next copy.
+export async function notifyRequirementReposted(buyerId: string, cropName: string, everyDays: number, requirementId: string) {
+  await createNotification({
+    userId: buyerId,
+    type: 'REQUIREMENT_REPOSTED',
+    title: `Your ${cropName} request is up again`,
+    message: `It repeats every ${everyDays} days. Sellers have been told; offers will arrive under it.`,
+    data: { requirementId },
+  });
+}

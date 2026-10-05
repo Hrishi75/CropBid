@@ -1,56 +1,24 @@
-// Custom bottom tab bar for the farmer app — same shell as BuyerTabBar, minus
-// the buyer-only dark-Market behavior. Maps each farmer tab to its icon.
+// Custom bottom tab bar for the seller app: the shared floating pill, with the
+// seller's tabs mapped to their icons. The labels themselves come from the
+// navigator, which takes them from lib/sellerType, so a shop sees "My Stock"
+// and "My Shop" where a farm sees "My Crops" and "My Farm".
+//
+// The home tab is a sprout, not the bolt it used to be. IconBolt draws in a
+// fixed fill and ignores the colour it is handed, which on the pill's filled
+// active tab would put a black bolt on dark green.
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { IconBell, IconBolt, IconDoc, IconHome, IconUser, IcoProps } from '../components/icons';
-import { colors, design, font } from '../theme';
+import { IconBell, IconDoc, IconHome, IconSprout, IconUser, IcoProps } from '../components/icons';
+import { FloatingTabBar } from './FloatingTabBar';
 
 const ICONS: Record<string, React.ComponentType<IcoProps>> = {
   Home: IconHome,
   Listings: IconDoc,
   Bids: IconBell,
-  Farm: IconBolt,
+  Farm: IconSprout,
   You: IconUser,
 };
 
-export default function FarmerTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-  const idle = design.ink3;
-  const on = colors.forest;
-
-  return (
-    <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-      {state.routes.map((route, i) => {
-        const sel = state.index === i;
-        const Icon = ICONS[route.name] || IconHome;
-        const label = descriptors[route.key].options.title ?? route.name;
-        const onPress = () => {
-          const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-          if (!sel && !event.defaultPrevented) navigation.navigate(route.name);
-        };
-        return (
-          <Pressable key={route.key} onPress={onPress} style={styles.item} hitSlop={6}>
-            <Icon size={23} stroke={sel ? on : idle} sw={sel ? 2 : 1.7} />
-            <Text style={[styles.label, { color: sel ? on : idle, fontFamily: sel ? font.sansSemi : font.sansMed }]}>{label}</Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
+export default function FarmerTabBar(props: BottomTabBarProps) {
+  return <FloatingTabBar {...props} icons={ICONS} />;
 }
-
-const styles = StyleSheet.create({
-  bar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'flex-start',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: design.line,
-    backgroundColor: 'rgba(251,249,243,0.98)',
-  },
-  item: { alignItems: 'center', gap: 4, width: 60 },
-  label: { fontSize: 10, letterSpacing: -0.1 },
-});

@@ -116,7 +116,9 @@ export interface Listing {
 
 export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
 export type RequirementOfferStatus =
-  | 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+  | 'PENDING' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+// PENDING waits on the buyer; COUNTERED waits on the seller, who accepts the
+// buyer's price (buyerCounterPrice) or sends a new one.
 /** INSTANT filled at the buyer's own price; COUNTER proposed the farmer's. */
 export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
 
@@ -166,6 +168,22 @@ export interface BuyerRequirement {
   organic: boolean;
   paymentTerms: string | null;
   deliveryTerms: string | null;
+  // An exporter's request (server utils/exportSpec). When forExport is true the
+  // delivery address above IS the port's city.
+  forExport?: boolean;
+  exportPort?: string | null;
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
+  /** A restaurant's request: every fill is negotiated, none at the posted price. */
+  negotiateOnly?: boolean;
+  /** Repeat orders: posts a fresh copy every N days; nextRepeatAt is when. */
+  repeatEveryDays?: number | null;
+  nextRepeatAt?: string | null;
+  seriesId?: string | null;
+  /** A restock list: items posted together share listId; listName is its label. */
+  listId?: string | null;
+  listName?: string | null;
   status: RequirementStatus;
   createdAt: string;
   updatedAt?: string;
@@ -188,6 +206,8 @@ export interface RequirementOffer {
   currency: string;
   message: string | null;
   status: RequirementOfferStatus;
+  /** The buyer's price back while COUNTERED. */
+  buyerCounterPrice?: number | null;
   listingId: string | null;
   bidId: string | null;
   createdAt: string;
@@ -256,6 +276,9 @@ export interface Transaction {
   // shopper pays for. Null for trade deals and for retail orders placed
   // before shop orders existed.
   retailOrder?: RetailOrderSummary | null;
+  // The carrier booking, once ops has made one (CLAUDE.md §2a). Carrier
+  // identity is stripped by the server; only the status reaches a trader.
+  shipment?: { status: string } | null;
   createdAt: string;
 }
 
@@ -489,4 +512,96 @@ export interface WalletTopupOrder {
   amount: number;
   currency: string;
   keyId: string;
+}
+
+// Business credit (server: services/credit.service). CropBid does not lend: an
+// application is read by a person and taken to a lending partner.
+export type CreditStatus = 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'DECLINED';
+
+export interface CreditApplication {
+  id: string;
+  businessName: string;
+  gstin: string | null;
+  yearsInBusiness: number;
+  monthlyPurchase: number;
+  amountWanted: number;
+  repaymentDays: number;
+  purpose: string | null;
+  contactPhone: string;
+  status: CreditStatus;
+  approvedLimit: number | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExportOptions {
+  ports: Array<{ code: string; name: string; city: string; state: string }>;
+  docs: Array<{ code: string; label: string }>;
+  moisture: { min: number; max: number };
+}
+
+export interface CreditRules {
+  minAmount: number;
+  maxAmount: number;
+  repaymentDays: number[];
+}
+
+export interface CreditApplicationInput {
+  businessName: string;
+  gstin?: string | null;
+  yearsInBusiness: number;
+  monthlyPurchase: number;
+  amountWanted: number;
+  repaymentDays: number;
+  purpose?: string | null;
+  contactPhone: string;
+  consent: boolean;
+}
+
+// Supply contracts (server: services/supplyContract.service). One price, a
+// large total, delivered in batches; each batch becomes an ordinary deal.
+export type SupplyContractStatus = 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'DECLINED' | 'CANCELLED';
+
+export interface SupplyContractBatch {
+  id: string;
+  quantity: number;
+  createdAt: string;
+  transactions: Array<{ id: string; totalAmount: number; paymentStatus: PaymentStatus; deliveryStatus: DeliveryStatus }>;
+}
+
+export interface SupplyContract {
+  id: string;
+  buyerId: string;
+  farmerId: string;
+  buyer?: { id: string; name: string; buyerProfile?: { companyName?: string | null; companyType?: string | null } | null };
+  farmer?: { id: string; name: string; trustScore: number; farmerProfile?: { state?: string | null; businessName?: string | null } | null };
+  cropName: string;
+  cropVariety: string | null;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  currency: string;
+  totalQuantity: number;
+  batchQuantity: number;
+  everyDays: number;
+  startsAt: string;
+  message: string | null;
+  status: SupplyContractStatus;
+  scheduledQuantity: number;
+  nextBatchAt: string | null;
+  endedBy: string | null;
+  batches: SupplyContractBatch[];
+  createdAt: string;
+}
+
+export interface ProposeContractInput {
+  listingId: string;
+  totalQuantity: number;
+  batchQuantity: number;
+  everyDays: number;
+  pricePerUnit: number;
+  startsAt?: string | null;
+  message?: string | null;
 }

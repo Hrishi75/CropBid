@@ -26,23 +26,23 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Alert } from '../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { fetchListing, placeBid } from '../api/endpoints';
+import { fetchListing } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import { cropImageFor } from '../utils/cropImages';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import type { Listing } from '../api/types';
 import type { BrowseStackParamList } from '../navigation/types';
-import { Badge, Button, Card } from '../components/ui';
+import { Badge, Card } from '../components/ui';
 import { FadeInImage, PressScale } from '../components/motion';
+import { BidPanel } from '../components/BidPanel';
 import { money, unitLabel } from '../lib/format';
 import { orderQuantity, railFor, shopPack, type ShopPack } from '../lib/catalog';
-import { mspForCrop } from '../lib/msp';
 import { colors, design, font, radius, spacing } from '../theme';
+import { ContractProposal } from '../components/ContractProposal';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'ListingDetail'>;
 
@@ -73,6 +73,12 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   }
   const isGuest = !user;
   const isBuyer = user?.role === 'BUYER';
+  // A restaurant negotiates through its requests and the server refuses its
+  // bids, so it is shown the way it does buy instead of a bid card.
+  const isRestaurant = isBuyer && user?.buyerProfile?.companyType === 'RESTAURANT';
+  // An FMCG buyer can also propose a supply contract (components/ContractProposal),
+  // except on a local shop's lot, which sells by the kilo.
+  const canContract = isBuyer && user?.buyerProfile?.companyType === 'FMCG' && listing.farmer?.sellerType !== 'LOCAL_SHOP';
   const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
   const canDirectBuy =
@@ -101,6 +107,8 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       <ScrollView
         contentContainerStyle={[styles.container, (canDirectBuy || isGuest) && { paddingBottom: 130 }]}
         keyboardShouldPersistTaps="handled"
+        // The number pad has no Done key; scrolling closes it.
+        keyboardDismissMode="on-drag"
       >
         {imgs.length > 0 ? <ImagePager images={imgs} /> : null}
 
@@ -130,9 +138,9 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           <Spec label="Quality" value={`Grade ${listing.qualityGrade}`} />
           <Spec label="Location" value={`${listing.location}, ${listing.state}`} />
           <Spec
-            label="Farmer"
-            value={`${listing.farmer?.user?.name ?? '—'} · trust ${
-              listing.farmer?.user?.trustScore ?? '—'
+            label="Seller"
+            value={`${listing.farmer?.user?.name ?? '-'}${
+              listing.farmer?.user?.trustScore != null ? ` · trust ${Math.round(listing.farmer.user.trustScore)}` : ''
             }`}
           />
         </Card>
@@ -147,8 +155,24 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
           <Text style={styles.note}>You're browsing as a guest — log in to buy this lot or place a bid.</Text>
         ) : isOwner ? (
           <Text style={styles.note}>This is your listing.</Text>
+        ) : isRestaurant ? (
+          <View style={styles.askCard}>
+            <Text style={styles.askTitle}>Need {listing.cropName} for the kitchen?</Text>
+            <Text style={styles.askBody}>
+              Restaurants buy by posting what they need. Sellers, this one included, send you their price and you negotiate.
+            </Text>
+            <Pressable
+              onPress={() => (navigation as any).navigate('CreateRequirement', { crop: listing.cropName })}
+              style={({ pressed }) => [styles.askBtn, pressed && { opacity: 0.85 }]}
+            >
+              <Text style={styles.askBtnText}>Ask sellers for {listing.cropName}</Text>
+            </Pressable>
+          </View>
         ) : isBuyer ? (
-          <BidForm listing={listing} onDone={() => navigation.goBack()} />
+          <View style={{ gap: 12 }}>
+            <BidPanel listing={listing} />
+            {canContract ? <ContractProposal listing={listing} /> : null}
+          </View>
         ) : isConsumer && !canDirectBuy ? (
           <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
         ) : !isConsumer ? (
@@ -237,131 +261,6 @@ function Spec({ label, value }: { label: string; value: string }) {
       <Text style={styles.specLabel}>{label}</Text>
       <Text style={styles.specValue}>{value}</Text>
     </View>
-  );
-}
-
-function BidForm({ listing, onDone }: { listing: Listing; onDone: () => void }) {
-  const { user } = useAuth();
-  const [price, setPrice] = useState(String(listing.pricePerUnitMin));
-  const [qty, setQty] = useState(String(listing.quantity));
-  const [message, setMessage] = useState('');
-  // Prefilled from the profile — the farmer sees these on the offer
-  const [deliveryAddress, setDeliveryAddress] = useState(user?.location ?? '');
-  const [contactPhone, setContactPhone] = useState(user?.phone ?? '');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const priceNum = Number(price);
-  const qtyNum = Number(qty);
-  const total = priceNum > 0 && qtyNum > 0 ? priceNum * qtyNum : 0;
-
-  function submit() {
-    if (!(priceNum > 0) || !(qtyNum > 0)) {
-      setError('Enter a valid price and quantity');
-      return;
-    }
-    setError(null);
-
-    // Government MSP guard — warn (but don't block) when the bid is below the
-    // official support price. MSP is an India-only price in ₹, so only applies
-    // to INR listings.
-    const msp = mspForCrop(listing.cropName, listing.unit);
-    if (msp != null && listing.currency.toUpperCase() === 'INR' && priceNum < msp) {
-      const u = unitLabel(listing.unit);
-      Alert.alert(
-        'Bid below government MSP',
-        `The government MSP for ${listing.cropName} is ${money(msp, listing.currency)}/${u}. ` +
-          `Your bid of ${money(priceNum, listing.currency)}/${u} is below it.`,
-        [
-          { text: 'Raise bid', style: 'cancel' },
-          { text: 'Bid anyway', style: 'destructive', onPress: doPlaceBid },
-        ],
-      );
-      return;
-    }
-
-    doPlaceBid();
-  }
-
-  async function doPlaceBid() {
-    setSubmitting(true);
-    try {
-      await placeBid({
-        listingId: listing.id,
-        bidPricePerUnit: priceNum,
-        quantity: qtyNum,
-        message: message.trim() || undefined,
-        deliveryAddress: deliveryAddress.trim() || undefined,
-        contactPhone: contactPhone.trim() || undefined,
-      });
-      Alert.alert('Bid placed', 'The farmer has been notified.', [
-        { text: 'OK', onPress: onDone },
-      ]);
-    } catch (e) {
-      setError(errorMessage(e, 'Could not place bid'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Card style={styles.bidCard}>
-      <Text style={styles.bidTitle}>Place a bid</Text>
-
-      <Text style={styles.label}>Price per {unitLabel(listing.unit)}</Text>
-      <TextInput
-        style={styles.input}
-        value={price}
-        onChangeText={setPrice}
-        keyboardType="numeric"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.label}>Quantity ({unitLabel(listing.unit)})</Text>
-      <TextInput
-        style={styles.input}
-        value={qty}
-        onChangeText={setQty}
-        keyboardType="numeric"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.label}>Deliver to</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        value={deliveryAddress}
-        onChangeText={setDeliveryAddress}
-        multiline
-        placeholder="Address the farmer should ship to"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.label}>Contact phone</Text>
-      <TextInput
-        style={styles.input}
-        value={contactPhone}
-        onChangeText={setContactPhone}
-        keyboardType="phone-pad"
-        placeholder="Number the farmer can call"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.label}>Message (optional)</Text>
-      <TextInput
-        style={[styles.input, styles.multiline]}
-        value={message}
-        onChangeText={setMessage}
-        multiline
-        placeholder="Add a note for the farmer"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={styles.total}>Total: {money(total, listing.currency)}</Text>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Button label="Submit bid" onPress={submit} loading={submitting} />
-    </Card>
   );
 }
 
@@ -502,6 +401,11 @@ function BuyBar({ listing, pack }: { listing: Listing; pack: ShopPack | null }) 
 }
 
 const styles = StyleSheet.create({
+  askCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16, gap: 8 },
+  askTitle: { fontFamily: font.sansBold, fontSize: 17, color: design.ink },
+  askBody: { fontFamily: font.sans, fontSize: 13.5, lineHeight: 19, color: design.ink2 },
+  askBtn: { marginTop: 6, backgroundColor: colors.forest, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  askBtnText: { fontFamily: font.sansSemi, fontSize: 15, color: colors.surface },
   flex: { flex: 1, backgroundColor: colors.surfaceAlt },
   container: { padding: spacing.lg, gap: spacing.md, paddingBottom: spacing.xxl },
   hero: { width: '100%', height: 200, borderRadius: radius.lg, backgroundColor: colors.surfaceHover },

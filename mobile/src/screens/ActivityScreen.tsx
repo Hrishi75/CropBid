@@ -101,7 +101,9 @@ export default function ActivityScreen() {
   return (
     <View style={styles.flex}>
       <View style={styles.headerRow}>
-        <Text style={styles.heading}>Activity{unread > 0 ? ` · ${unread}` : ''}</Text>
+        {/* The navigation bar already says "Activity"; this line says what
+            is new, not the screen's name a second time. */}
+        <Text style={styles.heading}>{unread > 0 ? `${unread} unread` : 'All read'}</Text>
         {unread > 0 ? (
           <Pressable onPress={onMarkAll} hitSlop={8}>
             <Text style={styles.markAll}>Mark all read</Text>

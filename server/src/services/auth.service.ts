@@ -920,6 +920,19 @@ export async function deleteAccount(userId: string, password: string) {
     throw new ApiError(401, 'Password is incorrect');
   }
 
+  // A supply contract cascades with either party, so deleting the account
+  // would end the other side's agreement without a word, and anonymising it
+  // would keep making batches for nobody. Ending it is one button.
+  const liveContracts = await prisma.supplyContract.count({
+    where: { OR: [{ buyerId: userId }, { farmerId: userId }], status: { in: ['PROPOSED', 'ACTIVE'] } },
+  });
+  if (liveContracts > 0) {
+    throw new ApiError(
+      409,
+      'You have a supply contract proposed or running. End it from Contracts first, then delete your account.',
+    );
+  }
+
   const openDeals = await prisma.transaction.count({
     where: {
       OR: [{ farmerId: userId }, { buyerId: userId }],
@@ -990,6 +1003,9 @@ export async function deleteAccount(userId: string, password: string) {
         });
       }
       await tx.buyerProfile.deleteMany({ where: { userId } });
+      // A credit application is business details shared for one purpose,
+      // and the account it was for is going.
+      await tx.creditApplication.deleteMany({ where: { userId } });
       // Negotiations on settled deals may still reference the agent config —
       // switch it off instead of deleting.
       await tx.agentConfig.updateMany({
@@ -1172,7 +1188,10 @@ function validateSellerApplication(input: FarmerOnboardingInput): void {
 //
 // Nothing here grants the role. reviewPartnerApplication does that, on approval.
 const CAN_APPLY_AS_SELLER = ['CONSUMER', 'FARMER'];
-const CAN_APPLY_AS_BUYER = ['CONSUMER', 'BUYER'];
+// A seller may apply as well (FARMER): a local shop buying stock for itself.
+// Approval leaves its role alone and only approves the buyer profile, which is
+// what lets it act as a buyer (middleware/auth, X-Act-As).
+const CAN_APPLY_AS_BUYER = ['CONSUMER', 'BUYER', 'FARMER'];
 
 export async function completeFarmerOnboarding(userId: string, input: FarmerOnboardingInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -1350,7 +1369,8 @@ export async function updateBuyerProfile(userId: string, input: UpdateBuyerProfi
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
-  if (user.role !== 'BUYER') {
+  // A seller with an approved buyer profile edits it from buying mode.
+  if (user.role !== 'BUYER' && !(user.role === 'FARMER' && user.buyerProfile?.status === 'APPROVED')) {
     throw new ApiError(403, 'Only buyers can update a buyer profile');
   }
   if (!user.buyerProfile) {

@@ -28,6 +28,14 @@ const REFRESH_KEY = 'cropbid.refreshToken';
 
 let accessToken: string | null = null;
 let onLogout: (() => void) | null = null;
+// Buying mode for a seller also approved to buy (a local shop stocking up).
+// Sent as X-Act-As: BUYER; the server honours it only for an account whose
+// buyer profile is APPROVED (server/src/middleware/auth.ts). Set by
+// AuthContext, never by a screen.
+let actAs: 'BUYER' | null = null;
+export function setActAs(mode: 'BUYER' | null) {
+  actAs = mode;
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -72,6 +80,7 @@ const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   config.headers['X-Client'] = 'mobile';
   if (accessToken) config.headers['Authorization'] = `Bearer ${accessToken}`;
+  if (actAs) config.headers['X-Act-As'] = actAs;
   return config;
 });
 

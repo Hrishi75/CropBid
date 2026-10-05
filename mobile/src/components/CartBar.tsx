@@ -21,11 +21,11 @@
 // navigation/ConsumerTabBar.tsx.
 // =============================================================================
 
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { PressScale } from './motion';
+import { EASE_OUT, PressScale, Pop } from './motion';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { money } from '../lib/format';
@@ -36,6 +36,17 @@ export function CartBar({ overTabBar = false }: { overTabBar?: boolean }) {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { items, count, snapshotTotal, currency } = useCart();
+  // Slides up from below when the basket goes from empty to something, so the
+  // first ADD visibly produces it rather than it blinking into existence.
+  const rise = useRef(new Animated.Value(0)).current;
+  const shown = user?.role === 'CONSUMER' && items.length > 0;
+  useEffect(() => {
+    if (shown) {
+      Animated.timing(rise, { toValue: 1, duration: 260, easing: EASE_OUT, useNativeDriver: true }).start();
+    } else {
+      rise.setValue(0);
+    }
+  }, [shown, rise]);
 
   // Retail only. A farmer or buyer has no basket, and an empty one has nothing
   // to say.
@@ -44,8 +55,15 @@ export function CartBar({ overTabBar = false }: { overTabBar?: boolean }) {
   const label = count === 1 ? '1 lot' : `${count} lots`;
 
   return (
-    <View
-      style={[styles.bar, { paddingBottom: overTabBar ? 12 : Math.max(insets.bottom, 12) }]}
+    <Animated.View
+      style={[
+        styles.bar,
+        { paddingBottom: overTabBar ? 12 : Math.max(insets.bottom, 12) },
+        {
+          opacity: rise,
+          transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }],
+        },
+      ]}
       pointerEvents="box-none"
     >
       <PressScale
@@ -59,16 +77,16 @@ export function CartBar({ overTabBar = false }: { overTabBar?: boolean }) {
         scaleTo={0.98}
         cardStyle={styles.inner}
       >
-        <View style={styles.countPill}>
+        <Pop value={count} style={styles.countPill}>
           <Text style={styles.countText}>{count}</Text>
-        </View>
+        </Pop>
         <View style={styles.txt}>
           <Text style={styles.items}>{label}</Text>
           <Text style={styles.total}>{money(snapshotTotal, currency)}</Text>
         </View>
         <Text style={styles.cta}>View cart →</Text>
       </PressScale>
-    </View>
+    </Animated.View>
   );
 }
 

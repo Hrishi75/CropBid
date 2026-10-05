@@ -34,6 +34,10 @@ import type { ProfileParamList } from '../navigation/types';
 import { deleteAccount, uploadAvatar } from '../api/endpoints';
 import { errorMessage, mediaUrl } from '../api/client';
 import { accountTags, sellerDisplayName, sellerWords } from '../lib/sellerType';
+import { ShopperProfile } from './profile/ShopperProfile';
+import { SellerProfile } from './profile/SellerProfile';
+import { BuyerProfile } from './profile/BuyerProfile';
+import { ModeSwitch } from '../components/ModeSwitch';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -207,6 +211,50 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.flex}>
+      {/* A household gets its own layout: orders, addresses and wallet up
+          front, no trust score. Farmers and buyers keep the one below. The
+          handlers stay here so the photo picker, log-out and delete confirm
+          are one implementation for every role. */}
+      {isConsumer ? (
+        <ShopperProfile
+          user={user}
+          photo={photo}
+          uploading={uploading}
+          refreshing={refreshing}
+          signingOut={signingOut}
+          onRefresh={onRefresh}
+          onAvatarPress={onAvatarPress}
+          onShare={shareApp}
+          onSignOut={onSignOutPress}
+          onDelete={onDeletePress}
+        />
+      ) : user.role === 'BUYER' ? (
+        <BuyerProfile
+          user={user}
+          photo={photo}
+          uploading={uploading}
+          refreshing={refreshing}
+          signingOut={signingOut}
+          onRefresh={onRefresh}
+          onAvatarPress={onAvatarPress}
+          onShare={shareApp}
+          onSignOut={onSignOutPress}
+          onDelete={onDeletePress}
+        />
+      ) : isFarmer ? (
+        <SellerProfile
+          user={user}
+          photo={photo}
+          uploading={uploading}
+          refreshing={refreshing}
+          signingOut={signingOut}
+          onRefresh={onRefresh}
+          onAvatarPress={onAvatarPress}
+          onShare={shareApp}
+          onSignOut={onSignOutPress}
+          onDelete={onDeletePress}
+        />
+      ) : (
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 6, paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
@@ -267,6 +315,11 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+        </View>
+
+        {/* A shop in buying mode lands here; this is the way back to selling. */}
+        <View style={[styles.sidePad, { marginTop: 12 }]}>
+          <ModeSwitch />
         </View>
 
         {/* language */}
@@ -466,6 +519,7 @@ export default function ProfileScreen() {
           />
         </View>
       </ScrollView>
+      )}
 
       {/* delete-account confirm sheet — password re-entry, then DELETE /auth/me */}
       <Modal

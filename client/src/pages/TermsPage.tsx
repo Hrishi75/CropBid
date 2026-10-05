@@ -37,7 +37,7 @@ import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '20 September 2026';
+const UPDATED = '3 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -236,7 +236,7 @@ export function TermsPage() {
 
         <Section title="8. Delivery">
           <p>
-            Household delivery runs in Pune and Nagpur. Every seller shows which of two
+            Household delivery runs in Nagpur only for now. Every seller shows which of two
             delivery promises applies before you add anything to your basket:
           </p>
           <p>

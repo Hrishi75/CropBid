@@ -9,7 +9,7 @@
 // 403s. Every role's HOME tab is the shared StorefrontHomeScreen (the web homepage
 // mirrored on mobile); the old farmer and buyer dashboards live on their own
 // tabs (My Farm / Dashboard). Farmers get Home/My Crops/Offers/Farm/You (their
-// AI helper is pushed from Profile), buyers get Home/Dashboard/Agents/
+// AI helper is pushed from Profile), buyers get Home/Dashboard/Requests/
 // Contracts/You + Auction in the stack, consumers (instant-buy any quantity,
 // no bidding) get Home/Cart/Orders/You, with Checkout pushed over the tabs.
 // The demand board (buyers post what they need, farmers answer) is pushed in
@@ -35,6 +35,7 @@ import AuctionScreen from '../screens/buyer/AuctionScreen';
 import ListingDetailScreen from '../screens/ListingDetailScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import WalletScreen from '../screens/WalletScreen';
+import CreditApplyScreen from '../screens/buyer/CreditApplyScreen';
 import FarmerHomeScreen from '../screens/farmer/HomeScreen';
 import MyListingsScreen from '../screens/farmer/MyListingsScreen';
 import IncomingBidsScreen from '../screens/farmer/IncomingBidsScreen';
@@ -53,10 +54,14 @@ import AboutScreen from '../screens/profile/AboutScreen';
 import NotificationPrefsScreen from '../screens/profile/NotificationPrefsScreen';
 import PolicyScreen from '../screens/profile/PolicyScreen';
 import DemandBoardScreen from '../screens/DemandBoardScreen';
+import ShopHomeScreen from '../screens/shop/ShopHomeScreen';
+import { WithStatusScrim } from '../components/StatusScrim';
+import BuyForShopScreen from '../screens/shop/BuyForShopScreen';
 import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
 import MyRequirementsScreen from '../screens/buyer/MyRequirementsScreen';
 import CreateRequirementScreen from '../screens/buyer/CreateRequirementScreen';
+import RestockListScreen from '../screens/buyer/RestockListScreen';
 import CropSellersScreen from '../screens/CropSellersScreen';
 import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
@@ -69,17 +74,43 @@ import { isPendingPartner } from '../lib/partner';
 import { sellerWords } from '../lib/sellerType';
 
 // --- Buyer ---
+// --- Motion shared by every navigator ---
+// Pushed screens slide in from the right the iOS way on both platforms, so a
+// screen that opens is always one that came from the side and goes back the
+// same way. Screens that set their own animation (sheets from the bottom) keep
+// it.
+//
+// NO TAB ANIMATION. The bottom tabs' 'shift' left a tab blank the first time it
+// was opened (My Stock rendered nothing but the navigator's grey) on this
+// react-native-screens, which is a minor version behind what Expo 56 expects.
+// The tab bar's own sliding highlight carries the motion instead. Revisit after
+// `npx expo install --fix`.
+// Every tab screen but Home gets a page-coloured strip behind the status bar,
+// so content scrolled up does not run under the clock. Home draws its own
+// forest strip there.
+function tabScreenLayout({ children, route }: { children: React.ReactElement; route: { name: string } }) {
+  if (route.name === 'Home') return children;
+  return <WithStatusScrim>{children}</WithStatusScrim>;
+}
+
+const STACK_MOTION = { animation: 'ios_from_right' as const };
+
 const Tab = createBottomTabNavigator<BuyerTabParamList>();
 function BuyerTabs() {
   const { t } = useTranslation();
   return (
     <Tab.Navigator
       screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <BuyerTabBar {...props} />}
     >
       <Tab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
       <Tab.Screen name="Dashboard" component={BuyerDashboardScreen} options={{ title: t('Dashboard') }} />
-      <Tab.Screen name="Agents" component={BriefScreen} options={{ title: t('Agents') }} />
+      {/* Requests, not Agents: the buying agent is off the app for now (the
+          user's call, 2026-10-04), and the buyer's own posted needs are the
+          thing they come back to. MyRequirementsScreen is still pushed from
+          elsewhere as well. */}
+      <Tab.Screen name="Requests" component={MyRequirementsScreen} options={{ title: t('Requests') }} />
       <Tab.Screen name="Contracts" component={SettleScreen} options={{ title: t('Contracts') }} />
       <Tab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </Tab.Navigator>
@@ -90,7 +121,14 @@ const RootStack = createNativeStackNavigator<RootStackParamList>();
 function BuyerNavigator() {
   const { t } = useTranslation();
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+    <RootStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        ...STACK_MOTION,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <RootStack.Screen name="Tabs" component={BuyerTabs} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -128,6 +166,11 @@ function BuyerNavigator() {
       />
       <RootStack.Screen name="MyRequirements" component={MyRequirementsScreen} options={{ animation: 'slide_from_right' }} />
       <RootStack.Screen
+        name="RestockList"
+        component={RestockListScreen}
+        options={{ headerShown: true, title: t('Restock list'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
         name="CreateRequirement"
         component={CreateRequirementScreen}
         options={{ headerShown: true, title: t('Post a requirement'), animation: 'slide_from_right' }}
@@ -153,6 +196,11 @@ function BuyerNavigator() {
         options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
+        name="CreditApply"
+        component={CreditApplyScreen}
+        options={{ headerShown: true, title: t('Business credit'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      <RootStack.Screen
         name="Schemes"
         component={SchemesScreen}
         options={{ headerShown: true, title: t('Sarkari Yojana'), presentation: 'card', animation: 'slide_from_right' }}
@@ -172,16 +220,29 @@ function FarmerTabs() {
   const { t } = useTranslation();
   // A kirana store's tabs should not say "My Crops" and "My Farm". The labels
   // come off sellerType, which the server has always sent. See lib/sellerType.
-  const words = sellerWords(useAuth().user);
+  const { user } = useAuth();
+  const words = sellerWords(user);
+  // A local shop sells to households at its shelf price, so nothing is
+  // bargained over: no Offers tab, and My Shop is its own dashboard of sales
+  // and orders to send (screens/shop). Farms and wholesalers keep the trade
+  // tabs.
+  const isShop = user?.farmerProfile?.sellerType === 'LOCAL_SHOP';
   return (
     <FarmerTab.Navigator
       screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <FarmerTabBar {...props} />}
     >
       <FarmerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
       <FarmerTab.Screen name="Listings" component={MyListingsScreen} options={{ title: t(words.stockTab) }} />
-      <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
-      <FarmerTab.Screen name="Farm" component={FarmerHomeScreen} options={{ title: t(words.homeTab) }} />
+      {isShop ? null : (
+        <FarmerTab.Screen name="Bids" component={IncomingBidsScreen} options={{ title: t('Offers') }} />
+      )}
+      <FarmerTab.Screen
+        name="Farm"
+        component={isShop ? ShopHomeScreen : FarmerHomeScreen}
+        options={{ title: t(words.homeTab) }}
+      />
       <FarmerTab.Screen name="You" component={ProfileScreen} options={{ title: t('You') }} />
     </FarmerTab.Navigator>
   );
@@ -191,7 +252,14 @@ const FarmerStack = createNativeStackNavigator<FarmerStackParamList>();
 function FarmerNavigator() {
   const { t } = useTranslation();
   return (
-    <FarmerStack.Navigator screenOptions={{ headerShown: false }}>
+    <FarmerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        ...STACK_MOTION,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <FarmerStack.Screen name="FarmerTabs" component={FarmerTabs} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -227,6 +295,7 @@ function FarmerNavigator() {
       {/* Work to win: what buyers are asking for, and what this farmer has
           already offered against it. */}
       <FarmerStack.Screen name="Demand" component={DemandBoardScreen} options={{ animation: 'slide_from_right' }} />
+      <FarmerStack.Screen name="BuyForShop" component={BuyForShopScreen} options={{ animation: 'slide_from_right' }} />
       <FarmerStack.Screen
         name="RequirementDetail"
         component={RequirementDetailScreen as React.ComponentType<any>}
@@ -275,6 +344,7 @@ function ConsumerTabs() {
   return (
     <ConsumerTab.Navigator
       screenOptions={{ headerShown: false }}
+      screenLayout={tabScreenLayout}
       tabBar={(props) => <ConsumerTabBar {...props} />}
     >
       <ConsumerTab.Screen name="Home" component={StorefrontHomeScreen} options={{ title: t('Home') }} />
@@ -289,7 +359,16 @@ const ConsumerStack = createNativeStackNavigator<ConsumerStackParamList>();
 function ConsumerNavigator() {
   const { t } = useTranslation();
   return (
-    <ConsumerStack.Navigator screenOptions={{ headerShown: false }}>
+    <ConsumerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        ...STACK_MOTION,
+        // Arrow only on the back button. iOS otherwise labels it with the
+        // previous route's NAME, which on a screen pushed over the tabs is an
+        // internal identifier ("ConsumerTabs", "GuestHome"), not a word.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <ConsumerStack.Screen name="ConsumerTabs" component={ConsumerTabs} />
       {/* One local shop's counter. Pushed over the tabs rather than taking one:
           a shopper goes to a shop and comes back, they do not live in it. */}
@@ -397,7 +476,14 @@ const PartnerStack = createNativeStackNavigator<PartnerStackParamList>();
 function PartnerNavigator() {
   const { t } = useTranslation();
   return (
-    <PartnerStack.Navigator screenOptions={{ headerShown: false }}>
+    <PartnerStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        ...STACK_MOTION,
+        // Arrow only: the previous route's name is an internal identifier.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <PartnerStack.Screen name="PartnerStatus" component={PartnerStatusScreen} />
       {/* Help, about and the policies. Registered on every stack: they are
           the pages anyone might need whatever they are, and a route that
@@ -453,7 +539,16 @@ const GuestStack = createNativeStackNavigator<GuestStackParamList>();
 function GuestNavigator() {
   const { t } = useTranslation();
   return (
-    <GuestStack.Navigator screenOptions={{ headerShown: false }}>
+    <GuestStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        ...STACK_MOTION,
+        // Arrow only on the back button. iOS otherwise labels it with the
+        // previous route's NAME, which on a screen pushed over the tabs is an
+        // internal identifier ("ConsumerTabs", "GuestHome"), not a word.
+        headerBackButtonDisplayMode: 'minimal',
+      }}
+    >
       <GuestStack.Screen name="GuestHome" component={StorefrontHomeScreen} />
       {/* Open to guests: the shelf is public and the gate is at the basket, not
           the window. ShelfCard renders the ADD button only for a signed-in
@@ -543,8 +638,16 @@ function needsApplication(user: User): boolean {
 export default function RootNavigator() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
+  // ONE KEY PER TREE, so switching trees starts a fresh history. The container
+  // otherwise hands the old history to the new tree, which keeps any screen
+  // whose name it also has: a buyer signed out on the Wallet screen landed on
+  // the guest Wallet with no back button and nothing behind it.
+  const tree = !user ? 'guest'
+    : needsApplication(user) ? 'apply'
+      : isPendingPartner(user) ? 'pending'
+        : user.role;
   return (
-    <NavigationContainer>
+    <NavigationContainer key={tree}>
       {!user ? (
         <GuestNavigator />
       ) : needsApplication(user) ? (

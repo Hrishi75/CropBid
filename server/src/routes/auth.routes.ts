@@ -88,6 +88,8 @@ router.delete('/me', authenticate, deleteAccountHandler);
 // created a shopper. Approval is the only thing that grants the role: see
 // reviewPartnerApplication in admin.service.ts.
 router.post('/onboarding/farmer', authenticate, requireRole('CONSUMER', 'FARMER'), farmerOnboardingHandler);
-router.post('/onboarding/buyer', authenticate, requireRole('CONSUMER', 'BUYER'), buyerOnboardingHandler);
+// FARMER too: a seller applying to buy for its own shop. Its role is left as
+// it is on approval; see CAN_APPLY_AS_BUYER.
+router.post('/onboarding/buyer', authenticate, requireRole('CONSUMER', 'BUYER', 'FARMER'), buyerOnboardingHandler);
 
 export default router;
