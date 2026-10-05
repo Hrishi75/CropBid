@@ -3187,3 +3187,15 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 .cb-bl-label { font-family: var(--cb-mono, ui-monospace); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--cb-ink-3); }
 .cb-bl-note { font-size: 12.5px; color: var(--cb-ink-3); margin-left: auto; }
 @media (max-width: 640px) { .cb-bl-note { margin-left: 0; width: 100%; } }
+
+/* ---- Open partner application banner (pages/partner/PartnerPage) ------------ */
+.cb-pa-open { margin-top: 28px; padding: 18px 20px; display: flex; align-items: center; gap: 14px; text-decoration: none; color: var(--cb-ink); border-color: rgba(200, 96, 43, 0.35); }
+.cb-pa-open > span { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.cb-pa-open strong { font-size: 16px; font-weight: 600; }
+
+/* ---- Partner application status (pages/partner/PartnerStatusPage) ---------- */
+.cb-ps-card { margin: 28px 0 24px; padding: 6px 22px; }
+.cb-ps-card > div:last-child { margin: 22px 0 !important; }
+.cb-ps-applied { display: flex; flex-direction: column; gap: 3px; padding: 18px 0; border-bottom: 1px solid var(--cb-line); }
+.cb-ps-applied strong { font-size: 17px; font-weight: 600; color: var(--cb-ink); text-transform: capitalize; }
+.cb-ps-applied span:last-child { font-size: 13px; color: var(--cb-ink-3); }

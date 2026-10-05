@@ -19,6 +19,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useAuthModal } from '../../context/AuthModalContext';
 import { SignInLink } from '../../components/auth/SignInLink';
 import { rememberPartnerType } from '../auth/SignupPage';
+import { hasOpenApplication, partnerApplication, PARTNER_STATUS_META } from '../../utils/partner';
 
 interface PathCard {
   role: 'FARMER' | 'BUYER';
@@ -181,6 +182,22 @@ export function PartnerPage() {
             partners trade directly, at their own price.
           </p>
         </div>
+
+        {/* Somebody who already applied is told where it stands, rather than
+            offered the same application again. */}
+        {hasOpenApplication(user) && (() => {
+          const meta = PARTNER_STATUS_META[partnerApplication(user)!.status];
+          return (
+            <Link to="/partner/status" className="cb-card cb-pa-open">
+              <span>
+                <span className="cb-eyebrow">Your application · <span style={{ color: meta.color }}>● {meta.label}</span></span>
+                <strong>You have already applied.</strong>
+                <span className="cb-small">See where it stands, and anything the reviewer has asked for.</span>
+              </span>
+              <ArrowIcon />
+            </Link>
+          );
+        })()}
 
         {/* How it works */}
         <div className="cb-card" style={{ marginTop: 40, padding: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>

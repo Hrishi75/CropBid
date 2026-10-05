@@ -37,6 +37,7 @@ import { LiveShelf } from './consumer/LiveShelf';
 import { CartLink } from '../components/consumer/CartBar';
 import type { User } from '../types';
 import { useRatesHeading } from '../utils/ratesDate';
+import { hasOpenApplication, partnerApplication, PARTNER_STATUS_META } from '../utils/partner';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
@@ -433,6 +434,13 @@ function StoreHeader({
                     <Link to={account.to} role="menuitem" className="cb-nav-menu-link" onClick={closeAccount}>
                       {t(account.label)}
                     </Link>
+                    {/* A shopper who applied to sell or buy stays a shopper until
+                        approved, so this is their one way back to the decision. */}
+                    {hasOpenApplication(user) && (
+                      <Link to="/partner/status" role="menuitem" className="cb-nav-menu-link" onClick={closeAccount}>
+                        {t('Your application')} · <span style={{ color: PARTNER_STATUS_META[partnerApplication(user)!.status].color }}>{t(PARTNER_STATUS_META[partnerApplication(user)!.status].label)}</span>
+                      </Link>
+                    )}
                     <button
                       type="button"
                       role="menuitem"

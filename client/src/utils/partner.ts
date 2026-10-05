@@ -34,22 +34,44 @@ export const PARTNER_STATUS_META: Record<PartnerStatus, { label: string; color: 
   SUSPENDED: { label: 'Suspended', color: 'var(--cb-ember)' },
 };
 
-/** The partner application on a user, whichever side they applied on. */
+/**
+ * The partner application on a user, whichever side they applied on.
+ *
+ * NOT GATED ON user.role. An applicant is a CONSUMER until a reviewer approves
+ * them, so reading the role returned null for exactly the people who need to
+ * see "under review", and the status page bounced them to the homepage. A
+ * profile exists only once somebody has applied, so its presence is the
+ * question. The seller side wins if both exist: it has the listings and money
+ * behind it. Same rule as mobile/src/lib/partner.
+ */
 export function partnerApplication(user: User | null | undefined) {
   if (!user) return null;
-  if (user.role === 'FARMER' && user.farmerProfile) {
+  if (user.farmerProfile) {
     return { kind: 'SELLER' as const, status: user.farmerProfile.status, note: user.farmerProfile.statusNote };
   }
-  if (user.role === 'BUYER' && user.buyerProfile) {
+  if (user.buyerProfile) {
     return { kind: 'BUYER' as const, status: user.buyerProfile.status, note: user.buyerProfile.statusNote };
   }
   return null;
 }
 
-/** True when this user is a partner whose application has not been approved. */
+/**
+ * True when this user is a partner whose application has not been approved.
+ *
+ * This one KEEPS the role check, because it decides navigation: it keeps an
+ * unapproved FARMER or BUYER out of a dashboard where every action 403s. A
+ * CONSUMER waiting on a decision has no such dashboard and keeps shopping.
+ */
 export function isPendingPartner(user: User | null | undefined): boolean {
+  if (!user || (user.role !== 'FARMER' && user.role !== 'BUYER')) return false;
   const app = partnerApplication(user);
   return app !== null && app.status !== 'APPROVED';
+}
+
+/** A shopper whose application to sell or buy is still waiting on a decision. */
+export function hasOpenApplication(user: User | null | undefined): boolean {
+  const app = partnerApplication(user);
+  return user?.role === 'CONSUMER' && app !== null && app.status !== 'APPROVED';
 }
 
 /**
