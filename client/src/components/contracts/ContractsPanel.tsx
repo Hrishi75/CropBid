@@ -67,7 +67,7 @@ export function ContractsPanel({ side }: { side: 'BUYER' | 'SELLER' }) {
                     <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>
                       {made} OF {total} BATCHES MADE
                       {c.nextBatchAt ? ` · NEXT ${contractDay(c.nextBatchAt).toUpperCase()}` : ''}
-                      {toPay > 0 ? <span style={{ color: 'var(--cb-ember)' }}> · {toPay} TO PAY</span> : null}
+                      {toPay > 0 ? <span style={{ color: 'var(--cb-ember)' }}> · {toPay} {side === 'BUYER' ? 'TO PAY' : 'AWAITING PAYMENT'}</span> : null}
                     </div>
                   </>
                 ) : (

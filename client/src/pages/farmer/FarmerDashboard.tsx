@@ -24,10 +24,21 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { Section, EmptyState, AgentCard, MarketRates } from '../../components/dashboard/DashboardPieces';
 import { PayoutCard } from '../../components/PayoutCard';
 import { BuyStockCard } from '../../components/BuyStockCard';
+import { ContractsPanel } from '../../components/contracts/ContractsPanel';
 import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
 import { timeAgo, greeting } from '../../utils/time';
 import api from '../../lib/axios';
+
+// A bid's state as the seller sees it: a waiting bid is the seller's move.
+const SELLER_BID_PILL: Record<string, { label: string; tone: string }> = {
+  PENDING: { label: 'Answer', tone: 'hot' },
+  COUNTERED: { label: 'You countered', tone: 'wait' },
+  ACCEPTED: { label: 'Accepted', tone: 'good' },
+  REJECTED: { label: 'Declined', tone: 'off' },
+  WITHDRAWN: { label: 'Withdrawn', tone: 'off' },
+  EXPIRED: { label: 'Expired', tone: 'off' },
+};
 
 interface Bid {
   id: string;
@@ -185,6 +196,8 @@ export function FarmerDashboard() {
             )}
           </Section>
 
+          {!shop && <ContractsPanel side="SELLER" />}
+
           {!shop && (
             <Section
               eyebrow="Bids · on your lots"
@@ -215,13 +228,15 @@ export function FarmerDashboard() {
                           <tr key={b.id}>
                             <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{timeAgo(b.createdAt)}</td>
                             <td style={{ color: 'var(--cb-ink)' }}>{b.buyer?.buyerProfile?.companyName || b.buyer?.name || 'Buyer'}</td>
-                            <td className="cb-mono" style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.cropName || '—'}</td>
+                            <td style={{ color: 'var(--cb-ink-2)' }}>{b.listing?.cropName || '—'}</td>
                             <td className="num cb-mono">
                               {formatCurrency(b.bidPricePerUnit, 'INR')}
                               {b.listing?.unit ? `/${UNIT_LABEL[b.listing.unit] ?? b.listing.unit}` : ''}
                             </td>
-                            <td className="cb-mono cb-tiny" style={{ color: b.status === 'PENDING' ? 'var(--cb-ember)' : 'var(--cb-ink-3)' }}>
-                              {b.status.toLowerCase()}
+                            <td>
+                              <span className={`cb-pill-status ${SELLER_BID_PILL[b.status]?.tone ?? 'off'}`}>
+                                {SELLER_BID_PILL[b.status]?.label ?? b.status.toLowerCase()}
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -233,27 +248,38 @@ export function FarmerDashboard() {
             </Section>
           )}
 
-          <Section eyebrow="Mandi · today" title={shop ? 'Rates for what you stock' : 'Rates for your crops'}>
+          <Section eyebrow="Mandi rates" title={shop ? 'Rates for what you stock' : 'Rates for your crops'} action={{ to: '/rates', label: 'All rates' }}>
             <MarketRates crops={crops} cropsUnavailable={failed.includes('stock')} />
           </Section>
         </div>
 
         <aside className="cb-bd-side">
           <div className="cb-bd-summary">
-            <div className="cb-mono cb-tiny cb-bd-summary-label">EARNED · RELEASED FROM ESCROW</div>
-            <div className="cb-bd-summary-value">
-              {failed.includes('earnings') ? '—' : loading ? '…' : formatCurrency(earnings, 'INR')}
-            </div>
+            {/* Before anything is released, the deals still to be paid are the
+                number worth leading with; "₹0 earned" above ₹2 lakh in deals
+                read as nothing happening. */}
+            {!loading && !failed.includes('earnings') && earnings === 0 && awaitingPay > 0 ? (
+              <>
+                <div className="cb-mono cb-tiny cb-bd-summary-label">IN DEALS · BUYERS STILL TO PAY</div>
+                <div className="cb-bd-summary-value">{formatCurrency(awaitingPay, 'INR')}</div>
+                <div className="cb-bd-summary-sub">Nothing released yet. A deal is released to you once the buyer confirms delivery.</div>
+              </>
+            ) : (
+              <>
+                <div className="cb-mono cb-tiny cb-bd-summary-label">EARNED · RELEASED FROM ESCROW</div>
+                <div className="cb-bd-summary-value">
+                  {failed.includes('earnings') ? '—' : loading ? '…' : formatCurrency(earnings, 'INR')}
+                </div>
+                {awaitingPay > 0 && (
+                  <div className="cb-bd-summary-sub">{formatCurrency(awaitingPay, 'INR')} more in deals waiting for the buyer to pay.</div>
+                )}
+              </>
+            )}
             <div className="cb-bd-summary-row">
               <Link to="/farmer/listings"><strong>{num(activeListings, 'stock')}</strong><span>{shop ? 'on the shelf' : 'lots live'}</span></Link>
               <Link to="/farmer/bids"><strong>{num(pendingBids.length, 'bids')}</strong><span>bids waiting</span></Link>
               <Link to="/farmer/deliveries"><strong>{num(toSend.length, 'orders')}</strong><span>to send</span></Link>
             </div>
-            {awaitingPay > 0 && (
-              <div className="cb-tiny" style={{ color: 'rgba(244,241,234,0.7)', marginTop: 8 }}>
-                {formatCurrency(awaitingPay, 'INR')} in deals waiting for the buyer to pay
-              </div>
-            )}
           </div>
 
           <div className="cb-bd-actions">
