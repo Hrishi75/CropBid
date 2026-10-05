@@ -25,6 +25,7 @@ import { money, timeAgo, unitLabel } from '../../lib/format';
 import { cropEmojiFor } from '../../utils/cropImages';
 import { Appear } from '../../components/motion';
 import { IconCheck, IconClock } from '../../components/icons';
+import { SupplyContracts } from '../../components/SupplyContracts';
 
 const TABS: { value: '' | BidStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -59,6 +60,8 @@ function statusWord(status: string) {
 
 export default function IncomingBidsScreen() {
   const insets = useSafeAreaInsets();
+  // Contract proposals waiting on this seller, reported by SupplyContracts.
+  const [contractsWaiting, setContractsWaiting] = useState(0);
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,11 +113,14 @@ export default function IncomingBidsScreen() {
         <View style={styles.headerPad}>
           <Eyebrow>Offers from buyers</Eyebrow>
           <Text style={styles.h1}>
-            {pending === 0
+            {pending + contractsWaiting === 0
               ? <>You're <Text style={styles.h1Serif}>all caught up.</Text></>
-              : <>{pending} {pending === 1 ? 'offer waits' : 'offers wait'} <Text style={styles.h1Serif}>for your reply.</Text></>}
+              : <>{pending + contractsWaiting} {pending + contractsWaiting === 1 ? 'offer waits' : 'offers wait'} <Text style={styles.h1Serif}>for your reply.</Text></>}
           </Text>
         </View>
+
+        {/* Contract proposals and running contracts, above single offers. */}
+        <SupplyContracts side="SELLER" onWaiting={setContractsWaiting} />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {TABS.map((t) => {

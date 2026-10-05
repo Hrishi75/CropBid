@@ -33,6 +33,7 @@ import { errorMessage } from '../../api/client';
 import type { DeliveryStatus, Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import RazorpayCheckout from '../../components/RazorpayCheckout';
+import { SupplyContracts } from '../../components/SupplyContracts';
 
 const DELIVERY_LABEL: Record<Transaction['deliveryStatus'], string> = {
   PENDING: 'Awaiting shipment',
@@ -285,6 +286,11 @@ export default function SettleScreen() {
           ) : null}
           <Text style={styles.h1}>{user?.role === 'BUYER' ? 'Contracts' : 'Your sales'}</Text>
           <Text style={styles.lede}>Every deal, its payment and its delivery.</Text>
+        </View>
+        {/* Supply contracts sit above the deals their batches become. Renders
+            nothing for an account without any. */}
+        <SupplyContracts side={user?.role === 'BUYER' ? 'BUYER' : 'SELLER'} />
+        <View style={styles.head}>
           {/* What this viewer owes and has to do, before any card is opened. */}
           {txs.length > 0 ? (
             <View style={styles.summary}>

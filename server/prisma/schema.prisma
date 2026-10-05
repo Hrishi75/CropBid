@@ -217,6 +217,8 @@ model User {
   /// always zero is a row that only exists to be joined against.
   wallet            Wallet?
   creditApplication CreditApplication?
+  contractsAsBuyer  SupplyContract[]   @relation("ContractBuyer")
+  contractsAsSeller SupplyContract[]   @relation("ContractSeller")
 
   // The SHA-256 of the session's refresh token, null when logged out.
   // WHY STORE IT AT ALL? So logout, suspension and a password reset can end a
@@ -514,6 +516,11 @@ model Listing {
   // it is never inventory, so listing.service and analytics filter it out.
   // Same marker technique as Bid.isDirectPurchase.
   isRequirementFill Boolean @default(false)
+
+  // Set on a batch of a supply contract (which is also isRequirementFill:
+  // born SOLD, never inventory). Null on every ordinary lot.
+  supplyContractId String?
+  supplyContract   SupplyContract? @relation(fields: [supplyContractId], references: [id], onDelete: SetNull)
 
   // Dates
   harvestDate DateTime? // When the crop was/will be harvested
@@ -1183,6 +1190,80 @@ enum WalletEntryType {
   REFUND
   /// A human correction, made by an admin. Always leaves a note.
   ADJUSTMENT
+}
+
+// =============================================================================
+// Model: SupplyContract — one price, a large total, delivered in batches
+// =============================================================================
+// How a packaged-food company buys (CLAUDE.md §9): agree a price with one
+// seller for, say, 500 t of wheat, delivered 50 t every two weeks. Proposed by
+// the buyer from a lot, accepted or declined by the seller. Each batch, when it
+// falls due, becomes an ordinary deal through the same path a requirement fill
+// takes (a SOLD Listing, an ACCEPTED Bid, a Transaction), so escrow, the 2%
+// fee and transport booking are exactly what they are for any deal.
+//
+// scheduledQuantity counts batches already turned into deals, not goods
+// delivered; delivery is read off each batch's own Transaction.
+
+model SupplyContract {
+  id String @id @default(uuid())
+
+  buyerId  String
+  buyer    User   @relation("ContractBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  /// The seller's User id. Batches hang off their FarmerProfile at batch time.
+  farmerId String
+  farmer   User   @relation("ContractSeller", fields: [farmerId], references: [id], onDelete: Cascade)
+
+  /// The lot it was proposed from, for reference only. A contract outlives
+  /// that lot, and batches never draw on its stock.
+  sourceListingId String?
+
+  cropName     String
+  cropVariety  String?
+  unit         Unit
+  qualityGrade QualityGrade
+  organic      Boolean      @default(false)
+
+  /// One price for every batch, fixed when the seller accepts.
+  pricePerUnit Float
+  currency     Currency @default(INR)
+
+  totalQuantity Float
+  batchQuantity Float
+  /// Days between batches: 7, 14 or 30.
+  everyDays     Int
+  startsAt      DateTime
+
+  deliveryAddress String
+  contactPhone    String
+  message         String?
+
+  status            SupplyContractStatus @default(PROPOSED)
+  scheduledQuantity Float                @default(0)
+  /// When the next batch becomes a deal. Null unless ACTIVE.
+  nextBatchAt       DateTime?
+
+  respondedAt DateTime?
+  endedAt     DateTime?
+  /// BUYER or SELLER, on a cancel.
+  endedBy     String?
+
+  batches Listing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, createdAt])
+  @@index([farmerId, createdAt])
+  @@index([status, nextBatchAt])
+}
+
+enum SupplyContractStatus {
+  PROPOSED // Sent by the buyer; waiting on the seller
+  ACTIVE // Accepted; batches become deals on schedule
+  COMPLETED // Every batch has been turned into a deal
+  DECLINED // The seller said no
+  CANCELLED // Called off by either side; batches already made stay deals
 }
 
 // =============================================================================

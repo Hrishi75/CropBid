@@ -42,6 +42,7 @@ import { BidPanel } from '../components/BidPanel';
 import { money, unitLabel } from '../lib/format';
 import { orderQuantity, railFor, shopPack, type ShopPack } from '../lib/catalog';
 import { colors, design, font, radius, spacing } from '../theme';
+import { ContractProposal } from '../components/ContractProposal';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'ListingDetail'>;
 
@@ -75,6 +76,9 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
   // A restaurant negotiates through its requests and the server refuses its
   // bids, so it is shown the way it does buy instead of a bid card.
   const isRestaurant = isBuyer && user?.buyerProfile?.companyType === 'RESTAURANT';
+  // An FMCG buyer can also propose a supply contract (components/ContractProposal),
+  // except on a local shop's lot, which sells by the kilo.
+  const canContract = isBuyer && user?.buyerProfile?.companyType === 'FMCG' && listing.farmer?.sellerType !== 'LOCAL_SHOP';
   const isConsumer = user?.role === 'CONSUMER';
   const isOwner = user?.id === listing.farmer?.user?.id;
   const canDirectBuy =
@@ -103,6 +107,8 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
       <ScrollView
         contentContainerStyle={[styles.container, (canDirectBuy || isGuest) && { paddingBottom: 130 }]}
         keyboardShouldPersistTaps="handled"
+        // The number pad has no Done key; scrolling closes it.
+        keyboardDismissMode="on-drag"
       >
         {imgs.length > 0 ? <ImagePager images={imgs} /> : null}
 
@@ -163,7 +169,10 @@ export default function ListingDetailScreen({ route, navigation }: Props) {
             </Pressable>
           </View>
         ) : isBuyer ? (
-          <BidPanel listing={listing} />
+          <View style={{ gap: 12 }}>
+            <BidPanel listing={listing} />
+            {canContract ? <ContractProposal listing={listing} /> : null}
+          </View>
         ) : isConsumer && !canDirectBuy ? (
           <Text style={styles.note}>This farmer hasn't enabled direct purchase for this crop.</Text>
         ) : !isConsumer ? (

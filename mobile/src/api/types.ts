@@ -556,3 +556,49 @@ export interface CreditApplicationInput {
   contactPhone: string;
   consent: boolean;
 }
+
+// Supply contracts (server: services/supplyContract.service). One price, a
+// large total, delivered in batches; each batch becomes an ordinary deal.
+export type SupplyContractStatus = 'PROPOSED' | 'ACTIVE' | 'COMPLETED' | 'DECLINED' | 'CANCELLED';
+
+export interface SupplyContractBatch {
+  id: string;
+  quantity: number;
+  createdAt: string;
+  transactions: Array<{ id: string; totalAmount: number; paymentStatus: PaymentStatus; deliveryStatus: DeliveryStatus }>;
+}
+
+export interface SupplyContract {
+  id: string;
+  buyerId: string;
+  farmerId: string;
+  buyer?: { id: string; name: string; buyerProfile?: { companyName?: string | null; companyType?: string | null } | null };
+  farmer?: { id: string; name: string; trustScore: number; farmerProfile?: { state?: string | null; businessName?: string | null } | null };
+  cropName: string;
+  cropVariety: string | null;
+  unit: Unit;
+  qualityGrade: QualityGrade;
+  pricePerUnit: number;
+  currency: string;
+  totalQuantity: number;
+  batchQuantity: number;
+  everyDays: number;
+  startsAt: string;
+  message: string | null;
+  status: SupplyContractStatus;
+  scheduledQuantity: number;
+  nextBatchAt: string | null;
+  endedBy: string | null;
+  batches: SupplyContractBatch[];
+  createdAt: string;
+}
+
+export interface ProposeContractInput {
+  listingId: string;
+  totalQuantity: number;
+  batchQuantity: number;
+  everyDays: number;
+  pricePerUnit: number;
+  startsAt?: string | null;
+  message?: string | null;
+}

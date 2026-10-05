@@ -17,6 +17,7 @@ import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
 import { warmRates } from './services/rates.service';
 import { repostDueRequirements } from './services/requirement.service';
+import { createDueBatches } from './services/supplyContract.service';
 
 const PORT = config.port;
 
@@ -58,12 +59,16 @@ server.listen(PORT, () => {
   `);
 });
 
-// REPEAT ORDERS. Every 15 minutes, post the next copy of any repeating request
+// REPEAT ORDERS AND CONTRACT BATCHES. Every 15 minutes, post the next copy of any repeating request
 // that has fallen due (requirement.service repostDueRequirements). Each repost
 // is claimed in the database, so a deploy's overlapping processes cannot both
 // post one. Not in tests: they call the function directly.
 if (config.nodeEnv !== 'test') {
-  const repost = () => repostDueRequirements().catch((err) => console.error('[repeat]', err));
+  // Supply-contract batches fall due on the same tick (supplyContract.service).
+  const repost = () => {
+    repostDueRequirements().catch((err) => console.error('[repeat]', err));
+    createDueBatches().catch((err) => console.error('[contracts]', err));
+  };
   setTimeout(repost, 30_000).unref();
   setInterval(repost, 15 * 60_000).unref();
 }

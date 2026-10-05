@@ -46,7 +46,11 @@ function pricePerKg(l: Listing): number {
 }
 
 function sortCheapestFirst(lots: Listing[]): Listing[] {
-  return [...lots].sort((a, b) => pricePerKg(a) - pricePerKg(b));
+  // Rupee lots first: a lot priced in dollars compared as rupees took BEST
+  // PRICE and the header's "from" price at a tenth of real wheat.
+  const home = lots.some((l) => l.currency === 'INR') ? 'INR' : lots[0]?.currency;
+  return [...lots].sort((a, b) =>
+    (a.currency === home ? 0 : 1) - (b.currency === home ? 0 : 1) || pricePerKg(a) - pricePerKg(b));
 }
 
 export default function CropSellersScreen({ route, navigation }: Props) {

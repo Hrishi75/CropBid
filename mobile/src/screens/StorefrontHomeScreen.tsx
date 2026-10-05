@@ -208,7 +208,12 @@ const KG_PER_UNIT: Record<string, number> = { KG: 1, QUINTAL: 100, TONNE: 1000 }
 function fromGroup(group: Listing[], mixedUnit: 'KG' | 'QUINTAL' = 'KG'): CardVM {
   const perKg = (l: Listing) =>
     (l.retailPricePerUnit ?? l.pricePerUnitMin) / (KG_PER_UNIT[l.unit] ?? 1);
-  const sorted = [...group].sort((a, b) => perKg(a) - perKg(b));
+  // Cheapest first, but only among lots in rupees (or the group's one currency
+  // when none are). A $260/tonne lot compared as ₹260 fronted the wheat card at
+  // "from ₹26/qtl", a tenth of any real wheat price.
+  const home = group.some((l) => l.currency === 'INR') ? 'INR' : group[0].currency;
+  const sorted = [...group].sort((a, b) =>
+    (a.currency === home ? 0 : 1) - (b.currency === home ? 0 : 1) || perKg(a) - perKg(b));
   const base = fromListing(sorted[0]);
   if (sorted.length === 1) return base;
   // Stock and price in the shared unit when all lots agree, else per kg.

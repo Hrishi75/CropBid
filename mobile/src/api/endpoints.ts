@@ -1,7 +1,7 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
-  CreditApplication, CreditApplicationInput, CreditRules, ExportOptions,
+  CreditApplication, CreditApplicationInput, CreditRules, ExportOptions, ProposeContractInput, SupplyContract,
   Address,
   AddressInput,
   AgentConfig,
@@ -829,5 +829,27 @@ export async function verifyWalletTopup(handshake: {
     '/wallet/topup/verify',
     handshake,
   );
+  return data;
+}
+
+// Supply contracts. The buyer proposes from a lot; the seller answers; either
+// side can end one. Batches show up as ordinary deals in Contracts.
+export async function mySupplyContracts(): Promise<SupplyContract[]> {
+  const { data } = await api.get<{ contracts: SupplyContract[] }>('/contracts/mine');
+  return data.contracts;
+}
+
+export async function proposeSupplyContract(input: ProposeContractInput): Promise<SupplyContract> {
+  const { data } = await api.post<SupplyContract>('/contracts', input);
+  return data;
+}
+
+export async function respondSupplyContract(id: string, accept: boolean): Promise<SupplyContract> {
+  const { data } = await api.put<SupplyContract>(`/contracts/${id}/respond`, { accept });
+  return data;
+}
+
+export async function cancelSupplyContract(id: string): Promise<SupplyContract> {
+  const { data } = await api.put<SupplyContract>(`/contracts/${id}/cancel`);
   return data;
 }
