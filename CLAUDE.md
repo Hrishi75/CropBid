@@ -522,6 +522,14 @@ Web has none of these. They are `mobile/` only.
 - **One address and date for the whole list**, and it can repeat; the items fall due together and the copies keep the list's id and name.
 - **Not built:** editing a list as a whole (each item is edited or withdrawn on its own); the website shows lists as separate requests.
 
+### A small buyer buys small, from nearby (2026-10-05)
+
+**For a SMALL_BUSINESS buyer and a local shop on its buying side** (`mobile/src/lib/smallBuyer.ts`). The user's pick of four options; buy-at-listed-price and simpler wording were the others and are not built.
+
+- **The market starts near them.** A "Buy from" switch under the category chips: their city, their state (default), or all India, sent to `GET /browse` as `location` or `state`, with the server's count under it. The state is the shop's own (`farmerProfile.state`), or else the state lots in their city are listed under; a buyer profile stores no state.
+- **A bid starts small.** About a tonne in the lot's unit (1,000 kg, 10 qtl or 1 t), capped at what is left, with steps under the quantity (e.g. 2 / 5 / 10 qtl) and Whole lot still there. Partial bids were always allowed by the server; the card just used to default to the whole lot.
+- **Any seller on its buying side no longer sees its own lots** on the market, and they are taken off the count: a shop's own 40 kg of wheat was showing as something to buy, and the server refuses a bid on it.
+
 ### Business credit: applied for on the wallet, decided by a person (2026-10-04)
 
 **A business buyer can ask for money to stock up, and repay in 30, 60 or 90 days. CropBid does not lend.** The user's call: a card on the buyer's wallet ("Need money to stock up?"), a form, and somebody at CropBid takes the application to a third-party lender. There is no lending partner signed, so nothing on screen may say "instant", "guaranteed", or anything that reads as CropBid lending. The card says it is not instant and that the lender sets the terms.

@@ -29,6 +29,7 @@ import { errorMessage } from '../api/client';
 import type { Bid, Listing } from '../api/types';
 import { money, timeAgo, unitLabel } from '../lib/format';
 import { mspForCrop } from '../lib/msp';
+import { buysSmall, SMALL_START, SMALL_STEPS } from '../lib/smallBuyer';
 import { colors, design, font } from '../theme';
 
 export function BidPanel({ listing }: { listing: Listing }) {
@@ -68,7 +69,10 @@ function NewBid({ listing, onPlaced }: { listing: Listing; onPlaced: () => void 
   const available = listing.remainingQuantity ?? listing.quantity;
 
   const [price, setPrice] = useState(String(lo));
-  const [qty, setQty] = useState(String(available));
+  // A small buyer starts at about a tonne, not the whole lot: a bhaji center
+  // asking for 300 quintals by default is one wrong tap from a huge bill.
+  const small = buysSmall(user);
+  const [qty, setQty] = useState(String(small ? Math.min(available, SMALL_START[listing.unit]) : available));
   const [message, setMessage] = useState('');
   const [address, setAddress] = useState(user?.location ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
@@ -175,6 +179,16 @@ function NewBid({ listing, onPlaced }: { listing: Listing; onPlaced: () => void 
           <Text style={[styles.chipLabel, q === available && styles.chipTextOn]}>{available.toLocaleString('en-IN')} {unit}</Text>
         </Pressable>
       </View>
+
+      {small ? (
+        <View style={styles.steps}>
+          {SMALL_STEPS[listing.unit].filter((n) => n < available).map((n) => (
+            <Pressable key={n} onPress={() => setQty(String(n))} style={[styles.step, q === n && styles.chipOn]}>
+              <Text style={[styles.stepText, q === n && styles.chipTextOn]}>{n.toLocaleString('en-IN')} {unit}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       {/* Delivery details are prefilled; folded so the price stays the focus. */}
       <Pressable onPress={() => { glide(); setMore((m) => !m); }} style={styles.moreRow}>
@@ -373,6 +387,9 @@ const styles = StyleSheet.create({
   warn: { fontFamily: font.sansMed, fontSize: 12.5, color: colors.ember },
   qtyRow: { flexDirection: 'row', gap: 8, alignItems: 'stretch' },
   wholeLot: { flex: 0, paddingHorizontal: 12, justifyContent: 'center' },
+  steps: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  step: { borderWidth: 1, borderColor: design.line, borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7, backgroundColor: design.bg },
+  stepText: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink },
   moreRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4,
     paddingVertical: 10, borderTopWidth: 1, borderTopColor: design.line,

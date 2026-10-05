@@ -52,6 +52,8 @@ import { Mono } from '../components/buyerKit';
 import { LanguagePill } from '../components/LanguagePicker';
 import { WalletPill } from '../components/WalletPill';
 import { EXPORT_DEFAULT, ExportFilters, isFiltering, type ExportFilter } from '../components/ExportFilters';
+import { NearbyFilter, type Reach } from '../components/NearbyFilter';
+import { buysSmall } from '../lib/smallBuyer';
 import { FreshBanner } from '../components/FreshBanner';
 import { ShopCard } from '../components/ShopCard';
 import { DeliveryList } from '../components/DeliveryList';
@@ -269,6 +271,9 @@ export default function StorefrontHomeScreen() {
   // the market loads one page, and its length was being shown as the count.
   const [total, setTotal] = useState<number | null>(null);
   const [exportFilter, setExportFilter] = useState<ExportFilter>(EXPORT_DEFAULT);
+  // Where a small buyer's market reaches. Starts at the state once known.
+  const [reach, setReach] = useState<Reach>('state');
+  const [buyerState, setBuyerState] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -319,6 +324,10 @@ export default function StorefrontHomeScreen() {
   // A restaurant negotiates through its requests and does not bid on lots
   // (the server refuses it), so the market is a price board for it.
   const isRestaurant = isBuyer && user?.buyerProfile?.companyType === 'RESTAURANT';
+  // A small business, or a shop buying stock, buys a few quintals from nearby
+  // (components/NearbyFilter, lib/smallBuyer).
+  const isSmall = buysSmall(user);
+  const buyerCity = isSmall ? user?.location?.trim() ?? '' : '';
   const isConsumer = role === 'CONSUMER';
   // Consumers and guests shop by the pack; buyers and farmers work in lots, so
   // they keep the wholesale ₹/quintal framing.
@@ -352,6 +361,25 @@ export default function StorefrontHomeScreen() {
     return () => { on = false; };
   }, [shopping, citiesTry]);
 
+  // A small buyer's state: the shop's own, or the state lots in its city are
+  // listed under. With neither, the filter offers city or all India.
+  useEffect(() => {
+    if (!isSmall) return;
+    const own = user?.farmerProfile?.state?.trim();
+    if (own) { setBuyerState(own); return; }
+    if (!buyerCity) { setReach('all'); return; }
+    let on = true;
+    browse({ location: buyerCity, limit: 1 })
+      .then((d) => {
+        if (!on) return;
+        const st = d.listings?.[0]?.state ?? null;
+        setBuyerState(st);
+        if (!st) setReach('city');
+      })
+      .catch(() => { if (on) setReach('city'); });
+    return () => { on = false; };
+  }, [isSmall, buyerCity, user?.farmerProfile?.state]);
+
   const load = useCallback(async () => {
     // No city means no shelf to fetch — the picker is showing instead.
     if (needsCity) { setLoaded(true); return; }
@@ -365,6 +393,8 @@ export default function StorefrontHomeScreen() {
           ? { directSale: true, location: city }
           : {
               limit: 50,
+              ...(isSmall && reach === 'city' && buyerCity ? { location: buyerCity } : {}),
+              ...(isSmall && reach === 'state' && buyerState ? { state: buyerState } : {}),
               ...(isExporter
                 ? {
                     quality: exportFilter.gradeA ? 'A' as const : undefined,
@@ -375,8 +405,13 @@ export default function StorefrontHomeScreen() {
             },
       );
       glide();
-      setListings(data.listings ?? []);
-      setTotal(data.pagination?.total ?? data.listings?.length ?? 0);
+      // A seller on its buying side never sees its own lots: it cannot bid on
+      // them (the server refuses), and its shop's 40 kg of wheat was showing
+      // up as something to buy. Taken off the count too.
+      const all = data.listings ?? [];
+      const mine = isBuyer && user ? all.filter((l) => l.farmer?.user?.id === user.id).length : 0;
+      setListings(mine ? all.filter((l) => l.farmer?.user?.id !== user!.id) : all);
+      setTotal(Math.max(0, (data.pagination?.total ?? all.length) - mine));
       setError(null);
     } catch (e) {
       setError(errorMessage(e, 'Could not reach the market. Pull down to try again.'));
@@ -384,7 +419,7 @@ export default function StorefrontHomeScreen() {
     } finally {
       setLoaded(true);
     }
-  }, [shopping, city, needsCity, isExporter, exportFilter]);
+  }, [shopping, city, needsCity, isExporter, exportFilter, isSmall, reach, buyerState, buyerCity, isBuyer, user]);
 
   // The city's shops, for the Local shops lane.
   //
@@ -688,6 +723,9 @@ export default function StorefrontHomeScreen() {
               />
             ))}
           </ScrollView>
+          {isSmall ? (
+            <NearbyFilter value={reach} onChange={(r) => { glide(); setTotal(null); setReach(r); }} city={buyerCity} state={buyerState} total={total} />
+          ) : null}
           {isExporter ? (
             <ExportFilters value={exportFilter} onChange={(f) => { glide(); setTotal(null); setExportFilter(f); }} total={total} />
           ) : null}
@@ -847,11 +885,16 @@ export default function StorefrontHomeScreen() {
                     <Pulse style={styles.liveDot} />
                     <Mono style={styles.bannerChipText}>
                       {listings.length > 0
-                        ? `LIVE · ${total ?? listings.length} ${isWholesaler || isBuyer ? '' : 'FARMER '}${(total ?? listings.length) === 1 ? 'LOT' : 'LOTS'}${isExporter && isFiltering(exportFilter) ? ' EXPORT-READY' : isBuyer ? ' OPEN' : ''}${city ? ` IN ${city.toUpperCase()}` : ''}`
+                        ? `LIVE · ${total ?? listings.length} ${isWholesaler || isBuyer ? '' : 'FARMER '}${(total ?? listings.length) === 1 ? 'LOT' : 'LOTS'}${isExporter && isFiltering(exportFilter) ? ' EXPORT-READY' : isBuyer ? ' OPEN' : ''}${city ? ` IN ${city.toUpperCase()}` : isSmall && reach === 'city' && buyerCity ? ` IN ${buyerCity.toUpperCase()}` : isSmall && reach === 'state' && buyerState ? ` IN ${buyerState.toUpperCase()}` : ''}`
                         : 'STRAIGHT FROM THE FARM · ESCROW SETTLED'}
                     </Mono>
                   </View>
-                  {isRestaurant ? (
+                  {isSmall ? (
+                    <Text style={styles.bannerTitle}>
+                      Buy what you need,{'\n'}
+                      <Text style={styles.bannerItalic}>from</Text> nearby.
+                    </Text>
+                  ) : isRestaurant ? (
                     <Text style={styles.bannerTitle}>
                       Know the rate,{'\n'}
                       <Text style={styles.bannerItalic}>then</Text> negotiate.
@@ -873,7 +916,7 @@ export default function StorefrontHomeScreen() {
                     </Text>
                   )}
                   <View style={styles.bannerTicks}>
-                    <Text style={styles.bannerTick}>✓ {isRestaurant ? t('Post what the kitchen needs') : isBuyer ? t('Bid or counter on any lot') : t('Open bidding & auctions')}</Text>
+                    <Text style={styles.bannerTick}>✓ {isSmall ? t('Bid on part of any lot') : isRestaurant ? t('Post what the kitchen needs') : isBuyer ? t('Bid or counter on any lot') : t('Open bidding & auctions')}</Text>
                     {isRestaurant ? <Text style={styles.bannerTick}>✓ {t('Sellers offer, you counter')}</Text> : null}
                     {isRestaurant ? null : <Text style={styles.bannerTick}>✓ {t('Escrow settlement')}</Text>}
                     <Text style={styles.bannerTick}>✓ {isWholesaler || isBuyer ? t('Delivery booked for you') : t('Farm to door')}</Text>
