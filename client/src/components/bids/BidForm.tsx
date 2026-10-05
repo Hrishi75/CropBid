@@ -16,6 +16,7 @@ import { Input } from '../ui/Input';
 import { Button } from '../ui/Button';
 import { ArrowIcon } from '../ui/Brand';
 import { useAuth } from '../../context/AuthContext';
+import { buysSmall, SMALL_START, SMALL_STEPS } from '../../utils/smallBuyer';
 import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import api from '../../lib/axios';
@@ -30,7 +31,11 @@ export function BidForm({ listing }: BidFormProps) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [price, setPrice] = useState('');
-  const [quantity, setQuantity] = useState(String(listing.quantity));
+  // A small buyer starts at about a tonne rather than the whole lot.
+  const small = buysSmall(user);
+  const [quantity, setQuantity] = useState(String(
+    small ? Math.min(SMALL_START[listing.unit] ?? listing.quantity, listing.quantity) : listing.quantity,
+  ));
   const [message, setMessage] = useState('');
   const [payment, setPayment] = useState<'LC' | 'NET7' | 'NET15'>('LC');
   const [delivery, setDelivery] = useState<'FOB' | 'CIF'>('CIF');
@@ -151,6 +156,18 @@ export function BidForm({ listing }: BidFormProps) {
             onChange={(e) => setQuantity(e.target.value)}
             required
           />
+          {small && (
+            <div className="cb-pill-group" style={{ marginTop: -6 }}>
+              {(SMALL_STEPS[listing.unit] ?? []).filter((q) => q <= listing.quantity).map((q) => (
+                <button key={q} type="button" className={`cb-pill ${Number(quantity) === q ? 'active' : ''}`} onClick={() => setQuantity(String(q))}>
+                  {q} {listing.unit.toLowerCase()}
+                </button>
+              ))}
+              <button type="button" className={`cb-pill ${Number(quantity) === listing.quantity ? 'active' : ''}`} onClick={() => setQuantity(String(listing.quantity))}>
+                Whole lot
+              </button>
+            </div>
+          )}
           {bidPrice > 0 && bidQty > 0 && (
             <div style={{ padding: 12, background: 'var(--cb-paper-2)', borderRadius: 8 }}>
               <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 4 }}>TOTAL</div>
