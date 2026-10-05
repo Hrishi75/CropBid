@@ -278,6 +278,10 @@ export interface BuyerRequirement {
   /** An export request delivers to a port. */
   forExport?: boolean;
   exportPort?: string | null;
+  /** What the exporter asked the seller to meet (server/src/utils/exportSpec). */
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
 }
 
 export interface RequirementOffer {

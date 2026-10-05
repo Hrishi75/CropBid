@@ -3199,3 +3199,8 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 .cb-ps-applied { display: flex; flex-direction: column; gap: 3px; padding: 18px 0; border-bottom: 1px solid var(--cb-line); }
 .cb-ps-applied strong { font-size: 17px; font-weight: 600; color: var(--cb-ink); text-transform: capitalize; }
 .cb-ps-applied span:last-child { font-size: 13px; color: var(--cb-ink-3); }
+
+/* ---- Export ask on a demand card (components/requirements/RequirementCard) -- */
+.cb-rq-export { padding: 10px 12px; border-radius: 10px; background: #e6efd9; border: 1px solid rgba(77, 102, 56, 0.2); }
+.cb-rq-export .cb-mono { color: #3d5a2c; letter-spacing: 0.06em; margin-bottom: 4px; }
+.cb-rq-export ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--cb-ink); }

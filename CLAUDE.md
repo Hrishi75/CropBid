@@ -480,7 +480,7 @@ These began in `mobile/`. Where the website has caught up, the section says so; 
 - **A request not for export carries no export details**, even if a client sends some.
 - **Nothing checks any of it.** Moisture, packing and documents are what the exporter asked for, not what anyone verified (§2b).
 - **Payment and delivery terms are pickers now** (Letter of credit / 7 days / 15 days; FOB / CIF), for every buyer. They were free-text boxes over a server that accepts only those codes, so anything typed there failed the whole request.
-- **The website posts them too (2026-10-05):** an exporter's request form on the site has the same port picker, moisture, packing and documents, read from the same endpoint. Its market has the lot-size chips for every buyer, on at Grade A and 10+ quintals for an exporter, beside the grade and organic filters it already had. The site's demand pages still show an export request as an ordinary one delivering to the port's city.
+- **The website posts them too (2026-10-05):** an exporter's request form on the site has the same port picker, moisture, packing and documents, read from the same endpoint. Its market has the lot-size chips for every buyer, on at Grade A and 10+ quintals for an exporter, beside the grade and organic filters it already had. Sellers on the site's demand pages see "TO PORT" and an "exporter asks for" block (moisture, packing, documents), with the names read from the same endpoint (`client/src/utils/exportOptions.ts`).
 
 **An exporter's dashboard has an export book (2026-10-05)** (`components/ExportBook`), under "Needs your decision", which stays first because it is work and the book is a view.
 
