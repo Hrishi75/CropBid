@@ -63,7 +63,7 @@ const ACTION_TYPES = new Set([
 type Filter = 'all' | 'unread';
 
 export function NotificationDropdown() {
-  const { user } = useAuth();
+  const { user, switchMode } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -155,8 +155,14 @@ export function NotificationDropdown() {
     setIsOpen(false);
     const data = notification.data;
     if (notification.type === 'CREDIT_APPLICATION') {
-      // Ops are told of a new application, the buyer of a decision.
-      navigate(user?.role === 'ADMIN' ? '/admin/credit' : '/buyer/credit');
+      // Ops are told of a new application, the buyer of a decision. Credit is
+      // applied for on the buying side, so a seller reading the decision while
+      // selling is switched over first; /buyer/credit would bounce them.
+      if (user?.role === 'ADMIN') navigate('/admin/credit');
+      else {
+        if (user?.role === 'FARMER' && user.buyerProfile) switchMode('BUY');
+        navigate('/buyer/credit');
+      }
     } else if (notification.type.startsWith('SUPPLY_CONTRACT')) {
       // A batch is a deal to pay; anything else is about the contract itself.
       navigate(data?.transactionId ? `/transactions/${data.transactionId}` : '/contracts');

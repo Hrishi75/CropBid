@@ -95,9 +95,11 @@ export function FarmerDashboard() {
       if (b.status === 'fulfilled') setBids(Array.isArray(b.value.data) ? b.value.data : []); else bad.push('bids');
       if (s.status === 'fulfilled') setEarnings(s.value.data.totalRevenue || 0); else bad.push('earnings');
       if (t.status === 'fulfilled') setTxs(Array.isArray(t.value.data) ? t.value.data : t.value.data?.transactions ?? []); else bad.push('orders');
-      // Offers and contracts are newer features; a seller without any is fine.
-      if (o.status === 'fulfilled') setOffers(Array.isArray(o.value.data) ? o.value.data : []);
-      if (c.status === 'fulfilled') setContracts(c.value.data?.contracts ?? []);
+      // A failure here is said, not shown as empty: both feed the decisions
+      // list, and "nothing waiting on you" over a buyer's unseen counter is a
+      // claim the page cannot make.
+      if (o.status === 'fulfilled') setOffers(Array.isArray(o.value.data) ? o.value.data : []); else bad.push('offers');
+      if (c.status === 'fulfilled') setContracts(c.value.data?.contracts ?? []); else bad.push('contracts');
       setFailed(bad);
       setLoading(false);
     })();
@@ -135,9 +137,14 @@ export function FarmerDashboard() {
     })),
   ];
 
+  // The feeds the decisions list is built from; if any failed it is incomplete.
+  const decisionsIncomplete = ['orders', 'bids', 'offers', 'contracts'].some((f) => failed.includes(f));
+
   const lede = loading
     ? 'Loading your desk…'
-    : todos.length > 0
+    : todos.length === 0 && decisionsIncomplete
+      ? 'Some of what needs you could not be loaded. Refresh to try again.'
+      : todos.length > 0
       ? `${todos.length} ${todos.length === 1 ? 'thing needs' : 'things need'} you, starting below.`
       : activeListings > 0
         ? `${activeListings} ${activeListings === 1 ? words.lot : words.lots}, nothing waiting on you.`
@@ -170,6 +177,8 @@ export function FarmerDashboard() {
           <Section eyebrow="Needs you" title="Your decisions">
             {loading ? (
               <EmptyState>Loading…</EmptyState>
+            ) : todos.length === 0 && decisionsIncomplete ? (
+              <EmptyState>Some of your decisions couldn't be loaded ({failed.filter((f) => ['orders', 'bids', 'offers', 'contracts'].includes(f)).join(', ')}). Refresh to try again.</EmptyState>
             ) : todos.length === 0 ? (
               <EmptyState>
                 Nothing waiting on you.{' '}

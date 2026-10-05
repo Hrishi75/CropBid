@@ -374,7 +374,13 @@ export function CreateRequirement() {
                 <input
                   type="checkbox"
                   checked={organic}
-                  onChange={(e) => setOrganic(e.target.checked)}
+                  onChange={(e) => {
+                    setOrganic(e.target.checked);
+                    // An organic certificate is refused on a request that need
+                    // not be organic, and its box hides once this is off, so a
+                    // ticked one would fail the request with nothing to untick.
+                    if (!e.target.checked) setRequiredDocs((cur) => cur.filter((d) => d !== 'ORGANIC_CERT'));
+                  }}
                   style={{ accentColor: 'var(--cb-forest)' }}
                 />
                 Certified organic only
