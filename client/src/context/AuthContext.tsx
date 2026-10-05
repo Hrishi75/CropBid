@@ -20,7 +20,7 @@
 
 import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import api, { keepAliveSession, setAccessToken, setActAs } from '../lib/axios';
+import api, { keepAliveSession, refreshSession, setAccessToken, setActAs } from '../lib/axios';
 import {
   clearActivity,
   isIdle,
@@ -167,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const { data } = await api.post('/auth/refresh');
+        const { data } = await refreshSession();
         setAccessToken(data.accessToken);
         setUser(data.user);
         setSessionHint(true);

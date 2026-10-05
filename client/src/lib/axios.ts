@@ -81,6 +81,22 @@ api.interceptors.request.use(
 // Track whether we're already refreshing (to prevent infinite loops)
 let isRefreshing = false;
 
+// ---------------------------------------------------------------------------
+// refreshSession: POST /auth/refresh, one tab at a time
+// ---------------------------------------------------------------------------
+// Every tab sends the same refresh cookie, and the server accepts only the
+// newest token it issued, rotating it on each refresh. Two tabs refreshing at
+// the same moment both send the old cookie: the first wins and the second is
+// refused, which signed that tab out. `isRefreshing` only serialises calls
+// inside one tab, so this takes a browser-wide lock as well. A tab that waits
+// for it sends the cookie the winner's response just set, and rotates again.
+// Where the Web Locks API is missing it falls back to the plain call.
+export function refreshSession() {
+  const call = () => api.post('/auth/refresh');
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks ? locks.request('cb-auth-refresh', call) : call();
+}
+
 // Queue of requests that failed while we were refreshing
 // Once refresh completes, we retry them all with the new token
 let failedQueue: Array<{
@@ -130,7 +146,7 @@ api.interceptors.response.use(
 
       try {
         // Call the refresh endpoint (uses the httpOnly cookie)
-        const { data } = await api.post('/auth/refresh');
+        const { data } = await refreshSession();
 
         // Store the new access token
         setAccessToken(data.accessToken);
@@ -191,7 +207,7 @@ export async function keepAliveSession(): Promise<void> {
 
   isRefreshing = true;
   try {
-    const { data } = await api.post('/auth/refresh');
+    const { data } = await refreshSession();
     setAccessToken(data.accessToken);
     markSynced();
     processQueue(null, data.accessToken);
