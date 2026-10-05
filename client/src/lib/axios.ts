@@ -69,7 +69,11 @@ api.interceptors.request.use(
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
+    // Set or cleared on every pass, retries included: a retry reuses the
+    // original config, so setting it only when buying left a Buying-mode
+    // header on a request retried after the seller switched to Selling.
     if (actAs) config.headers['X-Act-As'] = actAs;
+    else delete config.headers['X-Act-As'];
     return config;
   },
   (error) => Promise.reject(error),

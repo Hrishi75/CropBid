@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
@@ -36,11 +36,17 @@ export function CreditApply() {
   const [consent, setConsent] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Under review or approved is a person's decision, which the server will not
+  // let the form overwrite, so those states get a card rather than fields.
+  const [locked, setLocked] = useState<{ status: 'IN_REVIEW' | 'APPROVED'; approvedLimit: number | null } | null>(null);
 
   useEffect(() => {
     api.get('/credit').then(({ data }) => {
       setRules(data.rules);
       const a = data.application;
+      if (a && (a.status === 'IN_REVIEW' || a.status === 'APPROVED')) {
+        setLocked({ status: a.status, approvedLimit: a.approvedLimit ?? null });
+      }
       if (a) {
         setEditing(a.status === 'SUBMITTED');
         setBusinessName(a.businessName); setGstin(a.gstin ?? ''); setYears(String(a.yearsInBusiness));
@@ -89,6 +95,24 @@ export function CreditApply() {
           A person reads every application and, with your permission, takes it to a lending partner. CropBid does not lend money, and it is not instant.
         </p>
       </div>
+      {locked ? (
+        <div className="cb-card" style={{ padding: 24, maxWidth: 680, display: 'grid', gap: 10 }}>
+          <div className="cb-eyebrow" style={{ color: locked.status === 'APPROVED' ? 'var(--cb-sage)' : 'var(--cb-wheat)' }}>
+            ● {locked.status === 'APPROVED' ? 'Approved' : 'Being reviewed'}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>
+            {locked.status === 'APPROVED'
+              ? `A lender agreed to ${locked.approvedLimit != null ? formatCurrency(locked.approvedLimit, 'INR') : 'a limit'}.`
+              : 'A person at CropBid is reading your application.'}
+          </div>
+          <p className="cb-small" style={{ margin: 0, color: 'var(--cb-ink-3)' }}>
+            {locked.status === 'APPROVED'
+              ? 'We will call you to set it up. Nothing is added to your wallet until then.'
+              : 'It cannot be changed while it is being decided. We will tell you the answer here and call you.'}
+          </p>
+          <div><Link to="/buyer" className="cb-btn cb-btn-ghost">Back to your dashboard</Link></div>
+        </div>
+      ) : (
       <form onSubmit={send} className="cb-card" style={{ padding: 24, maxWidth: 680, display: 'grid', gap: 16 }}>
         <Input label="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
         <div className="cb-cols-2" style={{ gap: 12 }}>
@@ -123,6 +147,7 @@ export function CreditApply() {
           <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>Interest and terms are set by the lender and told to you before you agree.</span>
         </div>
       </form>
+      )}
     </DashboardLayout>
   );
 }

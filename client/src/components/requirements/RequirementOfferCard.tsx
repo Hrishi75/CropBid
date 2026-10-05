@@ -162,8 +162,19 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
           </div>
         )}
 
-        {/* One price field serves the buyer's counter and the seller's new price. */}
-        {pricing && (
+        {/* One price field serves the buyer's counter and the seller's new price,
+            held to the server's rule: a counter below the seller's price, a
+            new price strictly between the two. */}
+        {pricing && (() => {
+          const p = Number(price);
+          const low = viewAs === 'buyer' ? 0 : offer.buyerCounterPrice ?? 0;
+          const ok = p > low && p < offer.pricePerUnit;
+          const why = price && !ok
+            ? viewAs === 'buyer'
+              ? `Offer less than their ${formatCurrency(offer.pricePerUnit, currency)}`
+              : `Between ${formatCurrency(low, currency)} and ${formatCurrency(offer.pricePerUnit, currency)}, not either one`
+            : undefined;
+          return (
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
             <div style={{ flex: '1 1 160px' }}>
               <Input
@@ -175,14 +186,16 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
                   ? `Below ${formatCurrency(offer.pricePerUnit, currency)}`
                   : `${formatCurrency(offer.buyerCounterPrice ?? 0, currency)} to ${formatCurrency(offer.pricePerUnit, currency)}`}
                 autoFocus
+                error={why}
               />
             </div>
-            <Button size="sm" disabled={!(Number(price) > 0)} onClick={() => handleAction(viewAs === 'buyer' ? 'counter' : 'revise')} loading={loading === 'counter' || loading === 'revise'}>
+            <Button size="sm" disabled={!ok} onClick={() => handleAction(viewAs === 'buyer' ? 'counter' : 'revise')} loading={loading === 'counter' || loading === 'revise'}>
               Send
             </Button>
             <Button size="sm" variant="link" onClick={() => setPricing(false)}>Cancel</Button>
           </div>
-        )}
+          );
+        })()}
 
         {viewAs === 'buyer' && offer.status === 'PENDING' && !pricing && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>

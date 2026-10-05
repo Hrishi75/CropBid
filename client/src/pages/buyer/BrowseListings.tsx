@@ -82,6 +82,8 @@ export function BrowseListings() {
       else if (scope === 'state' && myState) params.set('state', myState);
       else if (filters.state) params.set('state', filters.state);
       if (minQuintals > 0) params.set('minQuintals', String(minQuintals));
+      // A seller on its buying side never sees its own lots, in the page or the count.
+      if (user?.farmerProfile && user.id) params.set('excludeSellerUserId', user.id);
       if (filters.quality) params.set('quality', filters.quality);
       if (filters.organic) params.set('organic', filters.organic);
       if (filters.freshProduce === 'true' && !filters.crop) {

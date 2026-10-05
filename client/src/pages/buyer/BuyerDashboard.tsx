@@ -79,6 +79,8 @@ export function BuyerDashboard() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [txs, setTxs] = useState<Tx[]>([]);
   const [reqs, setReqs] = useState<Req[]>([]);
+  // The server's count of open requests; the page holds at most 50.
+  const [reqTotal, setReqTotal] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<string[]>([]);
@@ -96,7 +98,10 @@ export function BuyerDashboard() {
       const bad: string[] = [];
       if (b.status === 'fulfilled') setBids(Array.isArray(b.value.data) ? b.value.data : []); else bad.push('bids');
       if (t.status === 'fulfilled') setTxs(Array.isArray(t.value.data) ? t.value.data : t.value.data?.transactions ?? []); else bad.push('deals');
-      if (r.status === 'fulfilled') setReqs(r.value.data?.requirements ?? []); else bad.push('requests');
+      if (r.status === 'fulfilled') {
+        setReqs(r.value.data?.requirements ?? []);
+        setReqTotal(r.value.data?.pagination?.total ?? r.value.data?.requirements?.length ?? 0);
+      } else bad.push('requests');
       if (s.status === 'fulfilled') setStats(s.value.data); else bad.push('stats');
       setFailed(bad);
       setLoading(false);
@@ -313,7 +318,7 @@ export function BuyerDashboard() {
             <div className="cb-bd-summary-row">
               <Link to="/transactions"><strong>{num(stats?.total, 'stats')}</strong><span>deals</span></Link>
               <Link to="/transactions"><strong>{num(stats?.inEscrow, 'stats')}</strong><span>paid, in progress</span></Link>
-              <Link to="/buyer/requirements"><strong>{num(reqs.length, 'requests')}</strong><span>open requests</span></Link>
+              <Link to="/buyer/requirements"><strong>{num(reqTotal, 'requests')}</strong><span>open requests</span></Link>
             </div>
             {toPay > 0 && (
               <Link to={todos.find((d) => d.key.startsWith('pay-'))?.to ?? '/transactions'} className="cb-bd-summary-due">Pay now →</Link>
