@@ -3047,12 +3047,19 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 /* Two columns on desktop: the work on the left, the summary, credit and rates
    on the right. One column below 1000px, summary first so the totals stay at
    the top on a phone. */
-.cb-bd-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; }
-.cb-bd-main, .cb-bd-side { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.cb-bd-side { gap: 16px; position: sticky; top: 84px; }
+.cb-bd-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 28px; row-gap: 16px; align-items: start;
+  grid-template-areas: "main side" "main late";
+}
+.cb-bd-main { grid-area: main; }
+.cb-bd-side { grid-area: side; }
+.cb-bd-late { grid-area: late; }
+.cb-bd-main, .cb-bd-side, .cb-bd-late { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cb-bd-side, .cb-bd-late { gap: 16px; }
+/* One column: the totals and the main action first, then the decisions, then
+   the secondary cards (credit, the switch, the helper, rates). */
 @media (max-width: 1000px) {
-  .cb-bd-grid { grid-template-columns: minmax(0, 1fr); }
-  .cb-bd-side { position: static; order: -1; }
+  .cb-bd-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main" "late"; }
 }
 
 .cb-bd-todos { display: flex; flex-direction: column; gap: 8px; }

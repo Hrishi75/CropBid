@@ -295,12 +295,14 @@ export function BuyerDashboard() {
             <Link to="/buyer/requirements/new" className="cb-btn cb-btn-ghost">Post what you need</Link>
           </div>
 
-          <CreditCard />
+        </aside>
 
+        <div className="cb-bd-late">
+          <CreditCard />
           <Section eyebrow="Mandi · today" title="Rates you bid on">
             <MarketRates crops={crops} cropsUnavailable={failed.includes('bids')} limit={4} />
           </Section>
-        </aside>
+        </div>
       </div>
     </DashboardLayout>
   );
