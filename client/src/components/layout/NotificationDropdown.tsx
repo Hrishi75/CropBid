@@ -15,7 +15,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign, ShoppingCart } from 'lucide-react';
+import { Bell, Check, CheckCheck, Package, Gavel, Truck, Bot, DollarSign, ShoppingCart, Repeat, FileSignature, Landmark, ArrowLeftRight, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getSocket } from '../../lib/socket';
 import api from '../../lib/axios';
@@ -37,7 +37,30 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   REQUIREMENT_OFFER_ACCEPTED: Check,
   REQUIREMENT_OFFER_REJECTED: Package,
   REQUIREMENT_CLOSED: Package,
+  // Added with the buyer-side work (counters, repeats, contracts, credit).
+  REQUIREMENT_OFFER_COUNTERED: ArrowLeftRight,
+  REQUIREMENT_COUNTER_ACCEPTED: Check,
+  REQUIREMENT_REPOSTED: Repeat,
+  SUPPLY_CONTRACT_PROPOSED: FileSignature,
+  SUPPLY_CONTRACT_ACCEPTED: FileSignature,
+  SUPPLY_CONTRACT_DECLINED: FileSignature,
+  SUPPLY_CONTRACT_CANCELLED: FileSignature,
+  SUPPLY_CONTRACT_BATCH: Package,
+  CREDIT_APPLICATION: Landmark,
+  DEAL_NEEDS_TRANSPORT: Truck,
+  PAYOUT_DETAILS_MISSING: Wallet,
+  RETAIL_REFUND_DUE: AlertTriangle,
+  RETAIL_OVERPAID: AlertTriangle,
 };
+
+// Needs the reader to act (an answer, a payment), so it is marked in ember;
+// everything else is news.
+const ACTION_TYPES = new Set([
+  'NEW_BID', 'BID_COUNTERED', 'REQUIREMENT_OFFER', 'REQUIREMENT_OFFER_COUNTERED',
+  'SUPPLY_CONTRACT_PROPOSED', 'SUPPLY_CONTRACT_BATCH', 'DEAL_NEEDS_TRANSPORT', 'PAYOUT_DETAILS_MISSING',
+]);
+
+type Filter = 'all' | 'unread';
 
 export function NotificationDropdown() {
   const { user } = useAuth();
@@ -46,6 +69,7 @@ export function NotificationDropdown() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch unread count on mount
@@ -130,7 +154,13 @@ export function NotificationDropdown() {
     // Navigate based on notification type and data
     setIsOpen(false);
     const data = notification.data;
-    if (notification.type === 'DEAL_NEEDS_TRANSPORT') {
+    if (notification.type === 'CREDIT_APPLICATION') {
+      // Ops are told of a new application, the buyer of a decision.
+      navigate(user?.role === 'ADMIN' ? '/admin/credit' : '/buyer/credit');
+    } else if (notification.type.startsWith('SUPPLY_CONTRACT')) {
+      // A batch is a deal to pay; anything else is about the contract itself.
+      navigate(data?.transactionId ? `/transactions/${data.transactionId}` : '/contracts');
+    } else if (notification.type === 'DEAL_NEEDS_TRANSPORT') {
       // Ops ping, so it lands on the job rather than the record. It must also
       // come BEFORE the transactionId branch below: that one goes to
       // /transactions/:id, and getTransaction() authorises on farmerId/buyerId
@@ -171,90 +201,79 @@ export function NotificationDropdown() {
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
       >
         <Bell size={18} />
-        {unreadCount > 0 && <span className="cb-notif-dot" />}
+        {unreadCount > 0 && <span className="cb-notif-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}
       </button>
 
       {isOpen && (
-        <div
-          className="cb-card cb-notif-menu"
-          style={{ boxShadow: '0 16px 40px -10px rgba(20,30,15,0.18)' }}
-        >
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 16px', borderBottom: '1px solid var(--cb-line)',
-              background: 'var(--cb-paper-2)',
-            }}
-          >
-            <span className="cb-eyebrow">Notifications {unreadCount > 0 ? `· ${unreadCount}` : ''}</span>
+        <div className="cb-card cb-notif-menu cb-nm">
+          <div className="cb-nm-head">
+            <span className="cb-nm-title">Notifications</span>
             {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                className="cb-btn cb-btn-link"
-                style={{ fontSize: 12, gap: 4 }}
-              >
-                <CheckCheck size={12} /> Mark all read
+              <button type="button" onClick={handleMarkAllRead} className="cb-nm-markall">
+                <CheckCheck size={13} /> Mark all read
               </button>
             )}
           </div>
+          <div className="cb-nm-tabs" role="tablist">
+            {(['all', 'unread'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                role="tab"
+                aria-selected={filter === f}
+                className={`cb-nm-tab ${filter === f ? 'on' : ''}`}
+                onClick={() => setFilter(f)}
+              >
+                {f === 'all' ? 'All' : `Unread${unreadCount > 0 ? ` · ${unreadCount}` : ''}`}
+              </button>
+            ))}
+          </div>
 
-          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+          <div className="cb-nm-list">
             {loading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: 28 }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'cb-spin 0.8s linear infinite' }}>
-                  <circle cx="12" cy="12" r="10" stroke="var(--cb-ink-3)" strokeWidth="3" opacity="0.25" />
-                  <path d="M4 12a8 8 0 018-8" stroke="var(--cb-forest)" strokeWidth="3" strokeLinecap="round" />
-                </svg>
-              </div>
-            ) : notifications.length === 0 ? (
-              <div style={{ padding: 28, textAlign: 'center' }} className="cb-tiny">
-                No notifications yet
-              </div>
-            ) : (
-              notifications.map((notif) => {
-                const Icon = TYPE_ICONS[notif.type] || Bell;
+              <div className="cb-nm-empty">Loading…</div>
+            ) : (() => {
+              const shown = filter === 'unread' ? notifications.filter((n) => !n.read) : notifications;
+              if (shown.length === 0) {
                 return (
-                  <button
-                    key={notif.id}
-                    type="button"
-                    onClick={() => handleClickNotification(notif)}
-                    style={{
-                      width: '100%', textAlign: 'left',
-                      padding: '12px 16px', display: 'flex', gap: 12,
-                      background: !notif.read ? 'rgba(31,45,24,0.04)' : 'transparent',
-                      border: 'none', borderBottom: '1px solid var(--cb-line)',
-                      cursor: 'pointer', font: 'inherit', color: 'inherit',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 28, height: 28, borderRadius: 999, flexShrink: 0,
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        background: !notif.read ? 'var(--cb-forest)' : 'var(--cb-paper-2)',
-                        color: !notif.read ? '#f4f1ea' : 'var(--cb-ink-3)',
-                      }}
-                    >
-                      <Icon size={14} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: !notif.read ? 500 : 400, color: 'var(--cb-ink)' }}>
-                        {notif.title}
-                      </div>
-                      <div className="cb-small" style={{ marginTop: 2, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {notif.message}
-                      </div>
-                      <div className="cb-mono cb-tiny" style={{ marginTop: 4 }}>
-                        {timeAgo(notif.createdAt)}
-                      </div>
-                    </div>
-                    {!notif.read && (
-                      <span className="cb-dot cb-dot-ember" style={{ marginTop: 6, flexShrink: 0 }} />
-                    )}
-                  </button>
+                  <div className="cb-nm-empty">
+                    <Bell size={22} />
+                    <div>{filter === 'unread' ? "You're all caught up." : 'No notifications yet.'}</div>
+                  </div>
                 );
-              })
-            )}
+              }
+              // Today first, then everything older, each under its own label.
+              const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+              const groups: Array<[string, Notification[]]> = [
+                ['Today', shown.filter((n) => new Date(n.createdAt) >= startOfDay)],
+                ['Earlier', shown.filter((n) => new Date(n.createdAt) < startOfDay)],
+              ];
+              return groups.filter(([, list]) => list.length > 0).map(([label, list]) => (
+                <div key={label}>
+                  <div className="cb-nm-group">{label}</div>
+                  {list.map((notif) => {
+                    const Icon = TYPE_ICONS[notif.type] || Bell;
+                    const act = ACTION_TYPES.has(notif.type);
+                    return (
+                      <button
+                        key={notif.id}
+                        type="button"
+                        onClick={() => handleClickNotification(notif)}
+                        className={`cb-nm-item ${notif.read ? '' : 'unread'} ${act ? 'act' : ''}`}
+                      >
+                        <span className="cb-nm-icon"><Icon size={15} /></span>
+                        <span className="cb-nm-body">
+                          <span className="cb-nm-item-title">{notif.title}</span>
+                          <span className="cb-nm-msg">{notif.message}</span>
+                          <span className="cb-nm-time">{timeAgo(notif.createdAt)}{act && !notif.read ? ' · needs you' : ''}</span>
+                        </span>
+                        {!notif.read && <span className="cb-nm-dot" aria-label="unread" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
           </div>
         </div>
       )}
