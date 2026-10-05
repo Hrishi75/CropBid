@@ -35,8 +35,8 @@ export function BrowseListings() {
   // page, or the next page's matches would never show.
   const isExporter = user?.role === 'BUYER' && user.buyerProfile?.companyType === 'EXPORTER';
   const [minQuintals, setMinQuintals] = useState(isExporter ? 10 : 0);
-  // A small buyer starts with lots in their own city: a few quintals are not
-  // worth freighting across the country.
+  // A small buyer starts with lots in their own state, as in the app: a few
+  // quintals are not worth freighting across the country.
   const small = buysSmall(user);
   const myCity = user?.location?.trim() ?? '';
   // Their state: a shop's own, or the state the lots in their city are listed
@@ -50,7 +50,7 @@ export function BrowseListings() {
       .then(({ data }) => setCityState(data.listings?.[0]?.state ?? ''))
       .catch(() => {});
   }, [small, ownState, myCity]);
-  const [scope, setScope] = useState<Scope>(small && myCity ? 'city' : 'all');
+  const [scope, setScope] = useState<Scope>(small && myCity ? 'state' : 'all');
   const [listings, setListings] = useState<(Listing & { _count?: { bids: number } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -67,7 +67,7 @@ export function BrowseListings() {
 
   useEffect(() => {
     fetchListings();
-  }, [filters, page, minQuintals, scope]);
+  }, [filters, page, minQuintals, scope, myState]);
 
   async function fetchListings() {
     setLoading(true);
@@ -77,7 +77,8 @@ export function BrowseListings() {
       params.set('limit', '12');
       if (filters.search) params.set('search', filters.search);
       if (filters.crop) params.set('crop', filters.crop);
-      if (scope === 'city' && myCity) params.set('location', myCity);
+      // Until their state is known, "their state" is their city.
+      if ((scope === 'city' || (scope === 'state' && !myState)) && myCity) params.set('location', myCity);
       else if (scope === 'state' && myState) params.set('state', myState);
       else if (filters.state) params.set('state', filters.state);
       if (minQuintals > 0) params.set('minQuintals', String(minQuintals));

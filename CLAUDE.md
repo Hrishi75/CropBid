@@ -440,7 +440,7 @@ Both are **additive and idempotent**: insert and update only, never delete, so t
 
 ## 9. The app's own surfaces (shipped 2026-09-13)
 
-Web has none of these. They are `mobile/` only.
+These began in `mobile/`. Where the website has caught up, the section says so; where it does not, assume the website lacks it.
 
 ### The wallet: prepaid credits
 
@@ -476,7 +476,7 @@ Web has none of these. They are `mobile/` only.
 - **A request not for export carries no export details**, even if a client sends some.
 - **Nothing checks any of it.** Moisture, packing and documents are what the exporter asked for, not what anyone verified (§2b).
 - **Payment and delivery terms are pickers now** (Letter of credit / 7 days / 15 days; FOB / CIF), for every buyer. They were free-text boxes over a server that accepts only those codes, so anything typed there failed the whole request.
-- **Web only shows the base request.** The website's demand pages ignore the new fields, so an export request reads there as an ordinary one delivering to the port's city.
+- **The website posts them too (2026-10-05):** an exporter's request form on the site has the same port picker, moisture, packing and documents, read from the same endpoint. Its market has the lot-size chips for every buyer, on at Grade A and 10+ quintals for an exporter, beside the grade and organic filters it already had. The site's demand pages still show an export request as an ordinary one delivering to the port's city.
 
 **An exporter's dashboard has an export book (2026-10-05)** (`components/ExportBook`), under "Needs your decision", which stays first because it is work and the book is a view.
 
@@ -497,7 +497,7 @@ Web has none of these. They are `mobile/` only.
 - **Negotiate-only requests.** A RESTAURANT buyer's request is posted with `negotiateOnly`, from the company type at posting. An instant fill is refused, in the claim's own WHERE as well as up front, so no request can fill at its posted price while negotiate-only. The app shows sellers "Make an offer" and no "Fill at".
 - **No bids on the market for a restaurant.** `POST /bids` and the live-auction socket both refuse it (`bidsOnMarket`, read from the profile at the moment of bidding, 403 `RESTAURANT_NO_BIDS`). The app shows lots as VIEW, and a lot's page offers "Ask sellers for this", which opens the request form with the crop filled in. The banner reads "Know the rate, then negotiate."
 - **Repeat orders.** A request can repeat every 3, 7 or 14 days (`repeatEveryDays`, `nextRepeatAt`, `seriesId`); a restaurant's form starts on weekly. Every 15 minutes the API posts a fresh copy of each one that has fallen due: same terms, the full quantity, the deadline moved on, and the series handed to the copy. The old one stops repeating and, if still open, is closed with its live offers expired, because last week's unfilled need is not this week's. Each repost is claimed on the `nextRepeatAt` it was read with, inside the transaction that creates the copy, so a deploy's two processes cannot both post it (tested, and watched failing unclaimed). Withdrawing a request stops it; the request page has Once / every 3 days / weekly / every 2 weeks. The repeat is not a field on the edit endpoint because it is also allowed on a FULFILLED request.
-- **The website (2026-10-05):** buyers counter and sellers answer on the same offer card (`RequirementOfferCard`, a "You countered" tab on a request and "Buyer countered" on My Offers); a restaurant's request shows sellers Make an offer instead of Fill; a restaurant's bid form points it to post a request, with the crop prefilled. Repeats show as a chip but cannot be set or stopped on the website yet.
+- **The website (2026-10-05):** buyers counter and sellers answer on the same offer card (`RequirementOfferCard`, a "You countered" tab on a request and "Buyer countered" on My Offers); a restaurant's request shows sellers Make an offer instead of Fill; a restaurant's bid form points it to post a request, with the crop prefilled. Repeats are set on the website's request form ("How often") and changed or stopped from a card on the request's page.
 - **Not built:** repeating does not skip a week the kitchen is shut.
 
 ### An FMCG buyer buys on supply contracts (2026-10-05)
@@ -510,7 +510,8 @@ Web has none of these. They are `mobile/` only.
 - **Each batch is an ordinary deal.** When one falls due (the 15-minute tick in `index.ts`, and at once on accepting a contract that starts now) it is made through the same three rows a requirement fill uses: a SOLD Listing marked `isRequirementFill` and `supplyContractId`, an ACCEPTED Bid, and `createTransaction`. So it is paid into escrow, carries the 2% fee, pages ops to book transport (§2a), and appears on both sides' deal screens unchanged. The last batch is the remainder; the contract is COMPLETED once every batch is made.
 - **Each batch is claimed** on the `nextBatchAt` and `scheduledQuantity` it was read with, inside the transaction that makes the deal, so two processes cannot both make one and a cancel committing first makes the claim miss. Tested five rounds, and watched failing with the claim removed.
 - **Ending a contract stops further batches; batches already made stay deals**, paid or payable, and undoing one is an admin refund like any other deal (§6).
-- **Not built:** the website shows none of this; batches cannot be skipped or resized after accepting; nothing nudges a buyer who leaves a batch unpaid while the next one falls due.
+- **The website (2026-10-05):** a Contracts page for both sides (`pages/shared/ContractsPage`, `/contracts`, in the nav), with accept, decline, withdraw and end, and the FMCG proposal under the bid form on a lot (`components/contracts/ContractProposal`). The contract notifications land there; a batch notification opens its deal.
+- **Not built:** batches cannot be skipped or resized after accepting; nothing nudges a buyer who leaves a batch unpaid while the next one falls due.
 
 **Lots priced in another currency no longer front a rupee card.** Seed lots in USD (an Australian wheat lot at $260/tonne) were compared as rupees, so the grouped wheat card read "from ₹26/qtl" and the compare screen gave that lot BEST PRICE. Both now rank rupee lots first.
 
@@ -522,7 +523,8 @@ Web has none of these. They are `mobile/` only.
 - **Each item is an ordinary request.** Sellers offer on the items they have, and every offer, counter (§9 restaurants) and deal works as for one request. The items share `listId` and `listName`, and Requests shows them under one "Restock list" header.
 - **All or none.** Two to fifteen items, each crop once, posted in one transaction, so a list is never half up.
 - **One address and date for the whole list**, and it can repeat; the items fall due together and the copies keep the list's id and name.
-- **Not built:** editing a list as a whole (each item is edited or withdrawn on its own); the website shows lists as separate requests.
+- **The website (2026-10-05):** the same list at `/buyer/requirements/list` (`pages/buyer/RestockList`), the same who-gets-it rule (`client/src/utils/restock.ts`), and the same grouping on the requests page.
+- **Not built:** editing a list as a whole (each item is edited or withdrawn on its own).
 
 ### A small buyer buys small, from nearby (2026-10-05)
 
@@ -530,6 +532,7 @@ Web has none of these. They are `mobile/` only.
 
 - **The market starts near them.** A "Buy from" switch under the category chips: their city, their state (default), or all India, sent to `GET /browse` as `location` or `state`, with the server's count under it. The state is the shop's own (`farmerProfile.state`), or else the state lots in their city are listed under; a buyer profile stores no state.
 - **A bid starts small.** About a tonne in the lot's unit (1,000 kg, 10 qtl or 1 t), capped at what is left, with steps under the quantity (e.g. 2 / 5 / 10 qtl) and Whole lot still there. Partial bids were always allowed by the server; the card just used to default to the whole lot.
+- **The website matches (2026-10-05):** the same Buy-from row above the market's results and the same small first bid with steps (`client/src/utils/smallBuyer.ts`).
 - **Any seller on its buying side no longer sees its own lots** on the market, and they are taken off the count: a shop's own 40 kg of wheat was showing as something to buy, and the server refuses a bid on it.
 
 ### The website's buyer dashboard (redesigned 2026-10-05)
