@@ -44,6 +44,15 @@ import {
   ArcMark, ArrowIcon, SearchIcon, CBFooter, India2047Mark,
 } from './landing/shared';
 
+// The seller's main verb, by kind: a shop adds stock, a wholesaler lists a
+// lot, and only a farm sells a crop or lists a harvest.
+function sellVerb(user: { farmerProfile?: { sellerType?: string | null } | null } | null | undefined, long = false): string {
+  const kind = user?.farmerProfile?.sellerType;
+  if (kind === 'LOCAL_SHOP') return 'Add stock';
+  if (kind === 'WHOLESALER') return 'List a lot';
+  return long ? 'List your harvest' : 'Sell a crop';
+}
+
 // =============================================================================
 // Reference prices — the ONLY hardcoded numbers left on this page
 // =============================================================================
@@ -390,7 +399,7 @@ function StoreHeader({
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
                   className="cb-btn cb-btn-primary"
                 >
-                  {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
+                  {user.role === 'FARMER' ? t(sellVerb(user)) : t('Browse live lots')}
                   <ArrowIcon />
                 </Link>
               ) : (
@@ -534,7 +543,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   // their orders. A signed-in shopper must not fall through to the guest CTA —
   // "Sell your harvest" is the one thing they are certainly not here to do.
   const secondary = user?.role === 'FARMER'
-    ? { to: '/farmer/listings/new', label: 'List your harvest' }
+    ? { to: '/farmer/listings/new', label: sellVerb(user, true) }
     : user?.role === 'BUYER'
       ? { to: '/buyer/bids', label: 'My bids' }
       : user?.role === 'CONSUMER'
@@ -828,6 +837,10 @@ function SellCTA({ user }: { user: User | null }) {
   // farmer-targeted. A household shopper is the last person to pitch "list your
   // harvest" at, and they were falling through to the guest version of it.
   if (user?.role === 'BUYER' || user?.role === 'CONSUMER') return null;
+  // "Grow it?" is a farmer's question; a shop or a wholesaler already sells
+  // here and grows nothing.
+  const kind = user?.farmerProfile?.sellerType;
+  if (kind === 'LOCAL_SHOP' || kind === 'WHOLESALER') return null;
   // /partner rather than /signup, for the reason given on the hero's link.
   const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/partner';
   const sellLabel = user?.role === 'FARMER' ? 'List your harvest' : 'Start selling free';
