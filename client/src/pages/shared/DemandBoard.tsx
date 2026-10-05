@@ -154,7 +154,7 @@ export function DemandBoard() {
       </h1>
       <p className="cb-page-lede">
         {isFarmer
-          ? 'Standing demand from verified buyers. Fill it at their price, or counter with yours.'
+          ? 'Standing demand from approved buyers. Fill it at their price, or counter with yours.'
           : 'Every open requirement on CropBid — what is being asked for, in what volume, and at what price. Yours are marked.'}
       </p>
 
@@ -200,12 +200,23 @@ export function DemandBoard() {
 
                     {isFarmer && (
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
-                        <Button size="sm" onClick={() => toggleAction(r, 'fill')}>
-                          Fill at {formatCurrency(r.pricePerUnit, r.currency)}
-                        </Button>
-                        <Button size="sm" variant="ghost" onClick={() => toggleAction(r, 'counter')}>
-                          Counter
-                        </Button>
+                        {/* A restaurant negotiates every order: no fill at the
+                            posted price (the server refuses it), only an offer. */}
+                        {r.negotiateOnly ? (
+                          <>
+                            <Button size="sm" onClick={() => toggleAction(r, 'counter')}>Make an offer</Button>
+                            <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>This buyer negotiates every order.</span>
+                          </>
+                        ) : (
+                          <>
+                            <Button size="sm" onClick={() => toggleAction(r, 'fill')}>
+                              Fill at {formatCurrency(r.pricePerUnit, r.currency)}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => toggleAction(r, 'counter')}>
+                              Counter
+                            </Button>
+                          </>
+                        )}
                       </div>
                     )}
 

@@ -839,7 +839,7 @@ function SellCTA({ user }: { user: User | null }) {
           <div>
             <h2 className="cb-h1">{t('Grow it?')} <span className="italic">{t('Sell it here.')}</span></h2>
             <p className="cb-body cta-lede">
-              {t('List your harvest in two minutes and let verified buyers bid it up. No mandi trips, no guesswork — you keep the margin.')}
+              {t('List your harvest in two minutes and let approved buyers bid it up. No mandi trips, no guesswork — you keep the margin.')}
             </p>
           </div>
           <div className="cta-actions">

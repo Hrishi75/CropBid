@@ -3,8 +3,12 @@
 // =============================================================================
 // Renders a single offer on a buyer requirement and the actions available to
 // the current viewer:
-//   - viewAs="buyer":  Accept / Reject a pending offer
-//   - viewAs="farmer": Withdraw their own pending offer
+//   - viewAs="buyer":  Accept / Counter / Reject a pending offer
+//   - viewAs="farmer": answer a buyer's counter (accept their price, or send a
+//     new one), or withdraw
+//
+// COUNTERING is how a restaurant buys (it negotiates every order), and any
+// buyer can do it: PENDING waits on the buyer, COUNTERED on the seller.
 //
 // Mirrors BidCard's contract exactly ({ offer, viewAs, onUpdate }), including
 // its STATUS_META colour map, so the two inboxes read as one system.
@@ -14,6 +18,7 @@
 // =============================================================================
 
 import { useState } from 'react';
+import { Input } from '../ui/Input';
 import { Link } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -30,6 +35,7 @@ interface RequirementOfferCardProps {
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   PENDING: { label: 'PEND', color: 'var(--cb-ember)' },
+  COUNTERED: { label: 'CNTR', color: 'var(--cb-wheat)' },
   ACCEPTED: { label: 'ACPT', color: 'var(--cb-sage)' },
   REJECTED: { label: 'REJD', color: 'var(--cb-ink-3)' },
   WITHDRAWN: { label: 'WDRN', color: 'var(--cb-ink-3)' },
@@ -39,6 +45,9 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOfferCardProps) {
   const [loading, setLoading] = useState('');
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  // The price field for a buyer's counter or a seller's new price.
+  const [pricing, setPricing] = useState(false);
+  const [price, setPrice] = useState('');
 
   const currency = offer.currency || 'INR';
   const unit = offer.requirement?.unit?.toLowerCase() || '';
@@ -55,6 +64,17 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
       } else if (action === 'reject') {
         await api.put(`/requirements/offers/${offer.id}/reject`);
         toast.success('Offer rejected');
+      } else if (action === 'counter') {
+        await api.put(`/requirements/offers/${offer.id}/counter`, { pricePerUnit: Number(price) });
+        toast.success('Counter sent. The seller can accept it or send a new price.');
+        setPricing(false);
+      } else if (action === 'revise') {
+        await api.put(`/requirements/offers/${offer.id}/revise`, { pricePerUnit: Number(price) });
+        toast.success('New price sent to the buyer');
+        setPricing(false);
+      } else if (action === 'acceptCounter') {
+        await api.put(`/requirements/offers/${offer.id}/accept-counter`);
+        toast.success('Deal made at their price. It is in your Transactions.');
       } else if (action === 'withdraw') {
         await api.delete(`/requirements/offers/${offer.id}`);
         toast.success('Offer withdrawn');
@@ -134,13 +154,66 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
           </div>
         )}
 
-        {viewAs === 'buyer' && offer.status === 'PENDING' && (
+        {offer.status === 'COUNTERED' && offer.buyerCounterPrice != null && (
+          <div className="cb-small" style={{ padding: 10, background: 'rgba(183,121,31,0.1)', borderRadius: 6, marginBottom: 12 }}>
+            {viewAs === 'buyer'
+              ? <>You offered <strong>{formatCurrency(offer.buyerCounterPrice, currency)}/{unit}</strong>. Waiting for the seller to accept it or send a new price.</>
+              : <>The buyer would pay <strong>{formatCurrency(offer.buyerCounterPrice, currency)}/{unit}</strong>, {formatCurrency(offer.buyerCounterPrice * offer.quantity, currency)} in all.</>}
+          </div>
+        )}
+
+        {/* One price field serves the buyer's counter and the seller's new price. */}
+        {pricing && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ flex: '1 1 160px' }}>
+              <Input
+                label={viewAs === 'buyer' ? `Your price per ${unit}` : `New price per ${unit}`}
+                type="number"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder={viewAs === 'buyer'
+                  ? `Below ${formatCurrency(offer.pricePerUnit, currency)}`
+                  : `${formatCurrency(offer.buyerCounterPrice ?? 0, currency)} to ${formatCurrency(offer.pricePerUnit, currency)}`}
+                autoFocus
+              />
+            </div>
+            <Button size="sm" disabled={!(Number(price) > 0)} onClick={() => handleAction(viewAs === 'buyer' ? 'counter' : 'revise')} loading={loading === 'counter' || loading === 'revise'}>
+              Send
+            </Button>
+            <Button size="sm" variant="link" onClick={() => setPricing(false)}>Cancel</Button>
+          </div>
+        )}
+
+        {viewAs === 'buyer' && offer.status === 'PENDING' && !pricing && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <Button size="sm" onClick={() => handleAction('accept')} loading={loading === 'accept'}>
               Accept {formatCurrency(offer.totalAmount, currency)}
             </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setPrice(''); setPricing(true); }}>
+              Counter
+            </Button>
             <Button size="sm" variant="link" onClick={() => handleAction('reject')} loading={loading === 'reject'}>
               ✕ Reject
+            </Button>
+          </div>
+        )}
+
+        {viewAs === 'buyer' && offer.status === 'COUNTERED' && (
+          <Button size="sm" variant="link" onClick={() => handleAction('reject')} loading={loading === 'reject'}>
+            ✕ Decline instead
+          </Button>
+        )}
+
+        {viewAs === 'farmer' && offer.status === 'COUNTERED' && offer.buyerCounterPrice != null && !pricing && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button size="sm" onClick={() => handleAction('acceptCounter')} loading={loading === 'acceptCounter'}>
+              Accept {formatCurrency(offer.buyerCounterPrice, currency)}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setPrice(''); setPricing(true); }}>
+              New price
+            </Button>
+            <Button size="sm" variant="link" onClick={() => setConfirmWithdraw(true)}>
+              Withdraw
             </Button>
           </div>
         )}

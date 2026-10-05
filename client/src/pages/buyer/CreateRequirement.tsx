@@ -10,7 +10,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, Link, useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -51,7 +51,9 @@ export function CreateRequirement() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
 
-  const [cropName, setCropName] = useState('');
+  // ?crop= prefills the crop, from a lot a restaurant cannot bid on.
+  const [searchParams] = useSearchParams();
+  const [cropName, setCropName] = useState(searchParams.get('crop') ?? '');
   const [cropVariety, setCropVariety] = useState('');
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState('QUINTAL');

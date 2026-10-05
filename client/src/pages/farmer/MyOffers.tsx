@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import type { RequirementOffer } from '../../types';
 
 const STATUS_TABS = [
+  { value: 'COUNTERED', label: 'Buyer countered' },
   { value: 'PENDING', label: 'Awaiting buyer' },
   { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'REJECTED', label: 'Rejected' },

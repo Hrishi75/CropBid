@@ -90,6 +90,12 @@ export function RequirementCard({
           </span>
         )}
         <span className="cb-chip">Grade {r.qualityGrade}</span>
+        {r.negotiateOnly && <span className="cb-chip">Negotiated</span>}
+        {r.forExport && <span className="cb-chip cb-chip-sage">For export</span>}
+        {r.listId && <span className="cb-chip">{r.listName ? `List · ${r.listName}` : 'Restock list'}</span>}
+        {r.nextRepeatAt && r.repeatEveryDays ? (
+          <span className="cb-chip cb-chip-sage">{r.repeatEveryDays === 7 ? 'Repeats weekly' : `Every ${r.repeatEveryDays} days`}</span>
+        ) : null}
         {r.organic && <span className="cb-chip cb-chip-sage">Organic only</span>}
         {belowMsp && (
           <span className="cb-chip cb-chip-ember" title={`Government support price is ${formatCurrency(msp!, r.currency)}/${unit}`}>

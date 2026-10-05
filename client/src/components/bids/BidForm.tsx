@@ -102,6 +102,24 @@ export function BidForm({ listing }: BidFormProps) {
     );
   }
 
+
+  // A restaurant negotiates through its requests and the server refuses its
+  // bids (RESTAURANT_NO_BIDS), so it is shown the way it does buy instead.
+  if (user?.buyerProfile?.companyType === 'RESTAURANT') {
+    return (
+      <div className="cb-card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ fontWeight: 600, fontSize: 17 }}>Need {listing.cropName} for the kitchen?</div>
+        <div className="cb-small" style={{ color: 'var(--cb-ink-2)' }}>
+          Restaurants buy by posting what they need. Sellers, this one included, send their price and you negotiate.
+        </div>
+        <div>
+          <Button onClick={() => navigate(`/buyer/requirements/new?crop=${encodeURIComponent(listing.cropName)}`)}>
+            Ask sellers for {listing.cropName}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="cb-card" style={{ padding: '4px 20px' }}>
       <form onSubmit={handleSubmit}>

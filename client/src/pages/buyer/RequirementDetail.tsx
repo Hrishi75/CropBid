@@ -23,6 +23,8 @@ import type { BuyerRequirement, RequirementOffer } from '../../types';
 
 const STATUS_TABS = [
   { value: 'PENDING', label: 'Awaiting you' },
+  // After you counter, the seller's move.
+  { value: 'COUNTERED', label: 'You countered' },
   { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'REJECTED', label: 'Rejected' },
   { value: '', label: 'All' },
@@ -121,7 +123,9 @@ export function RequirementDetail() {
                 title={tab === 'PENDING' ? 'Nothing awaiting you' : 'No offers here'}
                 description={
                   tab === 'PENDING'
-                    ? 'Farmers can fill this at your posted price without asking, or send a counter-offer that lands here.'
+                    ? (requirement?.negotiateOnly
+                      ? 'Sellers send their price here. Accept it, counter, or decline.'
+                      : 'Sellers can fill this at your posted price without asking, or send a counter-offer that lands here.')
                     : 'Try another tab.'
                 }
               />

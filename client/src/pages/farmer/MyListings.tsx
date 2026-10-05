@@ -151,7 +151,7 @@ export function MyListings() {
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No listings yet"
-          description="Create your first crop lot to start receiving bids from verified buyers."
+          description="Create your first crop lot to start receiving bids from approved buyers."
           actionLabel="Create your first lot"
           onAction={() => navigate('/farmer/listings/new')}
         />
