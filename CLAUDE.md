@@ -143,7 +143,7 @@ How it holds together:
 - **An admin cancelling tells both sides, and tells them CropBid did it** (2026-09-22). The server always let admins cancel, but it treated anyone who was not the shopper as the shop: it told the shopper alone that "the shop cancelled", and the shop was never told its order was off.
 - **Unpaid lots end `CANCELLED`, paid lots end `REFUNDED`** and every admin gets a `RETAIL_REFUND_DUE` notification, because that transfer is manual (§6). Both are new enum values; `CANCELLED` means no money ever moved.
 - **A cancelled order cannot be paid for.** Opening a payment refuses it, and if one was already open and is somehow paid, capture treats it exactly like an order already paid: the money is recorded as owed back and the admins are told (§3c).
-- **Where it lives:** the shopper's order page and the app's order card; the shop uses the "Can't fulfil this order?" form on `/transactions/:id`, which is where it already marks orders on the way, and an admin uses the same page ("Cancel this shop order"), reached from **View** on Admin → Transactions. That link was a 403 for every admin until 2026-09-22, because `getTransaction` let only the two sides of the deal in. The app has no seller delivery screen at all, so a shop on a phone cannot cancel there either.
+- **Where it lives:** the shopper's order page and the app's order card; the shop uses the "Can't fulfil this order?" form on `/transactions/:id`, which is where it already marks orders on the way, and an admin uses the same page ("Cancel this shop order"), reached from **View** on Admin → Transactions. That link was a 403 for every admin until 2026-09-22, because `getTransaction` let only the two sides of the deal in. A shop on a phone cancels from its order card on My Shop ("Can't fulfil this order?", 2026-10-05): pick a reason or type one, and the whole order is called off, the same endpoint as the website.
 
 ### 3a. One app, and its front page is the shops (decided 2026-09-13)
 
@@ -609,7 +609,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 - **Hidden for a shop:** the demand teaser, the bidding banner, forecast and schemes cards and the sell pitch on Home; offer counts on My Stock; offers, demand and the AI helper on the profile.
 - **Buying stock for the shop** is a second mode on the same account (§4, "A seller can also buy"): a card on the shop's profile to apply, then a Selling | Buying switch.
 - **A wholesaler gets the same two sides** (2026-10-04): the apply card says "Buy stock for your business" and files it as a WHOLESALER buyer, and its Home trades the farm wording for trade wording ("Trade by the lot, priced to the mandi", no farm-schemes card, no "Grow it? Sell it here").
-- **Not built:** cancelling a shop order from the app (the website and the server have it).
+- **Cancelling an order** is on the order card until the shop marks it on the way, with three ready reasons (out of stock, can't deliver today, shop closed) or its own words, because the shop must say why (§3d).
 
 ### The rest of the app pass (2026-10-04)
 
