@@ -162,8 +162,14 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
       } catch (refreshError: any) {
-        // Refresh failed — token is fully expired, user must log in again
         processQueue(refreshError, null);
+
+        // Only a refusal (401/403) means the session is gone. A 429, a 5xx or
+        // a dropped connection says nothing about it: keep the cookie and let
+        // the next request try again, rather than sign the user out.
+        const status = refreshError?.response?.status;
+        if (status !== 401 && status !== 403) return Promise.reject(refreshError);
+
         setAccessToken(null);
 
         // SESSION_IDLE means the refresh token aged out rather than being
@@ -212,7 +218,9 @@ export async function keepAliveSession(): Promise<void> {
     markSynced();
     processQueue(null, data.accessToken);
   } catch (err: any) {
-    const stranded = failedQueue.length > 0;
+    // A refusal, not a 429 or a dropped connection (see the interceptor).
+    const refused = [401, 403].includes(err?.response?.status);
+    const stranded = failedQueue.length > 0 && refused;
     processQueue(err, null);
 
     // Only end the session if a REAL request was waiting on us — a 401 followed
