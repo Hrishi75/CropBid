@@ -31,6 +31,7 @@
 // on ListingDetail.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   Easing,
   Image,
@@ -274,6 +275,10 @@ export default function StorefrontHomeScreen() {
   // reads as the delivery default.
   const [guestCity, setGuestCity] = useState('');
   const [citiesLoaded, setCitiesLoaded] = useState(false);
+  // A failed fetch is not "nobody is selling": the gate says it could not
+  // load and offers a retry. Bumping citiesTry refetches.
+  const [citiesFailed, setCitiesFailed] = useState(false);
+  const [citiesTry, setCitiesTry] = useState(0);
   const [savingCity, setSavingCity] = useState('');
   const [changingCity, setChangingCity] = useState(false);
   // The log-in card: from the header's Log in (no item, straight to the form)
@@ -335,11 +340,12 @@ export default function StorefrontHomeScreen() {
   useEffect(() => {
     if (!shopping) return;
     let on = true;
+    setCitiesFailed(false);
     retailCities()
       .then((rows) => { if (on) { setCities(rows); setCitiesLoaded(true); } })
-      .catch(() => { if (on) setCities([]); });
+      .catch(() => { if (on) { setCities([]); setCitiesFailed(true); } });
     return () => { on = false; };
-  }, [shopping]);
+  }, [shopping, citiesTry]);
 
   const load = useCallback(async () => {
     // No city means no shelf to fetch — the picker is showing instead.
@@ -761,7 +767,16 @@ export default function StorefrontHomeScreen() {
                 Fresh produce travels short distances. Pick your city and we'll
                 show you the shops and farms that can actually reach you.
               </Text>
-              {cities.length === 0 ? (
+              {citiesFailed ? (
+                <View>
+                  <Text style={styles.cityGateNote}>Could not load the cities we deliver to.</Text>
+                  <PressScale onPress={() => setCitiesTry((n) => n + 1)} scaleTo={0.96}>
+                    <Text style={styles.cityGateRetry}>Try again</Text>
+                  </PressScale>
+                </View>
+              ) : !citiesLoaded ? (
+                <ActivityIndicator color={colors.forest} style={{ marginTop: 14 }} />
+              ) : cities.length === 0 ? (
                 <Text style={styles.cityGateNote}>
                   Nobody is selling for home delivery yet. Check back shortly:
                   shops and farms open their shelves as stock comes in.
@@ -1746,6 +1761,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(200,96,43,0.08)', borderRadius: 10,
     paddingHorizontal: 12, paddingVertical: 9,
   },
+  cityGateRetry: { fontFamily: font.sansSemi, fontSize: 14, color: colors.forest, textDecorationLine: 'underline', marginTop: 8 },
   cityGateNote: { fontFamily: font.sans, fontSize: 13, lineHeight: 19, color: design.ink3, marginTop: 6 },
   cityGateCancelWrap: { alignSelf: 'center', marginTop: 14, paddingVertical: 6, paddingHorizontal: 12 },
   cityGateCancel: { fontFamily: font.sansSemi, fontSize: 13, color: design.ink3 },
