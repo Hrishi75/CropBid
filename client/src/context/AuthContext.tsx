@@ -18,9 +18,9 @@
 // data that changes infrequently (login/logout events).
 // =============================================================================
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import api, { keepAliveSession, setAccessToken } from '../lib/axios';
+import api, { keepAliveSession, setAccessToken, setActAs } from '../lib/axios';
 import {
   clearActivity,
   isIdle,
@@ -48,6 +48,19 @@ interface AuthContextType {
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
+  /** The account's own role, whatever side it is on. */
+  accountRole: User['role'] | null;
+  /** SELL or BUY. BUY only for a seller whose buyer application is approved. */
+  mode: AccountMode;
+  switchMode: (m: AccountMode) => void;
+}
+
+export type AccountMode = 'SELL' | 'BUY';
+const MODE_KEY = 'cb-mode';
+
+/** A seller whose buyer application has also been approved. */
+export function canSwitchToBuying(u: User | null | undefined): boolean {
+  return u?.role === 'FARMER' && u.buyerProfile?.status === 'APPROVED';
 }
 
 interface SignupData {
@@ -122,6 +135,25 @@ function setSessionHint(on: boolean) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // True until initial auth check
+  // Which side a seller approved to buy is on, remembered in this browser.
+  const [mode, setMode] = useState<AccountMode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === 'BUY' ? 'BUY' : 'SELL'; } catch { return 'SELL'; }
+  });
+  // Only while the account may actually buy: a revoked approval drops it back.
+  const buying = mode === 'BUY' && canSwitchToBuying(user);
+  // During render, not in an effect, so the first request a buyer page makes
+  // on mount already carries the header.
+  setActAs(buying ? 'BUYER' : null);
+  const switchMode = useCallback((m: AccountMode) => {
+    setMode(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembering is fine */ }
+  }, []);
+  // In buying mode the account appears as a BUYER, so every route, nav item
+  // and check that reads user.role shows the buyer side unchanged.
+  const effectiveUser = useMemo<User | null>(
+    () => (user && buying ? { ...user, role: 'BUYER' } : user),
+    [user, buying],
+  );
 
   // -------------------------------------------------------------------------
   // On mount: Try to restore session from refresh token cookie
@@ -293,6 +325,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSessionHint(false);
     clearActivity();
+    switchMode('SELL');
   }
 
   // -------------------------------------------------------------------------
@@ -305,8 +338,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user, loading, login, startPhoneSignIn, verifyPhoneSignIn,
+        user: effectiveUser, loading, login, startPhoneSignIn, verifyPhoneSignIn,
         signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
+        accountRole: user?.role ?? null, mode: buying ? 'BUY' : 'SELL', switchMode,
       }}
     >
       {children}

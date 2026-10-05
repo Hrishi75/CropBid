@@ -3030,3 +3030,15 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 @media (prefers-reduced-motion: reduce) {
   .cb-cookie { animation: none; }
 }
+
+/* ModeSwitch: Selling | Buying for a seller approved to buy (components/layout/ModeSwitch). */
+.cb-mode { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.cb-mode-label { color: var(--cb-ink-3); letter-spacing: 0.08em; padding: 0 2px; }
+.cb-mode-track { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; background: var(--cb-paper-2); border-radius: 12px; padding: 3px; }
+.cb-mode-side { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border: 0; background: transparent; border-radius: 9px; padding: 8px 10px; cursor: pointer; text-align: left; transition: background 160ms ease, color 160ms ease; }
+.cb-mode-side:hover:not(.on) { background: rgba(0, 0, 0, 0.04); }
+.cb-mode-side.on { background: var(--cb-forest, #1f2e1a); cursor: default; }
+.cb-mode-title { font-size: 13.5px; font-weight: 600; color: var(--cb-ink); }
+.cb-mode-sub { font-size: 11px; color: var(--cb-ink-3); white-space: nowrap; }
+.cb-mode-side.on .cb-mode-title { color: #f4f1ea; }
+.cb-mode-side.on .cb-mode-sub { color: rgba(244, 241, 234, 0.7); }

@@ -11,6 +11,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { getNavSections, isNavItemActive, type PendingCounts } from './nav';
+import { ModeSwitch } from './ModeSwitch';
 
 interface SidebarProps {
   mobile?: boolean;
@@ -68,6 +69,7 @@ export function Sidebar({ mobile, onNavigate, pendingCounts }: SidebarProps = {}
             <span className="cb-tiny" style={{ textTransform: 'lowercase' }}>{user.role.toLowerCase()}</span>
           </div>
         )}
+        <ModeSwitch onSwitched={onNavigate} />
         <button
           type="button"
           onClick={logout}

@@ -45,6 +45,14 @@ const api = axios.create({
 
 let accessToken: string | null = null;
 
+// Buying mode (a seller approved to buy): sent as X-Act-As on every request.
+// The server honours it only after reading an approved buyer profile, so it is
+// worth nothing alone. Set by AuthContext during render.
+let actAs: 'BUYER' | null = null;
+export function setActAs(v: 'BUYER' | null) {
+  actAs = v;
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
@@ -61,6 +69,7 @@ api.interceptors.request.use(
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
+    if (actAs) config.headers['X-Act-As'] = actAs;
     return config;
   },
   (error) => Promise.reject(error),
