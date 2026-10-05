@@ -38,6 +38,7 @@ import { Deliveries } from '../pages/farmer/Deliveries';
 import { DemandBoard } from '../pages/shared/DemandBoard';
 import { MyOffers } from '../pages/farmer/MyOffers';
 import { CreditApply } from '../pages/buyer/CreditApply';
+import { ContractsPage } from '../pages/shared/ContractsPage';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { MyBids } from '../pages/buyer/MyBids';
@@ -307,6 +308,14 @@ export function AppRoutes() {
 
       {/* Requirements — /new and /:id/edit declared before /:id, matching how
           the farmer's listing routes are ordered. */}
+      <Route
+        path="/contracts"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER', 'FARMER']}>
+            <ContractsPage />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/buyer/credit"
         element={
