@@ -24,6 +24,7 @@ import {
   type VoiceDraft,
   type VoiceRequirementFields,
 } from '../../components/voice/VoiceCaptureButton';
+import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 
@@ -34,6 +35,20 @@ const INDIAN_STATES = [
   'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
   'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi',
 ];
+
+// The intervals the server accepts (REPEAT_DAYS in requirement.service).
+const REPEAT_CHOICES: Array<{ days: number | null; label: string }> = [
+  { days: null, label: 'Just once' },
+  { days: 3, label: 'Every 3 days' },
+  { days: 7, label: 'Weekly' },
+  { days: 14, label: 'Every 2 weeks' },
+];
+
+interface ExportOptions {
+  ports: Array<{ code: string; name: string; city: string; state: string }>;
+  docs: Array<{ code: string; label: string }>;
+  moisture: { min: number; max: number };
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -66,6 +81,25 @@ export function CreateRequirement() {
   const [organic, setOrganic] = useState(false);
   const [paymentTerms, setPaymentTerms] = useState('');
   const [deliveryTerms, setDeliveryTerms] = useState('');
+  const [repeatEveryDays, setRepeatEveryDays] = useState<number | null>(null);
+
+  // An exporter's request names a port instead of an address, plus the moisture,
+  // packing and paperwork the shipment needs. The lists come from the server.
+  const { user } = useAuth();
+  const isExporter = user?.buyerProfile?.companyType === 'EXPORTER';
+  const [forExport, setForExport] = useState(isExporter);
+  const [exportOptions, setExportOptions] = useState<ExportOptions | null>(null);
+  const [exportPort, setExportPort] = useState('');
+  const [maxMoisture, setMaxMoisture] = useState('');
+  const [packing, setPacking] = useState('');
+  const [requiredDocs, setRequiredDocs] = useState<string[]>([]);
+  const exporting = isExporter && forExport && !isEditMode;
+  const port = exportOptions?.ports.find((p) => p.code === exportPort);
+
+  useEffect(() => {
+    if (!isExporter || isEditMode) return;
+    api.get('/requirements/export-options').then(({ data }) => setExportOptions(data)).catch(() => {});
+  }, [isExporter, isEditMode]);
   // Only meaningful in edit mode — how much is already spoken for, which is the
   // floor the quantity can be edited down to.
   const [filled, setFilled] = useState(0);
@@ -156,6 +190,11 @@ export function CreateRequirement() {
       if (!proceed) return;
     }
 
+    if (exporting && !port) {
+      toast.error('Choose the port the goods should reach');
+      return;
+    }
+
     setLoading(true);
     try {
       const payload = {
@@ -169,13 +208,24 @@ export function CreateRequirement() {
         // anchors, so a requirement is always stored in INR regardless of the
         // account's display currency.
         currency: 'INR',
-        deliveryLocation,
-        deliveryState,
+        deliveryLocation: exporting ? port?.city ?? '' : deliveryLocation,
+        deliveryState: exporting ? port?.state ?? '' : deliveryState,
         neededBy: neededBy || undefined,
         description: description || undefined,
         organic,
         paymentTerms: paymentTerms || undefined,
         deliveryTerms: deliveryTerms || undefined,
+        // Create only: an edit cannot change these (repeat has its own endpoint).
+        ...(isEditMode ? {} : {
+          repeatEveryDays,
+          ...(exporting ? {
+            forExport: true,
+            exportPort,
+            maxMoisturePct: maxMoisture ? parseFloat(maxMoisture) : null,
+            packing: packing || null,
+            requiredDocs,
+          } : {}),
+        }),
       };
 
       if (isEditMode) {
@@ -356,8 +406,80 @@ export function CreateRequirement() {
               </div>
             </Section>
 
+            {isExporter && !isEditMode && (
+              <Section title="Where it's going">
+                <div className="cb-pill-group">
+                  <button type="button" className={`cb-pill ${forExport ? 'active' : ''}`} onClick={() => setForExport(true)}>For export</button>
+                  <button type="button" className={`cb-pill ${!forExport ? 'active' : ''}`} onClick={() => setForExport(false)}>For use in India</button>
+                </div>
+                {forExport && (
+                  <>
+                    <div>
+                      <label className="cb-label">Port the goods should reach</label>
+                      <div className="cb-rq-ports">
+                        {(exportOptions?.ports ?? []).map((p) => (
+                          <button
+                            key={p.code}
+                            type="button"
+                            className={`cb-rq-port ${exportPort === p.code ? 'on' : ''}`}
+                            onClick={() => setExportPort(p.code)}
+                            aria-pressed={exportPort === p.code}
+                          >
+                            <strong>{p.name}</strong>
+                            <span>{p.state}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="cb-small" style={{ color: 'var(--cb-ink-3)', marginTop: 6 }}>
+                        The port is the delivery address. Sellers price their freight to it.
+                      </div>
+                    </div>
+                    <div className="cb-cols-2" style={{ gap: 14 }}>
+                      <Input
+                        label="Moisture at most (%, optional)"
+                        type="number"
+                        min={exportOptions?.moisture.min ?? 1}
+                        max={exportOptions?.moisture.max ?? 30}
+                        step="0.1"
+                        placeholder="e.g., 12"
+                        value={maxMoisture}
+                        onChange={(e) => setMaxMoisture(e.target.value)}
+                      />
+                      <Input
+                        label="Packing (optional)"
+                        placeholder="e.g., 50 kg PP bags, stitched"
+                        value={packing}
+                        onChange={(e) => setPacking(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="cb-label">Paperwork the seller sends</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {(exportOptions?.docs ?? []).map((d) => {
+                          // An organic certificate only makes sense on an organic request; the server refuses it otherwise.
+                          const blocked = d.code === 'ORGANIC_CERT' && !organic;
+                          return (
+                            <label key={d.code} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked ? 0.5 : 1 }}>
+                              <input
+                                type="checkbox"
+                                disabled={blocked}
+                                checked={requiredDocs.includes(d.code) && !blocked}
+                                onChange={(e) => setRequiredDocs((cur) => e.target.checked ? [...cur, d.code] : cur.filter((c) => c !== d.code))}
+                                style={{ accentColor: 'var(--cb-forest)' }}
+                              />
+                              {d.label}{blocked ? ' (organic requests only)' : ''}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </Section>
+            )}
+
             <Section title="Delivery">
-              <div className="cb-cols-2" style={{ gap: 14 }}>
+              {!exporting && <div className="cb-cols-2" style={{ gap: 14 }}>
                 <Input
                   label="Deliver to (city/town)"
                   placeholder="e.g., Nagpur"
@@ -375,7 +497,7 @@ export function CreateRequirement() {
                     {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-              </div>
+              </div>}
               <Input
                 label="Needed by (optional)"
                 type="date"
@@ -383,6 +505,28 @@ export function CreateRequirement() {
                 onChange={(e) => setNeededBy(e.target.value)}
               />
             </Section>
+
+            {!isEditMode && (
+              <Section title="How often">
+                <div className="cb-pill-group">
+                  {REPEAT_CHOICES.map((c) => (
+                    <button
+                      key={c.label}
+                      type="button"
+                      className={`cb-pill ${repeatEveryDays === c.days ? 'active' : ''}`}
+                      onClick={() => setRepeatEveryDays(c.days)}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="cb-small" style={{ color: 'var(--cb-ink-3)' }}>
+                  {repeatEveryDays
+                    ? `We post a fresh copy every ${repeatEveryDays} days at the same price, so you don't have to. Stop it any time from the request.`
+                    : 'Need it regularly? Pick an interval and the request reposts itself.'}
+                </div>
+              </Section>
+            )}
 
             <Section title="Commercial terms (optional)">
               <div className="cb-cols-2" style={{ gap: 14 }}>
@@ -435,6 +579,8 @@ export function CreateRequirement() {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
               <span className="cb-chip">Grade {qualityGrade}</span>
               {organic && <span className="cb-chip cb-chip-sage">Organic only</span>}
+              {exporting && <span className="cb-chip">For export{port ? ` · ${port.name}` : ''}</span>}
+              {repeatEveryDays && !isEditMode && <span className="cb-chip">Repeats every {repeatEveryDays} days</span>}
               {belowMsp && <span className="cb-chip cb-chip-ember">Below MSP</span>}
             </div>
             <div className="cb-cols-2" style={{ gap: 12 }}>

@@ -21,6 +21,59 @@ import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { BuyerRequirement, RequirementOffer } from '../../types';
 
+// The intervals the server accepts (REPEAT_DAYS in requirement.service).
+const REPEAT_CHOICES: Array<{ days: number | null; label: string }> = [
+  { days: 3, label: '3 days' },
+  { days: 7, label: 'Weekly' },
+  { days: 14, label: '2 weeks' },
+  { days: null, label: 'Off' },
+];
+
+/** Turn repeating on, change it, or stop it. Open and filled requests only. */
+function RepeatCard({ requirement, onChange }: { requirement: BuyerRequirement; onChange: (r: BuyerRequirement) => void }) {
+  const [saving, setSaving] = useState(false);
+  if (requirement.status !== 'OPEN' && requirement.status !== 'FULFILLED') return null;
+  const current = requirement.repeatEveryDays ?? null;
+
+  async function choose(days: number | null) {
+    if (days === current || saving) return;
+    setSaving(true);
+    try {
+      const { data } = await api.put(`/requirements/${requirement.id}/repeat`, { repeatEveryDays: days });
+      onChange({ ...requirement, repeatEveryDays: data.repeatEveryDays, nextRepeatAt: data.nextRepeatAt });
+      toast.success(days ? `Reposts every ${days} days` : 'Repeat stopped');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not change the repeat');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="cb-card" style={{ padding: 20 }}>
+      <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Repeat this request</div>
+      <div className="cb-pill-group">
+        {REPEAT_CHOICES.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            disabled={saving}
+            className={`cb-pill ${current === c.days ? 'active' : ''}`}
+            onClick={() => choose(c.days)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      <p className="cb-small" style={{ color: 'var(--cb-ink-3)', margin: '10px 0 0' }}>
+        {current && requirement.nextRepeatAt
+          ? `Next copy posts on ${new Date(requirement.nextRepeatAt).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}, at the same price and quantity.`
+          : 'Posts a fresh copy on a schedule, so a regular order needs no retyping.'}
+      </p>
+    </div>
+  );
+}
+
 const STATUS_TABS = [
   { value: 'PENDING', label: 'Awaiting you' },
   // After you counter, the seller's move.
@@ -139,6 +192,7 @@ export function RequirementDetail() {
 
         <aside style={{ position: 'sticky', top: 76, display: 'flex', flexDirection: 'column', gap: 16 }}>
           <RequirementCard requirement={requirement} />
+          <RepeatCard requirement={requirement} onChange={setRequirement} />
 
           {acceptedCount > 1 && (
             <div className="cb-card" style={{ padding: 20 }}>
