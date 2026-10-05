@@ -3224,3 +3224,11 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 .cb-bd-contract:hover { box-shadow: 0 6px 18px rgba(20, 20, 15, 0.06); transform: translateY(-1px); }
 .cb-bd-contract.hot { border-color: rgba(200, 96, 43, 0.4); }
 .cb-bd-contract-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* ---- Price box on an offer card (components/requirements/RequirementOfferCard)
+   One line: the box takes the room, the buttons are as tall as it is. */
+.cb-rq-price { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.cb-rq-price-row { display: flex; align-items: stretch; gap: 10px; }
+.cb-rq-price-row > div { flex: 1 1 auto; min-width: 0; }
+.cb-rq-price-row .cb-btn { flex: none; }
+.cb-rq-price-row .cb-btn-link { padding-left: 4px; padding-right: 4px; }

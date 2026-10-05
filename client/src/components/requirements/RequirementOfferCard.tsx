@@ -34,12 +34,13 @@ interface RequirementOfferCardProps {
 }
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  PENDING: { label: 'PEND', color: 'var(--cb-ember)' },
-  COUNTERED: { label: 'CNTR', color: 'var(--cb-wheat)' },
-  ACCEPTED: { label: 'ACPT', color: 'var(--cb-sage)' },
-  REJECTED: { label: 'REJD', color: 'var(--cb-ink-3)' },
-  WITHDRAWN: { label: 'WDRN', color: 'var(--cb-ink-3)' },
-  EXPIRED: { label: 'EXPR', color: 'var(--cb-ink-3)' },
+  // Whole words: "CNTR" and "PEND" read as codes, not states.
+  PENDING: { label: 'PENDING', color: 'var(--cb-ember)' },
+  COUNTERED: { label: 'COUNTERED', color: 'var(--cb-wheat)' },
+  ACCEPTED: { label: 'ACCEPTED', color: 'var(--cb-sage)' },
+  REJECTED: { label: 'DECLINED', color: 'var(--cb-ink-3)' },
+  WITHDRAWN: { label: 'WITHDRAWN', color: 'var(--cb-ink-3)' },
+  EXPIRED: { label: 'EXPIRED', color: 'var(--cb-ink-3)' },
 };
 
 export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOfferCardProps) {
@@ -174,11 +175,18 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
               ? `Offer less than their ${formatCurrency(offer.pricePerUnit, currency)}`
               : `Between ${formatCurrency(low, currency)} and ${formatCurrency(offer.pricePerUnit, currency)}, not either one`
             : undefined;
+          const label = viewAs === 'buyer' ? `Your price per ${unit}` : `New price per ${unit}`;
+          // The label sits above the row and the message below it, so the box
+          // and both buttons share one line whatever the message says; inside
+          // the field they pushed the buttons down to the error's last line.
           return (
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
-            <div style={{ flex: '1 1 160px' }}>
+          <div className="cb-rq-price">
+            <label className="cb-label" htmlFor={`price-${offer.id}`}>{label}</label>
+            <div className="cb-rq-price-row">
               <Input
-                label={viewAs === 'buyer' ? `Your price per ${unit}` : `New price per ${unit}`}
+                id={`price-${offer.id}`}
+                aria-invalid={Boolean(why)}
+                className={why ? 'error' : ''}
                 type="number"
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
@@ -186,13 +194,13 @@ export function RequirementOfferCard({ offer, viewAs, onUpdate }: RequirementOff
                   ? `Below ${formatCurrency(offer.pricePerUnit, currency)}`
                   : `${formatCurrency(offer.buyerCounterPrice ?? 0, currency)} to ${formatCurrency(offer.pricePerUnit, currency)}`}
                 autoFocus
-                error={why}
               />
+              <Button disabled={!ok} onClick={() => handleAction(viewAs === 'buyer' ? 'counter' : 'revise')} loading={loading === 'counter' || loading === 'revise'}>
+                Send
+              </Button>
+              <Button variant="link" onClick={() => setPricing(false)}>Cancel</Button>
             </div>
-            <Button size="sm" disabled={!ok} onClick={() => handleAction(viewAs === 'buyer' ? 'counter' : 'revise')} loading={loading === 'counter' || loading === 'revise'}>
-              Send
-            </Button>
-            <Button size="sm" variant="link" onClick={() => setPricing(false)}>Cancel</Button>
+            {why && <p className="cb-field-error" style={{ margin: 0 }}>{why}</p>}
           </div>
           );
         })()}
