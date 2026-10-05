@@ -72,18 +72,24 @@ export function AdminCredit() {
   const [apps, setApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
 
+  useEffect(() => { setPage(1); }, [status]);
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, [status, page]);
 
   async function load() {
     setLoading(true);
     setFailed(false);
     try {
-      const res = await api.get(`/admin/credit-applications${status ? `?status=${status}` : ''}`);
+      const res = await api.get('/admin/credit-applications', { params: { ...(status ? { status } : {}), page } });
       setApps(res.data.applications);
+      setPages(res.data.pagination?.totalPages ?? 1);
+      setTotal(res.data.pagination?.total ?? res.data.applications.length);
     } catch (err) {
       console.error('Failed to load credit applications:', err);
       // Said, not shown as an empty queue: "nothing waiting" is a claim.
@@ -112,7 +118,7 @@ export function AdminCredit() {
     <DashboardLayout>
       <div className="cb-section-head">
         <div>
-          <div className="cb-page-eyebrow">Business credit · {failed ? '—' : apps.length} shown</div>
+          <div className="cb-page-eyebrow">Business credit · {failed ? '—' : total} {total === 1 ? 'application' : 'applications'}</div>
           <h1 className="cb-page-title" style={{ marginTop: 12 }}>
             Credit asked for,<br />
             <span className="cb-italic">waiting on a call.</span>
@@ -161,6 +167,14 @@ export function AdminCredit() {
           {apps.map((a, i) => (
             <Row key={a.id} app={a} last={i === apps.length - 1} onMove={(body) => move(a.id, body)} />
           ))}
+        </div>
+      )}
+
+      {pages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 20 }}>
+          <button type="button" className="cb-btn cb-btn-link" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← newer</button>
+          <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>page {page} of {pages}</span>
+          <button type="button" className="cb-btn cb-btn-link" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>older →</button>
         </div>
       )}
     </DashboardLayout>

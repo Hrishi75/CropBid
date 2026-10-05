@@ -217,6 +217,28 @@ describe('repeat orders', () => {
     expect(await repostDueRequirements(new Date(Date.now() + 4 * 86_400_000))).toBe(0);
   });
 
+  it('never saves "stop" on a copy the repost job has just replaced, every round', async () => {
+    // Review caught it: setRepeat read the request, the job reposted it, and
+    // the unconditional write stopped the OLD copy while the new one carried
+    // on repeating, with the buyer told it had saved.
+    const later = new Date(Date.now() + 4 * 86_400_000);
+    for (let round = 0; round < 10; round++) {
+      await prisma.buyerRequirement.deleteMany({ where: { buyerId: REST } });
+      const r = await createRequirement(REST, { ...base, repeatEveryDays: 3 });
+      const [stop, reposted] = await Promise.allSettled([setRepeat(r.id, REST, null), repostDueRequirements(later)]);
+      const copies = await prisma.buyerRequirement.findMany({ where: { buyerId: REST, seriesId: r.id } });
+      if (stop.status === 'fulfilled') {
+        // "Stopped" was saved, so nothing may still be repeating.
+        expect(copies.filter((c) => c.repeatEveryDays != null)).toHaveLength(0);
+      } else {
+        expect(reposted.status === 'fulfilled' && reposted.value).toBe(1);
+        // Refused either way: 409 if the job committed mid-write, 400 if the
+        // request was already closed when it was read.
+        expect([400, 409]).toContain(stop.reason.statusCode);
+      }
+    }
+  });
+
   it('refuses an interval that is not offered', async () => {
     await expect(createRequirement(REST, { ...base, repeatEveryDays: 5 })).rejects.toThrow(/Repeat every/);
   });

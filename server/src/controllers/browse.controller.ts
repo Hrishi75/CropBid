@@ -23,6 +23,7 @@ export async function browseListings(req: Request, res: Response, next: NextFunc
         : undefined,
       state: req.query.state as string,
       location: req.query.location as string,
+      excludeSellerUserId: typeof req.query.excludeSellerUserId === 'string' ? req.query.excludeSellerUserId : undefined,
       country: req.query.country as string,
       priceMin: req.query.priceMin ? Number(req.query.priceMin) : undefined,
       priceMax: req.query.priceMax ? Number(req.query.priceMax) : undefined,

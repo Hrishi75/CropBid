@@ -26,6 +26,7 @@ import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
 import { orderContactDefaults } from './bid.service';
 import { createTransaction } from './transaction.service';
+import { alertNewOrder } from './orderAlert.service';
 
 export const CONTRACT_RULES = {
   everyDays: [7, 14, 30] as const,
@@ -229,6 +230,9 @@ export async function createDueBatches(now = new Date(), onlyId?: string): Promi
       const batch = await prisma.$transaction(async (tx) => makeBatch(tx, c, now));
       if (!batch) continue;
       made += 1;
+      // The same new-order alert every other deal sends, after the commit so a
+      // rolled-back batch alerts nobody. It is how ops hear a pickup is wanted.
+      void alertNewOrder(batch.bidId, 'SUPPLY_CONTRACT_BATCH');
       const n = Math.round(batch.scheduledAfter / c.batchQuantity);
       void createNotification({
         userId: c.buyerId,
@@ -320,7 +324,7 @@ async function makeBatch(tx: Prisma.TransactionClient, c: ContractRow, now: Date
     },
   });
   const transaction = await createTransaction(bid.id, tx);
-  return { quantity, scheduledAfter, transactionId: transaction.id };
+  return { quantity, scheduledAfter, transactionId: transaction.id, bidId: bid.id };
 }
 
 /** The caller's contracts, either side, each with its batches' deal states. */

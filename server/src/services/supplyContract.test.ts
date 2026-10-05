@@ -15,8 +15,11 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 
 vi.mock('./notification.service', () => ({ createNotification: vi.fn(() => Promise.resolve({})), pushNotification: vi.fn() }));
 vi.mock('./notification.helpers', async (orig) => ({ ...(await orig<object>()), notifyAdminsDealClosed: vi.fn(() => Promise.resolve()) }));
+vi.mock('./orderAlert.service', () => ({ alertNewOrder: vi.fn(() => Promise.resolve()) }));
 
 import { prisma } from '../lib/prisma';
+import { alertNewOrder } from './orderAlert.service';
+import { deleteUser } from './admin.service';
 import { cancelContract, createDueBatches, proposeContract, respondToContract } from './supplyContract.service';
 
 const FMCG = 'sc-fmcg';
@@ -99,6 +102,17 @@ describe('an accepted contract', () => {
     expect((await prisma.listing.findUniqueOrThrow({ where: { id: lotId } })).remainingQuantity).toBe(80);
   });
 
+  it('sends ops the same new-order alert as any other deal', async () => {
+    // Review caught batches skipping it, so a paid batch reached nobody who
+    // books the pickup.
+    vi.mocked(alertNewOrder).mockClear();
+    const c = await proposeContract(FMCG, { listingId: lotId, ...terms });
+    await respondToContract(c.id, FARM, true);
+    const deal = await prisma.transaction.findFirstOrThrow({ where: { buyerId: FMCG } });
+    expect(alertNewOrder).toHaveBeenCalledTimes(1);
+    expect(alertNewOrder).toHaveBeenCalledWith(deal.bidId, 'SUPPLY_CONTRACT_BATCH');
+  });
+
   it('follows the schedule, ends on the remainder, and completes', async () => {
     const c = await proposeContract(FMCG, { listingId: lotId, ...terms });
     await respondToContract(c.id, FARM, true);
@@ -138,6 +152,18 @@ describe('an accepted contract', () => {
     expect(ended.endedBy).toBe('SELLER');
     expect(await createDueBatches(new Date(Date.now() + 60 * DAY))).toBe(0);
     expect(await prisma.transaction.count({ where: { buyerId: FMCG } })).toBe(1);
+  });
+});
+
+describe('deleting an account', () => {
+  it('is refused while a contract is proposed or running, on either side', async () => {
+    // The contract cascades with the user row, so a delete used to end the
+    // other side's agreement without a word.
+    const c = await proposeContract(FMCG, { listingId: lotId, ...terms, startsAt: new Date(Date.now() + 30 * DAY).toISOString() });
+    await expect(deleteUser(FARM, 'some-admin')).rejects.toMatchObject({ statusCode: 409 });
+    await respondToContract(c.id, FARM, true);
+    await expect(deleteUser(FMCG, 'some-admin')).rejects.toMatchObject({ statusCode: 409 });
+    expect(await prisma.supplyContract.count({ where: { id: c.id } })).toBe(1);
   });
 });
 

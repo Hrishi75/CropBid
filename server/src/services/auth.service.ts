@@ -920,6 +920,19 @@ export async function deleteAccount(userId: string, password: string) {
     throw new ApiError(401, 'Password is incorrect');
   }
 
+  // A supply contract cascades with either party, so deleting the account
+  // would end the other side's agreement without a word, and anonymising it
+  // would keep making batches for nobody. Ending it is one button.
+  const liveContracts = await prisma.supplyContract.count({
+    where: { OR: [{ buyerId: userId }, { farmerId: userId }], status: { in: ['PROPOSED', 'ACTIVE'] } },
+  });
+  if (liveContracts > 0) {
+    throw new ApiError(
+      409,
+      'You have a supply contract proposed or running. End it from Contracts first, then delete your account.',
+    );
+  }
+
   const openDeals = await prisma.transaction.count({
     where: {
       OR: [{ farmerId: userId }, { buyerId: userId }],

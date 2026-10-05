@@ -30,7 +30,8 @@ export type OrderChannel =
   | 'BID_ACCEPTED'
   | 'AGENT_DEAL'
   | 'AUCTION_WIN'
-  | 'REQUIREMENT_FILL';
+  | 'REQUIREMENT_FILL'
+  | 'SUPPLY_CONTRACT_BATCH';
 
 const CHANNEL_LABEL: Record<OrderChannel, string> = {
   DIRECT_PURCHASE: 'Consumer direct buy (fixed retail price)',
@@ -38,6 +39,7 @@ const CHANNEL_LABEL: Record<OrderChannel, string> = {
   AGENT_DEAL: 'AI agents closed the negotiation',
   AUCTION_WIN: 'Won in a live auction',
   REQUIREMENT_FILL: 'Farmer filled a buyer requirement',
+  SUPPLY_CONTRACT_BATCH: 'A batch of a supply contract fell due',
 };
 
 export async function alertNewOrder(bidId: string, channel: OrderChannel): Promise<void> {

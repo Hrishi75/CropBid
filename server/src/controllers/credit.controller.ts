@@ -55,7 +55,8 @@ export async function adminList(req: Request, res: Response, next: NextFunction)
   try {
     const raw = typeof req.query.status === 'string' ? req.query.status : undefined;
     const status = raw && (STATUSES as readonly string[]).includes(raw) ? (raw as typeof STATUSES[number]) : undefined;
-    res.json({ applications: await creditService.listApplications(status) });
+    const page = Number(req.query.page) || 1;
+    res.json(await creditService.listApplications(status, page));
   } catch (error) {
     next(error);
   }

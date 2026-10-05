@@ -35,6 +35,10 @@ interface BrowseQuery {
   minQuintals?: number;
   search?: string;
   directSale?: boolean; // Only listings open for consumer instant-buy, with stock left
+  // A seller buying stock never sees its own lots, and they must be left out
+  // of the total as well as the page, or the count promises lots it cannot
+  // buy. A plain filter: it can only hide lots, so it needs no sign-in.
+  excludeSellerUserId?: string;
   // Pagination
   page?: number;
   limit?: number;
@@ -82,6 +86,10 @@ export async function browseListings(query: BrowseQuery) {
   // that silently widens a radius nobody can then reason about.
   if (query.location) {
     where.location = { equals: query.location, mode: 'insensitive' };
+  }
+
+  if (query.excludeSellerUserId) {
+    where.farmer = { is: { userId: { not: query.excludeSellerUserId } } };
   }
 
   if (query.country) {

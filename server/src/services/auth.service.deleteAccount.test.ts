@@ -40,6 +40,8 @@ vi.mock('../lib/prisma', () => {
     prisma: {
       user: { findUnique: vi.fn() },
       transaction: { count: vi.fn() },
+      // No live supply contract unless a test says so.
+      supplyContract: { count: vi.fn(() => Promise.resolve(0)) },
       listing: { findMany: vi.fn(() => Promise.resolve([])) },
       $transaction: vi.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
       __tx: tx,
@@ -82,6 +84,14 @@ beforeEach(async () => {
   for (const model of Object.values(tx)) {
     for (const fn of Object.values(model)) fn.mockResolvedValue({ count: 0 });
   }
+});
+
+describe('a live supply contract', () => {
+  it('refuses the delete, which would end the other side\'s agreement', async () => {
+    mock((prisma as unknown as { supplyContract: { count: unknown } }).supplyContract.count).mockResolvedValueOnce(1);
+    await expect(deleteAccount('seller-1', PASSWORD)).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe('anonymising a seller who has settled deals', () => {
