@@ -181,6 +181,9 @@ export interface BuyerRequirement {
   repeatEveryDays?: number | null;
   nextRepeatAt?: string | null;
   seriesId?: string | null;
+  /** A restock list: items posted together share listId; listName is its label. */
+  listId?: string | null;
+  listName?: string | null;
   status: RequirementStatus;
   createdAt: string;
   updatedAt?: string;

@@ -420,6 +420,45 @@ export async function rejectOffer(req: Request, res: Response, next: NextFunctio
   }
 }
 
+const listSchema = z.object({
+  listName: z.string().max(80).nullable().optional(),
+  items: z.array(z.object({
+    cropName: z.string().min(1).max(200),
+    cropVariety: z.string().max(200).optional(),
+    quantity: z.coerce.number(),
+    unit: z.enum(['KG', 'QUINTAL', 'TONNE']).optional(),
+    qualityGrade: z.enum(['A', 'B', 'C']),
+    pricePerUnit: z.coerce.number(),
+    organic: z.boolean().optional(),
+  })).max(15),
+  deliveryLocation: z.string().min(1).max(200),
+  deliveryState: z.string().min(1).max(100),
+  neededBy: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
+  deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  repeatEveryDays: z.number().int().nullable().optional(),
+});
+
+// POST /api/requirements/list — a restock list: several crops, one delivery
+export async function createRequirementList(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = listSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const out = await requirementService.createRequirementList(req.user!.userId, parsed.data);
+    await auditFromRequest(req, {
+      action: 'requirement.list.create',
+      entityType: 'BuyerRequirement',
+      entityId: out.listId,
+      metadata: { items: out.requirements.length, ids: out.requirements.map((r) => r.id) },
+    });
+    res.status(201).json(out);
+    for (const r of out.requirements) queueRequirementTranslation(r.id);
+  } catch (error) {
+    next(error);
+  }
+}
+
 const priceSchema = z.object({ pricePerUnit: z.coerce.number().positive('Enter a price') });
 
 // PUT /api/requirements/offers/:offerId/counter — Buyer sends a price back

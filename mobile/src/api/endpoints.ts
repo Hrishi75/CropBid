@@ -538,6 +538,20 @@ export interface RequirementInput {
   repeatEveryDays?: number | null;
 }
 
+// A restock list: several crops for one delivery, posted together (all or none).
+export async function createRequirementList(input: {
+  listName?: string | null;
+  items: Array<{ cropName: string; quantity: number; unit: Unit; qualityGrade: QualityGrade; pricePerUnit: number; organic?: boolean }>;
+  deliveryLocation: string;
+  deliveryState: string;
+  neededBy?: string;
+  description?: string;
+  repeatEveryDays?: number | null;
+}): Promise<{ listId: string; listName: string | null; requirements: BuyerRequirement[] }> {
+  const { data } = await api.post('/requirements/list', input);
+  return data;
+}
+
 // The ports and documents an export request can name. Served, not copied.
 export async function fetchExportOptions(): Promise<ExportOptions> {
   const { data } = await api.get<ExportOptions>('/requirements/export-options');

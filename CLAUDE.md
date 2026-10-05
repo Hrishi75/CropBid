@@ -512,6 +512,16 @@ Web has none of these. They are `mobile/` only.
 
 **Lots priced in another currency no longer front a rupee card.** Seed lots in USD (an Australian wheat lot at $260/tonne) were compared as rupees, so the grouped wheat card read "from ₹26/qtl" and the compare screen gave that lot BEST PRICE. Both now rank rupee lots first.
 
+### A store restocks with a list (2026-10-05)
+
+**Several crops, one delivery, posted together** (`POST /api/requirements/list`, `screens/buyer/RestockListScreen`). The user's pick of four options for retailers; smaller shelf-ready lots and store locations were the others and are not built.
+
+- **Who gets it:** a RETAILER buyer, and **a local shop on its buying side** (§4, "A seller can also buy"), whatever company type it applied under, because the user pointed out that a local shop restocking is the same job (`mobile/src/lib/restock.ts`). For them "Post" on Requests, the dashboard and the profile opens the list; "Just one crop?" goes to the single form. Anyone can use the endpoint.
+- **Each item is an ordinary request.** Sellers offer on the items they have, and every offer, counter (§9 restaurants) and deal works as for one request. The items share `listId` and `listName`, and Requests shows them under one "Restock list" header.
+- **All or none.** Two to fifteen items, each crop once, posted in one transaction, so a list is never half up.
+- **One address and date for the whole list**, and it can repeat; the items fall due together and the copies keep the list's id and name.
+- **Not built:** editing a list as a whole (each item is edited or withdrawn on its own); the website shows lists as separate requests.
+
 ### Business credit: applied for on the wallet, decided by a person (2026-10-04)
 
 **A business buyer can ask for money to stock up, and repay in 30, 60 or 90 days. CropBid does not lend.** The user's call: a card on the buyer's wallet ("Need money to stock up?"), a form, and somebody at CropBid takes the application to a third-party lender. There is no lending partner signed, so nothing on screen may say "instant", "guaranteed", or anything that reads as CropBid lending. The card says it is not instant and that the lender sets the terms.

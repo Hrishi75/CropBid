@@ -65,6 +65,7 @@ router.delete('/offers/:offerId', requireRole('FARMER'), requireApprovedPartner,
 
 // --- Buyer CRUD ---
 router.post('/', requireRole('BUYER'), requireApprovedPartner, requirementController.createRequirement);
+router.post('/list', requireRole('BUYER'), requireApprovedPartner, requirementController.createRequirementList);
 router.put('/:id', requireRole('BUYER'), requireApprovedPartner, requirementController.updateRequirement);
 router.put('/:id/close', requireRole('BUYER'), requireApprovedPartner, requirementController.closeRequirement);
 router.put('/:id/repeat', requireRole('BUYER'), requireApprovedPartner, requirementController.setRepeat);

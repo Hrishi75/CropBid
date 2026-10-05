@@ -30,6 +30,7 @@ import { errorMessage } from '../../api/client';
 import type { BuyerRequirement, RequirementStatus } from '../../api/types';
 import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
+import { postRoute } from '../../lib/restock';
 
 const TABS: Array<{ value: RequirementStatus | ''; label: string }> = [
   { value: 'OPEN', label: 'Open' },
@@ -42,6 +43,8 @@ export default function MyRequirementsScreen() {
   const nav = useNavigation<any>();
   const { user } = useAuth();
   const isRestaurant = user?.buyerProfile?.companyType === 'RESTAURANT';
+  // A store restocks many items at once, so its Post button opens the list.
+  const postTo = postRoute(user);
   const insets = useSafeAreaInsets();
   const [rows, setRows] = useState<BuyerRequirement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -100,7 +103,7 @@ export default function MyRequirementsScreen() {
           ) : null}
           <View style={styles.titleRow}>
             <Text style={styles.title}>Requests</Text>
-            <PressScale onPress={() => nav.navigate('CreateRequirement')} scaleTo={0.95} cardStyle={styles.postBtn}>
+            <PressScale onPress={() => nav.navigate(postTo)} scaleTo={0.95} cardStyle={styles.postBtn}>
               <IconPlus size={15} stroke={colors.textInverse} />
               <Text style={styles.postBtnText}>Post</Text>
             </PressScale>
@@ -159,7 +162,7 @@ export default function MyRequirementsScreen() {
                 are notified.
               </Text>
               {rows.length === 0 ? (
-                <PressScale onPress={() => nav.navigate('CreateRequirement')} cardStyle={styles.emptyBtn}>
+                <PressScale onPress={() => nav.navigate(postTo)} cardStyle={styles.emptyBtn}>
                   <Text style={styles.postBtnText}>Post your first request</Text>
                 </PressScale>
               ) : null}
@@ -169,8 +172,23 @@ export default function MyRequirementsScreen() {
           {shown.map((r, i) => {
             const offers = offersOf(r);
             const go = () => nav.navigate('RequirementDetail', { id: r.id, preview: r });
+            // The first item of a restock list carries a header for the list:
+            // its items arrive together, so they sit together.
+            const listItems = r.listId ? shown.filter((x) => x.listId === r.listId) : [];
+            const listHead = r.listId && shown.findIndex((x) => x.listId === r.listId) === i;
+            const listOffers = listItems.reduce((n, x) => n + offersOf(x), 0);
             return (
               <Appear key={r.id} index={i}>
+                {listHead ? (
+                  <View style={styles.listHead}>
+                    <Mono style={styles.listKicker}>RESTOCK LIST · {listItems.length} ITEMS</Mono>
+                    <Text style={styles.listName} numberOfLines={1}>{r.listName || `To ${r.deliveryLocation}`}</Text>
+                    <Text style={styles.listMeta} numberOfLines={1}>
+                      {listItems.map((x) => x.cropName).join(', ')}
+                      {listOffers > 0 ? ` · ${listOffers} ${listOffers === 1 ? 'offer' : 'offers'} waiting` : ''}
+                    </Text>
+                  </View>
+                ) : null}
                 <RequirementCard requirement={r} onPress={go}>
                   {offers > 0 ? (
                     <Pressable onPress={go} style={styles.nudge}>
@@ -195,6 +213,10 @@ export default function MyRequirementsScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
+  listHead: { paddingHorizontal: 4, paddingTop: 8, paddingBottom: 8, gap: 2 },
+  listKicker: { fontSize: 10, letterSpacing: 0.8, color: colors.sage },
+  listName: { fontFamily: font.sansBold, fontSize: 17, color: design.ink },
+  listMeta: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3 },
   head: { paddingHorizontal: 16, paddingBottom: 6 },
   back: {
     width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',

@@ -61,6 +61,7 @@ import RequirementDetailScreen from '../screens/RequirementDetailScreen';
 import MyOffersScreen from '../screens/farmer/MyOffersScreen';
 import MyRequirementsScreen from '../screens/buyer/MyRequirementsScreen';
 import CreateRequirementScreen from '../screens/buyer/CreateRequirementScreen';
+import RestockListScreen from '../screens/buyer/RestockListScreen';
 import CropSellersScreen from '../screens/CropSellersScreen';
 import MandiScreen from '../screens/MandiScreen';
 import SchemesScreen from '../screens/SchemesScreen';
@@ -164,6 +165,11 @@ function BuyerNavigator() {
         options={{ headerShown: true, title: t('Requirement'), animation: 'slide_from_right' }}
       />
       <RootStack.Screen name="MyRequirements" component={MyRequirementsScreen} options={{ animation: 'slide_from_right' }} />
+      <RootStack.Screen
+        name="RestockList"
+        component={RestockListScreen}
+        options={{ headerShown: true, title: t('Restock list'), presentation: 'card', animation: 'slide_from_right' }}
+      />
       <RootStack.Screen
         name="CreateRequirement"
         component={CreateRequirementScreen}

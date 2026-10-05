@@ -640,6 +640,12 @@ model BuyerRequirement {
   nextRepeatAt    DateTime?
   seriesId        String?
 
+  // A restock list: several crops posted together for one delivery (a
+  // retailer's shopping list). Each item is still its own request that sellers
+  // offer on; listId groups them, and listName is the buyer's label for it.
+  listId   String?
+  listName String?
+
   status RequirementStatus @default(OPEN)
 
   createdAt DateTime @default(now())
@@ -652,6 +658,7 @@ model BuyerRequirement {
   @@index([status, createdAt])
   @@index([cropName, status])
   @@index([deliveryState, status])
+  @@index([listId])
   @@index([nextRepeatAt])
   @@index([buyerId, createdAt])
 }

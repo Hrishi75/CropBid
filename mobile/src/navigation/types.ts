@@ -69,6 +69,8 @@ export type RootStackParamList = {
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyRequirements: undefined;
   // `crop` prefills the crop, from a lot a restaurant cannot bid on.
+  // A retailer's shopping list: many crops, one delivery.
+  RestockList: undefined;
   CreateRequirement: { crop?: string } | undefined;
   Auction: { listingId?: string } | undefined;
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };

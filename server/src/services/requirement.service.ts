@@ -35,6 +35,7 @@
 // against each other.
 // =============================================================================
 
+import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { exportFields, type ExportDocCode, type ExportPortCode } from '../utils/exportSpec';
@@ -1254,6 +1255,116 @@ export async function withdrawOffer(offerId: string, farmerUserId: string) {
 }
 
 // =============================================================================
+// RESTOCK LIST — several crops, one delivery, posted together
+// =============================================================================
+// How a store restocks: one list (onion 20 qtl, tomato 10 qtl, potato 15 qtl)
+// for one address and one day. Each item becomes an ordinary request, so
+// sellers offer on the items they have, and offers, counters and deals work
+// exactly as they do for a single request. The items share a listId and are
+// created in one transaction: all of them or none, so a list is never half
+// posted.
+
+export const LIST_RULES = { minItems: 2, maxItems: 15 };
+
+export interface RequirementListItem {
+  cropName: string;
+  cropVariety?: string;
+  quantity: number;
+  unit?: 'KG' | 'QUINTAL' | 'TONNE';
+  qualityGrade: 'A' | 'B' | 'C';
+  pricePerUnit: number;
+  organic?: boolean;
+}
+
+export interface RequirementListInput {
+  listName?: string | null;
+  items: RequirementListItem[];
+  deliveryLocation: string;
+  deliveryState: string;
+  neededBy?: string;
+  description?: string;
+  paymentTerms?: string;
+  deliveryTerms?: string;
+  repeatEveryDays?: number | null;
+}
+
+export async function createRequirementList(buyerId: string, input: RequirementListInput) {
+  const buyerProfile = await prisma.buyerProfile.findUnique({ where: { userId: buyerId } });
+  if (!buyerProfile) throw new ApiError(400, 'Complete your buyer profile before posting a requirement');
+  const buyer = await prisma.user.findUnique({ where: { id: buyerId }, select: { phone: true } });
+  if (!buyer?.phone) {
+    throw new ApiError(400, 'Add a phone number to your profile so sellers can reach you about this list.');
+  }
+
+  const items = input.items ?? [];
+  if (items.length < LIST_RULES.minItems) throw new ApiError(400, `A list has at least ${LIST_RULES.minItems} items. For one crop, post a single request.`);
+  if (items.length > LIST_RULES.maxItems) throw new ApiError(400, `A list has at most ${LIST_RULES.maxItems} items`);
+
+  // The same crop twice would be two requests competing for the same sellers.
+  const names = items.map((it) => it.cropName.trim().toLowerCase());
+  if (new Set(names).size !== names.length) throw new ApiError(400, 'Each crop appears once on a list. Add the quantities together.');
+
+  items.forEach((it, i) => {
+    const which = it.cropName?.trim() || `item ${i + 1}`;
+    if (!it.cropName?.trim()) throw new ApiError(400, `Name the crop for item ${i + 1}`);
+    if (!(it.quantity > 0)) throw new ApiError(400, `Enter how much ${which} you need`);
+    if (!(it.pricePerUnit > 0)) throw new ApiError(400, `Enter your price for ${which}`);
+  });
+
+  const neededBy = input.neededBy ? new Date(input.neededBy) : null;
+  if (neededBy) {
+    if (Number.isNaN(neededBy.getTime())) throw new ApiError(400, 'Invalid needed-by date');
+    if (neededBy < new Date()) throw new ApiError(400, 'Needed-by date must be in the future');
+  }
+  if (!input.deliveryLocation?.trim() || !input.deliveryState?.trim()) {
+    throw new ApiError(400, 'Where should the list be delivered?');
+  }
+
+  const repeatEveryDays = parseRepeat(input.repeatEveryDays);
+  const listId = randomUUID();
+  const listName = input.listName?.trim().slice(0, 80) || null;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const rows = [];
+    for (const it of items) {
+      rows.push(await tx.buyerRequirement.create({
+        data: {
+          buyerId,
+          cropName: it.cropName.trim(),
+          cropVariety: it.cropVariety?.trim() || null,
+          quantity: it.quantity,
+          remainingQuantity: it.quantity,
+          unit: it.unit || 'QUINTAL',
+          qualityGrade: it.qualityGrade,
+          pricePerUnit: it.pricePerUnit,
+          currency: 'INR',
+          deliveryLocation: input.deliveryLocation.trim(),
+          deliveryState: input.deliveryState.trim(),
+          deliveryCountry: 'India',
+          neededBy,
+          description: input.description?.trim() || null,
+          organic: it.organic ?? false,
+          paymentTerms: input.paymentTerms || null,
+          deliveryTerms: input.deliveryTerms || null,
+          negotiateOnly: buyerProfile.companyType === 'RESTAURANT',
+          repeatEveryDays,
+          nextRepeatAt: repeatEveryDays ? addDays(new Date(), repeatEveryDays) : null,
+          listId,
+          listName,
+        },
+        include: { buyer: { select: PUBLIC_BUYER_SELECT } },
+      }));
+    }
+    return rows;
+  });
+
+  // Sellers hear about each crop as they would a single request.
+  for (const r of created) void announceRequirement(r, buyerProfile.companyName ?? '');
+
+  return { listId, listName, requirements: created };
+}
+
+// =============================================================================
 // COUNTER OFFER — The buyer sends a price back
 // =============================================================================
 // A restaurant negotiates rather than taking a price, so a seller's offer can
@@ -1416,6 +1527,10 @@ export async function repostDueRequirements(now = new Date()): Promise<number> {
             packing: old.packing,
             requiredDocs: old.requiredDocs,
             negotiateOnly: old.negotiateOnly,
+            // A list's items repost together (they fall due at the same moment)
+            // and the copies keep the list's id and name, so it reads as one list.
+            listId: old.listId,
+            listName: old.listName,
             repeatEveryDays: every,
             nextRepeatAt: addDays(now, every),
             seriesId: old.seriesId ?? old.id,

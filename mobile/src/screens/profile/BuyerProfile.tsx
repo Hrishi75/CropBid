@@ -31,6 +31,7 @@ import type { User } from '../../api/types';
 import { companyTypeLabel } from '../../lib/companyType';
 import { colors, design, font } from '../../theme';
 import { MenuRow, SectionTitle, Tile, profileStyles as p } from './ShopperProfile';
+import { postRoute, restocksByList } from '../../lib/restock';
 
 export function BuyerProfile({
   user, photo, uploading, refreshing, signingOut,
@@ -124,9 +125,9 @@ export function BuyerProfile({
         <View style={p.group}>
           <MenuRow
             Icon={IconPlus}
-            label={t('Post what you need')}
+            label={restocksByList(user) ? t('Post a restock list') : t('Post what you need')}
             hint={user.buyerProfile?.companyType === 'RESTAURANT' ? t('Sellers offer their price, you negotiate') : t('Sellers fill it at your price, or counter')}
-            onPress={() => nav.navigate('CreateRequirement')}
+            onPress={() => nav.navigate(postRoute(user))}
           />
           <MenuRow
             Icon={IconMarket}

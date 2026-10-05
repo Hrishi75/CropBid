@@ -18,6 +18,7 @@ import type { Auction, Bid, BuyerRequirement, Negotiation, Transaction, Transact
 import { cropEmojiFor } from '../../utils/cropImages';
 import { IconChevR } from '../../components/icons';
 import { money, timeAgo, unitLabel } from '../../lib/format';
+import { postRoute, restocksByList } from '../../lib/restock';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -261,9 +262,9 @@ export default function HomeScreen() {
           })}
           <Pressable
             style={({ pressed }) => [styles.demandPrimary, pressed && styles.pressed]}
-            onPress={() => nav.navigate('CreateRequirement')}
+            onPress={() => nav.navigate(postRoute(user))}
           >
-            <Text style={styles.demandPrimaryText}>Post what you need </Text>
+            <Text style={styles.demandPrimaryText}>{restocksByList(user) ? 'Post a restock list ' : 'Post what you need '}</Text>
             <IconArrow size={13} stroke="#f4f1ea" />
           </Pressable>
         </View>
