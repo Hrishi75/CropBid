@@ -26,6 +26,7 @@ import { CreditCard } from '../../components/credit/CreditCard';
 import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
 import { timeAgo, greeting } from '../../utils/time';
+import { postPath } from '../../utils/restock';
 import api from '../../lib/axios';
 
 interface Bid {
@@ -192,7 +193,7 @@ export function BuyerDashboard() {
             ) : reqs.length === 0 ? (
               <EmptyState>
                 No open requests.{' '}
-                <Link to="/buyer/requirements/new" className="cb-btn cb-btn-link">Post what you need →</Link>
+                <Link to={postPath(user)} className="cb-btn cb-btn-link">Post what you need →</Link>
               </EmptyState>
             ) : (
               <div className="cb-bd-reqs">
@@ -292,7 +293,7 @@ export function BuyerDashboard() {
 
           <div className="cb-bd-actions">
             <Link to="/buyer/browse" className="cb-btn cb-btn-primary">Browse the market <ArrowIcon /></Link>
-            <Link to="/buyer/requirements/new" className="cb-btn cb-btn-ghost">Post what you need</Link>
+            <Link to={postPath(user)} className="cb-btn cb-btn-ghost">Post what you need</Link>
           </div>
 
         </aside>

@@ -46,6 +46,7 @@ import { MyRequirements } from '../pages/buyer/MyRequirements';
 import { CreateRequirement } from '../pages/buyer/CreateRequirement';
 import { RequirementDetail } from '../pages/buyer/RequirementDetail';
 import { PlaceBid } from '../pages/buyer/PlaceBid';
+import { RestockList } from '../pages/buyer/RestockList';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
 import { AdminPartners } from '../pages/admin/AdminPartners';
@@ -329,6 +330,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <CreateRequirement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/list"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <RestockList />
           </ProtectedRoute>
         }
       />

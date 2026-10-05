@@ -3156,3 +3156,27 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
 .cb-rq-port strong { font-size: 13.5px; font-weight: 600; }
 .cb-rq-port span { font-size: 11.5px; color: var(--cb-ink-3); }
 .cb-rq-port.on { border-color: var(--cb-forest); background: #e6efd9; box-shadow: inset 0 0 0 1px var(--cb-forest); }
+
+/* ---- Restock list (pages/buyer/RestockList, MyRequirements grouping) -------- */
+.cb-rl-head, .cb-rl-row { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1.1fr) minmax(0, 1.1fr) 32px; gap: 8px; align-items: center; }
+.cb-rl-head { font-family: var(--cb-mono, ui-monospace); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--cb-ink-3); padding: 0 2px 6px; }
+.cb-rl-rows { display: flex; flex-direction: column; gap: 8px; }
+.cb-rl-row .cb-input { padding-left: 10px; padding-right: 10px; min-width: 0; }
+.cb-rl-remove { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--cb-line); background: var(--cb-paper); color: var(--cb-ink-3); display: grid; place-items: center; cursor: pointer; }
+.cb-rl-remove:disabled { opacity: 0.35; cursor: default; }
+.cb-rl-add { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--cb-line); background: none; border-radius: 999px; padding: 8px 14px; font: inherit; font-size: 13px; color: var(--cb-forest); cursor: pointer; }
+.cb-rl-group { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 2px; padding: 8px 2px 0; }
+.cb-rl-group .cb-mono { font-size: 10px; letter-spacing: 0.08em; color: var(--cb-sage, #4d6638); }
+.cb-rl-group strong { font-size: 17px; font-weight: 600; color: var(--cb-ink); }
+.cb-rl-group span:last-child { font-size: 13px; color: var(--cb-ink-3); }
+@media (max-width: 640px) {
+  /* On a phone each item is a small card: the crop across the top, the numbers below. */
+  .cb-rl-head { display: none; }
+  .cb-rl-row { position: relative; grid-template-columns: 1fr 1fr; grid-template-areas: "crop crop" "qty unit" "price grade"; padding: 10px; border: 1px solid var(--cb-line); border-radius: 12px; }
+  .cb-rl-row > :nth-child(1) { grid-area: crop; margin-right: 40px; }
+  .cb-rl-row > :nth-child(2) { grid-area: qty; }
+  .cb-rl-row > :nth-child(3) { grid-area: unit; }
+  .cb-rl-row > :nth-child(4) { grid-area: grade; }
+  .cb-rl-row > :nth-child(5) { grid-area: price; }
+  .cb-rl-row > :nth-child(6) { position: absolute; top: 16px; right: 10px; }
+}
