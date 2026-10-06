@@ -42,6 +42,7 @@ import { OtpDeliveryError, deliverOtp } from './otpDelivery.service';
 import { recordAudit } from './audit.service';
 import { removeImage } from './imageStorage';
 import { config } from '../config';
+import { verifyGoogleIdToken } from '../utils/googleIdToken';
 
 // ---------------------------------------------------------------------------
 // Phone normalization — the stored/lookup form of a phone number
@@ -79,7 +80,8 @@ export function normalizeEmail(email: string): string {
 // site and a new endpoint only has to forget once.
 //
 //   1. Nothing that is or stands in for a credential leaves: the password
-//      hash, the stored refresh-token digest, the reset token and its expiry.
+//      hash, the stored refresh-token digest, the reset token and its expiry,
+//      and the Google id an account signs in with.
 //   2. The seller's payout details are masked. They belong to the seller and
 //      are shown back in a form they can recognise but nobody can use
 //      (payoutDetails.ts). The unmasked columns leave the server through
@@ -90,6 +92,7 @@ function safeUser<T extends Record<string, any>>(user: T) {
     refreshToken: __,
     passwordResetToken: ___,
     passwordResetExpires: ____,
+    googleId: _____,
     ...rest
   } = user;
   return maskUserPayoutDetails(rest);
@@ -1025,6 +1028,9 @@ export async function deleteAccount(userId: string, password: string) {
           refreshToken: null,
           passwordResetToken: null,
           passwordResetExpires: null,
+          // A login like the rest. Left in place, the person's Google account
+          // would still sign in to the shell of the account they deleted.
+          googleId: null,
         },
       });
     }
@@ -1773,4 +1779,131 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
   const user = safeUser(created);
 
   return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: true };
+}
+
+// ---------------------------------------------------------------------------
+// Sign in with Google: one flow for signing up and signing in
+// ---------------------------------------------------------------------------
+// The person is found by their Google id, then by their email, and made if
+// neither finds them, always as a shopper like every other lane (CLAUDE.md
+// section 4).
+//
+// FINDING AN ACCOUNT BY EMAIL LINKS IT, which was the user's call. Google has
+// just proved this person owns the address, which is more than sign-up ever
+// asks: CropBid checks no email, so whoever registered an address first did so
+// on their word alone. The link is recorded, so from then on they are found by
+// their Google id. Signing in replaces the account's one refresh token, so any
+// other session on it (somebody who registered the address before its owner
+// arrived, say) ends at its next refresh. Its password is left alone, and so
+// still works: the owner can change it, or reset it by email, which they hold.
+//
+// Not for admin accounts. Their way in stays the password an admin was given,
+// the same caution as support refusing to reset one (admin.service).
+export async function signInWithGoogle(credential: string) {
+  const identity = await verifyGoogleIdToken(credential);
+  const withProfiles = { farmerProfile: true, buyerProfile: true };
+
+  let user = await prisma.user.findUnique({ where: { googleId: identity.sub }, include: withProfiles });
+  let linking = false;
+  if (!user) {
+    // Case-insensitive and oldest first, like the password login's fallback:
+    // rows from before emails were normalised can differ by case alone.
+    user = await prisma.user.findFirst({
+      where: { email: { equals: identity.email, mode: 'insensitive' } },
+      orderBy: { createdAt: 'asc' },
+      include: withProfiles,
+    });
+    if (user?.googleId) {
+      // Linked to a different Google account, which then changed its address
+      // to this one. Moving the link would hand the account over.
+      throw new ApiError(409, 'This email is linked to a different Google account. Sign in with your password instead.');
+    }
+    linking = Boolean(user);
+  }
+
+  if (user) {
+    if (user.role === 'ADMIN') {
+      throw new ApiError(403, 'Admin accounts sign in with their password.');
+    }
+    if (user.suspended) {
+      throw new ApiError(403, 'This account has been suspended. Please contact support.');
+    }
+
+    // The password-change flag rides this path as it does the phone code: an
+    // admin reset is still outstanding however they came in.
+    const tokens = generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
+
+    // Conditional on the password read above, like every other sign-in, so a
+    // support reset landing in between is not undone by this write. And when
+    // linking, on the account still having no Google id: two first sign-ins at
+    // once both find it by email, and only one of them may write the link.
+    const claimed = await prisma.user
+      .updateMany({
+        where: { id: user.id, password: user.password, googleId: linking ? null : identity.sub },
+        data: {
+          refreshToken: hashRefreshToken(tokens.refreshToken),
+          ...(linking ? { googleId: identity.sub } : {}),
+        },
+      })
+      .catch((err) => {
+        // The same Google id written to another row in the meantime.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') return { count: 0 };
+        throw err;
+      });
+    if (claimed.count === 0) {
+      throw new ApiError(409, 'Your account changed while signing in. Try again.');
+    }
+
+    if (linking) {
+      await recordAudit({
+        actorId: user.id,
+        actorRole: user.role,
+        action: 'auth.google.linked',
+        entityType: 'User',
+        entityId: user.id,
+      });
+    }
+
+    return { user: safeUser(user), accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: false };
+  }
+
+  // --- New account. No password: it signs in with Google until they set one
+  // from change-password, exactly like an account made by phone code. ---
+  const emailLocal = identity.email.split('@')[0];
+  const name = (identity.name && identity.name.length >= 2 ? identity.name : emailLocal).slice(0, 100);
+  const created = await prisma.user
+    .create({
+      data: {
+        name,
+        email: normalizeEmail(identity.email),
+        googleId: identity.sub,
+        role: 'CONSUMER',
+        country: 'India',
+      },
+      include: withProfiles,
+    })
+    .catch((err) => {
+      // A second first sign-in for the same person, or the address registered
+      // by password in the same instant. Trying again finds the account.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ApiError(409, 'That account was just created. Try signing in again.');
+      }
+      throw err;
+    });
+
+  const tokens = generateTokens(created.id, created.role);
+  await prisma.user.update({
+    where: { id: created.id },
+    data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
+  });
+
+  await recordAudit({
+    actorId: created.id,
+    actorRole: created.role,
+    action: 'auth.google.signup',
+    entityType: 'User',
+    entityId: created.id,
+  });
+
+  return { user: safeUser(created), accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: true };
 }

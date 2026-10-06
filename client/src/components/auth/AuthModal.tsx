@@ -20,6 +20,12 @@
 // the application form once their account exists, and approval is what makes
 // them a partner.
 //   One-time code          phone → a 6-digit code over WhatsApp → signed in.
+//
+// And Google, as a button at the top of the first two lanes rather than a lane
+// of its own, because it is one tap either way: it signs in an account it
+// finds and makes one it does not. Hidden when the site is built without a
+// Google client id. See components/auth/GoogleButton.tsx.
+//
 //                          Kept because accounts made through it before
 //                          sign-up existed have no password and no other way
 //                          in, and it is how a phone-only account gets back in
@@ -53,6 +59,7 @@ import type { User } from '../../types';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ArcMark, ArrowIcon } from '../ui/Brand';
+import { GoogleButton } from './GoogleButton';
 import { isPendingPartner } from '../../utils/partner';
 import toast from 'react-hot-toast';
 
@@ -144,7 +151,7 @@ const SIDE_DOORS = [
 ];
 
 export function AuthModal({ open, onClose, intendedRole, redirectTo, title, startWith }: AuthModalProps) {
-  const { login, signup, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
+  const { login, signup, startPhoneSignIn, verifyPhoneSignIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   // Password sign-in is the default; see the header for the three lanes. The
@@ -273,6 +280,28 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       // Guarded like the rest: the flag belongs to whichever attempt is
       // current, so a superseded one must not clear it and re-enable a button
       // whose request is still in flight.
+      if (attemptRef.current === attempt) setSigningIn(false);
+    }
+  }
+
+  // Google: the button hands back a token, and the server signs in, links or
+  // creates. Errors land in the lane's own error slot, like a wrong password.
+  async function handleGoogle(credential: string) {
+    const attempt = attemptRef.current;
+    setSigningIn(true); setError(undefined); setErrorField(undefined);
+    try {
+      const { user, created } = await signInWithGoogle(credential);
+      if (attemptRef.current !== attempt) return;
+      toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
+      onClose();
+      routeAfterAuth(user, created);
+    } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
+      const message = err.response?.data?.message || 'Could not sign you in with Google just now';
+      if (mode === 'signup') { setErrorField('confirm'); }
+      setError(message);
+      toast.error(message);
+    } finally {
       if (attemptRef.current === attempt) setSigningIn(false);
     }
   }
@@ -429,6 +458,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   : "Takes a minute. You start as a shopper, and can apply to sell or buy in bulk once you're in."}
               </p>
 
+              <GoogleButton onCredential={handleGoogle} />
+
               <form onSubmit={handleSignup} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input
                   label="Your name"
@@ -504,6 +535,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
                 With the email or phone number and the password you signed up with.
               </p>
+
+              <GoogleButton onCredential={handleGoogle} />
 
               <form onSubmit={handlePasswordSignIn} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input

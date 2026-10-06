@@ -29,7 +29,7 @@ Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ 
 
 Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
 
-Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. A phone code over WhatsApp survives as the secondary lane (§4).
+Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. On the website, Continue with Google does either in one tap. A phone code over WhatsApp survives as the secondary lane (§4).
 
 ## 2. Business facts
 
@@ -192,6 +192,19 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **Server:** `POST /auth/signup` has no role field, and `signup()` writes `CONSUMER` whatever it is handed. App builds from before 2026-09-13 still send `FARMER` from their old picker; zod drops it unread. `phone` is optional as long as `email` is present, because one of them is the login identifier. The code lane matches: `startPhoneSignIn` no longer takes `intendedRole`, and `verifyPhoneSignIn` creates `CONSUMER` even from a challenge row written before this rule.
 - **The buyer's emailed-code sign-up is unreachable.** Buyers used to sign up as buyers, get a 202 and verify their email first (`startBuyerSignup`). Nobody signs up as a buyer now, so `/signup/verify` and `/signup/resend` only finish signups already in flight, and that code is dead. Removing it is a separate cleanup.
 - **App:** `SignupScreen` asks the same four things. The fifteen-country picker is gone, since the product is India only and the server defaults to India and INR.
+
+### Sign in with Google (web only, 2026-10-06)
+
+**Google's own button at the top of the sign-in and create-account lanes, and one endpoint, `POST /auth/google`, that signs in, links or creates.** The browser gets an ID token from Google and posts it; `utils/googleIdToken.ts` checks its signature, expiry and, most importantly, that it was issued to **our** client id, because without the audience check a token any other Google-sign-in site received would sign its holder in here.
+
+- **Found by Google id first, then by email.** `User.googleId` is the token's `sub`, which never changes, whereas a Google address can.
+- **A matching email is linked, not refused** (the user's call, of three options). Google has proved the person owns the address, which is more than CropBid's own sign-up ever checks (above, "Knowingly unverified"). Signing in replaces the account's one refresh token, so anyone else signed in under that email is out at their next refresh. **The password is left alone and still works**: someone who registered the address before its owner arrived keeps it until the owner changes it or resets it by email. Removing the password on link was the safer option and was turned down, because a real user who already had one would lose it.
+- **The link is a conditional write**, on the account still having no Google id and still having the password read. Two different Google accounts racing for one email's account (an address can move between Google accounts) get one winner and one 409; tested ten rounds on a real Postgres and watched failing with the condition removed. An account linked to a different Google id is refused outright rather than moved.
+- **A new person is a shopper with no password**, named from Google's profile (or the front of the email), exactly like a phone-code account: change-password sets a first password, and deleting the account needs one first.
+- **Never an admin account**, linked or signed in, the same caution as support refusing to reset one. Suspended accounts are refused before anything is written.
+- **`googleId` never leaves the server** (`safeUser` strips it), and anonymising a deleted account clears it, or Google would still sign in to the shell. A test pins that.
+- **Off until configured.** `GOOGLE_CLIENT_ID` on the API and `VITE_GOOGLE_CLIENT_ID` on the website, the same OAuth "Web application" id, with every site origin listed as an authorised JavaScript origin. Blank, the button is not drawn and the endpoint answers 503. The privacy page discloses what Google sends us; **the FAQ does not mention Google yet**, because it would be false while production has no id set. Add it when the id goes live.
+- **Not built: the app.** It needs Android and iOS client ids and a native build to test, and was deferred, not decided against.
 
 ### Support can reset a password, and the user must then choose their own (shipped 2026-09-25)
 

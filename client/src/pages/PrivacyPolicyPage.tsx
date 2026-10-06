@@ -24,7 +24,7 @@ import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 
-const UPDATED = '21 September 2026';
+const UPDATED = '6 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -120,6 +120,13 @@ export function PrivacyPolicyPage() {
             only as a bcrypt hash; nobody at CropBid can read it. We also hold the sign-in
             tokens that keep you logged in, and, briefly, a hashed one-time code when you sign
             in by phone or reset a password.
+          </p>
+          <p>
+            <strong>If you sign in with Google.</strong> Google tells us your name, your email
+            address and an id for your Google account, which is how we recognise you next time.
+            We never see your Google password or anything else in your Google account. If the
+            email Google gives us already belongs to a CropBid account, signing in with Google
+            opens that account, because Google has confirmed the address is yours.
           </p>
           <p>
             <strong>Profile details.</strong> Your role (farmer, buyer or consumer), city,
@@ -270,6 +277,10 @@ export function PrivacyPolicyPage() {
           <p>
             <strong>Logistics partners</strong> — where you book delivery through the platform,
             the pickup and delivery details needed for that shipment.
+          </p>
+          <p>
+            <strong>Google (sign-in)</strong>: only if you choose to continue with Google,
+            Google learns that you are signing in to CropBid, under Google's own privacy policy.
           </p>
           <p>
             <strong>Meta (WhatsApp)</strong> — your phone number and a one-time code, to

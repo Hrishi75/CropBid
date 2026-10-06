@@ -44,6 +44,8 @@ interface AuthContextType {
   startPhoneSignIn: (phone: string, email?: string) => Promise<PhoneChallenge>;
   /** Passwordless step 2 — check the code; `name` is only read for a new account. */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
+  /** Sign in or up with the ID token Google's button handed back. */
+  signInWithGoogle: (credential: string) => Promise<PhoneSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
@@ -263,6 +265,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // -------------------------------------------------------------------------
+  // Sign in with Google
+  // -------------------------------------------------------------------------
+  // Also one flow for signing up and signing in. The server finds the account
+  // by Google id or email, links it, or makes a shopper; see signInWithGoogle
+  // in the server's auth.service.
+  async function signInWithGoogle(credential: string): Promise<PhoneSignInResult> {
+    const { data } = await api.post('/auth/google', { credential });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    setSessionHint(true);
+    markActivity(true);
+    markSynced();
+    return { user: data.user as User, created: Boolean(data.created) };
+  }
+
+  // -------------------------------------------------------------------------
   // Signup
   // -------------------------------------------------------------------------
   // Farmers come back 201 with a session. Buyers come back 202 with a pendingId
@@ -333,7 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user: effectiveUser, loading, login, startPhoneSignIn, verifyPhoneSignIn,
+        user: effectiveUser, loading, login, startPhoneSignIn, verifyPhoneSignIn, signInWithGoogle,
         signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
         accountRole: user?.role ?? null, mode: buying ? 'BUY' : 'SELL', switchMode,
       }}

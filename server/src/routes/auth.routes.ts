@@ -24,6 +24,7 @@ import {
   loginHandler,
   startPhoneSignInHandler,
   verifyPhoneSignInHandler,
+  googleSignInHandler,
   refreshHandler,
   logoutHandler,
   getMeHandler,
@@ -56,6 +57,11 @@ router.post('/login', loginHandler);
 // what keeps a 6-digit code from being brute-forced.
 router.post('/phone/start', startPhoneSignInHandler);
 router.post('/phone/verify', verifyPhoneSignInHandler);
+
+// --- Sign in with Google: also one flow for signing up and signing in ---
+// The body is Google's signed ID token; see auth.service.signInWithGoogle for
+// how an existing account is found and linked. Under the same authLimiter.
+router.post('/google', googleSignInHandler);
 router.post('/refresh', refreshHandler);
 
 // Password recovery (public — the emailed token IS the credential).
