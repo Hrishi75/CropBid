@@ -186,6 +186,13 @@ describe('anonymising a seller who has settled deals', () => {
     expect(tx.waitlist.deleteMany).toHaveBeenCalledWith({ where: { email: 'ramesh@example.com' } });
   });
 
+  it('unlinks Google, so it cannot sign in to the anonymised shell', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+
+    const scrubbed = tx.user.update.mock.calls.at(-1)?.[0].data;
+    expect(scrubbed).toMatchObject({ googleId: null, refreshToken: null });
+  });
+
   it('removes a business credit application with the account', async () => {
     await deleteAccount('seller-1', PASSWORD);
 

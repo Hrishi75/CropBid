@@ -152,7 +152,7 @@ Set `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` to enabl
 | Real-time | Socket.io (WebSocket + fallback) |
 | Auth | JWT dual-token (access 15min + refresh 7d httpOnly cookie) |
 | Images | Sharp (WebP convert/resize) + Multer |
-| Hosting | Vercel (client) · Render (API) · Neon (DB) |
+| Hosting | Cloudflare (client) · AWS Lightsail (API) · Neon (DB) |
 
 ---
 
@@ -235,12 +235,12 @@ simulator. Leaving `EXPO_PUBLIC_API_URL` unset uses the deployed Render API.
 
 | Piece | Host | Notes |
 |-------|------|-------|
-| Frontend | **Vercel** → [cropbid.in](https://cropbid.in) | root dir `client`, auto-build on push to `main` |
+| Frontend | **Cloudflare Workers** (static assets) → [cropbid.in](https://cropbid.in) | root dir `client`, auto-build on push to `main`; config in `client/wrangler.jsonc` |
 | Backend | **Render** web service | `render.yaml` blueprint; build runs `prisma migrate deploy` |
 | Database | **Neon** serverless Postgres | pooled `DATABASE_URL` + unpooled `DIRECT_URL` for migrations |
 
 - Set secrets in the Render dashboard: DB urls, `JWT_SECRET` / `JWT_REFRESH_SECRET`, `GEMINI_API_KEY`, `RAZORPAY_*`, `CLIENT_URL` (exact origin, **no** trailing slash for CORS).
-- Vercel build-time env: `VITE_API_URL`, `VITE_SOCKET_URL` (point at the Render API).
+- Cloudflare build variables: `VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_GOOGLE_CLIENT_ID`, `NODE_VERSION=22`.
 - `RUN_SEED` gates seeding in the build — keep `false` (seeding **wipes & repopulates** every run).
 
 See [DEPLOY.md](DEPLOY.md) for full steps.

@@ -1481,6 +1481,51 @@ body * {
   background: linear-gradient(to right, var(--cb-forest), transparent 42%);
 }
 
+/* --- hero carousel: the hero, then the partner banners ---
+   Scroll-snap does the sliding. Wide screens show both banners as one page,
+   narrow ones one banner a page. The banner colour is the artwork's own
+   cream, so a slide taller than its picture reads as margin, not a gap. */
+.st-hero-carousel { position: relative; }
+.st-hero-track {
+  position: relative;
+  display: flex; gap: 12px;
+  overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth;
+  scrollbar-width: none; overscroll-behavior-x: contain;
+}
+.st-hero-track::-webkit-scrollbar { display: none; }
+.st-hero-slide, .st-partner-slide { flex: 0 0 100%; scroll-snap-align: start; min-width: 0; }
+.st-hero-slide { display: flex; }
+.st-hero-slide > .st-banner { flex: 1; }
+.st-partner-slide {
+  flex-basis: calc(50% - 6px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; border: 1px solid rgba(20,20,15,0.08); border-radius: 22px; overflow: hidden;
+  background: #f9f6ee; cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.st-partner-slide:hover { box-shadow: 0 10px 28px rgba(20,20,15,0.12); }
+.st-partner-slide:focus-visible { outline: 3px solid var(--cb-forest); outline-offset: -3px; }
+.st-partner-slide img { display: block; width: 100%; height: auto; }
+.st-hero-controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
+.st-hero-arrow {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid rgba(20,20,15,0.14); background: #fff; color: var(--cb-ink);
+  font-size: 18px; line-height: 1; cursor: pointer;
+}
+.st-hero-arrow:hover { background: var(--cb-forest); color: #f4f1ea; }
+.st-hero-dots { display: flex; gap: 6px; }
+.st-hero-dot {
+  width: 8px; height: 8px; padding: 0; border: 0; border-radius: 99px;
+  background: rgba(20,20,15,0.2); cursor: pointer; transition: width .2s ease, background .2s ease;
+}
+.st-hero-dot.on { width: 22px; background: var(--cb-forest); }
+@media (max-width: 960px) {
+  .st-partner-slide { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-hero-track { scroll-behavior: auto; }
+}
+
 /* --- floating live-price chips over the hero photo --- */
 .st-float-chip {
   position: absolute; z-index: 2;
@@ -2598,6 +2643,15 @@ body * {
 }
 .cb-auth-modal-main .cb-small { font-size: 13.5px; line-height: 1.5; color: var(--cb-ink-2); }
 .cb-auth-modal-main .cb-tiny { font-size: 11.5px; line-height: 1.4; }
+
+/* The rule between Google's button and the form under it. */
+.cb-auth-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 16px 0; color: var(--cb-ink-3); font-size: 12px;
+}
+.cb-auth-or::before, .cb-auth-or::after {
+  content: ''; flex: 1; height: 1px; background: var(--cb-line);
+}
 
 .cb-auth-modal-side {
   padding: 34px 28px 28px;

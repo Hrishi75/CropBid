@@ -20,6 +20,12 @@
 // the application form once their account exists, and approval is what makes
 // them a partner.
 //   One-time code          phone → a 6-digit code over WhatsApp → signed in.
+//
+// And Google, as a button at the top of the first two lanes rather than a lane
+// of its own, because it is one tap either way: it signs in an account it
+// finds and makes one it does not. Hidden when the site is built without a
+// Google client id. See components/auth/GoogleButton.tsx.
+//
 //                          Kept because accounts made through it before
 //                          sign-up existed have no password and no other way
 //                          in, and it is how a phone-only account gets back in
@@ -53,6 +59,7 @@ import type { User } from '../../types';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ArcMark, ArrowIcon } from '../ui/Brand';
+import { GoogleButton } from './GoogleButton';
 import { isPendingPartner } from '../../utils/partner';
 import toast from 'react-hot-toast';
 
@@ -176,7 +183,7 @@ function ConsentBox({ checked, onChange, error }: { checked: boolean; onChange: 
 }
 
 export function AuthModal({ open, onClose, intendedRole, redirectTo, title, startWith }: AuthModalProps) {
-  const { login, signup, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
+  const { login, signup, startPhoneSignIn, verifyPhoneSignIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   // Password sign-in is the default; see the header for the three lanes. The
@@ -206,6 +213,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // The sign-up tickbox, on both ways of making an account. Starts unticked
   // every time: consent is something the person does, never a default.
   const [agreed, setAgreed] = useState(false);
+  // Google's own, shown under its button rather than under a field nobody used.
+  const [googleError, setGoogleError] = useState<string>();
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -233,6 +242,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       setEmail(''); setNeedsEmail(false);
       setIdentifier(''); setPassword(''); setConfirm(''); setAgreed(false);
       setError(undefined); setErrorField(undefined); setCooldown(0);
+      setGoogleError(undefined);
     }
   // openingMode is derived from a prop that only changes together with `open`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,7 +278,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   const nameValid = !needsName || name.trim().length >= 2;
   const passwordFormValid = identifier.trim().length > 0 && password.length > 0;
   const unmetRules = PASSWORD_RULES.filter((r) => !r.test(password));
-  const clearError = () => { setError(undefined); setErrorField(undefined); };
+  // One message on screen at a time: using a form retires Google's, and
+  // trying Google retires the form's (handleGoogle).
+  const clearError = () => { setError(undefined); setErrorField(undefined); setGoogleError(undefined); };
 
   // Where a freshly signed-in account lands, decided once for both lanes. A
   // brand-new partner has an application to fill in; a partner mid-review has
@@ -291,6 +303,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
 
   async function handlePasswordSignIn(e: React.FormEvent) {
     e.preventDefault();
+    setGoogleError(undefined);
     if (!passwordFormValid) { setError('Enter your phone or email and your password'); return; }
     const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined);
@@ -312,11 +325,38 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     }
   }
 
+  // Google: the button hands back a token, and the server signs in, links or
+  // creates. A refusal is shown under the Google button, which is what it is
+  // about; the form's own error slots belong to fields Google never touched.
+  async function handleGoogle(credential: string) {
+    const attempt = attemptRef.current;
+    setSigningIn(true); setGoogleError(undefined); setError(undefined); setErrorField(undefined);
+    try {
+      const { user, created, passwordRemoved } = await signInWithGoogle(credential);
+      if (attemptRef.current !== attempt) return;
+      if (passwordRemoved) {
+        // Linking removed a password nobody had proved was theirs. Said now,
+        // so their next password sign-in does not fail without explanation.
+        toast.success('Signed in with Google. Your old password no longer works: sign in with Google, or set a new one with Forgot password.', { duration: 8000 });
+      } else {
+        toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
+      }
+      onClose();
+      routeAfterAuth(user, created);
+    } catch (err: any) {
+      if (attemptRef.current !== attempt) return;
+      setGoogleError(err.response?.data?.message || 'Could not sign you in with Google just now');
+    } finally {
+      if (attemptRef.current === attempt) setSigningIn(false);
+    }
+  }
+
   // Create an account: a shopper, made on the spot, and signed in. The server
   // only ever asks a BUYER for an emailed code, so this never comes back as
   // 'verification-required'.
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
+    setGoogleError(undefined);
     const contact = readContact(identifier);
     const fail = (field: SignupField, message: string) => { setErrorField(field); setError(message); };
     if (name.trim().length < 2) return fail('name', 'Tell us your name (at least 2 characters)');
@@ -356,7 +396,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // what they entered really is a number, since the code step has nowhere to
   // send an email address. Passwords never travel.
   function switchTo(next: Mode) {
-    setError(undefined); setErrorField(undefined);
+    setError(undefined); setErrorField(undefined); setGoogleError(undefined);
     attemptRef.current += 1;
     if (next === 'code') {
       const typed = identifier.trim();
@@ -466,6 +506,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   : "Takes a minute. You start as a shopper, and can apply to sell or buy in bulk once you're in."}
               </p>
 
+              <GoogleButton onCredential={handleGoogle} error={googleError} />
+
               <form onSubmit={handleSignup} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input
                   label="Your name"
@@ -547,13 +589,15 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                 With the email or phone number and the password you signed up with.
               </p>
 
+              <GoogleButton onCredential={handleGoogle} error={googleError} />
+
               <form onSubmit={handlePasswordSignIn} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input
                   label="Email or phone number"
                   placeholder="you@example.com or +91-9876543210"
                   autoComplete="username"
                   value={identifier}
-                  onChange={(e) => { setIdentifier(e.target.value); setError(undefined); }}
+                  onChange={(e) => { setIdentifier(e.target.value); clearError(); }}
                   autoFocus
                   required
                 />
@@ -564,7 +608,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                     placeholder="Your password"
                     autoComplete="current-password"
                     value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(undefined); }}
+                    onChange={(e) => { setPassword(e.target.value); clearError(); }}
                     error={error}
                     required
                   />

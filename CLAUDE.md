@@ -29,7 +29,7 @@ Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ 
 
 Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
 
-Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. A phone code over WhatsApp survives as the secondary lane (§4).
+Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. On the website, Continue with Google does either in one tap. A phone code over WhatsApp survives as the secondary lane (§4).
 
 ## 2. Business facts
 
@@ -193,6 +193,21 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **The buyer's emailed-code sign-up is unreachable.** Buyers used to sign up as buyers, get a 202 and verify their email first (`startBuyerSignup`). Nobody signs up as a buyer now, so `/signup/verify` and `/signup/resend` only finish signups already in flight, and that code is dead. Removing it is a separate cleanup.
 - **App:** `SignupScreen` asks the same four things. The fifteen-country picker is gone, since the product is India only and the server defaults to India and INR.
 
+### Sign in with Google (web only, 2026-10-06)
+
+**Google's own button at the top of the sign-in and create-account lanes, and one endpoint, `POST /auth/google`, that signs in, links or creates.** The browser gets an ID token from Google and posts it; `utils/googleIdToken.ts` checks its signature, expiry and, most importantly, that it was issued to **our** client id, because without the audience check a token any other Google-sign-in site received would sign its holder in here.
+
+- **Found by Google id first, then by email.** `User.googleId` is the token's `sub`, which never changes, whereas a Google address can.
+- **A matching email is linked, not refused** (the user's call, of three options). Google has proved the person owns the address, which is more than CropBid's own sign-up ever checks (above, "Knowingly unverified"). Signing in replaces the account's one refresh token, so anyone else signed in under that email is out at their next refresh.
+- **Linking removes the password** (the user's call, reversing the first version after review). Nothing proves who chose it, and kept, it let whoever registered the address before its owner arrived go on signing in, change the password, or delete the account. A pending reset link and an outstanding support reset go with it. The window says the old password has stopped working and points at Forgot password, whose link goes to the address Google proved. Signing in again by Google later never touches a password set after the link.
+- **Still open: a phone number on the account.** Profile edits can add one, so whoever registered first may have attached their own, and the WhatsApp-code lane would still let them in. Linking leaves it alone, because clearing it would also strip the owner's own number. Deciding that is the next step if this matters.
+- **The link is a conditional write**, on the account still having no Google id and still having the password read. Two different Google accounts racing for one email's account (an address can move between Google accounts) get one winner and one 409; tested ten rounds on a real Postgres and watched failing with the condition removed. An account linked to a different Google id is refused outright rather than moved.
+- **A new person is a shopper with no password**, named from Google's profile (or the front of the email), exactly like a phone-code account: change-password sets a first password, and deleting the account needs one first.
+- **Never an admin account**, linked or signed in, the same caution as support refusing to reset one. Suspended accounts are refused before anything is written.
+- **`googleId` never leaves the server** (`safeUser` strips it), and anonymising a deleted account clears it, or Google would still sign in to the shell. A test pins that.
+- **Off until configured.** `GOOGLE_CLIENT_ID` on the API and `VITE_GOOGLE_CLIENT_ID` on the website, the same OAuth "Web application" id, with every site origin listed as an authorised JavaScript origin. Blank, the button is not drawn and the endpoint answers 503. The privacy page discloses what Google sends us; **the FAQ does not mention Google yet**, because it would be false while production has no id set. Add it when the id goes live.
+- **Not built: the app.** It needs Android and iOS client ids and a native build to test, and was deferred, not decided against.
+
 ### Support can reset a password, and the user must then choose their own (shipped 2026-09-25)
 
 **A button on Admin → Users sets a temporary password and shows it once, for the admin to read down the phone.** The account that rings support is exactly the one forgot-password cannot help: sign-up takes a phone number OR an email, the reset link is emailed, and a phone-only account has no email.
@@ -300,7 +315,23 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
-- Privacy must disclose Vercel Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+- Privacy must disclose Cloudflare Web Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+
+### The website is hosted on Cloudflare (decided 2026-10-06)
+
+**A static-assets-only Cloudflare Worker serves `client/dist`; Vercel is being retired.** Vercel's free plan is for non-commercial use only, and CropBid takes money, so staying meant Pro at $20 a member a month. Cloudflare's free plan allows commercial sites. The build is unchanged: `npm run build` already prerenders every public page to a file, so any static host works.
+
+- **`client/wrangler.jsonc` is the routing.** `drop-trailing-slash` serves `/faq` from `faq/index.html` and redirects `/faq/` to `/faq`; the default would do the opposite and split every page across two URLs against the canonical tags and the sitemap. `single-page-application` serves the app shell to a browser navigating to a signed-in path. **`client/worker.js` runs only when no file matched**, so real files never invoke it or count against the Workers free allowance: it 404s `/assets/*` and `/api/*` (a missing script must fail as missing, not come back as the homepage with a 200, which is what `vercel.json`'s rewrite exclusions did) and gives anything else, such as a crawler with no `Sec-Fetch-Mode`, the app shell. `client/public/_headers` carries the cache headers.
+- **`vercel.json` stays until Vercel is switched off**, because Vercel keeps serving cropbid.in until the domain is moved and still builds every merge. **The privacy page names both hosts until then**, "while we move it"; when Vercel is retired, take Vercel out of that sentence in the same PR that deletes `vercel.json`.
+- **Page views are Cloudflare Web Analytics** (`components/ui/PageAnalytics.tsx`), cookie-free like Vercel's was, so the cookie notice stays a notice. It reports only from `cropbid.in` in a production build. Its token is public by design but is a build variable (`VITE_CF_ANALYTICS_TOKEN`), not a literal, because GitGuardian flags any token-shaped string in the repo; unset, nothing reports.
+- **DNS is on Cloudflare**, moved from Hostinger (still the registrar). Only `cropbid.in` and `www` are proxied. `api.cropbid.in` stays DNS only (Caddy gets its own certificate, and the auction socket is long-lived), and so do the Zoho MX, DKIM and Brevo link records: proxied, those break email and the links inside it.
+- **Every `VITE_` build variable is public**, inlined into the bundle each visitor downloads: the API origin, the Google client id and the analytics token. Secrets live only in the API's `.env` on Lightsail.
+
+### The homepage hero slides to two partner banners (2026-10-06)
+
+`HeroCarousel` in `LandingPage.tsx`: the existing hero, then "Become a Partner to Sell" and "... to Buy" (`client/public/banners/`), on one scroll-snap track with arrows, dots, and a slide every 5 seconds that loops for good (the user's call: it always rotates). It holds only while a finger or mouse button is down on it, and a manual move restarts the 5 seconds. Both banners are one page side by side above 960px, one each below. A banner is a button: signed in, it goes to `/partner#sell` or `#buy`; signed out, it opens the sign-in window with that as `redirectTo`. An approved seller is not shown the sell banner, nor a buyer the buy banner.
+
+**The copy is baked into the artwork, so it is outside this file's reach unless someone regenerates the picture.** As supplied, the sell banner says "Faster Payments" (payouts are a manual transfer, §6) and the buy banner "Quality Produce" (nothing checks a lot, §2b). Both are on screen until the images are redone.
 
 ### The cookie notice (shipped 2026-09-03)
 

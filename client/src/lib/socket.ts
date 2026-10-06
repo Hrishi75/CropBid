@@ -26,7 +26,7 @@ export function getSocket(userName?: string): Socket {
     const token = getAccessToken();
 
     // Dev: '/' lets Vite proxy /socket.io to the local Express server.
-    // Prod (Vercel): VITE_SOCKET_URL points at the deployed backend.
+    // Prod (Cloudflare): VITE_SOCKET_URL points at the deployed backend.
     const socketUrl = import.meta.env.VITE_SOCKET_URL ?? '/';
 
     socket = io(socketUrl, {

@@ -83,6 +83,13 @@ export const config = {
     resourceId: process.env.DATA_GOV_MANDI_RESOURCE || '9ef84268-d588-465a-a308-a864a43d0070',
   },
 
+  // Sign in with Google. The OAuth "Web application" client id from Google
+  // Cloud Console, the same value the web client is built with as
+  // VITE_GOOGLE_CLIENT_ID: an ID token is only accepted if it was issued to
+  // this id. Not a secret. Leave blank to run without it: POST /auth/google
+  // answers 503 and the web client shows no Google button.
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+
   // Razorpay (capture-only payments). In dev use TEST keys (rzp_test_...).
   // Leave blank to run with payments disabled — the API returns 503 on pay attempts.
   razorpay: {

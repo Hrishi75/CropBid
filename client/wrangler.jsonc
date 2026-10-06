@@ -1,0 +1,25 @@
+// Cloudflare Workers config for the website: dist/ served as static assets.
+// Cloudflare's build runs `npm run build` in client/ (tsc, both Vite passes and
+// the prerender), then `npx wrangler deploy` uploads dist/. worker.js runs only
+// for requests no file matches.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Must match the Worker's name in the Cloudflare dashboard, or the build
+  // fails with "Failed to bind worker".
+  "name": "cropbid",
+  "compatibility_date": "2026-09-01",
+  "main": "./worker.js",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // The prerender writes each public page as dist/<path>/index.html. The
+    // default would redirect /faq to /faq/, splitting every page across two
+    // URLs against the canonical tags and the sitemap, which use no slash.
+    // This serves /faq from that file and redirects /faq/ to /faq instead.
+    "html_handling": "drop-trailing-slash",
+    // Signed-in pages (/orders, /cart, ...) have no file of their own: a browser
+    // navigating to one gets the app shell and the router draws it, as
+    // vercel.json's rewrite did. Other misses go to worker.js.
+    "not_found_handling": "single-page-application"
+  }
+}
