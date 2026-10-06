@@ -236,7 +236,7 @@ export function ForecastBody() {
 
         {board && (
           <Text style={styles.foot}>
-            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.")}
+            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for most of the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.")}
           </Text>
         )}
       </ScrollView>

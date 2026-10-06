@@ -72,7 +72,7 @@
   "IF YOU'RE BUYING": "अगर आप खरीद रहे हैं",
   "Running the model on today's mandi data…": "आज के मंडी डेटा पर मॉडल चल रहा है…",
   "Could not reach the prediction engine — pull back and try again.": "अनुमान सेवा से संपर्क नहीं हो सका — थोड़ी देर में फिर कोशिश करें।",
-  "The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.": "यह पूर्वानुमान भारत सरकार के एगमार्कनेट फ़ीड पर एक तय मॉडल है, और बोर्ड की 30 फ़सलों के लिए भारत का फ़सल कैलेंडर और CropBid की ताज़ा गतिविधि भी। मोलभाव के लिए एक समझाया हुआ अनुमान, गारंटी नहीं।",
+  "The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for most of the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.": "यह पूर्वानुमान भारत सरकार के एगमार्कनेट फ़ीड पर एक तय मॉडल है, और बोर्ड की 30 में से ज़्यादातर फ़सलों के लिए भारत का फ़सल कैलेंडर और CropBid की ताज़ा गतिविधि भी। मोलभाव के लिए एक समझाया हुआ अनुमान, गारंटी नहीं।",
 
   "Your account": "आपका खाता",
   "farmer": "किसान",

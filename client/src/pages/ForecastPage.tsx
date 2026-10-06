@@ -202,8 +202,8 @@ export function ForecastPage() {
             <p className="cb-body rp-lede">
               A transparent model over today's live mandi data, price vs the usual band and
               how many mandis reported arrivals, for every crop in the day's mandi report
-              {board ? `, ${board.predictions.length} of them` : ''}. For the 30 crops on our
-              rates board it also reads India's harvest calendar and live CropBid activity.
+              {board ? `, ${board.predictions.length} of them` : ''}. For most of the 30 crops
+              on our rates board it also reads India's harvest calendar and live CropBid activity.
               Every number comes with its reasons: tap a crop to see the drivers.
             </p>
           </div>
@@ -261,8 +261,8 @@ export function ForecastPage() {
 
         <p className="cb-small rp-foot">
           The forecast is a deterministic model over the Government of India's Agmarknet feed
-          (price vs usual, arrival breadth, cross-mandi dispersion), plus, for the 30 board crops,
-          the Indian harvest calendar and live CropBid listings &amp; bids. It is an explainable estimate to negotiate around —
+          (price vs usual, arrival breadth, cross-mandi dispersion), plus, for most of the 30 board
+          crops, the Indian harvest calendar and live CropBid listings &amp; bids. It is an explainable estimate to negotiate around —
           not a guarantee, and not financial advice. Bands widen when reporting mandis disagree.
         </p>
       </main>
