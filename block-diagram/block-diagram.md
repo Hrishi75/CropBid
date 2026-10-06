@@ -7,7 +7,7 @@ High-level architecture of the CropBid platform: clients, API server, real-time 
 ```mermaid
 flowchart TB
     subgraph Clients
-        WEB["Web App<br/>React 19 + Vite + Tailwind<br/>(Vercel · cropbid.in)"]
+        WEB["Web App<br/>React 19 + Vite + Tailwind<br/>(Cloudflare · cropbid.in)"]
         MOB["Mobile App<br/>Expo + React Native + NativeWind<br/>(X-Client: mobile header)"]
     end
 
@@ -63,7 +63,7 @@ flowchart LR
 
 | Block | Tech | Hosting |
 |---|---|---|
-| Web client | React 19, Vite, Tailwind | Vercel (cropbid.in) |
+| Web client | React 19, Vite, Tailwind | Cloudflare (cropbid.in) |
 | Mobile client | Expo, React Native, NativeWind | — |
 | API server | Express 5, TypeScript | Render |
 | Real-time | Socket.IO | Render (same process) |

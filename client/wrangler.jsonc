@@ -18,8 +18,8 @@
     // This serves /faq from that file and redirects /faq/ to /faq instead.
     "html_handling": "drop-trailing-slash",
     // Signed-in pages (/orders, /cart, ...) have no file of their own: a browser
-    // navigating to one gets the app shell and the router draws it, as
-    // vercel.json's rewrite did. Other misses go to worker.js.
+    // navigating to one gets the app shell and the router draws it. Other
+    // misses go to worker.js.
     "not_found_handling": "single-page-application"
   }
 }
