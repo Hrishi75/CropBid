@@ -92,7 +92,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Does it cost anything to join CropBid?',
-        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, an email address or phone number, and a password, and sign in with the same. CropBid is available in English, Hindi and Marathi.',
+        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, an email address or phone number, and a password, and sign in with the same, or on the website, continue with your Google account instead. CropBid is available in English, Hindi and Marathi.',
       },
       {
         q: 'What are live mandi rates and where do they come from?',
@@ -111,6 +111,10 @@ export const FAQ_GROUPS: FaqGroup[] = [
       {
         q: 'I did not get my sign-in code. What now?',
         a: 'Codes go to WhatsApp first and fall back to email if we cannot reach your number there. A code lasts a few minutes, and you can ask for another after a short wait. If neither arrives, check that the number on your account is the one you are typing, and write to info@cropbid.in if it still does not come through.',
+      },
+      {
+        q: 'Can I sign in with Google?',
+        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, it opens that account, and any password set on it before stops working, because we cannot tell who set it. You can choose a new one with Forgot password. The phone app does not offer Google sign-in yet.',
       },
       {
         q: 'Do I need an email address?',
