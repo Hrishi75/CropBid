@@ -23,6 +23,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
+import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
 const UPDATED = '6 October 2026';
 const CONTACT = 'info@cropbid.in';
@@ -302,10 +303,9 @@ export function PrivacyPolicyPage() {
             <strong>Cloudinary</strong> (image hosting) — the photographs you upload.
           </p>
           <p>
-            <strong>Our infrastructure providers</strong> — Cloudflare and Vercel (website, while
-            we move it from Vercel to Cloudflare), Amazon Web Services (application server) and
-            Neon (database) host the platform on our behalf, and Cloudflare Web Analytics counts
-            page views as described above.
+            <strong>Our infrastructure providers</strong> — Cloudflare (website), Amazon Web
+            Services (application server) and Neon (database) host the platform on our behalf,
+            and Cloudflare Web Analytics counts page views as described above.
           </p>
           <p>
             <strong>data.gov.in</strong> supplies the government mandi rates we display. We
@@ -410,6 +410,14 @@ export function PrivacyPolicyPage() {
             Questions about this policy, or about your data, go to{' '}
             <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
           </p>
+        </Section>
+
+        <Section title="Grievance Officer" id="grievance">
+          <p>
+            If you have a complaint about how we handle your personal data, or about anything
+            else on CropBid, you can take it straight to our Grievance Officer:
+          </p>
+          <GrievanceOfficer />
         </Section>
 
         <p className="cb-small rp-foot" style={{ marginTop: 40 }}>

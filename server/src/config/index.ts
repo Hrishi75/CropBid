@@ -173,6 +173,19 @@ export const config = {
   // (consumer buy, accepted bid, agent deal, auction win, requirement fill).
   orderAlertEmail: process.env.ORDER_ALERT_EMAIL || 'info@cropbid.in',
 
+  // Where security alerts are emailed (services/securityAlert.service.ts), as
+  // well as to every admin's bell. An inbox, not an admin account, so a
+  // compromised admin cannot simply mark its own alert read.
+  securityAlertEmail: process.env.SECURITY_ALERT_EMAIL || process.env.ORDER_ALERT_EMAIL || 'info@cropbid.in',
+
+  // Encrypts a seller's payout details at rest (utils/fieldCrypto.ts): 32
+  // random bytes, base64. Make one with `openssl rand -base64 32`. Unset, new
+  // details are stored in the clear as before and the boot log says so; set,
+  // they are encrypted and any stored in the clear are encrypted at boot.
+  // LOSING IT LOSES EVERY ENCRYPTED ACCOUNT NUMBER. Keep a copy outside the
+  // server.
+  payoutEncryptionKey: process.env.PAYOUT_ENCRYPTION_KEY || '',
+
   // Defaults
   defaultCurrency: process.env.DEFAULT_CURRENCY || 'INR',
   defaultLocale: process.env.DEFAULT_LOCALE || 'en-IN',

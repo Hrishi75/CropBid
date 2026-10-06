@@ -172,6 +172,9 @@ export function NotificationDropdown() {
       // /transactions/:id, and getTransaction() authorises on farmerId/buyerId
       // only, so an admin following it gets a 403 on their own notification.
       navigate(`/admin/logistics/book/${data?.transactionId}`);
+    } else if (notification.type === 'SECURITY_ALERT') {
+      // A possible breach: the register is where the 72 hours start.
+      navigate('/admin/incidents');
     } else if (data?.negotiationId) {
       navigate(`/negotiations/${data.negotiationId}`);
     } else if (data?.transactionId) {

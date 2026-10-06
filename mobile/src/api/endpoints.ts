@@ -76,6 +76,8 @@ export interface SignupInput {
   password: string;
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
+  /** "I am 18 or older and agree to the Terms and Privacy Policy". The server records when. */
+  consent: boolean;
 }
 
 // A buyer signup parked pending email verification. No account exists yet —

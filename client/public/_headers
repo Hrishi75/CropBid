@@ -1,5 +1,5 @@
 # Cloudflare response headers, copied into dist/ by the build and read on
-# deploy (never served as a file). Mirrors the headers block in vercel.json.
+# deploy (never served as a file).
 
 # Vite fingerprints every file in /assets, so a changed file gets a new name
 # and these can be cached for a year.

@@ -353,7 +353,6 @@ See [DEPLOY.md](DEPLOY.md) for full steps.
 | PATCH | `/api/admin/users/:id` | Update user (trust score) |
 | GET | `/api/admin/listings` | All listings |
 | GET | `/api/admin/transactions` | All transactions |
-| POST | `/api/waitlist` | Early-access signup |
 </details>
 
 <details>

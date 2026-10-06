@@ -5,8 +5,8 @@
 // wrangler.jsonc); this handles everything else that missed:
 //
 //   - /assets/* and /api/*: a plain 404. A missing script must fail as missing,
-//     not come back as the homepage with a 200, which is what vercel.json's
-//     rewrite exclusions guaranteed. The API lives on api.cropbid.in, never here.
+//     not come back as the homepage with a 200. The API lives on
+//     api.cropbid.in, never here.
 //   - anything else (a crawler or a fetch without Sec-Fetch-Mode: navigate,
 //     e.g. /orders): the app shell, the same answer a browser gets.
 
