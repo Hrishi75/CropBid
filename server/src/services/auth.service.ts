@@ -990,7 +990,7 @@ export async function deleteAccount(userId: string, password: string) {
   // cascade with the user row. Like a settled deal, it is a record we must
   // keep, so it sends the account down the anonymising path instead.
   const walletHistory = await prisma.walletEntry.count({ where: { wallet: { userId } } });
-  const mustKeepRecords = settledDeals > 0 || walletHistory > 0;
+  const mustKeepRecordsBefore = settledDeals > 0 || walletHistory > 0;
 
   // Credits still in the wallet are their money. Anonymising would leave it
   // there with no way left to sign in and spend it, and returning it is a
@@ -1014,12 +1014,23 @@ export async function deleteAccount(userId: string, password: string) {
 
   const scrambledPassword = await bcrypt.hash(randomUUID(), 12);
 
-  await prisma.$transaction(async (tx) => {
+  const anonymized = await prisma.$transaction(async (tx) => {
+    // The user row first. A first top-up creates the wallet, and a new deal
+    // its transaction, both with a foreign key to this row, so both wait on
+    // this lock: there may be no wallet row yet for the lock below to hold.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
     // The same lock applyEntry takes, so a top-up either commits before this
     // read (and the delete is refused) or waits until the account is gone.
     const [locked] = await tx.$queryRaw<{ balance: number }[]>`
       SELECT balance FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
     if (locked && locked.balance > 0) throw walletNotEmpty(locked.balance);
+    // Read again under both locks: a wallet or deal that appeared since the
+    // counts above must send the account down the anonymising path, or the
+    // hard delete would cascade away the record of money paid in.
+    const mustKeepRecords =
+      mustKeepRecordsBefore ||
+      (await tx.walletEntry.count({ where: { wallet: { userId } } })) > 0 ||
+      (await tx.transaction.count({ where: { OR: [{ farmerId: userId }, { buyerId: userId }] } })) > 0;
 
     if (user.farmerProfile) {
       // Never-transacted lots can go; sold lots are pinned by Transaction FKs,
@@ -1165,6 +1176,7 @@ export async function deleteAccount(userId: string, password: string) {
         },
       });
     }
+    return mustKeepRecords;
   });
 
   // Best-effort upload cleanup — removeImage never throws.
@@ -1177,7 +1189,7 @@ export async function deleteAccount(userId: string, password: string) {
     action: 'auth.account.deleted',
     entityType: 'User',
     entityId: userId,
-    metadata: { anonymized: mustKeepRecords },
+    metadata: { anonymized },
   });
 }
 

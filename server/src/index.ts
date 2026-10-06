@@ -58,22 +58,31 @@ void clearPlaintextRefreshTokens()
 // With no key and nothing encrypted yet, it is said out loud and nothing else.
 // Otherwise the rows still stored in the clear are encrypted.
 assertEncryptionKeyValid();
-if (!isEncryptionConfigured()) {
-  void countSealedPayoutDetails()
-    .then((sealed) => {
-      if (sealed > 0) {
-        console.error(
-          `FATAL: ${sealed} seller profile(s) hold encrypted payout details but PAYOUT_ENCRYPTION_KEY is not set. ` +
-            'Restore the key that encrypted them.',
-        );
+// With no key, the check has to finish before the server takes a request: a
+// request served first could read a sealed row it cannot open, or store a
+// re-saved one in the clear. A check that cannot run stops the boot too
+// (pm2 restarts it), since starting anyway is the case it exists to prevent.
+const payoutKeyChecked: Promise<void> = isEncryptionConfigured()
+  ? Promise.resolve()
+  : countSealedPayoutDetails().then(
+      (sealed) => {
+        if (sealed > 0) {
+          console.error(
+            `FATAL: ${sealed} seller profile(s) hold encrypted payout details but PAYOUT_ENCRYPTION_KEY is not set. ` +
+              'Restore the key that encrypted them.',
+          );
+          process.exit(1);
+        }
+        if (config.nodeEnv === 'production') {
+          console.warn('⚠️  PAYOUT_ENCRYPTION_KEY is not set: seller bank details are stored unencrypted');
+        }
+      },
+      (err) => {
+        console.error('FATAL: could not check for encrypted payout details:', err);
         process.exit(1);
-      }
-      if (config.nodeEnv === 'production') {
-        console.warn('⚠️  PAYOUT_ENCRYPTION_KEY is not set: seller bank details are stored unencrypted');
-      }
-    })
-    .catch((err) => console.error('Could not check for encrypted payout details:', err));
-} else {
+      },
+    );
+if (isEncryptionConfigured()) {
   void encryptStoredPayoutDetails()
     .then((n) => {
       if (n > 0) console.log(`🔒 Encrypted payout details on ${n} seller profile(s)`);
@@ -85,7 +94,7 @@ if (!isEncryptionConfigured()) {
 // so the first visitor to the rates board is not the one who waits. Never fatal.
 warmRates();
 
-server.listen(PORT, () => {
+void payoutKeyChecked.then(() => server.listen(PORT, () => {
   console.log(`
   🌾 CropBid Server is running!
 
@@ -94,7 +103,7 @@ server.listen(PORT, () => {
   → WebSocket:    ws://localhost:${PORT}/socket.io
   → Environment:  ${config.nodeEnv}
   `);
-});
+}));
 
 // REPEAT ORDERS AND CONTRACT BATCHES. Every 15 minutes, post the next copy of any repeating request
 // that has fallen due (requirement.service repostDueRequirements). Each repost

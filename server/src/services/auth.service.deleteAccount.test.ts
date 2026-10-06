@@ -31,13 +31,15 @@ vi.mock('../lib/prisma', () => {
     shipment: { updateMany: vi.fn() },
     waitlist: { deleteMany: vi.fn() },
     wallet: { deleteMany: vi.fn() },
-    walletEntry: { deleteMany: vi.fn() },
+    // Re-read under the locks; nothing new unless a test says so.
+    walletEntry: { deleteMany: vi.fn(), count: vi.fn(() => Promise.resolve(0)) },
+    transaction: { count: vi.fn(() => Promise.resolve(0)) },
     equipmentEnquiry: { deleteMany: vi.fn() },
     agriInputEnquiry: { deleteMany: vi.fn() },
     phoneChallenge: { deleteMany: vi.fn() },
     pendingSignup: { deleteMany: vi.fn() },
     auditLog: { create: vi.fn(), updateMany: vi.fn() },
-    // The wallet lock inside the delete. Empty unless a test says otherwise.
+    // The user and wallet locks inside the delete. Empty unless a test says otherwise.
     $queryRaw: vi.fn(() => Promise.resolve([])),
   };
   return {
@@ -95,6 +97,8 @@ beforeEach(async () => {
     for (const fn of Object.values(model as Record<string, ReturnType<typeof vi.fn>>)) fn.mockResolvedValue({ count: 0 });
   }
   (tx.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  tx.walletEntry.count.mockResolvedValue(0);
+  tx.transaction.count.mockResolvedValue(0);
 });
 
 describe('a live supply contract', () => {
@@ -236,9 +240,22 @@ describe('deleting an account with credits left in the wallet', () => {
 
   it('refuses a top-up that landed after the first check, under the wallet lock', async () => {
     mock(prisma.transaction.count).mockResolvedValue(0);
-    (tx.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ balance: 100 }]);
+    (tx.$queryRaw as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([{ id: 'seller-1' }]) // the user row
+      .mockResolvedValueOnce([{ balance: 100 }]); // the wallet
     await expect(deleteAccount('seller-1', PASSWORD)).rejects.toMatchObject({ statusCode: 409 });
     expect(tx.user.delete).not.toHaveBeenCalled();
     expect(tx.user.update).not.toHaveBeenCalled();
+  });
+
+  // A first top-up creates the wallet, so before it there is no wallet row to
+  // lock. The user-row lock makes it wait, and the history is read again.
+  it('anonymises rather than hard-deletes when wallet history appears under the lock', async () => {
+    mock(prisma.transaction.count).mockResolvedValue(0);
+    mock(tx.walletEntry.count).mockResolvedValueOnce(1);
+    await deleteAccount('seller-1', PASSWORD);
+    expect((tx.$queryRaw as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].join('')).toMatch(/FROM "User" WHERE id = .* FOR UPDATE/);
+    expect(tx.user.delete).not.toHaveBeenCalled();
+    expect(tx.user.update).toHaveBeenCalled();
   });
 });

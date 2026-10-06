@@ -14,7 +14,7 @@
 // A security alert (the bell, and the security inbox) links here.
 // =============================================================================
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
@@ -76,6 +76,9 @@ export function AdminIncidents() {
   // Counted by the server over the whole register: a report owed on page two
   // is still owed, so the headline cannot be the rows on screen.
   const [summary, setSummary] = useState<Summary | null>(null);
+  // Only the newest request may fill the table: paging quickly can bring an
+  // older page's answer back last, over the rows of the page now selected.
+  const latest = useRef(0);
 
   useEffect(() => {
     load();
@@ -83,21 +86,24 @@ export function AdminIncidents() {
   }, [page]);
 
   async function load() {
+    const req = ++latest.current;
     setLoading(true);
     setFailed(false);
     try {
       const res = await api.get('/admin/incidents', { params: { page } });
+      if (req !== latest.current) return;
       setIncidents(res.data.incidents);
       setSummary(res.data.summary);
       setPages(res.data.pagination?.totalPages ?? 1);
       setTotal(res.data.pagination?.total ?? res.data.incidents.length);
     } catch (err) {
+      if (req !== latest.current) return;
       console.error('Failed to load incidents:', err);
       // Said, not shown as an empty register: "no incidents" is a claim.
       setFailed(true);
       setIncidents([]);
     } finally {
-      setLoading(false);
+      if (req === latest.current) setLoading(false);
     }
   }
 
