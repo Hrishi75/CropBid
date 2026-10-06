@@ -72,7 +72,7 @@
   "IF YOU'RE BUYING": "जर तुम्ही खरेदी करत असाल",
   "Running the model on today's mandi data…": "आजच्या मंडी डेटावर मॉडेल चालू आहे…",
   "Could not reach the prediction engine — pull back and try again.": "अंदाज सेवेशी संपर्क होऊ शकला नाही — थोड्या वेळाने पुन्हा प्रयत्न करा.",
-  "The forecast is a deterministic model over the Government of India's Agmarknet feed, the Indian harvest calendar, and live CropBid activity. An explainable estimate to negotiate around — not a guarantee.": "हा अंदाज भारत सरकारच्या Agmarknet डेटा, भारतीय पीक दिनदर्शिका आणि CropBid वरील लाइव्ह घडामोडींवर आधारित पारदर्शक मॉडेल आहे. वाटाघाटीसाठी उपयुक्त, स्पष्टीकरण देता येणारा अंदाज — हमी नाही.",
+  "The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for most of the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.": "हा अंदाज भारत सरकारच्या ॲगमार्कनेट फीडवरील एक ठरावीक मॉडेल आहे, आणि बोर्डवरील 30 पैकी बहुतेक पिकांसाठी भारताची पीक दिनदर्शिका आणि CropBid वरील ताजी हालचालही. वाटाघाटीसाठी स्पष्ट केलेला अंदाज, हमी नाही.",
 
   "Your account": "तुमचे खाते",
   "farmer": "शेतकरी",
@@ -164,5 +164,7 @@
   "{{n}} implausible reports left out: a typo or a per-piece price.": "{{n}} अविश्वसनीय अहवाल वगळले: टंकलेखनातील चूक किंवा नगाचा भाव.",
   "Find a crop: onion, tur, karela…": "पीक शोधा: कांदा, तूर, कारले…",
   "Nothing matches “{{q}}” today.": "आज “{{q}}” शी काहीही जुळले नाही.",
-  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares each state's price today with that state's own average over earlier days, up to the last 30, and shows once there is an earlier day to compare with: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे प्रत्येक राज्याच्या आजच्या भावाची त्याच राज्याच्या आधीच्या दिवसांच्या (जास्तीत जास्त 30) सरासरीशी तुलना, आणि तुलनेसाठी आधीचा एखादा दिवस असेल तेव्हाच दिसते: हा संकेत आहे, भाकीत नाही."
+  "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares each state's price today with that state's own average over earlier days, up to the last 30, and shows once there is an earlier day to compare with: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे प्रत्येक राज्याच्या आजच्या भावाची त्याच राज्याच्या आधीच्या दिवसांच्या (जास्तीत जास्त 30) सरासरीशी तुलना, आणि तुलनेसाठी आधीचा एखादा दिवस असेल तेव्हाच दिसते: हा संकेत आहे, भाकीत नाही.",
+  "{{n}} CROP": "{{n}} पीक",
+  "{{n}} CROPS": "{{n}} पिके"
 }

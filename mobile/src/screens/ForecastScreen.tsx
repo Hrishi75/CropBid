@@ -2,14 +2,15 @@
 // Forecast screen — demand & supply predictions, next 7 days
 // =============================================================================
 // The prediction page of the Mandi section (mirrors the web's /forecast).
-// For every crop on the rates board: a 7-day price outlook with a forecast
+// For every crop on the rates screen (the whole day's report, not the 30-crop
+// board, which is all this covered until 2026-09-27): a 7-day price outlook with a forecast
 // band, a supply index and a demand index — and, on tap, the exact drivers
 // that produced the numbers plus what the forecast means for a farmer and for
 // a buyer. The model is deterministic and explainable; this screen's job is
 // to show its work, never to oversell it. Prices are ₹-native (India feed).
 
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import api from '../api/client';
 import { Mono } from '../components/buyerKit';
@@ -26,10 +27,10 @@ interface Prediction {
   label: string;
   emoji: string;
   unit: 'KG' | 'QUINTAL' | 'LITRE';
-  cat: 'veg' | 'dairy' | 'fruits' | 'grains' | 'spices';
+  group: string;
   modal: number;
-  usual: number;
-  changePct: number;
+  usual: number | null;
+  changePct: number | null;
   source: 'market' | 'state' | 'national' | 'reference';
   mandisReporting: number;
   supply: { score: number; level: 'tight' | 'balanced' | 'ample'; drivers: string[] };
@@ -137,6 +138,7 @@ export function ForecastBody() {
   const [board, setBoard] = useState<ForecastBoard | null>(null);
   const [failed, setFailed] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let on = true;
@@ -146,23 +148,49 @@ export function ForecastBody() {
     return () => { on = false; };
   }, []);
 
+  // Same match as the rates screen: the label and the feed's own name, so
+  // "karela", "bitter" and "Bitter gourd" all find it.
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!board || !q) return board?.predictions ?? [];
+    return board.predictions.filter((p) => p.label.toLowerCase().includes(q) || p.commodity.toLowerCase().includes(q));
+  }, [board, query]);
+
   const counts = board
     ? {
-        rise: board.predictions.filter((p) => p.outlook.direction === 'rise').length,
-        ease: board.predictions.filter((p) => p.outlook.direction === 'ease').length,
-        hold: board.predictions.filter((p) => p.outlook.direction === 'hold').length,
+        rise: shown.filter((p) => p.outlook.direction === 'rise').length,
+        ease: shown.filter((p) => p.outlook.direction === 'ease').length,
+        hold: shown.filter((p) => p.outlook.direction === 'hold').length,
       }
     : null;
 
   return (
     <View style={styles.flex}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollPad}>
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={styles.search}
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t('Find a crop: onion, tur, karela…')}
+          placeholderTextColor={design.ink3}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollPad}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {/* source line */}
         <View style={styles.srcRow}>
           {board?.live ? <Pulse style={styles.liveDot} /> : null}
           <Mono style={styles.srcText}>
             {board
-              ? `${board.live ? 'LIVE' : 'REFERENCE'} · ${t('next 7 days').toUpperCase()} · ${board.date}`
+              ? `${board.live ? 'LIVE' : 'REFERENCE'} · ${t('next 7 days').toUpperCase()} · ${board.date} · ${t(board.predictions.length === 1 ? '{{n}} CROP' : '{{n}} CROPS', { n: board.predictions.length })}`
               : 'PREDICTION ENGINE'}
           </Mono>
         </View>
@@ -176,16 +204,20 @@ export function ForecastBody() {
           </View>
         )}
 
+        {board && query.trim() !== '' && shown.length === 0 && (
+          <Text style={styles.note}>{t('Nothing matches “{{q}}” today.', { q: query.trim() })}</Text>
+        )}
+
         {failed && <Text style={styles.note}>{t('Could not reach the prediction engine — pull back and try again.')}</Text>}
         {!board && !failed && <Text style={styles.note}>{t("Running the model on today's mandi data…")}</Text>}
 
         {board && GROUPS.map(({ dir, title, eyebrow }) => {
-          const rows = board.predictions.filter((p) => p.outlook.direction === dir);
+          const rows = shown.filter((p) => p.outlook.direction === dir);
           if (rows.length === 0) return null;
           return (
             <View key={dir}>
               <View style={styles.groupHead}>
-                <Mono style={styles.groupEyebrow}>{t(eyebrow).toUpperCase()}</Mono>
+                <Mono style={styles.groupEyebrow}>{t(eyebrow).toUpperCase()} · {rows.length}</Mono>
                 <Text style={styles.groupTitle}>
                   <Text style={{ color: DIRECTION_META[dir].color }}>{DIRECTION_META[dir].arrow}</Text> {t(title)}
                 </Text>
@@ -204,7 +236,7 @@ export function ForecastBody() {
 
         {board && (
           <Text style={styles.foot}>
-            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, the Indian harvest calendar, and live CropBid activity. An explainable estimate to negotiate around — not a guarantee.")}
+            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for most of the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.")}
           </Text>
         )}
       </ScrollView>
@@ -223,6 +255,13 @@ function TallyItem({ n, color, label }: { n: number; color: string; label: strin
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
+
+  searchWrap: { paddingHorizontal: 16, paddingTop: 12 },
+  search: {
+    backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 9,
+    fontFamily: font.sans, fontSize: 14, color: design.ink,
+  },
 
   scrollPad: { paddingBottom: 40 },
   srcRow: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, marginTop: 14 },
