@@ -5,20 +5,28 @@
 //   GET /api/rates/board        → today's rates for the curated crop board
 //   GET /api/rates/all?state=   → every commodity the feed reported (/rates)
 //   GET /api/rates?crop=&state=&market=  → single-crop anchor (fallback chain)
-// Sets a short public cache header — rates change at most once a day and are
-// non-sensitive, so the CDN/browser can cache them.
 // =============================================================================
 
 import { Request, Response, NextFunction } from 'express';
 import * as ratesService from '../services/rates.service';
 import * as predictionService from '../services/prediction.service';
 
+// How long a browser may keep an answer. Live rates are kept five minutes and
+// then revalidated against the ETag, which costs a 304 when nothing moved.
+// Reference prices are never kept: they are what a visitor gets while the
+// server is still loading the day's feed (a restart, a deploy), and caching
+// them for half an hour, as this used to, meant someone who opened the site
+// at that moment kept seeing them long after live rates were back.
+function cacheFor(res: Response, live: boolean) {
+  res.set('Cache-Control', live ? 'public, max-age=300' : 'no-store');
+}
+
 // GET /api/rates/board — whole board of today's rates
 export async function getBoard(req: Request, res: Response, next: NextFunction) {
   try {
     const state = (req.query.state as string) || undefined;
     const data = await ratesService.getBoard(state);
-    res.set('Cache-Control', 'public, max-age=1800'); // 30 min
+    cacheFor(res, data.live);
     res.json(data);
   } catch (error) {
     next(error);
@@ -32,7 +40,7 @@ export async function getAll(req: Request, res: Response, next: NextFunction) {
   try {
     const state = (req.query.state as string) || undefined;
     const data = await ratesService.getAllRates(state);
-    res.set('Cache-Control', 'public, max-age=1800');
+    cacheFor(res, data.live);
     res.json(data);
   } catch (error) {
     next(error);
@@ -45,7 +53,7 @@ export async function getAll(req: Request, res: Response, next: NextFunction) {
 export async function getPredictions(req: Request, res: Response, next: NextFunction) {
   try {
     const data = await predictionService.getForecastBoard();
-    res.set('Cache-Control', 'public, max-age=1800'); // 30 min, same as the board
+    cacheFor(res, data.live);
     res.json(data);
   } catch (error) {
     next(error);
@@ -67,7 +75,8 @@ export async function getMarkets(req: Request, res: Response, next: NextFunction
     if (!data) {
       return res.status(404).json({ error: 'No rate available for this crop' });
     }
-    res.set('Cache-Control', 'public, max-age=1800');
+    // No mandi rows means no copy of the feed yet, not a crop nobody sells.
+    cacheFor(res, data.count > 0);
     res.json(data);
   } catch (error) {
     next(error);
@@ -88,7 +97,7 @@ export async function getRate(req: Request, res: Response, next: NextFunction) {
     if (!rate) {
       return res.status(404).json({ error: 'No rate available for this crop' });
     }
-    res.set('Cache-Control', 'public, max-age=1800');
+    cacheFor(res, rate.source !== 'reference');
     res.json(rate);
   } catch (error) {
     next(error);
