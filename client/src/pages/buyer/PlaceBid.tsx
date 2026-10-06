@@ -10,6 +10,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { BidForm } from '../../components/bids/BidForm';
+import { ContractProposal } from '../../components/contracts/ContractProposal';
+import { useAuth } from '../../context/AuthContext';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
@@ -40,6 +42,7 @@ function pseudoSpark(id: string, points = 11): number[] {
 export function PlaceBid() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -78,7 +81,14 @@ export function PlaceBid() {
       </h1>
 
       <div className="cb-split" style={{ gap: 24, marginTop: 28 }}>
-        <BidForm listing={listing} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+          <BidForm listing={listing} />
+          {/* An FMCG buyer can also propose a supply contract; not on a local
+              shop's lot, which sells by the kilo. The server holds both rules. */}
+          {user?.buyerProfile?.companyType === 'FMCG' && listing.farmer?.sellerType !== 'LOCAL_SHOP' && (
+            <ContractProposal listing={listing} />
+          )}
+        </div>
 
         <aside style={{ position: 'sticky', top: 76, alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="cb-card">

@@ -45,6 +45,14 @@ const api = axios.create({
 
 let accessToken: string | null = null;
 
+// Buying mode (a seller approved to buy): sent as X-Act-As on every request.
+// The server honours it only after reading an approved buyer profile, so it is
+// worth nothing alone. Set by AuthContext during render.
+let actAs: 'BUYER' | null = null;
+export function setActAs(v: 'BUYER' | null) {
+  actAs = v;
+}
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
@@ -61,6 +69,11 @@ api.interceptors.request.use(
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
+    // Set or cleared on every pass, retries included: a retry reuses the
+    // original config, so setting it only when buying left a Buying-mode
+    // header on a request retried after the seller switched to Selling.
+    if (actAs) config.headers['X-Act-As'] = actAs;
+    else delete config.headers['X-Act-As'];
     return config;
   },
   (error) => Promise.reject(error),
@@ -71,6 +84,22 @@ api.interceptors.request.use(
 // ---------------------------------------------------------------------------
 // Track whether we're already refreshing (to prevent infinite loops)
 let isRefreshing = false;
+
+// ---------------------------------------------------------------------------
+// refreshSession: POST /auth/refresh, one tab at a time
+// ---------------------------------------------------------------------------
+// Every tab sends the same refresh cookie, and the server accepts only the
+// newest token it issued, rotating it on each refresh. Two tabs refreshing at
+// the same moment both send the old cookie: the first wins and the second is
+// refused, which signed that tab out. `isRefreshing` only serialises calls
+// inside one tab, so this takes a browser-wide lock as well. A tab that waits
+// for it sends the cookie the winner's response just set, and rotates again.
+// Where the Web Locks API is missing it falls back to the plain call.
+export function refreshSession() {
+  const call = () => api.post('/auth/refresh');
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks ? locks.request('cb-auth-refresh', call) : call();
+}
 
 // Queue of requests that failed while we were refreshing
 // Once refresh completes, we retry them all with the new token
@@ -121,7 +150,7 @@ api.interceptors.response.use(
 
       try {
         // Call the refresh endpoint (uses the httpOnly cookie)
-        const { data } = await api.post('/auth/refresh');
+        const { data } = await refreshSession();
 
         // Store the new access token
         setAccessToken(data.accessToken);
@@ -137,8 +166,14 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
       } catch (refreshError: any) {
-        // Refresh failed — token is fully expired, user must log in again
         processQueue(refreshError, null);
+
+        // Only a refusal (401/403) means the session is gone. A 429, a 5xx or
+        // a dropped connection says nothing about it: keep the cookie and let
+        // the next request try again, rather than sign the user out.
+        const status = refreshError?.response?.status;
+        if (status !== 401 && status !== 403) return Promise.reject(refreshError);
+
         setAccessToken(null);
 
         // SESSION_IDLE means the refresh token aged out rather than being
@@ -182,12 +217,14 @@ export async function keepAliveSession(): Promise<void> {
 
   isRefreshing = true;
   try {
-    const { data } = await api.post('/auth/refresh');
+    const { data } = await refreshSession();
     setAccessToken(data.accessToken);
     markSynced();
     processQueue(null, data.accessToken);
   } catch (err: any) {
-    const stranded = failedQueue.length > 0;
+    // A refusal, not a 429 or a dropped connection (see the interceptor).
+    const refused = [401, 403].includes(err?.response?.status);
+    const stranded = failedQueue.length > 0 && refused;
     processQueue(err, null);
 
     // Only end the session if a REAL request was waiting on us — a 401 followed

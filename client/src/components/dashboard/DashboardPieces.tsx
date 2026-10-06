@@ -274,9 +274,11 @@ export function MarketRates({ crops = [], limit = 4, cropsUnavailable = false }:
             >
               {/* Only a real comparison gets a number: a fallback price or a crop
                   with no earlier day on record would read as "+0.0%". */}
-              {r.source === 'reference' || r.usualDays === 0
-                ? ''
-                : `${r.changePct >= 0 ? '+' : '−'}${Math.abs(r.changePct).toFixed(1)}%`}
+              {r.source === 'reference'
+                ? <span title="A reference price: no mandi reported this crop today" style={{ color: 'var(--cb-ink-3)' }}>ref</span>
+                : r.usualDays === 0
+                  ? ''
+                  : `${r.changePct >= 0 ? '+' : '−'}${Math.abs(r.changePct).toFixed(1)}%`}
             </span>
           </span>
         </div>

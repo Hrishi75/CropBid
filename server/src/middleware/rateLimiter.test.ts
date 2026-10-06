@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { accountKey } from './rateLimiter';
+import { accountKey, isSessionRoute } from './rateLimiter';
 
 describe('accountKey', () => {
   it('reads the identifier the login handler actually sends', () => {
@@ -57,5 +57,22 @@ describe('accountKey', () => {
     expect(accountKey(undefined)).toBe('');
     expect(accountKey({ identifier: '   ' })).toBe('');
     expect(accountKey({ identifier: 42 })).toBe('');
+  });
+});
+
+describe('isSessionRoute', () => {
+  it('lets keeping a session alive through the strict auth limit', () => {
+    // These ran in every tab every few minutes and shared one IP-only bucket,
+    // so a busy office or a carrier NAT signed its users out with a 429.
+    expect(isSessionRoute('/refresh')).toBe(true);
+    expect(isSessionRoute('/me')).toBe(true);
+    expect(isSessionRoute('/logout')).toBe(true);
+    expect(isSessionRoute('/refresh/')).toBe(true);
+  });
+
+  it('still counts every route that checks a credential', () => {
+    for (const p of ['/login', '/signup', '/phone/start', '/phone/verify', '/forgot-password', '/reset-password', '/change-password']) {
+      expect(isSessionRoute(p)).toBe(false);
+    }
   });
 });
