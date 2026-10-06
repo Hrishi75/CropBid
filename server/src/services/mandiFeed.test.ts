@@ -316,6 +316,41 @@ describe('across a restart', () => {
     expect(result).not.toBe('still waiting');
     expect(result).toMatchObject({ rows: [expect.objectContaining({ modal: 2000 })] });
   });
+
+  it('holds visitors only in the first ten seconds, not for as long as a download runs', async () => {
+    // A throttled key keeps a sweep going for minutes. The first visitor is
+    // let go at ten seconds; the next is not held at all, where it used to
+    // wait ten seconds of its own on every load.
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', fakeFeed([rec('Onion', 'Maharashtra', 2000)], { fail: () => 429 }));
+
+    const first = feed.getMandiSnapshot();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await first).toBeNull();
+
+    let second: unknown = 'still waiting';
+    void feed.getMandiSnapshot().then((snap) => { second = snap; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second).toBeNull();
+  });
+
+  it('keeps the copy fresh with nobody visiting', async () => {
+    vi.useFakeTimers();
+    const rows = [rec('Onion', 'Maharashtra', 2000)];
+    const fetchMock = fakeFeed(rows);
+    vi.stubGlobal('fetch', fetchMock);
+    feed.warmMandiFeed();
+    await vi.advanceTimersByTimeAsync(0);
+    const calls = fetchMock.mock.calls.length;
+    expect(calls).toBeGreaterThan(0);
+
+    // Two hours and a tick later, with no request in between, the timer has
+    // fetched the day again and the next visitor gets the new price at once.
+    rows[0] = rec('Onion', 'Maharashtra', 2600);
+    await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 5 * 60 * 1000);
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(calls);
+    expect((await feed.getMandiSnapshot())?.rows[0]).toMatchObject({ modal: 2600 });
+  });
 });
 
 describe('state spellings', () => {

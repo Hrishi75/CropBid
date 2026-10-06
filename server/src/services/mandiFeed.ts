@@ -29,7 +29,15 @@
 // complete copy exists (a cold start, a capped key, a sweep that could not
 // finish) callers get null and fall back to reference prices, labelled as
 // such. A stale complete copy is served while a fresh one downloads in the
-// background, and `warmMandiFeed()` starts the first download at boot.
+// background, and `warmMandiFeed()` starts the first download at boot and
+// keeps the copy fresh on a timer, so a site nobody opened for two days does
+// not greet its next visitor with a copy too old to serve.
+//
+// Only the first visitors after a restart are ever held for a copy, and only
+// until COLD_WAIT_MS after the first ask, which is normally the boot warm-up. Once that has passed
+// nobody waits on a download: a full sweep runs for minutes when the key is
+// throttled, and holding every visitor ten seconds for it is what left the
+// homepage's rates as an empty skeleton for ten seconds a load.
 //
 // Each complete copy is also saved to the database (mandiFeedStore.ts), and a
 // restart serves the saved one while it downloads afresh. Every deploy is a
@@ -86,6 +94,7 @@ const THROTTLE_WAITS_MS = [15_000, 30_000, 60_000];
 const REFRESH_MS = 2 * 60 * 60 * 1000;       // mandis report through the day
 const FAILED_RETRY_MS = 10 * 60 * 1000;
 const COLD_WAIT_MS = 10_000;
+const TICK_MS = 5 * 60 * 1000;               // how often the timer checks for a due refresh
 // A copy this old stops being a fair anchor even if the feed is still down,
 // and the board says "reference" out loud instead of quoting it as today's.
 const STALE_MAX_MS = 3 * 24 * 60 * 60 * 1000;
@@ -239,6 +248,9 @@ let refreshing: Promise<void> | null = null;
 let restoring: Promise<void> | null = null;
 let restored = false;
 let nextRefreshAt = 0;
+// When the cold wait ends for everyone, set by the first ask to find nothing
+// to serve (at boot, warmMandiFeed). One deadline per process, not one per visitor.
+let coldDeadline: number | null = null;
 const waiters = new Set<() => void>();
 const subscribers = new Set<(snap: MandiSnapshot) => void>();
 
@@ -339,9 +351,11 @@ export async function getMandiSnapshot(): Promise<MandiSnapshot | null> {
   // copy first releases the visitor, and both share one deadline: neither a
   // hung database nor a slow feed holds them past COLD_WAIT_MS.
   // The deadline is on the monotonic clock, so a wall-clock correction
-  // mid-wait cannot stretch it.
+  // mid-wait cannot stretch it. It is shared by the whole process, so once
+  // it has passed, a visitor finding nothing gets reference prices at once.
   void restore();
-  const deadline = performance.now() + COLD_WAIT_MS;
+  coldDeadline ??= performance.now() + COLD_WAIT_MS;
+  const deadline = coldDeadline;
   while (!usable(current)) {
     const left = deadline - performance.now();
     if (left <= 0 || (restored && !refreshing)) break;
@@ -363,9 +377,15 @@ function wakeWaiters() {
   for (const w of [...waiters]) w();
 }
 
-/** Start the first download at boot, so the first visitor is not the one who waits. */
+/**
+ * Start the first download at boot, so the first visitor is not the one who
+ * waits, then keep refreshing on schedule whether or not anyone visits.
+ */
 export function warmMandiFeed(): void {
   void getMandiSnapshot();
+  setInterval(() => {
+    if (Date.now() >= nextRefreshAt) void refresh();
+  }, TICK_MS).unref();
 }
 
 // -----------------------------------------------------------------------------
