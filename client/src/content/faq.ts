@@ -114,7 +114,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Can I sign in with Google?',
-        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, the first time you use Google it opens that account, and the password set on it before then stops working, because we cannot tell who set it. You can choose a new one with Forgot password, and a password you set after that keeps working. A suspended account, or one already linked to a different Google account, cannot be opened this way: sign in with your password if the account has one, or write to info@cropbid.in. The phone app does not offer Google sign-in yet.',
+        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, the first time you use Google it opens that account, and the password set on it before then stops working, because we cannot tell who set it. You can choose a new one with Forgot password, and a password you set after that keeps working. An account already linked to a different Google account cannot be opened this way: sign in with its password if it has one, or write to info@cropbid.in. A suspended account cannot be signed in to at all; write to info@cropbid.in. The phone app does not offer Google sign-in yet.',
       },
       {
         q: 'Do I need an email address?',
