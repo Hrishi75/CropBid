@@ -116,9 +116,11 @@ Production demo stack — all free tier:
 
 ## 2. Frontend → Cloudflare Workers
 
-The site is a static-assets-only Worker: no server code. `client/wrangler.jsonc`
-holds the routing (`/faq` served from `faq/index.html`, every other path gets the
-app shell) and `client/public/_headers` the cache headers.
+The site is `client/dist` served as Worker static assets. `client/wrangler.jsonc`
+holds the routing (`/faq` served from `faq/index.html`, a browser navigating to
+any other path gets the app shell), `client/worker.js` answers only requests no
+file matched (a 404 for `/assets/*` and `/api/*`, the app shell otherwise), and
+`client/public/_headers` holds the cache headers.
 
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repository**
    → connect GitHub → pick `Hrishi75/CropBid`.
@@ -131,8 +133,8 @@ app shell) and `client/public/_headers` the cache headers.
 
    | Key | Value |
    |-----|-------|
-   | `VITE_API_URL` | `https://api.cropbid.in/api` |
-   | `VITE_SOCKET_URL` | `https://api.cropbid.in` |
+   | `VITE_API_URL` | your API's origin plus `/api`, e.g. `https://cropbid-api.onrender.com/api` from step 1 (production: `https://api.cropbid.in/api`) |
+   | `VITE_SOCKET_URL` | the same origin with no path (production: `https://api.cropbid.in`) |
    | `VITE_GOOGLE_CLIENT_ID` | the OAuth web client id (optional; blank hides the Google button). The API needs the same value as `GOOGLE_CLIENT_ID` |
    | `VITE_CF_ANALYTICS_TOKEN` | the Web Analytics token for cropbid.in (Cloudflare → Web Analytics → Manage site). Blank means no page views are counted |
    | `NODE_VERSION` | `22` |

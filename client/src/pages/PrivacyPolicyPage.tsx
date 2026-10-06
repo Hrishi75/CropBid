@@ -302,9 +302,10 @@ export function PrivacyPolicyPage() {
             <strong>Cloudinary</strong> (image hosting) — the photographs you upload.
           </p>
           <p>
-            <strong>Our infrastructure providers</strong> — Cloudflare (website), Amazon Web
-            Services (application server) and Neon (database) host the platform on our behalf,
-            and Cloudflare Web Analytics counts page views as described above.
+            <strong>Our infrastructure providers</strong> — Cloudflare and Vercel (website, while
+            we move it from Vercel to Cloudflare), Amazon Web Services (application server) and
+            Neon (database) host the platform on our behalf, and Cloudflare Web Analytics counts
+            page views as described above.
           </p>
           <p>
             <strong>data.gov.in</strong> supplies the government mandi rates we display. We
