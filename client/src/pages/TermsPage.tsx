@@ -36,8 +36,9 @@ import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
+import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '3 October 2026';
+const UPDATED = '6 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -368,9 +369,10 @@ export function TermsPage() {
         <Section title="15. Complaints">
           <p>
             Write to <a href={`mailto:${CONTACT}`}>{CONTACT}</a> with your order or listing
-            reference and what went wrong. We aim to acknowledge within two working days. If a
-            complaint concerns your personal data, the Privacy Policy names who to contact.
+            reference and what went wrong. If that does not settle it, or you would rather go
+            straight to the person responsible, contact our Grievance Officer:
           </p>
+          <GrievanceOfficer />
         </Section>
 
         <Section title="16. Governing law">

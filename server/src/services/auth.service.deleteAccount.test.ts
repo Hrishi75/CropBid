@@ -26,8 +26,10 @@ vi.mock('../lib/prisma', () => {
     notification: { deleteMany: vi.fn() },
     address: { deleteMany: vi.fn() },
     negotiation: { updateMany: vi.fn(), deleteMany: vi.fn() },
-    requirement: { deleteMany: vi.fn(), updateMany: vi.fn() },
-    requirementOffer: { deleteMany: vi.fn() },
+    buyerRequirement: { updateMany: vi.fn() },
+    requirementOffer: { deleteMany: vi.fn(), updateMany: vi.fn() },
+    shipment: { updateMany: vi.fn() },
+    waitlist: { deleteMany: vi.fn() },
     wallet: { deleteMany: vi.fn() },
     walletEntry: { deleteMany: vi.fn() },
     equipmentEnquiry: { deleteMany: vi.fn() },
@@ -40,6 +42,8 @@ vi.mock('../lib/prisma', () => {
     prisma: {
       user: { findUnique: vi.fn() },
       transaction: { count: vi.fn() },
+      // No wallet history unless a test says so.
+      walletEntry: { count: vi.fn(() => Promise.resolve(0)) },
       // No live supply contract unless a test says so.
       supplyContract: { count: vi.fn(() => Promise.resolve(0)) },
       listing: { findMany: vi.fn(() => Promise.resolve([])) },
@@ -70,6 +74,8 @@ beforeEach(async () => {
   mock(prisma.user.findUnique).mockResolvedValue({
     id: 'seller-1',
     role: 'FARMER',
+    email: 'ramesh@example.com',
+    phone: '9822055667',
     password: await bcrypt.hash(PASSWORD, 4),
     avatar: null,
     farmerProfile: {
@@ -112,6 +118,61 @@ describe('anonymising a seller who has settled deals', () => {
     });
   });
 
+  it('scrubs the shop name, address and licence numbers, which identify them too', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+
+    const scrubbed = tx.farmerProfile.update.mock.calls.at(-1)?.[0].data;
+    expect(scrubbed).toMatchObject({
+      businessName: null,
+      address: null,
+      fssaiLicense: null,
+      gstin: null,
+    });
+  });
+
+  // The rows below survive a kept deal, and each one still led back to the
+  // person after the old scrub had run.
+  it('deletes their saved addresses', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    expect(tx.address.deleteMany).toHaveBeenCalledWith({ where: { userId: 'seller-1' } });
+  });
+
+  it('clears the delivery address and phone copied onto every bid they placed', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    expect(tx.bid.updateMany).toHaveBeenCalledWith({
+      where: { buyerId: 'seller-1' },
+      data: { deliveryAddress: null, contactPhone: null },
+    });
+  });
+
+  it('removes their end of every shipment address', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    const wheres = tx.shipment.updateMany.mock.calls.map((c) => c[0].where);
+    expect(wheres).toContainEqual({ transaction: { buyerId: 'seller-1' } });
+    expect(wheres).toContainEqual({ transaction: { farmerId: 'seller-1' } });
+  });
+
+  it('deletes their enquiries', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    expect(tx.equipmentEnquiry.deleteMany).toHaveBeenCalledWith({ where: { userId: 'seller-1' } });
+    expect(tx.agriInputEnquiry.deleteMany).toHaveBeenCalledWith({ where: { userId: 'seller-1' } });
+  });
+
+  it('closes their open requests and stops every one repeating', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    const calls = tx.buyerRequirement.updateMany.mock.calls.map((c) => c[0]);
+    expect(calls).toContainEqual({ where: { buyerId: 'seller-1', status: 'OPEN' }, data: { status: 'CLOSED' } });
+    expect(calls.some((c) => c.where.buyerId === 'seller-1' && !c.where.status && c.data.nextRepeatAt === null)).toBe(true);
+  });
+
+  it('removes sign-in codes and waitlist rows kept under their email or phone', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    const byIdentifier = { where: { OR: [{ email: 'ramesh@example.com' }, { phone: '9822055667' }] } };
+    expect(tx.phoneChallenge.deleteMany).toHaveBeenCalledWith(byIdentifier);
+    expect(tx.pendingSignup.deleteMany).toHaveBeenCalledWith(byIdentifier);
+    expect(tx.waitlist.deleteMany).toHaveBeenCalledWith({ where: { email: 'ramesh@example.com' } });
+  });
+
   it('removes a business credit application with the account', async () => {
     await deleteAccount('seller-1', PASSWORD);
 
@@ -127,5 +188,19 @@ describe('deleting a seller with nothing settled', () => {
 
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: 'seller-1' } });
     expect(tx.farmerProfile.update).not.toHaveBeenCalled();
+  });
+});
+
+// Wallet entries cascade with the user row, so a hard delete would keep the
+// money and lose the record of whose it was.
+describe('deleting an account with wallet history and no deals', () => {
+  it('anonymises instead of deleting the row', async () => {
+    mock(prisma.transaction.count).mockResolvedValue(0);
+    mock((prisma as unknown as { walletEntry: { count: unknown } }).walletEntry.count).mockResolvedValueOnce(2);
+
+    await deleteAccount('seller-1', PASSWORD);
+
+    expect(tx.user.delete).not.toHaveBeenCalled();
+    expect(tx.user.update).toHaveBeenCalled();
   });
 });

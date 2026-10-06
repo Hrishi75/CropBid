@@ -10,11 +10,16 @@
 // This pattern is standard for any Express app that uses WebSockets.
 // =============================================================================
 
+// First, so Sentry can instrument what is imported after it.
+import './instrument';
 import http from 'http';
 import app from './app';
 import { config } from './config';
 import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
+import { purgeExpiredSignInData } from './services/retention.service';
+import { encryptStoredPayoutDetails } from './services/payoutDetails';
+import { assertEncryptionKeyValid, isEncryptionConfigured } from './utils/fieldCrypto';
 import { warmRates } from './services/rates.service';
 import { repostDueRequirements } from './services/requirement.service';
 import { createDueBatches } from './services/supplyContract.service';
@@ -44,6 +49,23 @@ void clearPlaintextRefreshTokens()
   })
   .catch((err) => console.error('Could not sweep plaintext refresh tokens:', err));
 
+// Payout details are encrypted at rest when PAYOUT_ENCRYPTION_KEY is set. A
+// malformed key stops the boot here rather than leaving details unreadable
+// later; a missing one is said out loud, then the rows already stored in the
+// clear are encrypted. Never fatal beyond the malformed key.
+assertEncryptionKeyValid();
+if (!isEncryptionConfigured()) {
+  if (config.nodeEnv === 'production') {
+    console.warn('⚠️  PAYOUT_ENCRYPTION_KEY is not set: seller bank details are stored unencrypted');
+  }
+} else {
+  void encryptStoredPayoutDetails()
+    .then((n) => {
+      if (n > 0) console.log(`🔒 Encrypted payout details on ${n} seller profile(s)`);
+    })
+    .catch((err) => console.error('Could not encrypt stored payout details:', err));
+}
+
 // Start downloading the day's mandi feed and reading the usual prices now,
 // so the first visitor to the rates board is not the one who waits. Never fatal.
 warmRates();
@@ -71,6 +93,20 @@ if (config.nodeEnv !== 'test') {
   };
   setTimeout(repost, 30_000).unref();
   setInterval(repost, 15 * 60_000).unref();
+
+  // RETENTION. Hourly, delete sign-in codes, unfinished sign-ups and reset
+  // links that expired over a day ago (retention.service). Idempotent, so two
+  // processes in a deploy's overlap running it together is harmless.
+  const purge = () => {
+    purgeExpiredSignInData()
+      .then((r) => {
+        const total = r.phoneChallenges + r.pendingSignups + r.resetTokens;
+        if (total > 0) console.log('[retention] cleared expired sign-in data', r);
+      })
+      .catch((err) => console.error('[retention]', err));
+  };
+  setTimeout(purge, 60_000).unref();
+  setInterval(purge, 60 * 60_000).unref();
 }
 
 export { server };

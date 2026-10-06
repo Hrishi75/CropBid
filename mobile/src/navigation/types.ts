@@ -8,6 +8,9 @@ export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
   ForgotPassword: undefined;
+  // Registered beside them on the guest stack; sign-up links to the terms
+  // and privacy policy its tickbox asks them to agree to.
+  Policy: { kind: 'terms' | 'privacy' | 'faq' };
 };
 
 // Signed-out guest stack. The storefront is open to everyone — guests browse

@@ -38,6 +38,7 @@ import { Prisma } from '../generated/prisma/client';
 import { signup, startBuyerSignup } from './auth.service';
 import { sendSignupOtpEmail } from './email.service';
 import { ApiError } from '../utils/ApiError';
+import { POLICY_VERSION } from '../utils/consent';
 
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
 const mockFindFirst = vi.mocked(prisma.user.findFirst);
@@ -220,6 +221,41 @@ describe('signup always makes a shopper', () => {
       );
     });
   }
+});
+
+// The DPDP Act puts proving consent on us, so the row must say when the box
+// was ticked and which policy it pointed at (utils/consent.ts). Old app builds
+// send nothing and are still let in, with nothing recorded; an explicit "no"
+// is refused before anything is written.
+describe('signup records consent', () => {
+  it('stamps when the box was ticked and the policy version', async () => {
+    existingAccounts({});
+    mockCreate.mockResolvedValue(createdUser);
+
+    await signup({ ...input, consent: true });
+
+    const data = (mockCreate.mock.calls[0][0] as any).data;
+    expect(data.consentAt).toBeInstanceOf(Date);
+    expect(data.consentVersion).toBe(POLICY_VERSION);
+  });
+
+  it('records nothing for an old app build that never sends it', async () => {
+    existingAccounts({});
+    mockCreate.mockResolvedValue(createdUser);
+
+    await signup(input);
+
+    const data = (mockCreate.mock.calls[0][0] as any).data;
+    expect(data).not.toHaveProperty('consentAt');
+    expect(data).not.toHaveProperty('consentVersion');
+  });
+
+  it('refuses an unticked box before touching the database', async () => {
+    existingAccounts({});
+
+    await expect(signup({ ...input, consent: false })).rejects.toMatchObject({ statusCode: 400 });
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
 });
 
 // Buyers are the one role that cannot be phone-only: the email is where the

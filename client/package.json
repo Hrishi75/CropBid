@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^11.4.0",
     "@vercel/analytics": "^2.0.1",
     "axios": "^1.13.6",
     "i18next": "^26.3.6",

@@ -32,6 +32,16 @@ import { colors, design, font, radius, spacing } from '../../theme';
 
 export const SUPPORT_EMAIL = 'info@cropbid.in';
 
+// The Grievance Officer the IT and e-commerce rules require a marketplace to
+// name. The website's copy is client/src/content/grievance.ts, which /privacy
+// and /terms read; change both together.
+const GRIEVANCE = {
+  name: 'Ayush Gaikwad',
+  email: 'ayush.gaikwad@cropbid.in',
+  phoneDisplay: '+91 86260 47528',
+  phoneHref: 'tel:+918626047528',
+};
+
 export default function HelpScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
@@ -98,6 +108,20 @@ export default function HelpScreen() {
           onPress={() => nav.navigate('Policy', { kind: 'privacy' })}
         />
 
+        <View style={styles.grievance}>
+          <Mono style={styles.grievanceLabel}>{t('GRIEVANCE OFFICER')}</Mono>
+          <Text style={styles.grievanceName}>{GRIEVANCE.name}</Text>
+          <Text style={styles.grievanceLink} onPress={() => Linking.openURL(`mailto:${GRIEVANCE.email}`).catch(() => {})}>
+            {GRIEVANCE.email}
+          </Text>
+          <Text style={styles.grievanceLink} onPress={() => Linking.openURL(GRIEVANCE.phoneHref).catch(() => {})}>
+            {GRIEVANCE.phoneDisplay}
+          </Text>
+          <Text style={styles.rowHint}>
+            {t('For a complaint we have not settled. Acknowledged within 24 hours, resolved within 15 days.')}
+          </Text>
+        </View>
+
         <Text style={styles.foot}>
           {t('We are a small team. Expect a reply within a working day or two, not within minutes.')}
         </Text>
@@ -142,6 +166,16 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontFamily: font.sansMed, fontSize: 15, color: design.ink },
   rowHint: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
+
+  grievance: {
+    backgroundColor: design.paper,
+    borderWidth: 1, borderColor: design.line, borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  grievanceLabel: { fontSize: 9, letterSpacing: 1.2, color: design.ink3 },
+  grievanceName: { fontFamily: font.sansMed, fontSize: 15, color: design.ink, marginTop: 4 },
+  grievanceLink: { fontFamily: font.sans, fontSize: 14, color: colors.ember, marginTop: 4 },
 
   foot: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 19, color: design.ink3, marginTop: spacing.xl },
 });

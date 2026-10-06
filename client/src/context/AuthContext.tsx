@@ -41,8 +41,11 @@ interface AuthContextType {
    * attempt fails with NEEDS_EMAIL, and the retry carries an address.
    */
   startPhoneSignIn: (phone: string, email?: string) => Promise<PhoneChallenge>;
-  /** Passwordless step 2 — check the code; `name` is only read for a new account. */
-  verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
+  /**
+   * Passwordless step 2: check the code; `name` and `consent` (the sign-up
+   * tickbox) are only read for a new account.
+   */
+  verifyPhoneSignIn: (challengeId: string, code: string, name?: string, consent?: boolean) => Promise<PhoneSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
@@ -60,6 +63,8 @@ interface SignupData {
   country?: string;
   currency?: string;
   language?: string;
+  /** "I am 18 or older and agree to the Terms and Privacy Policy". The server records when. */
+  consent: boolean;
 }
 
 /** Which channel actually carried the code. */
@@ -223,8 +228,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     challengeId: string,
     code: string,
     name?: string,
+    consent?: boolean,
   ): Promise<PhoneSignInResult> {
-    const { data } = await api.post('/auth/phone/verify', { challengeId, code, name });
+    const { data } = await api.post('/auth/phone/verify', { challengeId, code, name, consent });
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);

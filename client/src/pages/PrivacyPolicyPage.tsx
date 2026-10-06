@@ -23,8 +23,9 @@ import { Link, useLocation } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
+import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '21 September 2026';
+const UPDATED = '6 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -396,6 +397,14 @@ export function PrivacyPolicyPage() {
             Questions about this policy, or about your data, go to{' '}
             <a href={`mailto:${CONTACT}`}>{CONTACT}</a>.
           </p>
+        </Section>
+
+        <Section title="Grievance Officer" id="grievance">
+          <p>
+            If you have a complaint about how we handle your personal data, or about anything
+            else on CropBid, you can take it straight to our Grievance Officer:
+          </p>
+          <GrievanceOfficer />
         </Section>
 
         <p className="cb-small rp-foot" style={{ marginTop: 40 }}>

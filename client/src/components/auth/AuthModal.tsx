@@ -103,7 +103,7 @@ function readContact(raw: string): { email?: string; phone?: string } | null {
     : null;
 }
 
-type SignupField = 'name' | 'contact' | 'password' | 'confirm';
+type SignupField = 'name' | 'contact' | 'password' | 'confirm' | 'consent';
 
 // The in-text links that move between lanes.
 const LINK_BUTTON: React.CSSProperties = {
@@ -143,6 +143,38 @@ const SIDE_DOORS = [
   },
 ];
 
+const CONSENT_REQUIRED = 'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy';
+
+// The one box that makes an account: the age declaration and the agreement in
+// a single act. The server records when it was ticked and which version of the
+// policy it pointed at (server/src/utils/consent.ts), because under the DPDP
+// Act proving consent is on us. Links open in a new tab so reading the terms
+// does not throw away a half-filled form.
+function ConsentBox({ checked, onChange, error }: { checked: boolean; onChange: (v: boolean) => void; error?: string }) {
+  return (
+    <div>
+      <label className="cb-small" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', color: 'var(--cb-ink-2)' }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-invalid={Boolean(error)}
+          style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0, accentColor: 'var(--cb-ember)' }}
+        />
+        <span>
+          I am 18 or older and agree to the{' '}
+          <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cb-ink)' }}>terms</a>{' '}
+          and{' '}
+          <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--cb-ink)' }}>privacy policy</a>.
+        </span>
+      </label>
+      {error && (
+        <p className="cb-field-error" role="alert">{error}</p>
+      )}
+    </div>
+  );
+}
+
 export function AuthModal({ open, onClose, intendedRole, redirectTo, title, startWith }: AuthModalProps) {
   const { login, signup, startPhoneSignIn, verifyPhoneSignIn } = useAuth();
   const navigate = useNavigate();
@@ -171,6 +203,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // rather than under the last box whatever went wrong.
   const [confirm, setConfirm] = useState('');
   const [errorField, setErrorField] = useState<SignupField>();
+  // The sign-up tickbox, on both ways of making an account. Starts unticked
+  // every time: consent is something the person does, never a default.
+  const [agreed, setAgreed] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -196,7 +231,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       setMode(openingMode);
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
-      setIdentifier(''); setPassword(''); setConfirm('');
+      setIdentifier(''); setPassword(''); setConfirm(''); setAgreed(false);
       setError(undefined); setErrorField(undefined); setCooldown(0);
     }
   // openingMode is derived from a prop that only changes together with `open`.
@@ -288,11 +323,12 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     if (!contact) return fail('contact', 'Enter a valid email address or phone number');
     if (unmetRules.length) return fail('password', `Your password still needs ${unmetRules.map((r) => r.label).join(', ')}`);
     if (confirm !== password) return fail('confirm', 'The two passwords do not match');
+    if (!agreed) return fail('consent', CONSENT_REQUIRED);
 
     const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined); setErrorField(undefined);
     try {
-      await signup({ name: name.trim(), ...contact, password });
+      await signup({ name: name.trim(), ...contact, password, consent: true });
       if (attemptRef.current !== attempt) return;
       toast.success(`Welcome to CropBid, ${name.trim().split(' ')[0]}`);
       onClose();
@@ -364,12 +400,13 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     if (!challenge) return;
     if (!codeValid) { setError('Enter the 6-digit code we sent you'); return; }
     if (!nameValid) { setError('Tell us your name to finish'); return; }
+    if (needsName && !agreed) { setError(CONSENT_REQUIRED); return; }
 
     const attempt = attemptRef.current;
     setVerifying(true); setError(undefined);
     try {
       const { user, created } = await verifyPhoneSignIn(
-        challenge.challengeId, code, needsName ? name.trim() : undefined,
+        challenge.challengeId, code, needsName ? name.trim() : undefined, needsName ? true : undefined,
       );
       if (attemptRef.current !== attempt) return;
       toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
@@ -476,12 +513,17 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   hint={confirm && confirm !== password ? 'Does not match yet.' : undefined}
                   required
                 />
+                <ConsentBox
+                  checked={agreed}
+                  onChange={(v) => { setAgreed(v); clearError(); }}
+                  error={errorField === 'consent' ? error : undefined}
+                />
 
                 <Button
                   type="submit"
                   size="lg"
                   loading={signingIn}
-                  disabled={!name.trim() || !identifier.trim() || !password || !confirm}
+                  disabled={!name.trim() || !identifier.trim() || !password || !confirm || !agreed}
                   style={{ width: '100%' }}
                 >
                   Create my account
@@ -669,12 +711,15 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                     required
                   />
                 )}
+                {needsName && (
+                  <ConsentBox checked={agreed} onChange={(v) => { setAgreed(v); setError(undefined); }} />
+                )}
 
                 <Button
                   type="submit"
                   size="lg"
                   loading={verifying}
-                  disabled={!codeValid || !nameValid}
+                  disabled={!codeValid || !nameValid || (needsName && !agreed)}
                   style={{ width: '100%' }}
                 >
                   {needsName ? 'Create my account' : 'Sign in'}
@@ -699,16 +744,19 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
             </>
           )}
 
-          <p className="cb-tiny" style={{ marginTop: 22, color: 'var(--cb-ink-3)' }}>
-            {/* You agree to TERMS; a privacy policy is something you are told,
-                not something you accept. This line pointed only at privacy and
-                used the wrong verb for it, because there was nothing to agree
-                to until /terms existed. */}
-            By continuing you agree to our{' '}
-            <a href="/terms" style={{ color: 'var(--cb-ink-2)' }}>terms</a>{' '}
-            and acknowledge our{' '}
-            <a href="/privacy" style={{ color: 'var(--cb-ink-2)' }}>privacy policy</a>.
-          </p>
+          {/* Signing in to an account that already agreed needs no box. Where
+              an account is being made, the tickbox above replaces this line,
+              because a sentence nobody acts on records nothing. */}
+          {mode !== 'signup' && !needsName && (
+            <p className="cb-tiny" style={{ marginTop: 22, color: 'var(--cb-ink-3)' }}>
+              {/* You agree to TERMS; a privacy policy is something you are told,
+                  not something you accept. */}
+              By continuing you agree to our{' '}
+              <a href="/terms" style={{ color: 'var(--cb-ink-2)' }}>terms</a>{' '}
+              and acknowledge our{' '}
+              <a href="/privacy" style={{ color: 'var(--cb-ink-2)' }}>privacy policy</a>.
+            </p>
+          )}
         </div>
 
         {/* ---------------- Side panel: the other two audiences ---------------- */}
