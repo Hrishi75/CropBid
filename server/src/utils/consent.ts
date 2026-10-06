@@ -5,7 +5,7 @@
 // page said so" is not enough: the row has to carry when the person ticked the
 // box, and the version of the terms and privacy policy that box pointed at.
 //
-// Both sign-up forms carry one tickbox: "I am 18 or older and agree to the
+// Every way of making an account carries one tickbox: "I am 18 or older and agree to the
 // Terms and Privacy Policy". Ticking it is the consent and the age declaration
 // in one act, so one timestamp records both.
 //
@@ -14,6 +14,10 @@
 // an account is made with no consent recorded (null), which is the truth about
 // it. An explicit `false` is refused: that client showed the box and it was
 // not ticked.
+//
+// Continue with Google is the exception to "optional": it is website only and
+// arrived after the box, so a new account made through it must have ticked it
+// (signInWithGoogle). Signing in to an existing account asks nothing.
 //
 // Change POLICY_VERSION whenever /terms or /privacy change in substance. It is
 // the "Last updated" date of the privacy policy.
