@@ -126,7 +126,9 @@ export function PrivacyPolicyPage() {
             address and an id for your Google account, which is how we recognise you next time.
             We never see your Google password or anything else in your Google account. If the
             email Google gives us already belongs to a CropBid account, signing in with Google
-            opens that account, because Google has confirmed the address is yours.
+            opens that account, because Google has confirmed the address is yours. Any password
+            set on that account before is removed, since we cannot tell who chose it; you can
+            set a new one with Forgot password.
           </p>
           <p>
             <strong>Profile details.</strong> Your role (farmer, buyer or consumer), city,

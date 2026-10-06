@@ -45,7 +45,7 @@ interface AuthContextType {
   /** Passwordless step 2 — check the code; `name` is only read for a new account. */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
   /** Sign in or up with the ID token Google's button handed back. */
-  signInWithGoogle: (credential: string) => Promise<PhoneSignInResult>;
+  signInWithGoogle: (credential: string) => Promise<GoogleSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
@@ -86,6 +86,11 @@ export interface PhoneChallenge {
   channel: OtpChannel;
   /** Masked destination, safe to display: "•••••43210" or "a•••@farm.in". */
   sentTo: string;
+}
+
+export interface GoogleSignInResult extends PhoneSignInResult {
+  /** True when this sign-in linked an account and removed its old password. */
+  passwordRemoved: boolean;
 }
 
 export interface PhoneSignInResult {
@@ -270,14 +275,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Also one flow for signing up and signing in. The server finds the account
   // by Google id or email, links it, or makes a shopper; see signInWithGoogle
   // in the server's auth.service.
-  async function signInWithGoogle(credential: string): Promise<PhoneSignInResult> {
+  async function signInWithGoogle(credential: string): Promise<GoogleSignInResult> {
     const { data } = await api.post('/auth/google', { credential });
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);
     markActivity(true);
     markSynced();
-    return { user: data.user as User, created: Boolean(data.created) };
+    return {
+      user: data.user as User,
+      created: Boolean(data.created),
+      passwordRemoved: Boolean(data.passwordRemoved),
+    };
   }
 
   // -------------------------------------------------------------------------

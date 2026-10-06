@@ -86,14 +86,45 @@ describe('an account that already has the email', () => {
 
     const result = await signInWithGoogle('token');
 
-    expect(result).toMatchObject({ created: false });
+    expect(result).toMatchObject({ created: false, passwordRemoved: true });
     expect(result.user.id).toBe(existing.id);
     const row = await prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
     expect(row.googleId).toBe(SUB);
-    // The password still works; the earlier session does not.
-    expect(row.password).toBe('hash');
     expect(row.refreshToken).toBe(hashRefreshToken(result.refreshToken));
     expect(await prisma.auditLog.count({ where: { entityId: existing.id, action: 'auth.google.linked' } })).toBe(1);
+  });
+
+  // Nobody proved who chose the password. Left in place, whoever registered
+  // the address before its owner arrived could still sign in, change it, or
+  // delete the account. Same for a reset link or a support reset in flight.
+  it('loses its password, and every way to set one that it did not choose', async () => {
+    const existing = await passwordAccount(`asha${DOMAIN}`, {
+      passwordResetToken: `reset-${Date.now()}`,
+      passwordResetExpires: new Date(Date.now() + 3_600_000),
+      mustChangePassword: true,
+      passwordResetAt: new Date(),
+    });
+    googleSays(`asha${DOMAIN}`);
+
+    const result = await signInWithGoogle('token');
+
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
+    expect(row).toMatchObject({
+      password: null, passwordResetToken: null, passwordResetExpires: null,
+      mustChangePassword: false, passwordResetAt: null,
+    });
+    // The session handed back is a whole one, not a change-your-password one.
+    expect(result.user).toMatchObject({ mustChangePassword: false });
+  });
+
+  it('keeps the password of an account already linked to this Google id', async () => {
+    const existing = await passwordAccount(`asha${DOMAIN}`, { googleId: SUB });
+    googleSays(`asha${DOMAIN}`);
+
+    const result = await signInWithGoogle('token');
+
+    expect(result).toMatchObject({ passwordRemoved: false });
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: existing.id } })).password).toBe('hash');
   });
 
   // Rows from before emails were normalised can differ by case alone. The one

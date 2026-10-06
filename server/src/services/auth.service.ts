@@ -1794,8 +1794,17 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
 // on their word alone. The link is recorded, so from then on they are found by
 // their Google id. Signing in replaces the account's one refresh token, so any
 // other session on it (somebody who registered the address before its owner
-// arrived, say) ends at its next refresh. Its password is left alone, and so
-// still works: the owner can change it, or reset it by email, which they hold.
+// arrived, say) ends at its next refresh.
+//
+// AND LINKING REMOVES THE PASSWORD (the user's call, 2026-10-06). Nothing
+// proves who chose it: whoever registered the address first could otherwise
+// go on signing in, change the password or delete the account after its owner
+// arrived. Review caught that the first version kept it. A real owner who had
+// a password signs in with Google from then on, or sets a new one with forgot
+// password: the reset link is emailed to the address Google proved is theirs. A
+// support reset still outstanding goes with it, since the temporary password
+// it was about no longer exists. A phone number on the account is untouched,
+// and is still a way in by WhatsApp code for whoever holds it (CLAUDE.md §4).
 //
 // Not for admin accounts. Their way in stays the password an admin was given,
 // the same caution as support refusing to reset one (admin.service).
@@ -1834,8 +1843,12 @@ export async function signInWithGoogle(credential: string) {
     }
 
     // The password-change flag rides this path as it does the phone code: an
-    // admin reset is still outstanding however they came in.
-    const tokens = generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
+    // admin reset is still outstanding however they came in. Not when linking,
+    // which removes the password the reset was about.
+    const tokens = linking
+      ? generateTokens(user.id, user.role)
+      : generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
+    const passwordRemoved = linking && user.password != null;
 
     // Conditional on the password read above, like every other sign-in, so a
     // support reset landing in between is not undone by this write. And when
@@ -1846,7 +1859,18 @@ export async function signInWithGoogle(credential: string) {
         where: { id: user.id, password: user.password, googleId: linking ? null : identity.sub },
         data: {
           refreshToken: hashRefreshToken(tokens.refreshToken),
-          ...(linking ? { googleId: identity.sub } : {}),
+          ...(linking
+            ? {
+                googleId: identity.sub,
+                password: null,
+                // A reset link in flight would set a password nobody here
+                // chose; the owner can ask for a fresh one.
+                passwordResetToken: null,
+                passwordResetExpires: null,
+                mustChangePassword: false,
+                passwordResetAt: null,
+              }
+            : {}),
         },
       })
       .catch((err) => {
@@ -1865,10 +1889,20 @@ export async function signInWithGoogle(credential: string) {
         action: 'auth.google.linked',
         entityType: 'User',
         entityId: user.id,
+        metadata: { passwordRemoved },
       });
     }
 
-    return { user: safeUser(user), accessToken: tokens.accessToken, refreshToken: tokens.refreshToken, created: false };
+    const signedIn = linking ? { ...user, password: null, mustChangePassword: false, passwordResetAt: null } : user;
+    return {
+      user: safeUser(signedIn),
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      created: false,
+      // So the client can say the old password has stopped working, rather
+      // than leave them to find out at their next password sign-in.
+      passwordRemoved,
+    };
   }
 
   // --- New account. No password: it signs in with Google until they set one

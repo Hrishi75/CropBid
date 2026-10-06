@@ -294,9 +294,15 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     const attempt = attemptRef.current;
     setSigningIn(true); setGoogleError(undefined);
     try {
-      const { user, created } = await signInWithGoogle(credential);
+      const { user, created, passwordRemoved } = await signInWithGoogle(credential);
       if (attemptRef.current !== attempt) return;
-      toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
+      if (passwordRemoved) {
+        // Linking removed a password nobody had proved was theirs. Said now,
+        // so their next password sign-in does not fail without explanation.
+        toast.success('Signed in with Google. Your old password no longer works: sign in with Google, or set a new one with Forgot password.', { duration: 8000 });
+      } else {
+        toast.success(created ? `Welcome to CropBid, ${user.name.split(' ')[0]}` : 'Welcome back');
+      }
       onClose();
       routeAfterAuth(user, created);
     } catch (err: any) {

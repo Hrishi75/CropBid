@@ -621,6 +621,7 @@ export async function googleSignInHandler(req: Request, res: Response) {
     user: result.user,
     accessToken: result.accessToken,
     created: result.created,
+    passwordRemoved: Boolean('passwordRemoved' in result && result.passwordRemoved),
     ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
   });
 }
