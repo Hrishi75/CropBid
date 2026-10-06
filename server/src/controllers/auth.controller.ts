@@ -614,6 +614,9 @@ export async function verifyPhoneSignInHandler(req: Request, res: Response) {
 const googleSignInSchema = z.object({
   credential: z.string({ error: 'Google did not send a sign-in. Try again.' })
     .min(1, 'Google did not send a sign-in. Try again.').max(4096),
+  // The sign-up tickbox. Read only when Google makes a new account, which
+  // it refuses without it (utils/consent.ts).
+  consent: z.boolean().optional(),
 });
 
 export async function googleSignInHandler(req: Request, res: Response) {
@@ -622,7 +625,7 @@ export async function googleSignInHandler(req: Request, res: Response) {
     res.status(400).json({ error: true, message: parsed.error.issues[0]?.message || 'Invalid input' });
     return;
   }
-  const result = await authService.signInWithGoogle(parsed.data.credential);
+  const result = await authService.signInWithGoogle(parsed.data.credential, parsed.data.consent);
 
   res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
   res.status(result.created ? 201 : 200).json({

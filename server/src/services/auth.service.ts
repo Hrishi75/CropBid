@@ -20,7 +20,7 @@ import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../util
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
 import { hashRefreshToken, refreshTokenMatches } from '../utils/refreshToken';
 import { ApiError } from '../utils/ApiError';
-import { assertConsentNotRefused, consentFields } from '../utils/consent';
+import { assertConsentNotRefused, consentFields, CONSENT_REQUIRED_MESSAGE } from '../utils/consent';
 import { recordFailedSignIn } from './securityAlert.service';
 import { maskPayoutDetails, maskUserPayoutDetails, parsePayoutDetails, sealPayoutColumns } from './payoutDetails';
 import { sendPasswordResetEmail, sendSignupOtpEmail } from './email.service';
@@ -1956,7 +1956,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
 //
 // Not for admin accounts. Their way in stays the password an admin was given,
 // the same caution as support refusing to reset one (admin.service).
-export async function signInWithGoogle(credential: string) {
+export async function signInWithGoogle(credential: string, consent?: boolean) {
   const identity = await verifyGoogleIdToken(credential);
   const withProfiles = { farmerProfile: true, buyerProfile: true };
 
@@ -2055,6 +2055,11 @@ export async function signInWithGoogle(credential: string) {
 
   // --- New account. No password: it signs in with Google until they set one
   // from change-password, exactly like an account made by phone code. ---
+  // The sign-up tickbox, required rather than optional here: Google sign-in
+  // is website only and shipped after the box did, so no client that offers
+  // it predates the box. Asked only now, because an existing account already
+  // agreed; the code tells the window to show the box (utils/consent.ts).
+  if (consent !== true) throw new ApiError(400, CONSENT_REQUIRED_MESSAGE, 'CONSENT_REQUIRED');
   const emailLocal = identity.email.split('@')[0];
   const name = (identity.name && identity.name.length >= 2 ? identity.name : emailLocal).slice(0, 100);
   const created = await prisma.user
@@ -2065,6 +2070,7 @@ export async function signInWithGoogle(credential: string) {
         googleId: identity.sub,
         role: 'CONSUMER',
         country: 'India',
+        ...consentFields(consent),
       },
       include: withProfiles,
     })

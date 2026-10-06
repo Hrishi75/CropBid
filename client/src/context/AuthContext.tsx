@@ -47,8 +47,11 @@ interface AuthContextType {
    * tickbox) are only read for a new account.
    */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string, consent?: boolean) => Promise<PhoneSignInResult>;
-  /** Sign in or up with the ID token Google's button handed back. */
-  signInWithGoogle: (credential: string) => Promise<GoogleSignInResult>;
+  /**
+   * Sign in or up with the ID token Google's button handed back. `consent`
+   * is the sign-up tickbox, which the server requires only for a new account.
+   */
+  signInWithGoogle: (credential: string, consent?: boolean) => Promise<GoogleSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
@@ -281,8 +284,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Also one flow for signing up and signing in. The server finds the account
   // by Google id or email, links it, or makes a shopper; see signInWithGoogle
   // in the server's auth.service.
-  async function signInWithGoogle(credential: string): Promise<GoogleSignInResult> {
-    const { data } = await api.post('/auth/google', { credential });
+  async function signInWithGoogle(credential: string, consent?: boolean): Promise<GoogleSignInResult> {
+    const { data } = await api.post('/auth/google', { credential, consent });
     setAccessToken(data.accessToken);
     setUser(data.user);
     setSessionHint(true);

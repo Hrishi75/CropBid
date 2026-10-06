@@ -210,11 +210,15 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // rather than under the last box whatever went wrong.
   const [confirm, setConfirm] = useState('');
   const [errorField, setErrorField] = useState<SignupField>();
-  // The sign-up tickbox, on both ways of making an account. Starts unticked
+  // The sign-up tickbox, on every way of making an account, Google included. Starts unticked
   // every time: consent is something the person does, never a default.
   const [agreed, setAgreed] = useState(false);
   // Google's own, shown under its button rather than under a field nobody used.
   const [googleError, setGoogleError] = useState<string>();
+  // Set when Google would make a new account and the box was not ticked: the
+  // sign-in lane then shows the box above the button. A returning account is
+  // never asked, so the box stays out of the way until it is needed.
+  const [googleNeedsConsent, setGoogleNeedsConsent] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -242,7 +246,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       setEmail(''); setNeedsEmail(false);
       setIdentifier(''); setPassword(''); setConfirm(''); setAgreed(false);
       setError(undefined); setErrorField(undefined); setCooldown(0);
-      setGoogleError(undefined);
+      setGoogleError(undefined); setGoogleNeedsConsent(false);
     }
   // openingMode is derived from a prop that only changes together with `open`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,7 +336,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     const attempt = attemptRef.current;
     setSigningIn(true); setGoogleError(undefined); setError(undefined); setErrorField(undefined);
     try {
-      const { user, created, passwordRemoved } = await signInWithGoogle(credential);
+      const { user, created, passwordRemoved } = await signInWithGoogle(credential, agreed);
       if (attemptRef.current !== attempt) return;
       if (passwordRemoved) {
         // Linking removed a password nobody had proved was theirs. Said now,
@@ -345,6 +349,11 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       routeAfterAuth(user, created);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
+      if (err.response?.data?.code === 'CONSENT_REQUIRED') {
+        setGoogleNeedsConsent(true);
+        setGoogleError('New to CropBid? Tick the box above, then continue with Google again.');
+        return;
+      }
       setGoogleError(err.response?.data?.message || 'Could not sign you in with Google just now');
     } finally {
       if (attemptRef.current === attempt) setSigningIn(false);
@@ -506,6 +515,16 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   : "Takes a minute. You start as a shopper, and can apply to sell or buy in bulk once you're in."}
               </p>
 
+              {/* One box for the whole lane, above Google's button, because
+                  that button makes the account the moment it is pressed. */}
+              <div style={{ marginBottom: 16 }}>
+                <ConsentBox
+                  checked={agreed}
+                  onChange={(v) => { setAgreed(v); clearError(); }}
+                  error={errorField === 'consent' ? error : undefined}
+                />
+              </div>
+
               <GoogleButton onCredential={handleGoogle} error={googleError} />
 
               <form onSubmit={handleSignup} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -555,12 +574,6 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   hint={confirm && confirm !== password ? 'Does not match yet.' : undefined}
                   required
                 />
-                <ConsentBox
-                  checked={agreed}
-                  onChange={(v) => { setAgreed(v); clearError(); }}
-                  error={errorField === 'consent' ? error : undefined}
-                />
-
                 <Button
                   type="submit"
                   size="lg"
@@ -588,6 +601,12 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
               <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
                 With the email or phone number and the password you signed up with.
               </p>
+
+              {googleNeedsConsent && (
+                <div style={{ marginBottom: 16 }}>
+                  <ConsentBox checked={agreed} onChange={(v) => { setAgreed(v); setGoogleError(undefined); }} />
+                </div>
+              )}
 
               <GoogleButton onCredential={handleGoogle} error={googleError} />
 
@@ -791,7 +810,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
           {/* Signing in to an account that already agreed needs no box. Where
               an account is being made, the tickbox above replaces this line,
               because a sentence nobody acts on records nothing. */}
-          {mode !== 'signup' && !needsName && (
+          {mode !== 'signup' && !needsName && !googleNeedsConsent && (
             <p className="cb-tiny" style={{ marginTop: 22, color: 'var(--cb-ink-3)' }}>
               {/* You agree to TERMS; a privacy policy is something you are told,
                   not something you accept. */}

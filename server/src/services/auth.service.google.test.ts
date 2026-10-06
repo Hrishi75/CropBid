@@ -14,6 +14,7 @@ import { prisma } from '../lib/prisma';
 import { verifyGoogleIdToken } from '../utils/googleIdToken';
 import { signInWithGoogle } from './auth.service';
 import { hashRefreshToken } from '../utils/refreshToken';
+import { POLICY_VERSION } from '../utils/consent';
 
 const verify = verifyGoogleIdToken as unknown as ReturnType<typeof vi.fn>;
 const DOMAIN = '@google-signin.test';
@@ -43,7 +44,7 @@ afterAll(async () => {
 describe('a new person', () => {
   it('gets a shopper account with no password, linked to their Google id', async () => {
     googleSays(`Asha${DOMAIN}`);
-    const result = await signInWithGoogle('token');
+    const result = await signInWithGoogle('token', true);
 
     expect(result.created).toBe(true);
     const row = await prisma.user.findFirstOrThrow({ where: { googleId: SUB } });
@@ -53,23 +54,55 @@ describe('a new person', () => {
 
   it('never sends the Google id back', async () => {
     googleSays(`asha${DOMAIN}`);
-    const result = await signInWithGoogle('token');
+    const result = await signInWithGoogle('token', true);
     expect(result.user).not.toHaveProperty('googleId');
     expect(result.user).not.toHaveProperty('password');
   });
 
   it('is named after their email when Google gives no name', async () => {
     googleSays(`kisan.r${DOMAIN}`, SUB, null);
-    await signInWithGoogle('token');
+    await signInWithGoogle('token', true);
     expect((await prisma.user.findFirstOrThrow({ where: { googleId: SUB } })).name).toBe('kisan.r');
   });
 
   it('comes back to the same account next time', async () => {
     googleSays(`asha${DOMAIN}`);
-    const first = await signInWithGoogle('token');
-    const second = await signInWithGoogle('token');
+    const first = await signInWithGoogle('token', true);
+    const second = await signInWithGoogle('token', true);
     expect(second.created).toBe(false);
     expect(second.user.id).toBe(first.user.id);
+  });
+});
+
+// The sign-up tickbox (utils/consent.ts): asked of a new account only, and
+// required, because no Google sign-in client predates it.
+describe('consent', () => {
+  it('refuses a new account without the tickbox, and makes nothing', async () => {
+    googleSays(`asha${DOMAIN}`);
+    await expect(signInWithGoogle('token')).rejects.toMatchObject({ statusCode: 400, code: 'CONSENT_REQUIRED' });
+    await expect(signInWithGoogle('token', false)).rejects.toMatchObject({ code: 'CONSENT_REQUIRED' });
+    expect(await prisma.user.count({ where: { email: `asha${DOMAIN}` } })).toBe(0);
+  });
+
+  it('records when it was given and to which policy', async () => {
+    googleSays(`asha${DOMAIN}`);
+    await signInWithGoogle('token', true);
+    const row = await prisma.user.findFirstOrThrow({ where: { googleId: SUB } });
+    expect(row.consentAt).toBeInstanceOf(Date);
+    expect(row.consentVersion).toBe(POLICY_VERSION);
+  });
+
+  it('is not asked of an account that already exists', async () => {
+    googleSays(`asha${DOMAIN}`);
+    await signInWithGoogle('token', true);
+    const again = await signInWithGoogle('token');
+    expect(again.created).toBe(false);
+  });
+
+  it('is not asked when Google links an account that has the email', async () => {
+    await prisma.user.create({ data: { name: 'Asha', email: `asha${DOMAIN}`, password: 'hash', role: 'CONSUMER' } });
+    googleSays(`asha${DOMAIN}`);
+    expect((await signInWithGoogle('token')).created).toBe(false);
   });
 });
 
