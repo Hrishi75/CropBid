@@ -26,8 +26,8 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import type { CSSProperties, ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
@@ -634,6 +634,149 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   );
 }
 
+// The two partner banners that slide in beside the hero. Each is one picture
+// (the copy is part of the artwork), so the whole card is the button and the
+// label says what pressing it does.
+const PARTNER_SLIDES = [
+  {
+    key: 'sell',
+    src: '/banners/partner-sell.webp',
+    to: '/partner#sell',
+    label: 'Become a selling partner: list your produce and sell directly to approved buyers across India',
+    title: <>Sign in to<br /><span className="cb-italic">become a selling partner.</span></>,
+  },
+  {
+    key: 'buy',
+    src: '/banners/partner-buy.webp',
+    to: '/partner#buy',
+    label: 'Become a buying partner: source produce directly from farmers and approved sellers',
+    title: <>Sign in to<br /><span className="cb-italic">become a buying partner.</span></>,
+  },
+] as const;
+
+const AUTOPLAY_MS = 5000;
+
+// The hero, then the partner banners, on one swipeable track. Scroll-snap does
+// the sliding, so touch, trackpad and keyboard scrolling all work without a
+// gesture library. On a wide screen the two banners sit side by side as one
+// page; below 960px each is a page of its own. The pages are read off the
+// slides' own positions rather than counted, so the dots match whichever
+// layout the CSS chose.
+function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User | null; authLoading: boolean }) {
+  const navigate = useNavigate();
+  const { openAuth } = useAuthModal();
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<number[]>([0]);
+  const [active, setActive] = useState(0);
+  // Held only while a finger or mouse button is down on the track, so a
+  // swipe in progress is not yanked away. It rotates the rest of the time;
+  // a manual move changes `active`, which restarts the timer from zero.
+  const [held, setHeld] = useState(false);
+
+  // An approved seller is not asked to become one, nor a buyer a buyer. A
+  // seller still sees the buying banner, since a seller can apply to buy.
+  const slides = PARTNER_SLIDES.filter((s) =>
+    !(s.key === 'sell' && user?.role === 'FARMER') && !(s.key === 'buy' && user?.role === 'BUYER'));
+
+  const measure = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const max = track.scrollWidth - track.clientWidth;
+    const stops: number[] = [];
+    for (const el of Array.from(track.children) as HTMLElement[]) {
+      // The track is positioned, so offsetLeft is measured from it.
+      const x = Math.min(el.offsetLeft, max);
+      if (!stops.some((s) => Math.abs(s - x) < 4)) stops.push(x);
+    }
+    setPages(stops.length ? stops : [0]);
+  }, []);
+
+  // A ResizeObserver reports once on observe, so this also takes the first
+  // measurement, and again whenever the layout switches between one and two
+  // banners a page.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [measure, slides.length]);
+
+  const onScroll = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    let best = 0;
+    pages.forEach((p, i) => { if (Math.abs(p - track.scrollLeft) < Math.abs(pages[best] - track.scrollLeft)) best = i; });
+    setActive(best);
+  };
+
+  const goTo = useCallback((i: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const n = (i + pages.length) % pages.length;
+    track.scrollTo({ left: pages[n], behavior: 'smooth' });
+  }, [pages]);
+
+  useEffect(() => {
+    if (held || pages.length < 2) return;
+    const id = window.setInterval(() => goTo(active + 1), AUTOPLAY_MS);
+    return () => window.clearInterval(id);
+  }, [held, pages.length, active, goTo]);
+
+  // Signed in: straight to the partner page, at the matching section. Signed
+  // out: the sign-in window, and the partner page once they are in. While the
+  // session is still being restored `user` is null either way, and /partner
+  // works signed out too, so send them there rather than pop a prompt on a
+  // session about to come back.
+  const openPartner = (slide: (typeof PARTNER_SLIDES)[number]) => {
+    if (user || authLoading) { navigate(slide.to); return; }
+    openAuth({ redirectTo: slide.to, title: slide.title });
+  };
+
+  return (
+    <section
+      className="st-hero-carousel"
+      aria-roledescription="carousel"
+      aria-label="Highlights"
+    >
+      <div
+        className="st-hero-track"
+        ref={trackRef}
+        onScroll={onScroll}
+        onPointerDown={() => setHeld(true)}
+        onPointerUp={() => setHeld(false)}
+        onPointerCancel={() => setHeld(false)}
+        onPointerLeave={() => setHeld(false)}
+      >
+        <div className="st-hero-slide">{hero}</div>
+        {slides.map((s) => (
+          <button key={s.key} type="button" className="st-partner-slide" aria-label={s.label} onClick={() => openPartner(s)}>
+            <img src={s.src} alt="" width={972} height={809} loading="lazy" decoding="async" />
+          </button>
+        ))}
+      </div>
+      {pages.length > 1 && (
+        <div className="st-hero-controls">
+          <button type="button" className="st-hero-arrow" aria-label="Previous slide" onClick={() => goTo(active - 1)}>‹</button>
+          <div className="st-hero-dots">
+            {pages.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                className={`st-hero-dot${i === active ? ' on' : ''}`}
+                aria-label={`Slide ${i + 1} of ${pages.length}`}
+                aria-current={i === active}
+                onClick={() => goTo(i)}
+              />
+            ))}
+          </div>
+          <button type="button" className="st-hero-arrow" aria-label="Next slide" onClick={() => goTo(active + 1)}>›</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Placeholder cards that occupy exactly the height the real board will, so the
 // swap to live rates moves nothing. Real elements carrying real (transparent)
 // text rather than fixed-height bars: the line boxes are then identical to the
@@ -1052,7 +1195,7 @@ export function LandingPage() {
             shelf itself, so a search hides the marketing sections around it
             rather than routing to a separate results page over demo data. */}
         {!searching && (
-          <HeroBanner
+          <HeroCarousel user={user} authLoading={authLoading} hero={<HeroBanner
             onShop={() => {
               // While the initial /auth/refresh is still in flight, `user` is
               // null whether or not this is a returning shopper. Scroll now,
@@ -1069,7 +1212,7 @@ export function LandingPage() {
             board={board}
             currency={currency}
             user={user}
-          />
+          />} />
         )}
         <LiveShelf query={query} />
         {!searching && (
