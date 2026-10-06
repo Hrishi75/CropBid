@@ -55,7 +55,7 @@ node scripts/prerender.mjs          → dist/<route>/index.html  + sitemap.xml
 
 Every public route ships as a real HTML file with its headings, hero copy, nav
 and footer already in the markup. Still a fully static deploy — no server, no
-serverless function, no added Vercel cost.
+serverless function, no added hosting cost.
 
 React mounts with `createRoot()`, which discards the container's contents, so
 there is no hydration contract to satisfy and no mismatch warnings. Crawlers
@@ -80,7 +80,8 @@ artefact anyway.
 | `client/public/robots.txt` | Opens everything public to every crawler including AI; blocks signed-in routes. |
 | `client/public/llms.txt` | Plain-language site summary for LLMs — what CropBid is, how deals work, which pages matter. |
 | `client/public/og-cover.png` | 1200×630 share card. Source: `client/scripts/og-cover.svg`. |
-| `client/vercel.json` | Trailing-slash normalisation, immutable asset caching, correct content types. |
+| `client/wrangler.jsonc` | Serves `/faq` from `faq/index.html` and redirects `/faq/` to it (`drop-trailing-slash`); app shell for every other path. |
+| `client/public/_headers` | Immutable caching for `/assets/*`, an hour for `robots.txt`, `llms.txt` and `sitemap.xml`. |
 
 ### Adding a public page
 
@@ -141,11 +142,11 @@ host it at `https://cropbid.in/<key>.txt`, and ping on deploy:
 curl "https://api.indexnow.org/indexnow?url=https://cropbid.in/rates&key=<key>"
 ```
 
-Worth wiring into the Vercel deploy hook once the mandi pages below exist.
+Worth wiring into the deploy once the mandi pages below exist.
 
 ### 4. Verify the deploy actually serves prerendered HTML
 
-After the next Vercel deploy — this is the check that proves the whole pipeline:
+After the next deploy — this is the check that proves the whole pipeline:
 
 ```bash
 # Should print the page's own title, NOT the homepage title

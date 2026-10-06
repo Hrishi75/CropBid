@@ -9,7 +9,7 @@
 //                                + dist/sitemap.xml
 //
 // The output is still a plain static site — no server, no serverless function,
-// nothing new to run or pay for on Vercel. Each public URL just happens to be a
+// nothing new to run or pay for on Cloudflare. Each public URL just happens to be a
 // real HTML file now instead of a redirect into an empty shell.
 //
 // FAILURE POLICY: this script throws rather than warning. A silent prerender

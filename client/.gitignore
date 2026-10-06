@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare local dev state (wrangler dev)
+.wrangler

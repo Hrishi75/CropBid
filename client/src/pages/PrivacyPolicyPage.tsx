@@ -9,8 +9,8 @@
 // side sees" section from the farmer-PII fixes in #72/#73/#74.
 //
 // If you change what the app collects, change this page in the same PR. That
-// rule was already here and had been broken twice: browser storage and Vercel
-// Analytics were both live and undisclosed, and household orders had begun
+// rule was already here and had been broken twice: browser storage and the
+// page-view counter were both live and undisclosed, and household orders had begun
 // handing a delivery address to a seller with only the bidding case written up.
 //
 // The third-party list is the one most likely to rot. It is keyed to
@@ -220,7 +220,7 @@ export function PrivacyPolicyPage() {
           <p>
             <strong>No tracking cookies.</strong> We run no advertising, retargeting or
             social-media trackers, and nothing here follows you to other websites or builds a
-            profile of you. The website uses Vercel Analytics to count page views and see which
+            profile of you. The website uses Cloudflare Web Analytics to count page views and see which
             pages are used; it is privacy-focused and cookie-free, and we use it only to know
             which parts of the site are worth improving.
           </p>
@@ -302,9 +302,10 @@ export function PrivacyPolicyPage() {
             <strong>Cloudinary</strong> (image hosting) — the photographs you upload.
           </p>
           <p>
-            <strong>Our infrastructure providers</strong> — Vercel (website), Render
-            (application server) and Neon (database) host the platform on our behalf, and
-            Vercel Analytics counts page views as described above.
+            <strong>Our infrastructure providers</strong> — Cloudflare and Vercel (website, while
+            we move it from Vercel to Cloudflare), Amazon Web Services (application server) and
+            Neon (database) host the platform on our behalf, and Cloudflare Web Analytics counts
+            page views as described above.
           </p>
           <p>
             <strong>data.gov.in</strong> supplies the government mandi rates we display. We
