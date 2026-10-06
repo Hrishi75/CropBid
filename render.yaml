@@ -5,7 +5,7 @@
 # Render reads this file, creates the service, and prompts for the secret env
 # vars marked `sync: false` (set them in the dashboard / Blueprint wizard).
 #
-# The React frontend is NOT here — it deploys separately on Vercel (see DEPLOY.md).
+# The React frontend is NOT here — it deploys separately on Cloudflare (see DEPLOY.md).
 # =============================================================================
 services:
   - type: web
@@ -63,8 +63,8 @@ services:
       #     Blank → uploads go to local disk, which Render wipes on redeploy. ---
       - key: CLOUDINARY_URL
         sync: false
-      # --- CORS / cookies: exact Vercel frontend origin, no trailing slash ---
-      # e.g. https://cropbid.vercel.app  (set AFTER the Vercel deploy exists)
+      # --- CORS / cookies: exact frontend origin, no trailing slash ---
+      # e.g. https://cropbid.in
       - key: CLIENT_URL
         sync: false
       # --- Locale defaults ---
