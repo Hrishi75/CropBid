@@ -18,9 +18,9 @@
 // data that changes infrequently (login/logout events).
 // =============================================================================
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import api, { keepAliveSession, setAccessToken } from '../lib/axios';
+import api, { keepAliveSession, refreshSession, setAccessToken, setActAs } from '../lib/axios';
 import {
   clearActivity,
   isIdle,
@@ -30,6 +30,7 @@ import {
   watchIdle,
 } from '../lib/idle';
 import type { User } from '../types';
+import { canSwitchToBuying, type AccountMode } from '../utils/accountMode';
 
 interface AuthContextType {
   user: User | null;
@@ -43,12 +44,21 @@ interface AuthContextType {
   startPhoneSignIn: (phone: string, email?: string) => Promise<PhoneChallenge>;
   /** Passwordless step 2 — check the code; `name` is only read for a new account. */
   verifyPhoneSignIn: (challengeId: string, code: string, name?: string) => Promise<PhoneSignInResult>;
+  /** Sign in or up with the ID token Google's button handed back. */
+  signInWithGoogle: (credential: string) => Promise<GoogleSignInResult>;
   signup: (data: SignupData) => Promise<SignupResult>;
   verifySignupOtp: (pendingId: string, code: string) => Promise<void>;
   resendSignupOtp: (pendingId: string) => Promise<PendingSignup>;
   logout: () => Promise<void>;
   updateUser: (user: User) => void;
+  /** The account's own role, whatever side it is on. */
+  accountRole: User['role'] | null;
+  /** SELL or BUY. BUY only for a seller whose buyer application is approved. */
+  mode: AccountMode;
+  switchMode: (m: AccountMode) => void;
 }
+
+const MODE_KEY = 'cb-mode';
 
 interface SignupData {
   name: string;
@@ -76,6 +86,11 @@ export interface PhoneChallenge {
   channel: OtpChannel;
   /** Masked destination, safe to display: "•••••43210" or "a•••@farm.in". */
   sentTo: string;
+}
+
+export interface GoogleSignInResult extends PhoneSignInResult {
+  /** True when this sign-in linked an account and removed its old password. */
+  passwordRemoved: boolean;
 }
 
 export interface PhoneSignInResult {
@@ -122,6 +137,25 @@ function setSessionHint(on: boolean) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // True until initial auth check
+  // Which side a seller approved to buy is on, remembered in this browser.
+  const [mode, setMode] = useState<AccountMode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === 'BUY' ? 'BUY' : 'SELL'; } catch { return 'SELL'; }
+  });
+  // Only while the account may actually buy: a revoked approval drops it back.
+  const buying = mode === 'BUY' && canSwitchToBuying(user);
+  // During render, not in an effect, so the first request a buyer page makes
+  // on mount already carries the header.
+  setActAs(buying ? 'BUYER' : null);
+  const switchMode = useCallback((m: AccountMode) => {
+    setMode(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* not remembering is fine */ }
+  }, []);
+  // In buying mode the account appears as a BUYER, so every route, nav item
+  // and check that reads user.role shows the buyer side unchanged.
+  const effectiveUser = useMemo<User | null>(
+    () => (user && buying ? { ...user, role: 'BUYER' } : user),
+    [user, buying],
+  );
 
   // -------------------------------------------------------------------------
   // On mount: Try to restore session from refresh token cookie
@@ -140,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const { data } = await api.post('/auth/refresh');
+        const { data } = await refreshSession();
         setAccessToken(data.accessToken);
         setUser(data.user);
         setSessionHint(true);
@@ -236,6 +270,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // -------------------------------------------------------------------------
+  // Sign in with Google
+  // -------------------------------------------------------------------------
+  // Also one flow for signing up and signing in. The server finds the account
+  // by Google id or email, links it, or makes a shopper; see signInWithGoogle
+  // in the server's auth.service.
+  async function signInWithGoogle(credential: string): Promise<GoogleSignInResult> {
+    const { data } = await api.post('/auth/google', { credential });
+    setAccessToken(data.accessToken);
+    setUser(data.user);
+    setSessionHint(true);
+    markActivity(true);
+    markSynced();
+    return {
+      user: data.user as User,
+      created: Boolean(data.created),
+      passwordRemoved: Boolean(data.passwordRemoved),
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // Signup
   // -------------------------------------------------------------------------
   // Farmers come back 201 with a session. Buyers come back 202 with a pendingId
@@ -293,6 +347,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSessionHint(false);
     clearActivity();
+    switchMode('SELL');
   }
 
   // -------------------------------------------------------------------------
@@ -305,8 +360,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        user, loading, login, startPhoneSignIn, verifyPhoneSignIn,
+        user: effectiveUser, loading, login, startPhoneSignIn, verifyPhoneSignIn, signInWithGoogle,
         signup, verifySignupOtp, resendSignupOtp, logout, updateUser,
+        accountRole: user?.role ?? null, mode: buying ? 'BUY' : 'SELL', switchMode,
       }}
     >
       {children}

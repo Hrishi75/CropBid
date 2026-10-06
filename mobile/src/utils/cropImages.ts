@@ -74,3 +74,36 @@ export function listingImage(listing: { images?: string[]; cropName?: string }):
   if (listing.images && listing.images.length > 0) return listing.images[0];
   return cropImageFor(listing.cropName);
 }
+
+// =============================================================================
+// Crop emoji — the placeholder when there is no photo at all
+// =============================================================================
+// A crop with no listing photo and no stock photo used to show its first
+// letter, which at card size reads as a broken image rather than a carrot.
+// An emoji at least says what the thing is. Unicode has about forty food
+// emoji, so this covers the common crops and falls back to a seedling.
+const CROP_EMOJI: Record<string, string> = {
+  tomato: '🍅', onion: '🧅', potato: '🥔', garlic: '🧄', ginger: '🫚',
+  carrot: '🥕', cabbage: '🥬', cauliflower: '🥦', broccoli: '🥦', spinach: '🥬',
+  brinjal: '🍆', eggplant: '🍆', cucumber: '🥒', 'green chilli': '🌶️', chilli: '🌶️',
+  chili: '🌶️', capsicum: '🫑', peas: '🫛', 'green peas': '🫛', 'lady finger': '🫛',
+  okra: '🫛', bhindi: '🫛', corn: '🌽', maize: '🌽', 'sweet corn': '🌽',
+  coriander: '🌿', mint: '🌿', methi: '🌿', mushroom: '🍄', pumpkin: '🎃',
+  orange: '🍊', mango: '🥭', banana: '🍌', apple: '🍎', grape: '🍇', grapes: '🍇',
+  watermelon: '🍉', lemon: '🍋', lime: '🍋', pineapple: '🍍', coconut: '🥥',
+  pear: '🍐', peach: '🍑', cherry: '🍒', strawberry: '🍓', kiwi: '🥝',
+  avocado: '🥑', pomegranate: '🍎', papaya: '🥭', guava: '🍐',
+  rice: '🍚', paddy: '🌾', wheat: '🌾', bajra: '🌾', jowar: '🌾', ragi: '🌾', barley: '🌾',
+  soybean: '🫘', chana: '🫘', chickpea: '🫘', 'tur dal': '🫘', moong: '🫘', urad: '🫘',
+  groundnut: '🥜', peanut: '🥜', almond: '🌰', cashew: '🌰',
+  milk: '🥛', 'cow milk': '🥛', 'buffalo milk': '🥛', paneer: '🧀', curd: '🥛', ghee: '🧈',
+  eggs: '🥚', egg: '🥚', honey: '🍯', coffee: '☕', tea: '🍵', sugarcane: '🎋',
+  turmeric: '🫚', pepper: '🌶️', cotton: '☁️',
+};
+
+/** An emoji for the crop, or a seedling when there is none. */
+export function cropEmojiFor(cropName?: string | null): string {
+  if (!cropName) return '🌱';
+  const key = cropName.trim().toLowerCase();
+  return CROP_EMOJI[key] ?? CROP_EMOJI[key.replace(/s$/, '')] ?? '🌱';
+}

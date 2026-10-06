@@ -45,7 +45,7 @@ export const SITE = {
   ogImage: 'https://cropbid.in/og-cover.png',
   /** Fallback description for routes outside the manifest (signed-in pages). */
   description:
-    "India's crop exchange — buy and sell crops direct at live government mandi rates.",
+    "India's crop exchange: buy and sell crops direct at live government mandi rates.",
 };
 
 // TITLE/DESCRIPTION LENGTHS: Google truncates titles past roughly 60 characters
@@ -54,15 +54,15 @@ export const SITE = {
 export const ROUTES: RouteMeta[] = [
   {
     path: '/',
-    title: 'CropBid — Sell & Buy Crops Direct at Live Mandi Rates',
+    title: 'CropBid: Sell & Buy Crops Direct at Live Mandi Rates',
     description:
-      "India's crop exchange. Farmers sell direct to buyers at live government mandi rates from 4,600+ mandis — with escrow payments, auctions and farm-to-door delivery.",
+      "India's crop exchange. Sell direct to buyers at live mandi rates from 4,600+ mandis, with escrow payments and auctions. Join free today.",
     priority: '1.0',
     changefreq: 'daily',
   },
   {
     path: '/rates',
-    title: "Today's Mandi Rates — Live Prices from 4,600+ Mandis",
+    title: "Today's Mandi Rates: Live Prices from 4,600+ Mandis",
     description:
       'Live government mandi rates (APMC bhav) for every crop India\'s mandis report: vegetables, fruits, pulses, grains, oilseeds and spices. Updated every day, free to check.',
     priority: '0.9',
@@ -88,7 +88,7 @@ export const ROUTES: RouteMeta[] = [
   },
   {
     path: '/forecast',
-    title: 'Crop Price Forecast — Where Mandi Rates Go Next',
+    title: 'Crop Price Forecast: Where Mandi Rates Go Next',
     description:
       'See which way mandi prices are trending before you sell. Crop-by-crop price forecasts built on live government rate data from across India.',
     priority: '0.8',
@@ -96,17 +96,17 @@ export const ROUTES: RouteMeta[] = [
   },
   {
     path: '/schemes',
-    title: 'Government Schemes for Farmers — Subsidies & Yojanas',
+    title: 'Government Schemes for Farmers: Subsidies & Yojanas',
     description:
-      'Every central and state farming scheme you may be owed, in one place — eligibility, benefit amount and how to apply. PM-KISAN, PMFBY, KCC and more.',
+      'Every central and state farming scheme you may be owed, in one place: eligibility, benefit amount and how to apply. PM-KISAN, PMFBY, KCC and more.',
     priority: '0.8',
     changefreq: 'weekly',
   },
   {
     path: '/equipment',
-    title: 'Farm Equipment to Buy or Rent — Tractors & Machinery',
+    title: 'Farm Equipment to Buy or Rent: Tractors & Machinery',
     description:
-      'Buy farm machinery outright or hire it for the season — tractors, tillers, harvesters, sprayers and irrigation kit, with prices and local availability.',
+      'Buy farm machinery outright or hire it for the season: tractors, tillers, harvesters, sprayers and irrigation kit, with prices and local availability.',
     priority: '0.8',
     changefreq: 'weekly',
   },
@@ -120,15 +120,15 @@ export const ROUTES: RouteMeta[] = [
   },
   {
     path: '/crop-demand',
-    title: 'Crop Demand — Buyers Looking to Purchase Now',
+    title: 'Crop Demand: Buyers Looking to Purchase Now',
     description:
-      'See what Indian buyers are purchasing right now — crop, volume, grade, price and delivery town. Processors, restaurant chains, exporters and retailers, updated daily.',
+      'See what Indian buyers are purchasing right now: crop, volume, grade, price and delivery town. Processors, restaurant chains, exporters and retailers, updated daily.',
     priority: '0.9',
     changefreq: 'daily',
   },
   {
     path: '/how-it-works',
-    title: 'How CropBid Works — Reviewed Sellers, Bidding & Escrow',
+    title: 'How CropBid Works: Reviewed Sellers, Bidding & Escrow',
     description:
       'Farms, local shops and wholesalers are reviewed before they can sell. They list at their own price against the day\'s mandi rate, businesses bid or buy outright, households buy by the kilo from a shop they can name, and escrow pays out on delivery.',
     priority: '0.7',
@@ -136,9 +136,9 @@ export const ROUTES: RouteMeta[] = [
   },
   {
     path: '/faq',
-    title: 'CropBid FAQ — Buying, Selling, Delivery and Payment',
+    title: 'CropBid FAQ: Buying, Selling, Delivery and Payment',
     description:
-      'Answers on household delivery in Pune and Nagpur, buying by the kilo, how seller approval works, escrow payment, the 2% fee, and where the live mandi rates come from.',
+      'Answers on household delivery in Nagpur, buying by the kilo, how seller approval works, escrow payment, the 2% fee, and where the live mandi rates come from.',
     priority: '0.7',
     changefreq: 'monthly',
     // The FAQPage block lives HERE, on the page that actually renders these
@@ -195,7 +195,7 @@ export const ROUTES: RouteMeta[] = [
   {
     path: '/partner',
     title: 'Become a partner',
-    description: 'Sell on CropBid as a farmer, local shop or wholesaler — or source for your restaurant or business. Apply in minutes, reviewed within 48 hours.',
+    description: 'Sell on CropBid as a farmer, local shop or wholesaler, or source for your restaurant or business. Apply in minutes, reviewed within 48 hours.',
     changefreq: 'monthly',
   },
 ];

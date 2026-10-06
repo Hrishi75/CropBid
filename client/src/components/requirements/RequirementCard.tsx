@@ -22,6 +22,7 @@ import { localizedDescription } from '../../utils/localized';
 // decides partly on that.
 import { COMPANY_TYPE_LABEL } from '../../utils/companyType';
 import type { BuyerRequirement } from '../../types';
+import { useExportOptions } from '../../utils/exportOptions';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   OPEN: { label: 'OPEN', color: 'var(--cb-sage)' },
@@ -54,6 +55,9 @@ export function RequirementCard({
   const filled = r.quantity - r.remainingQuantity;
   const pct = r.quantity > 0 ? Math.min(100, (filled / r.quantity) * 100) : 0;
   const unit = r.unit.toLowerCase();
+  // Only an export request needs the port and document names.
+  const exportOpts = useExportOptions(Boolean(r.forExport));
+  const port = exportOpts?.ports.find((p) => p.code === r.exportPort);
 
   const msp = showMspWarning ? mspForCrop(r.cropName, r.unit) : null;
   const belowMsp = msp != null && r.pricePerUnit < msp;
@@ -90,6 +94,12 @@ export function RequirementCard({
           </span>
         )}
         <span className="cb-chip">Grade {r.qualityGrade}</span>
+        {r.negotiateOnly && <span className="cb-chip">Negotiated</span>}
+        {r.forExport && <span className="cb-chip cb-chip-sage">For export</span>}
+        {r.listId && <span className="cb-chip">{r.listName ? `List · ${r.listName}` : 'Restock list'}</span>}
+        {r.nextRepeatAt && r.repeatEveryDays ? (
+          <span className="cb-chip cb-chip-sage">{r.repeatEveryDays === 7 ? 'Repeats weekly' : `Every ${r.repeatEveryDays} days`}</span>
+        ) : null}
         {r.organic && <span className="cb-chip cb-chip-sage">Organic only</span>}
         {belowMsp && (
           <span className="cb-chip cb-chip-ember" title={`Government support price is ${formatCurrency(msp!, r.currency)}/${unit}`}>
@@ -113,8 +123,8 @@ export function RequirementCard({
           </div>
         </div>
         <div>
-          <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>DELIVER TO</div>
-          <div style={{ fontSize: 14 }}>{r.deliveryLocation}, {r.deliveryState}</div>
+          <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{r.forExport ? 'TO PORT' : 'DELIVER TO'}</div>
+          <div style={{ fontSize: 14 }}>{r.forExport && port ? `${port.name}, ${port.state}` : `${r.deliveryLocation}, ${r.deliveryState}`}</div>
         </div>
         {r.neededBy && (
           <div>
@@ -125,6 +135,21 @@ export function RequirementCard({
           </div>
         )}
       </div>
+
+      {/* What an exporter asked the seller to meet. Nothing checks any of it
+          (CLAUDE.md §2b), so it is worded as the buyer's ask. */}
+      {r.forExport && (r.maxMoisturePct != null || r.packing || (r.requiredDocs?.length ?? 0) > 0) && (
+        <div className="cb-rq-export">
+          <div className="cb-mono cb-tiny">THE EXPORTER ASKS FOR</div>
+          <ul>
+            {r.maxMoisturePct != null && <li>Moisture at most {r.maxMoisturePct}%</li>}
+            {r.packing && <li>Packed: {r.packing}</li>}
+            {(r.requiredDocs ?? []).map((d) => (
+              <li key={d}>{exportOpts?.docs.find((x) => x.code === d)?.label ?? d.replace(/_/g, ' ').toLowerCase()}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Fill progress — only worth drawing once something has been filled. */}
       {filled > 0 && (

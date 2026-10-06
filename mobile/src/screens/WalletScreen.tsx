@@ -28,20 +28,22 @@ import {
 } from 'react-native';
 import { Alert } from '../lib/alert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import RazorpayCheckout, { type CheckoutOrder, type Handshake } from '../components/RazorpayCheckout';
 import { Mono } from '../components/buyerKit';
 import { IconWallet } from '../components/icons';
+import { CreditCard } from '../components/CreditCard';
 import { PressScale } from '../components/motion';
 import {
   createWalletTopup,
+  fetchCredit,
   fetchWallet,
   verifyWalletTopup,
   walletEntries,
 } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { Wallet, WalletEntry } from '../api/types';
+import type { CreditApplication, Wallet, WalletEntry } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { money, timeAgo } from '../lib/format';
 import { colors, design, font, radius, spacing } from '../theme';
@@ -57,6 +59,7 @@ const PRESETS = [100, 250, 500, 1000, 2000];
 
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
+  const nav = useNavigation<any>();
   const { t } = useTranslation();
   const { user } = useAuth();
 
@@ -67,6 +70,11 @@ export default function WalletScreen() {
   const [error, setError] = useState<string | null>(null);
   const [custom, setCustom] = useState('');
   const [starting, setStarting] = useState(false);
+  // Business credit is for a business buyer (or a seller in buying mode, who
+  // is a BUYER here). Undefined until it loads, so the card does not flash the
+  // pitch at somebody whose application is already in.
+  const isBuyer = user?.role === 'BUYER';
+  const [credit, setCredit] = useState<CreditApplication | null | undefined>(undefined);
   // Non-null opens the Razorpay modal.
   const [order, setOrder] = useState<CheckoutOrder | null>(null);
 
@@ -78,13 +86,17 @@ export default function WalletScreen() {
       const [w, page] = await Promise.all([fetchWallet(), walletEntries()]);
       setWallet(w);
       setEntries(page.entries);
+      // Its own catch: a failed credit fetch must not take the balance with it.
+      if (isBuyer) {
+        fetchCredit().then((c) => setCredit(c.application)).catch(() => {});
+      }
     } catch (e) {
       setError(errorMessage(e, 'Could not load your wallet.'));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isBuyer]);
 
   // On focus, not just on mount: coming back from a top-up must show the money.
   useFocusEffect(useCallback(() => { void load(); }, [load]));
@@ -166,6 +178,10 @@ export default function WalletScreen() {
                   : t('Credits sit here for now. Paying with them at checkout is not switched on yet.')}
               </Text>
             </View>
+
+            {isBuyer && credit !== undefined ? (
+              <CreditCard application={credit} onApply={() => nav.navigate('CreditApply')} />
+            ) : null}
 
             {error ? (
               <View style={styles.errorBox}>
@@ -302,13 +318,17 @@ const LABEL: Record<WalletEntry['type'], string> = {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: design.bg },
 
+  // An inset card with four rounded corners, like everything below it. It ran
+  // edge to edge with only the bottom corners rounded, which on a phone read as
+  // a card whose corners were cut off by the screen.
   hero: {
     backgroundColor: colors.forest,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     paddingBottom: spacing.xl,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
+    borderRadius: radius.lg,
   },
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   heroLabel: { fontSize: 10, letterSpacing: 1.2, color: colors.sage2 },

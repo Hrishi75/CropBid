@@ -46,7 +46,11 @@ function pricePerKg(l: Listing): number {
 }
 
 function sortCheapestFirst(lots: Listing[]): Listing[] {
-  return [...lots].sort((a, b) => pricePerKg(a) - pricePerKg(b));
+  // Rupee lots first: a lot priced in dollars compared as rupees took BEST
+  // PRICE and the header's "from" price at a tenth of real wheat.
+  const home = lots.some((l) => l.currency === 'INR') ? 'INR' : lots[0]?.currency;
+  return [...lots].sort((a, b) =>
+    (a.currency === home ? 0 : 1) - (b.currency === home ? 0 : 1) || pricePerKg(a) - pricePerKg(b));
 }
 
 export default function CropSellersScreen({ route, navigation }: Props) {
@@ -127,7 +131,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
                 <Mono style={styles.heroEyebrow}>FARM DIRECT · COMPARE & PICK</Mono>
                 <Text style={styles.heroName}>{crop}</Text>
                 <Text style={styles.heroLine}>
-                  {t(lots.length === 1 ? '{{n}} farmer selling today' : '{{n}} farmers selling today', { n: lots.length })}
+                  {t(lots.length === 1 ? '{{n}} seller today' : '{{n}} sellers today', { n: lots.length })}
                   {cheapest != null ? ` · ${t('from')} ${money(cheapest)}/${unitLabel(lots[0].unit)}` : ''}
                 </Text>
               </View>
@@ -136,7 +140,7 @@ export default function CropSellersScreen({ route, navigation }: Props) {
             {error ? <Text style={styles.errorLine}>{error}</Text> : null}
 
             {lots.length > 0 ? (
-              <Text style={styles.sectionTitle}>{t('Choose your farmer')}</Text>
+              <Text style={styles.sectionTitle}>{t('Choose your seller')}</Text>
             ) : null}
           </View>
         }
@@ -208,13 +212,13 @@ function SellerCard({
           </View>
         )}
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.farmerName} numberOfLines={1}>{farmer?.name ?? t('CropBid farmer')}</Text>
+          <Text style={styles.farmerName} numberOfLines={1}>{farmer?.name ?? t('CropBid seller')}</Text>
           <Text style={styles.meta} numberOfLines={1}>
             {lot.location}, {lot.state} · {timeAgo(lot.createdAt)}
           </Text>
         </View>
         {farmer?.trustScore != null ? (
-          <Mono style={styles.trust}>★ {farmer.trustScore}</Mono>
+          <Mono style={styles.trust}>★ {Math.round(farmer.trustScore)}</Mono>
         ) : null}
       </View>
 

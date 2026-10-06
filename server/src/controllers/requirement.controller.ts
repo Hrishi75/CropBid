@@ -13,6 +13,7 @@ import * as requirementService from '../services/requirement.service';
 import { auditFromRequest } from '../services/audit.service';
 import { queueRequirementTranslation } from '../services/translation.service';
 import { ApiError } from '../utils/ApiError';
+import { DOC_CODES, EXPORT_DOCS, EXPORT_PORTS, MOISTURE_RANGE, PORT_CODES } from '../utils/exportSpec';
 
 function paramId(req: Request): string {
   return req.params.id as string;
@@ -42,6 +43,15 @@ const createRequirementSchema = z.object({
   organic: z.boolean().optional(),
   paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
   deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  // An exporter's request (utils/exportSpec.ts). The ranges and the rule that
+  // a port is required live in the service, so they bind any caller.
+  forExport: z.boolean().optional(),
+  exportPort: z.enum(PORT_CODES).optional(),
+  maxMoisturePct: z.number().nullable().optional(),
+  packing: z.string().max(200).nullable().optional(),
+  requiredDocs: z.array(z.enum(DOC_CODES)).max(DOC_CODES.length).optional(),
+  // Every N days (3, 7 or 14, checked in the service), or null for once.
+  repeatEveryDays: z.number().int().nullable().optional(),
 });
 
 // `currency` is omitted on purpose, joining status/remainingQuantity/buyerId as
@@ -50,7 +60,23 @@ const createRequirementSchema = z.object({
 // those disagree with each other. The service never persisted it either, so this
 // only makes an existing invariant visible: previously a client could PUT a new
 // currency, get a 200, and believe it had changed.
-const updateRequirementSchema = createRequirementSchema.partial().omit({ currency: true });
+//
+// The export details are omitted too: they are set when the request is posted.
+// Editing them would move the delivery address under offers already made to
+// the old port, and accepting them here only to ignore them would be a 200
+// that changed nothing.
+const updateRequirementSchema = createRequirementSchema.partial().omit({
+  currency: true, forExport: true, exportPort: true, maxMoisturePct: true, packing: true, requiredDocs: true,
+  // Repeating has its own endpoint (PUT /:id/repeat), because it is allowed on
+  // a FULFILLED request too and the edit path is not.
+  repeatEveryDays: true,
+});
+
+// GET /api/requirements/export-options — the ports and documents an export
+// request can name, so the app keeps no copy of either list.
+export function getExportOptions(_req: Request, res: Response) {
+  res.json({ ports: EXPORT_PORTS, docs: EXPORT_DOCS, moisture: MOISTURE_RANGE });
+}
 
 const acceptNowSchema = z.object({
   quantity: z.number().positive('Quantity must be positive'),
@@ -389,6 +415,112 @@ export async function rejectOffer(req: Request, res: Response, next: NextFunctio
       metadata: { requirementId: offer.requirementId, farmerId: offer.farmerId },
     });
     res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const listSchema = z.object({
+  listName: z.string().max(80).nullable().optional(),
+  items: z.array(z.object({
+    cropName: z.string().min(1).max(200),
+    cropVariety: z.string().max(200).optional(),
+    quantity: z.coerce.number(),
+    unit: z.enum(['KG', 'QUINTAL', 'TONNE']).optional(),
+    qualityGrade: z.enum(['A', 'B', 'C']),
+    pricePerUnit: z.coerce.number(),
+    organic: z.boolean().optional(),
+  })).max(15),
+  deliveryLocation: z.string().min(1).max(200),
+  deliveryState: z.string().min(1).max(100),
+  neededBy: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
+  deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  repeatEveryDays: z.number().int().nullable().optional(),
+});
+
+// POST /api/requirements/list — a restock list: several crops, one delivery
+export async function createRequirementList(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = listSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const out = await requirementService.createRequirementList(req.user!.userId, parsed.data);
+    await auditFromRequest(req, {
+      action: 'requirement.list.create',
+      entityType: 'BuyerRequirement',
+      entityId: out.listId,
+      metadata: { items: out.requirements.length, ids: out.requirements.map((r) => r.id) },
+    });
+    res.status(201).json(out);
+    for (const r of out.requirements) queueRequirementTranslation(r.id);
+  } catch (error) {
+    next(error);
+  }
+}
+
+const priceSchema = z.object({ pricePerUnit: z.coerce.number().positive('Enter a price') });
+
+// PUT /api/requirements/offers/:offerId/counter — Buyer sends a price back
+export async function counterOffer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = priceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const offer = await requirementService.counterOffer(paramOfferId(req), req.user!.userId, parsed.data.pricePerUnit);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.counter',
+      entityType: 'RequirementOffer',
+      entityId: offer.id,
+      metadata: { requirementId: offer.requirementId, counterPrice: offer.buyerCounterPrice },
+    });
+    res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/offers/:offerId/revise — Seller answers a counter with a new price
+export async function reviseOffer(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = priceSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+    const offer = await requirementService.reviseOffer(paramOfferId(req), req.user!.userId, parsed.data.pricePerUnit);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.revise',
+      entityType: 'RequirementOffer',
+      entityId: offer.id,
+      metadata: { requirementId: offer.requirementId, pricePerUnit: offer.pricePerUnit },
+    });
+    res.json(offer);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/offers/:offerId/accept-counter — Seller takes the buyer's price
+export async function acceptCounter(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await requirementService.acceptCounter(paramOfferId(req), req.user!.userId);
+    await auditFromRequest(req, {
+      action: 'requirement.offer.accept_counter',
+      entityType: 'RequirementOffer',
+      entityId: result.offer.id,
+      metadata: { requirementId: result.offer.requirementId, transactionId: result.transaction.id },
+    });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/requirements/:id/repeat — Buyer starts, changes or stops repeating
+const repeatSchema = z.object({ repeatEveryDays: z.number().int().nullable() });
+export async function setRepeat(req: Request, res: Response, next: NextFunction) {
+  try {
+    const parsed = repeatSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: 'Send repeatEveryDays: 3, 7, 14 or null' });
+    const r = await requirementService.setRepeat(paramId(req), req.user!.userId, parsed.data.repeatEveryDays);
+    res.json(r);
   } catch (error) {
     next(error);
   }

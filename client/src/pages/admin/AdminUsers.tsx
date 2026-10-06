@@ -24,7 +24,7 @@ import toast from 'react-hot-toast';
 interface AdminUser {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   role: string;
   phone: string | null;
   location: string | null;
@@ -36,14 +36,15 @@ interface AdminUser {
   // Why this account cannot be deleted, or null when it can. Worked out by
   // the server with the same rule the delete applies, so the button is only
   // offered when the delete will go through.
-  deleteBlocker: 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | null;
+  deleteBlocker: 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | 'CONTRACTS' | null;
 }
 
 // What an admin reads in place of the button. Admins get nothing, the same as
 // Suspend: there is no action on another admin here at all.
-const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET', string> = {
+const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET' | 'CONTRACTS', string> = {
   TRANSACTIONS: "Has deals, so can't be deleted",
   WALLET: "Has wallet history, so can't be deleted",
+  CONTRACTS: "Has a live supply contract, so can't be deleted",
 };
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -202,7 +203,7 @@ export function AdminUsers() {
           <div style={{ marginBottom: 14, paddingBottom: 14, borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Search</div>
             <Input
-              placeholder="Name or email"
+              placeholder="Name, email or phone"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             />
@@ -254,7 +255,8 @@ export function AdminUsers() {
                           {u.suspended && (
                             <span className="cb-tiny" style={{ marginLeft: 8, padding: '1px 6px', borderRadius: 4, background: 'var(--cb-ember)', color: '#fff', fontWeight: 500 }}>suspended</span>
                           )}
-                          <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>
+                          {u.email && <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>}
+                          {u.phone && <span className="cb-mono cb-tiny" style={{ marginLeft: 8 }}>{u.phone}</span>}
                         </div>
                         <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role.toLowerCase()}</span>
                       </div>
@@ -314,7 +316,7 @@ export function AdminUsers() {
                                 onConfirm={() => handleDelete(u)}
                               />
                             )}
-                            {(u.deleteBlocker === 'TRANSACTIONS' || u.deleteBlocker === 'WALLET') && (
+                            {(u.deleteBlocker === 'TRANSACTIONS' || u.deleteBlocker === 'WALLET' || u.deleteBlocker === 'CONTRACTS') && (
                               <span className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{DELETE_BLOCKED[u.deleteBlocker]}</span>
                             )}
                           </>

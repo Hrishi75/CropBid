@@ -22,14 +22,14 @@ An agricultural marketplace connecting Indian farmers directly with buyers, with
 | Channel | Who | How they buy |
 |---|---|---|
 | **Wholesale** | Processors, exporters, retailers, restaurants, FMCG | Bid, counter, or timed auction on a whole lot. National. |
-| **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer |
-| **Retail** | Households | Browse by shop, buy by the kilo. Pune and Nagpur only. |
+| **Demand board** | Buyers post what they need | Farmers fill at the posted price or make an offer (a restaurant's request takes offers only, §9) |
+| **Retail** | Households | Browse by shop, buy by the kilo. Nagpur only. |
 
 Every listing is anchored to the day's government mandi rate (AGMARKNET, 4,600+ mandis) so both sides negotiate against the same public reference price. §11 says how those rates are read, and why the obvious way is wrong. Money is captured into escrow via Razorpay and settles after delivery is confirmed. **Read §6 before writing anything about payouts.**
 
 Alongside those three channels sit **two lead-gen marketplaces** that sell the farmer their *inputs* rather than buying their output: `/equipment` (machinery to buy or hire) and `/inputs` (seed, fertiliser, crop protection). They are a different shape from everything above and §10 is the section that governs them.
 
-Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. A phone code over WhatsApp survives as the secondary lane (§4).
+Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number, and a password, with no code; sign-in is that password. On the website, Continue with Google does either in one tap. A phone code over WhatsApp survives as the secondary lane (§4).
 
 ## 2. Business facts
 
@@ -38,7 +38,7 @@ Languages: English, Hindi, Marathi. Sign-up is a name, an email or phone number,
 - The footer must not say "CropBid, **Inc.**", a US suffix on an unincorporated Indian business. It did for a long time.
 - **Fee: flat 2% on a settled deal** (`PLATFORM_FEE_PERCENT`, `transaction.service.ts`). Listing, accounts and mandi rates are free, and **onboarding is free**: there is no signup charge anywhere in the codebase, so nothing on screen may imply one. Freight is charged separately and on top, see §2a. Households also pay a delivery fee on small shop orders, see §3b; the 2% is never taken on it.
 - **Household delivery: free from ₹200 of one shop's items, ₹30 below that** (`RETAIL_DELIVERY`, `retailOrder.service.ts`). There is **no minimum order** any more. §3b has the whole of it.
-- **Retail footprint: Pune and Nagpur.** Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
+- **Retail footprint: Nagpur only (since 2026-10-03; it was Pune and Nagpur).** `RETAIL_CITIES` in `server/src/utils/retailCities.ts` is the one list, and it is a decision, not a count of stock: Pune shops still hold stock and the seed still loads them, but `/browse/cities`, the shop list, a shop's page and `createRetailOrder` all refuse a city not on it, so no client can order into one. The app sends a shopper whose saved city was dropped back to the city picker and says why. Adding a city means adding it there and changing `/terms` §8, `/how-it-works`, the FAQ, the FAQ's SEO description and the app's About screen in the same PR. Wholesale is national, because a lot can be freighted and a few kilos cannot. **But read §2a before repeating "national":** if every wholesale lot has to be physically inspected, wholesale reaches as far as the inspectors do, and today that is nobody.
 
 ### 2a. Freight is ours (shipped 2026-09-06)
 
@@ -143,7 +143,7 @@ How it holds together:
 - **An admin cancelling tells both sides, and tells them CropBid did it** (2026-09-22). The server always let admins cancel, but it treated anyone who was not the shopper as the shop: it told the shopper alone that "the shop cancelled", and the shop was never told its order was off.
 - **Unpaid lots end `CANCELLED`, paid lots end `REFUNDED`** and every admin gets a `RETAIL_REFUND_DUE` notification, because that transfer is manual (§6). Both are new enum values; `CANCELLED` means no money ever moved.
 - **A cancelled order cannot be paid for.** Opening a payment refuses it, and if one was already open and is somehow paid, capture treats it exactly like an order already paid: the money is recorded as owed back and the admins are told (§3c).
-- **Where it lives:** the shopper's order page and the app's order card; the shop uses the "Can't fulfil this order?" form on `/transactions/:id`, which is where it already marks orders on the way, and an admin uses the same page ("Cancel this shop order"), reached from **View** on Admin → Transactions. That link was a 403 for every admin until 2026-09-22, because `getTransaction` let only the two sides of the deal in. The app has no seller delivery screen at all, so a shop on a phone cannot cancel there either.
+- **Where it lives:** the shopper's order page and the app's order card; the shop uses the "Can't fulfil this order?" form on `/transactions/:id`, which is where it already marks orders on the way, and an admin uses the same page ("Cancel this shop order"), reached from **View** on Admin → Transactions. That link was a 403 for every admin until 2026-09-22, because `getTransaction` let only the two sides of the deal in. A shop on a phone cancels from its order card on My Shop ("Can't fulfil this order?", 2026-10-05): pick a reason or type one, and the whole order is called off, the same endpoint as the website.
 
 ### 3a. One app, and its front page is the shops (decided 2026-09-13)
 
@@ -165,7 +165,7 @@ How it holds together:
 - **"Everything we deliver"** (`components/DeliveryList`) is the full list with **multiple SKUs per row**. Sizes come off a fixed ladder (100 g → 10 kg) anchored to each crop's own base pack, so a spice never starts at a kilo and a staple never starts at 100 g; doubling a 200 g paneer pack would give 400 g and 800 g, which no shop sells. Sizes above remaining stock are dropped. The caller computes the variants so the heading's count matches the rows that actually render.
 - **Farmers and buyers see no lanes.** They get the crop-rail market, which is the right view for a by-the-tonne national trade.
 
-**The seed carries the Fresh lane.** Indian farmers are spread across fifteen cities for the wholesale market and only Pune and Nagpur are retail cities, so almost no farm lot landed anywhere a household could be delivered from and the lane showed one item. `seed.ts` §7c adds four farms in the two retail cities.
+**The seed carries the Fresh lane.** Indian farmers are spread across fifteen cities for the wholesale market and only Pune and Nagpur were retail cities when this was written (Nagpur alone since 2026-10-03, §2), so almost no farm lot landed anywhere a household could be delivered from and the lane showed one item. `seed.ts` §7c adds four farms in the two retail cities.
 
 ### Routes worth not confusing
 
@@ -193,6 +193,21 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **The buyer's emailed-code sign-up is unreachable.** Buyers used to sign up as buyers, get a 202 and verify their email first (`startBuyerSignup`). Nobody signs up as a buyer now, so `/signup/verify` and `/signup/resend` only finish signups already in flight, and that code is dead. Removing it is a separate cleanup.
 - **App:** `SignupScreen` asks the same four things. The fifteen-country picker is gone, since the product is India only and the server defaults to India and INR.
 
+### Sign in with Google (web only, 2026-10-06)
+
+**Google's own button at the top of the sign-in and create-account lanes, and one endpoint, `POST /auth/google`, that signs in, links or creates.** The browser gets an ID token from Google and posts it; `utils/googleIdToken.ts` checks its signature, expiry and, most importantly, that it was issued to **our** client id, because without the audience check a token any other Google-sign-in site received would sign its holder in here.
+
+- **Found by Google id first, then by email.** `User.googleId` is the token's `sub`, which never changes, whereas a Google address can.
+- **A matching email is linked, not refused** (the user's call, of three options). Google has proved the person owns the address, which is more than CropBid's own sign-up ever checks (above, "Knowingly unverified"). Signing in replaces the account's one refresh token, so anyone else signed in under that email is out at their next refresh.
+- **Linking removes the password** (the user's call, reversing the first version after review). Nothing proves who chose it, and kept, it let whoever registered the address before its owner arrived go on signing in, change the password, or delete the account. A pending reset link and an outstanding support reset go with it. The window says the old password has stopped working and points at Forgot password, whose link goes to the address Google proved. Signing in again by Google later never touches a password set after the link.
+- **Still open: a phone number on the account.** Profile edits can add one, so whoever registered first may have attached their own, and the WhatsApp-code lane would still let them in. Linking leaves it alone, because clearing it would also strip the owner's own number. Deciding that is the next step if this matters.
+- **The link is a conditional write**, on the account still having no Google id and still having the password read. Two different Google accounts racing for one email's account (an address can move between Google accounts) get one winner and one 409; tested ten rounds on a real Postgres and watched failing with the condition removed. An account linked to a different Google id is refused outright rather than moved.
+- **A new person is a shopper with no password**, named from Google's profile (or the front of the email), exactly like a phone-code account: change-password sets a first password, and deleting the account needs one first.
+- **Never an admin account**, linked or signed in, the same caution as support refusing to reset one. Suspended accounts are refused before anything is written.
+- **`googleId` never leaves the server** (`safeUser` strips it), and anonymising a deleted account clears it, or Google would still sign in to the shell. A test pins that.
+- **Off until configured.** `GOOGLE_CLIENT_ID` on the API and `VITE_GOOGLE_CLIENT_ID` on the website, the same OAuth "Web application" id, with every site origin listed as an authorised JavaScript origin. Blank, the button is not drawn and the endpoint answers 503. The privacy page discloses what Google sends us; **the FAQ does not mention Google yet**, because it would be false while production has no id set. Add it when the id goes live.
+- **Not built: the app.** It needs Android and iOS client ids and a native build to test, and was deferred, not decided against.
+
 ### Support can reset a password, and the user must then choose their own (shipped 2026-09-25)
 
 **A button on Admin → Users sets a temporary password and shows it once, for the admin to read down the phone.** The account that rings support is exactly the one forgot-password cannot help: sign-up takes a phone number OR an email, the reset link is emailed, and a phone-only account has no email.
@@ -209,9 +224,15 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 
 **Sessions are stored as a hash.** `User.refreshToken` holds the SHA-256 of the refresh token, never the token (`utils/refreshToken.ts`), because the column is otherwise a live session for every signed-in account and a database dump hands them all over. The schema said "stored hashed" for months while it stored them raw; fixed 2026-09-20, and the migration cleared the existing values, which signed everyone out once. The same rule already covered reset tokens and sign-in codes.
 
+**One session per account, and tabs take turns refreshing it** (2026-10-05). There is one refresh token per user and every refresh rotates it, so two tabs refreshing at the same moment both sent the same cookie, the first won and the second tab signed itself out. Every web refresh now goes through `refreshSession()` in `client/src/lib/axios.ts`, which holds a browser-wide Web Lock, so a waiting tab sends the cookie the first one just received. Reproduced first (two simultaneous refreshes: 200 and 401), then four under the lock all 200.
+
+**Keeping a session alive is not rate-limited as a sign-in attempt** (2026-10-05). `authLimiter` (15 per 15 minutes) covered all of `/api/auth`, `/refresh` and `/me` included, and a refresh names no account, so it was counted per IP alone: every user behind one office or mobile-carrier address shared 15 refreshes a quarter-hour, and past that the 429 signed them out. `/refresh`, `/me` and `/logout` now skip it (`isSessionRoute`, tested) and fall under the general `apiLimiter`; every route that checks a credential is still counted. **And only a refusal ends a session:** the web and the app both treated any failed refresh as signed out, and the app deleted its stored token on a dropped connection. Now only a 401 or 403 does; a 429, a 5xx or no network keeps the session for the next request. **Still true and unfixed:** signing in on a second device (the app, another browser) replaces the token and ends the first device's session at its next refresh. Fixing that needs a session per device, which touches every conditional credential write above.
+
 **Knowingly unverified.** Nothing proves the email or number belongs to the person typing it. A typo'd email means the reset link goes to a stranger, and anyone can claim a number before its owner arrives. That is the price of no code, and it is the thing phone OTP is meant to fix.
 
 **Phone numbers are matched exactly as stored**, and nothing adds a country code. `98220 55667` is stored as `9822055667` and `+91 98220 55667` as `+919822055667`, so an account made one way cannot sign in typed the other way. This predates the sign-up form, but it bites more now that everyone types a number into a password form. Fixing it means choosing one canonical form (probably `+91` on any 10-digit number) and backfilling the column.
+
+**Admin → Users shows each account's phone and searches by it** (2026-10-03), because support is rung by people and a phone-only account has no email to look up. The search works around the problem above rather than fixing it: both sides are compared as digits only: `phoneSearchDigits` in `admin.service.ts` strips the search and drops a leading `91`, the query strips the stored number, and they match as a substring, so `+91 98220 55667` finds `9822055667`, `+919822055667` and `98220-55667` (the profile editor keeps punctuation). Only text with no letters (any script) and no `@`, holding four or more digits, is a phone search; any other punctuation is let through, since the profile editor stores `98220.55667` as readily as a dash, so "Ward 2026" is a name and does not pull in every number containing 2026.
 
 **A business buyer may have no email on file.** Sign-up no longer asks a would-be buyer for one, and the buyer application (`completeBuyerOnboarding`) never did. The FAQ and privacy page used to say business buyers give an email; both are corrected. If order paperwork is to be emailed, the application form is where to ask.
 
@@ -251,9 +272,20 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 - `partnerApplication()` reads the profile **whatever role holds it**. Gating on the role returned null for exactly the people who need to see "under review", since an applicant is a CONSUMER until a reviewer promotes them.
 - `isPendingPartner()` keeps the role check, because it decides *navigation*: it exists to keep an unapproved FARMER out of a dashboard where every action 403s. A CONSUMER waiting on a decision has no such dashboard.
 
-**The web still has the narrow version** (`client/src/utils/partner.ts` gates on `user.role`), so a pending applicant on the site sees nothing about their application. Same fix, not made here.
+**The website has the same split since 2026-10-05** (`client/src/utils/partner.ts`). Before it, a shopper who applied was sent to `/partner/status`, which found no application because it read the role, and bounced them to the homepage: no web applicant ever saw "under review". Now `partnerApplication()` reads the profile whatever the role, `isPendingPartner()` keeps the role check for navigation, and `hasOpenApplication()` puts "Your application · status" in the homepage account menu and a banner on `/partner`. The status page also waits for the session to be restored before deciding, because opening it from a link or a refresh always bounced to sign-in, and it no longer promises an email to an account made with a phone number alone.
 
 **Unresolved, and now more visible:** roles are exclusive, so an approved seller cannot use the cart (`/cart`, `/checkout`, `/orders` are `allowedRoles={['CONSUMER']}`; `POST /bids/direct-purchase` is `requireRole('CONSUMER')`). `ShopScreen` renders the shelf read-only for them rather than 403ing at checkout, and `JoinScreen` warns before they apply, but both are plasters. If selling should stack on top of shopping, that is a role-to-capabilities refactor nobody has decided.
+
+### A seller can also buy, in a second mode (shipped 2026-10-04)
+
+**One account, two sides, switched in the app. Built for a local shop buying stock for itself; the server allows any seller.** The user's call: apply to buy, and once approved switch between selling and buying, rather than a second account with its own login and wallet.
+
+- **The role does not change.** The account stays `FARMER`; its buyer application is filed alongside (`CAN_APPLY_AS_BUYER` now includes FARMER) and reviewed in the same queue, and approval only approves the buyer profile, because `reviewPartnerApplication` promotes a row still at CONSUMER and nothing else.
+- **Buying mode is a header, decided by the database.** While the app is on the buying side it sends `X-Act-As: BUYER`. `authenticate` honours it only after reading an APPROVED buyer profile for that account, then sets `req.user.role = 'BUYER'` and keeps the real role as `accountRole`. So every `requireRole('BUYER')` and every service that branches on the role works unchanged, the seller side is closed while buying, and the header is worth nothing alone. Seven tests in `auth.actAs.test.ts`, and the two refusal tests were watched failing with the check removed.
+- **The app shows the account as a buyer** in that mode (`AuthContext` hands out `user` with role BUYER and sends the header in the same render), so the existing buyer tabs and screens appear without knowing modes exist. The side is remembered on the device, reset on sign-out, and dropped if the buyer approval is revoked.
+- **Self-dealing was already refused**: a bid on your own lot and filling your own requirement both 400.
+- **The website has the switch too (2026-10-05):** in the account menu, the mobile drawer, and on a shop's or wholesaler's dashboard (`components/layout/ModeSwitch`), with the same rules: `AuthContext` hands pages the account as a BUYER and `lib/axios` sends the header. A shop or wholesaler not yet approved gets a card on its dashboard to apply (`components/BuyStockCard`), which opens the buyer form through the same door `/partner` uses.
+- **Not covered:** the live-auction socket authenticates separately and ignores the header, so auctions are not open in buying mode; a shop still cannot use the household cart.
 
 ### 4a. Where a seller's money goes (shipped 2026-09-21)
 
@@ -281,7 +313,23 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
-- Privacy must disclose Vercel Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+- Privacy must disclose Cloudflare Web Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+
+### The website is hosted on Cloudflare (decided 2026-10-06)
+
+**A static-assets-only Cloudflare Worker serves `client/dist`; Vercel is being retired.** Vercel's free plan is for non-commercial use only, and CropBid takes money, so staying meant Pro at $20 a member a month. Cloudflare's free plan allows commercial sites. The build is unchanged: `npm run build` already prerenders every public page to a file, so any static host works.
+
+- **`client/wrangler.jsonc` is the routing.** `drop-trailing-slash` serves `/faq` from `faq/index.html` and redirects `/faq/` to `/faq`; the default would do the opposite and split every page across two URLs against the canonical tags and the sitemap. `single-page-application` serves the app shell to a browser navigating to a signed-in path. **`client/worker.js` runs only when no file matched**, so real files never invoke it or count against the Workers free allowance: it 404s `/assets/*` and `/api/*` (a missing script must fail as missing, not come back as the homepage with a 200, which is what `vercel.json`'s rewrite exclusions did) and gives anything else, such as a crawler with no `Sec-Fetch-Mode`, the app shell. `client/public/_headers` carries the cache headers.
+- **`vercel.json` stays until Vercel is switched off**, because Vercel keeps serving cropbid.in until the domain is moved and still builds every merge. **The privacy page names both hosts until then**, "while we move it"; when Vercel is retired, take Vercel out of that sentence in the same PR that deletes `vercel.json`.
+- **Page views are Cloudflare Web Analytics** (`components/ui/PageAnalytics.tsx`), cookie-free like Vercel's was, so the cookie notice stays a notice. It reports only from `cropbid.in` in a production build. Its token is public by design but is a build variable (`VITE_CF_ANALYTICS_TOKEN`), not a literal, because GitGuardian flags any token-shaped string in the repo; unset, nothing reports.
+- **DNS is on Cloudflare**, moved from Hostinger (still the registrar). Only `cropbid.in` and `www` are proxied. `api.cropbid.in` stays DNS only (Caddy gets its own certificate, and the auction socket is long-lived), and so do the Zoho MX, DKIM and Brevo link records: proxied, those break email and the links inside it.
+- **Every `VITE_` build variable is public**, inlined into the bundle each visitor downloads: the API origin, the Google client id and the analytics token. Secrets live only in the API's `.env` on Lightsail.
+
+### The homepage hero slides to two partner banners (2026-10-06)
+
+`HeroCarousel` in `LandingPage.tsx`: the existing hero, then "Become a Partner to Sell" and "... to Buy" (`client/public/banners/`), on one scroll-snap track with arrows, dots, and a slide every 5 seconds that loops for good (the user's call: it always rotates). It holds only while a finger or mouse button is down on it, and a manual move restarts the 5 seconds. Both banners are one page side by side above 960px, one each below. A banner is a button: signed in, it goes to `/partner#sell` or `#buy`; signed out, it opens the sign-in window with that as `redirectTo`. An approved seller is not shown the sell banner, nor a buyer the buy banner.
+
+**The copy is baked into the artwork, so it is outside this file's reach unless someone regenerates the picture.** As supplied, the sell banner says "Faster Payments" (payouts are a manual transfer, §6) and the buy banner "Quality Produce" (nothing checks a lot, §2b). Both are on screen until the images are redone.
 
 ### The cookie notice (shipped 2026-09-03)
 
@@ -427,7 +475,7 @@ Both are **additive and idempotent**: insert and update only, never delete, so t
 
 ## 9. The app's own surfaces (shipped 2026-09-13)
 
-Web has none of these. They are `mobile/` only.
+These began in `mobile/`. Where the website has caught up, the section says so; where it does not, assume the website lacks it.
 
 ### The wallet: prepaid credits
 
@@ -443,6 +491,104 @@ Web has none of these. They are `mobile/` only.
 **A wallet that has ever moved blocks deleting the account.** The wallet and its entries cascade with the user row, so an admin hard-delete would keep the money and lose the record of whose it is. `userDeleteBlocker` in `admin.service.ts` is the rule, for this and for accounts with deals, and the admin user list sends its answer on every row so the panel never offers a delete the server refuses.
 
 **The credited amount is read from Razorpay, never from the request**, or a client could mint credits for free. **Ownership is proved from the ORDER's notes, not the payment's**: Razorpay does not copy order notes onto the payment entity, so the original check found nothing and passed by default, which would have let a signed payment from any other flow be replayed as a top-up. **Captured only**: `authorized` reserves funds that the capture can still fail to take. Floor ₹100, ceiling ₹50,000. 20 tests.
+
+### An exporter's market is export-ready lots (2026-10-05)
+
+**A buyer whose company type is EXPORTER gets a filter row under the market's category chips: Grade A, Organic, and a smallest lot size (any, 10+, 50+, 100+ quintals).** The user's pick of four options for what makes the exporter side different; the export request form and the exporter dashboard followed (below).
+
+- **Grade A and 10+ quintals are on when an exporter arrives.** They are chips on screen, so what is hidden is never a secret, and the count under the row ("32 lots match") is the server's total for those filters.
+- **The filters run on the server** (`GET /browse` with `quality`, `organic`, `minQuintals`), not over the page on the phone, because the market loads one page and a filter over that hides every match on the next.
+- **The size floor is converted per unit.** Lots are listed in kg, quintals or tonnes, so 50 quintals is matched as 5,000 kg and 5 tonnes, on remaining stock. Compared raw, "50" would let a 60 kg lot through and shut out a 6 tonne one. `browse.minQuintals.test.ts` runs it on a real Postgres.
+- **`quality` is now checked against A, B and C.** Anything else used to go straight into the Prisma WHERE clause and come back as a 500.
+- **"Grade A" is the seller's own grade.** Nothing checks it (§2b), so the row filters on what the listing says, and no copy may call these lots inspected or certified for export.
+
+**An exporter's request goes to a port (2026-10-05).** For a buyer whose company type is EXPORTER, the post-a-request form swaps the city and state boxes for a port picker and adds a card of what the seller must meet: a moisture limit, the packing, and the documents to hand over. The request is stored on `BuyerRequirement` (`forExport`, `exportPort`, `maxMoisturePct`, `packing`, `requiredDocs`), and the rules live in `server/src/utils/exportSpec.ts`.
+
+- **The port is the delivery address.** The server writes the port's city and state into `deliveryLocation`/`deliveryState` whatever the request sent, so the two cannot disagree and a seller sees one place to deliver to. The demand card says "TO PORT".
+- **Eight ports and three documents, served** at `GET /requirements/export-options` (buyers and sellers), so the app keeps no copy. The documents are the ones a seller can produce: a residue lab report, an NPOP organic certificate, a GST invoice. The phytosanitary certificate and shipping bill are the exporter's own filings, and the form says so rather than asking a farmer for them.
+- **An organic certificate only on an organic request**, refused otherwise, because no conventional seller could meet it. The form greys the box out until Organic is on.
+- **Set when posted, not editable.** Changing the port would move the delivery address under offers already made to the old one, so the edit schema does not accept the export fields at all rather than accepting and ignoring them.
+- **A request not for export carries no export details**, even if a client sends some.
+- **Nothing checks any of it.** Moisture, packing and documents are what the exporter asked for, not what anyone verified (§2b).
+- **Payment and delivery terms are pickers now** (Letter of credit / 7 days / 15 days; FOB / CIF), for every buyer. They were free-text boxes over a server that accepts only those codes, so anything typed there failed the whole request.
+- **The website posts them too (2026-10-05):** an exporter's request form on the site has the same port picker, moisture, packing and documents, read from the same endpoint. Its market has the lot-size chips for every buyer, on at Grade A and 10+ quintals for an exporter, beside the grade and organic filters it already had. Sellers on the site's demand pages see "TO PORT" and an "exporter asks for" block (moisture, packing, documents), with the names read from the same endpoint (`client/src/utils/exportOptions.ts`).
+
+**An exporter's dashboard has an export book (2026-10-05)** (`components/ExportBook`), under "Needs your decision", which stays first because it is work and the book is a view.
+
+- **Tonnes, whatever unit each lot was listed in:** contracted across every deal, and received (deals the exporter has confirmed), because an exporter plans containers, not rupees.
+- **By crop and sourced from**, as tonnes and shares. The source state is what decides inland freight and the nearest port.
+- **On the way:** every unfinished deal by where it is: to pay, booking transport (ops books it, §2a), being collected, on the road, arrived. Read off the deal's own payment, delivery and shipment states, so it cannot disagree with Contracts. A deal the seller marked in transit with no shipment row counts as on the road.
+- **Computed on the phone from `GET /transactions`**, which already carries the bid's quantity, the lot's unit and state, and the shipment status (never the carrier, §2a). Cancelled and refunded deals are left out.
+- **It never says "shipment to port".** A deal struck on a listing is delivered where the deal says; only an export request names a port.
+- **Seed data can link one deal to two buyers.** The seed attached a deal for one buyer to another buyer's bid. A bid holds one deal, and making one is idempotent, so accepting that bid "succeeds" without giving its buyer anything. Only the seed can produce this; test with fresh bids.
+
+### A restaurant negotiates, and its orders repeat (2026-10-05)
+
+**The user's words: restaurants "dont buy on the things they just negotiate".** Asked what that covers, they chose all three: a restaurant counters a seller's offer, its requests cannot be filled at the posted price, and it does not bid on listed lots. Repeat orders were the feature they picked before that, from four options, because a kitchen buys the same onions every week.
+
+- **Counter, and back again.** A seller's offer on a request is PENDING (the buyer's move). The buyer can now counter with a lower price, which makes it COUNTERED (the seller's move, `buyerCounterPrice`). The seller accepts that price (`PUT /offers/:id/accept-counter`, which makes the deal at it) or sends a new one between the two (`/revise`, back to PENDING). Either side can still decline or withdraw. Open to every buyer, not only restaurants, since nothing about countering is restaurant-specific.
+- **One deal-making path.** The buyer accepting and the seller accepting a counter both go through `finaliseOffer`, which claims the offer conditional on its status and on the price the decision was made at, so a revise landing during an accept makes the accept miss rather than fill at a stale price. A test races the two six rounds and checks the winner's price survives; it was watched failing with the condition removed.
+- **COUNTERED is a live offer.** Every sweep that retires offers (a fill, a close, an edit, a repost) retires PENDING and COUNTERED alike (`LIVE_OFFER`), and a seller with a countered offer cannot open a second one on the same request.
+- **Negotiate-only requests.** A RESTAURANT buyer's request is posted with `negotiateOnly`, from the company type at posting. An instant fill is refused, in the claim's own WHERE as well as up front, so no request can fill at its posted price while negotiate-only. The app shows sellers "Make an offer" and no "Fill at".
+- **No bids on the market for a restaurant.** `POST /bids` and the live-auction socket both refuse it (`bidsOnMarket`, read from the profile at the moment of bidding, 403 `RESTAURANT_NO_BIDS`). The app shows lots as VIEW, and a lot's page offers "Ask sellers for this", which opens the request form with the crop filled in. The banner reads "Know the rate, then negotiate."
+- **Repeat orders.** A request can repeat every 3, 7 or 14 days (`repeatEveryDays`, `nextRepeatAt`, `seriesId`); a restaurant's form starts on weekly. Every 15 minutes the API posts a fresh copy of each one that has fallen due: same terms, the full quantity, the deadline moved on, and the series handed to the copy. The old one stops repeating and, if still open, is closed with its live offers expired, because last week's unfilled need is not this week's. Each repost is claimed on the `nextRepeatAt` it was read with, inside the transaction that creates the copy, so a deploy's two processes cannot both post it (tested, and watched failing unclaimed). Withdrawing a request stops it; the request page has Once / every 3 days / weekly / every 2 weeks. **Changing the repeat is conditional on the repeat as read**, because the repost job claims a request by clearing `nextRepeatAt`: without it, "Once" pressed as the job ran was saved on the old copy while the new one kept repeating (raced ten rounds in a test, watched failing 3 of 3 without the condition). The repeat is not a field on the edit endpoint because it is also allowed on a FULFILLED request.
+- **The website (2026-10-05):** buyers counter and sellers answer on the same offer card (`RequirementOfferCard`, a "You countered" tab on a request and "Buyer countered" on My Offers); a restaurant's request shows sellers Make an offer instead of Fill; a restaurant's bid form points it to post a request, with the crop prefilled. Repeats are set on the website's request form ("How often") and changed or stopped from a card on the request's page.
+- **Not built:** repeating does not skip a week the kitchen is shut.
+
+### An FMCG buyer buys on supply contracts (2026-10-05)
+
+**One price, a large total, delivered in batches** (`SupplyContract`, `services/supplyContract.service.ts`, `/api/contracts`). The user's pick of four options for what sets FMCG apart; quality specs and many-sellers-one-order were the others and are not built.
+
+- **Proposed from a lot.** On a lot's page an FMCG buyer gets "Need this every month?" under the bid card: a total, a batch size, every 7, 14 or 30 days, and one price, with the sum and the number of batches worked out as they type. The price may not be under the lot's floor, the same as a bid. At most 52 batches; a local shop's lot takes no contracts. **The server holds the FMCG rule too** (403 for any other company type); opening it to others is one line in `assertCanPropose`.
+- **The seller accepts or declines** on their Offers tab, where proposals sit above single offers and count in the heading. Either side can end an active contract; the buyer can withdraw a proposal.
+- **A contract never reserves the lot's stock.** It runs for months and the lot is today's harvest. Batches do not draw on it.
+- **Each batch is an ordinary deal.** When one falls due (the 15-minute tick in `index.ts`, and at once on accepting a contract that starts now) it is made through the same three rows a requirement fill uses: a SOLD Listing marked `isRequirementFill` and `supplyContractId`, an ACCEPTED Bid, and `createTransaction`. So it is paid into escrow, carries the 2% fee, pages ops to book transport (§2a), and appears on both sides' deal screens unchanged. The last batch is the remainder; the contract is COMPLETED once every batch is made.
+- **Each batch is claimed** on the `nextBatchAt` and `scheduledQuantity` it was read with, inside the transaction that makes the deal, so two processes cannot both make one and a cancel committing first makes the claim miss. Tested five rounds, and watched failing with the claim removed.
+- **Ending a contract stops further batches; batches already made stay deals**, paid or payable, and undoing one is an admin refund like any other deal (§6).
+- **The website (2026-10-05):** a Contracts page for both sides (`pages/shared/ContractsPage`, `/contracts`, in the nav), with accept, decline, withdraw and end, and the FMCG proposal under the bid form on a lot (`components/contracts/ContractProposal`). The contract notifications land there; a batch notification opens its deal.
+- **A batch sends ops the same new-order alert as any deal** (`alertNewOrder`, channel `SUPPLY_CONTRACT_BATCH`), after its transaction commits. Review caught batches skipping it.
+- **A proposed or running contract blocks deleting either account**, on the self-service delete and the admin one (`CONTRACTS` in `userDeleteBlocker`). The contract cascades with the user row, so a delete used to end the other side's agreement without a word, and an anonymised account would have kept getting batches.
+- **Not built:** batches cannot be skipped or resized after accepting; nothing nudges a buyer who leaves a batch unpaid while the next one falls due.
+
+**Lots priced in another currency no longer front a rupee card.** Seed lots in USD (an Australian wheat lot at $260/tonne) were compared as rupees, so the grouped wheat card read "from ₹26/qtl" and the compare screen gave that lot BEST PRICE. Both now rank rupee lots first.
+
+### A store restocks with a list (2026-10-05)
+
+**Several crops, one delivery, posted together** (`POST /api/requirements/list`, `screens/buyer/RestockListScreen`). The user's pick of four options for retailers; smaller shelf-ready lots and store locations were the others and are not built.
+
+- **Who gets it:** a RETAILER buyer, and **a local shop on its buying side** (§4, "A seller can also buy"), whatever company type it applied under, because the user pointed out that a local shop restocking is the same job (`mobile/src/lib/restock.ts`). For them "Post" on Requests, the dashboard and the profile opens the list; "Just one crop?" goes to the single form. Anyone can use the endpoint.
+- **Each item is an ordinary request.** Sellers offer on the items they have, and every offer, counter (§9 restaurants) and deal works as for one request. The items share `listId` and `listName`, and Requests shows them under one "Restock list" header.
+- **All or none.** Two to fifteen items, each crop once, posted in one transaction, so a list is never half up.
+- **One address and date for the whole list**, and it can repeat; the items fall due together and the copies keep the list's id and name.
+- **The website (2026-10-05):** the same list at `/buyer/requirements/list` (`pages/buyer/RestockList`), the same who-gets-it rule (`client/src/utils/restock.ts`), and the same grouping on the requests page.
+- **Not built:** editing a list as a whole (each item is edited or withdrawn on its own).
+
+### A small buyer buys small, from nearby (2026-10-05)
+
+**For a SMALL_BUSINESS buyer and a local shop on its buying side** (`mobile/src/lib/smallBuyer.ts`). The user's pick of four options; buy-at-listed-price and simpler wording were the others and are not built.
+
+- **The market starts near them.** A "Buy from" switch under the category chips: their city, their state (default), or all India, sent to `GET /browse` as `location` or `state`, with the server's count under it. The state is the shop's own (`farmerProfile.state`), or else the state lots in their city are listed under; a buyer profile stores no state.
+- **A bid starts small.** About a tonne in the lot's unit (1,000 kg, 10 qtl or 1 t), capped at what is left, with steps under the quantity (e.g. 2 / 5 / 10 qtl) and Whole lot still there. Partial bids were always allowed by the server; the card just used to default to the whole lot.
+- **The website matches (2026-10-05):** the same Buy-from row above the market's results and the same small first bid with steps (`client/src/utils/smallBuyer.ts`).
+- **Any seller on its buying side no longer sees its own lots** on the market: a shop's own 40 kg of wheat was showing as something to buy, and the server refuses a bid on it. The app sends `excludeSellerUserId` to `GET /browse`, so they leave the server's total as well as the page; trimming them from the first page left the rest in the count. It only hides lots, so it needs no sign-in.
+
+### The website's buyer dashboard (redesigned 2026-10-05)
+
+`client/src/pages/buyer/BuyerDashboard.tsx`, the same shape as the app's: "Your decisions" first (deals to pay, deliveries to confirm, seller counters on bids, offers on requests, each linking to where it is done), then open requests with fill bars and recent bids; on the right, a dark summary card (spent, deals, in escrow, open requests, and "₹X to pay"), the two main actions, business credit and the day's rates. One column below 1000px with the summary first. A failed feed says so rather than reading as zero. The agent card is gone, matching the app; the agent pages still exist at `/agent`. The recent-bids table showed "—" for every seller, because it read `listing.farmer.name` and the name is on `listing.farmer.user`.
+
+**Both website dashboards, polished (2026-10-05).** The dark summary card leads with the number that needs doing something about: a buyer's amount owed, with Pay now under it, and a seller's deals still to be paid while nothing has been released, instead of a large "₹0". Supply contracts get a panel on both (`components/contracts/ContractsPanel`, live ones only, what needs you first, rendered only when there is one), bid statuses are coloured pills worded for the side reading them (a waiting bid says "Answer" to a seller), and the rates panel is headed "Mandi rates" with reference prices marked `ref`, since it said "today" over prices no mandi had reported.
+
+### Business credit: applied for on the wallet, decided by a person (2026-10-04)
+
+**A business buyer can ask for money to stock up, and repay in 30, 60 or 90 days. CropBid does not lend.** The user's call: a card on the buyer's wallet ("Need money to stock up?"), a form, and somebody at CropBid takes the application to a third-party lender. There is no lending partner signed, so nothing on screen may say "instant", "guaranteed", or anything that reads as CropBid lending. The card says it is not instant and that the lender sets the terms.
+
+- **Buyers only**, including a seller in buying mode (`/api/credit` is `requireRole('BUYER')`, and X-Act-As makes a buying shop a BUYER, §4). It is credit for a business, not a household basket.
+- **The form asks what a lender asks first**: business name, GSTIN (optional), years running, produce bought a month, the amount (₹10,000 to ₹10,00,000, served by `GET /credit` so the app keeps no copy), 30/60/90 days, what it is for, and a phone number. **No PAN, Aadhaar or bank statements**: those are a lender's to collect under its own KYC, and holding government IDs is a liability CropBid has no reason to take on.
+- **Consent is the row's reason to exist.** The buyer ticks that their details may be shared with lending partners; the server refuses without it and stamps `consentAt`. The box starts unticked on every submission.
+- **One application per account.** Editable while `SUBMITTED`, open again after `DECLINED`; `IN_REVIEW` and `APPROVED` are a person's decision and the app cannot overwrite them. Every write is an `updateMany` conditioned on the status it was decided from, like the shop-order cancel (§3d), and a test races two reviews ten rounds and checks the winner's decision survives whole.
+- **Ops work it at `/admin/credit`** (web): start review, approve a limit, or decline with a reason the buyer is shown. The list pages, 50 at a time; it used to return the newest 200 and nothing past them. Admins are pinged on a new or re-opened application (`CREDIT_APPLICATION`); the buyer is told every decision. Reviews are audited through `recordAudit`, which is a record here, not a control.
+- **Approval moves no money.** It records the limit a lender agreed to, and the buyer's card says "we will call you to set it up; nothing is added to your wallet until then". **On the website too (2026-10-05):** a card on the buyer dashboard and an apply page at `/buyer/credit`, the same four states. Loading a lender's money into the wallet as credits is **not built, and should not be built before a lawyer has looked at it**: under the RBI's digital lending rules a platform arranging loans for a lender is a lending service provider, and the loan is meant to go from the lender to the borrower's own bank account (or straight to the seller for a fixed end use), not through a pool the platform holds. Credits also cannot pay for anything yet (§6). Repayment tracking is likewise the lender's, and unbuilt here.
+- **Deleting the account deletes the application** (cascade on a hard delete, an explicit delete in the anonymising path, pinned by a test).
 
 ### The address book
 
@@ -487,6 +633,28 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 **Import `Alert` from `src/lib/alert`, never from `react-native`.** The platform one does not throw, does not warn, and does not fall through to `window.alert`: the call returns and nothing happens. Every confirm in the app was dead in a browser, which is how Log out came to look broken.
 
 **`window.confirm` is not the fix either.** Plenty of browser contexts suppress native dialogs; an embedded preview pane returns `false` from `confirm()` immediately without showing anything, which looks exactly like the no-op it replaced. So web queues into `components/AlertHost`, a React modal mounted at the root of `App.tsx`. Native keeps the platform dialog.
+
+### A local shop gets its own, smaller app (2026-10-04)
+
+**A local shop sells to households at a fixed shelf price, so the trade half of the seller app is taken away from it rather than relabelled.** Decided by `farmerProfile.sellerType === 'LOCAL_SHOP'`; farms and wholesalers keep everything.
+
+- **Tabs: Home, My Stock, My Shop, You.** No Offers tab: nothing is bargained over.
+- **My Shop is `screens/shop/ShopHomeScreen`**, not the farm dashboard: a sales board and the household orders to send, grouped by shop order (§3b) so "Mark on the way" and "Mark delivered" move every lot of one delivery together. An unpaid order shows no send button. **The sales figure is summed from paid orders on the client**, because `/transactions/stats` counts only RELEASED money, which needs the shopper's confirmation, so a shop that had delivered read ₹0.
+- **Adding stock is `screens/shop/ShopListingScreen`**: item, price per kg, stock, quality, organic, photos. The one shelf price is sent as floor, ceiling and retail, because the listing model is shared and the server requires all three. The place is the shop's own, never typed per item, and the form warns when that city is not on `RETAIL_CITIES`.
+- **Hidden for a shop:** the demand teaser, the bidding banner, forecast and schemes cards and the sell pitch on Home; offer counts on My Stock; offers, demand and the AI helper on the profile.
+- **Buying stock for the shop** is a second mode on the same account (§4, "A seller can also buy"): a card on the shop's profile to apply, then a Selling | Buying switch.
+- **A wholesaler gets the same two sides** (2026-10-04): the apply card says "Buy stock for your business" and files it as a WHOLESALER buyer, and its Home trades the farm wording for trade wording ("Trade by the lot, priced to the mandi", no farm-schemes card, no "Grow it? Sell it here").
+- **Cancelling an order** is on the order card until the shop marks it on the way, with three ready reasons (out of stock, can't deliver today, shop closed) or its own words, because the shop must say why (§3d).
+
+### The rest of the app pass (2026-10-04)
+
+- **Signing in happens on a card that rises from the bottom** (`components/LoginSheet`), from the header's Log in and from a guest pressing ADD or a size, which used to do nothing. It calls the same `signIn` as `LoginScreen`, which still exists.
+- **The bottom tabs are a floating pill** (`navigation/FloatingTabBar`), shared by the shopper and seller bars; the buyer bar is still the old one. It keeps its own space rather than floating over the screen, so no screen has to pad its last row clear of it.
+- **Home scrolls as one page** with the search and category chips sticky, a notification bell with an unread count, and, for a farm or wholesaler, a "Buyers are asking" card leading to the demand board, which also gained a back button.
+- **The shopper and the seller profiles are separate layouts** (`screens/profile/ShopperProfile`, `SellerProfile`); buyers keep the old one. A shopper is shown no trust score; a seller is, and is asked for payout details while none are on file (§4a).
+- **Back buttons show only the arrow**, because iOS labelled them with route names like "ConsumerTabs".
+- **The buyer side (2026-10-04): no Agents tab.** The user's call: the buying agent is off the app for now, and its tab is **Requests** (the buyer's posted needs and the offers on them). The dashboard lost its agent card and a sparkline drawn from hard-coded numbers, a rising line on an account that had spent ₹0. Buyers get their own profile layout (`screens/profile/BuyerProfile`), the floating tab bar, and no farm-schemes card or sell pitch on Home. Contracts no longer says confirming delivery "releases payment to the farmer" (§6: it marks the seller due). The seller's AI helper is untouched.
+- **The buyer's market (Home) is worded for sourcing, not shopping.** Hero "Source by the lot, priced to the mandi"; rail eyebrows count open lots instead of "Farm-fresh · picked this week", because nothing checks when a lot was harvested (§2b); a crop whose lots are in different units is shown per quintal, not per kg; no "% OFF" badge, which on a bidding lot was the seller's own floor-to-ceiling range dressed as a discount; category chips only where a lot is open. No category tiles repeating the chips, and no "How CropBid works". The wallet pill stays, because the wallet is where business credit is applied for (below). The lot count on the hero is the server's total, not the length of the page it loaded (it read "20 LOTS OPEN" with 85 open), and a trader now gets a 50-lot page. Bidding on a lot (`components/BidPanel`) knows about an open bid: price chips off the seller's range on a new one, and on a countered one "Meet ₹X", which re-sends the bid at their price because the server has no buyer accept-counter.
 
 ### Also gone
 
@@ -571,7 +739,7 @@ Each product shows its enquiry count, linked to where the leads themselves are w
 
 ## 11. Mandi rates (rebuilt 2026-09-21)
 
-**The whole day's feed is downloaded, held in memory, and every rate is computed from that one copy** (`services/mandiFeed.ts`). The board, a state's view, one crop's mandi table, the listing anchor and the forecast all read it. A request can start a refresh but never waits for one, except the first request after a restart, and `warmMandiFeed()` at boot usually has the day loaded before anyone asks. It refreshes every two hours, serving the old copy while the new one downloads.
+**The whole day's feed is downloaded, held in memory, and every rate is computed from that one copy** (`services/mandiFeed.ts`). The board, a state's view, one crop's mandi table, the listing anchor and the forecast all read it. A request never waits for a download, except in the first ten seconds after a restart, a window shared by every request rather than ten seconds each, and `warmMandiFeed()` at boot usually has the day loaded before anyone asks. It refreshes every two hours **on a timer, whether or not anyone visits**, serving the old copy while the new one downloads.
 
 It used to ask the feed per crop and per state, and the day it was checked properly (2026-09-21) every number on the board was wrong, for four reasons that are properties of the feed, measured, not guesses:
 
@@ -581,6 +749,8 @@ It used to ask the feed per crop and per state, and the day it was checked prope
 4. **A key is refused for a minute or two after a burst.** Thirty crops fetched at once was a burst; the same 28 requests one after another went through without a single 429. Requests are strictly sequential, and a 429 is waited out.
 
 **Only a complete copy is ever served.** A half-read day (the first page after a restart, a sweep throttled half way, the demo key's 10 rows) is a slice of the country, and the board, a listing's anchor and the forecast would all show it as live national prices with no way to say otherwise. Until a complete copy exists, and once the last one is three days old, they get reference prices, labelled as such.
+
+**Why the homepage rates sat as an empty skeleton (fixed 2026-10-06).** Opened after two quiet days, the rates strip and the forecast showed a blank box for ten seconds and then reference prices, every load. Three things together: refreshing only ever happened when someone asked, so a site nobody opened let its copy age past the three-day limit; every request finding no copy then waited its own ten seconds for a download that, on a throttled key, runs for minutes; and every rates endpoint, the forecast included, sent `max-age=1800` whatever it held, so the browser kept those reference prices for half an hour after live rates were back. Now a timer refreshes the copy (`warmMandiFeed`), the ten-second wait is one window per process, and browsers keep live rates five minutes and reference prices not at all (`cacheFor` in `rates.controller.ts`).
 
 **The last complete copy is kept in the database, so a restart does not lose it** (2026-09-26). Every deploy restarts the API, and the copy used to live in memory alone: on 2026-09-26 data.gov.in was down all day, a deploy threw away the only complete copy of the 25th, and the rates went to reference prices until the feed came back. Each complete download is now also saved to `MandiFeedCopy` (`services/mandiFeedStore.ts`), one row rewritten in place, about 300 KB gzipped; a restart serves it at once and downloads afresh behind it.
 - **A save only moves the copy forward**, with the condition in the write itself: in a deploy's overlap the old process's download can finish second while being older.

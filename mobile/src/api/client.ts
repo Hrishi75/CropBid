@@ -28,6 +28,14 @@ const REFRESH_KEY = 'cropbid.refreshToken';
 
 let accessToken: string | null = null;
 let onLogout: (() => void) | null = null;
+// Buying mode for a seller also approved to buy (a local shop stocking up).
+// Sent as X-Act-As: BUYER; the server honours it only for an account whose
+// buyer profile is APPROVED (server/src/middleware/auth.ts). Set by
+// AuthContext, never by a screen.
+let actAs: 'BUYER' | null = null;
+export function setActAs(mode: 'BUYER' | null) {
+  actAs = mode;
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -72,6 +80,7 @@ const api = axios.create({ baseURL: API_URL });
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   config.headers['X-Client'] = 'mobile';
   if (accessToken) config.headers['Authorization'] = `Bearer ${accessToken}`;
+  if (actAs) config.headers['X-Act-As'] = actAs;
   return config;
 });
 
@@ -121,12 +130,19 @@ api.interceptors.response.use(
 
       original!.headers['Authorization'] = `Bearer ${data.accessToken}`;
       return api(original!);
-    } catch (e) {
+    } catch (e: any) {
       queue.forEach((p) => p.reject(e));
       queue = [];
-      setAccessToken(null);
-      await setRefreshToken(null);
-      onLogout?.();
+      // Only a refusal ends the session: the server said this token is no
+      // good (401/403), or there was none to send. A dropped connection, a
+      // 429 or a 5xx says nothing about the session, and deleting the stored
+      // token on one signed people out for good on a bad signal.
+      const status = e?.response?.status;
+      if (!e?.response ? e?.message === 'No refresh token' : status === 401 || status === 403) {
+        setAccessToken(null);
+        await setRefreshToken(null);
+        onLogout?.();
+      }
       return Promise.reject(e);
     } finally {
       isRefreshing = false;
@@ -167,8 +183,10 @@ export async function keepAliveSession(): Promise<void> {
 
     queue.forEach((p) => p.resolve(data.accessToken));
     queue = [];
-  } catch (e) {
-    const stranded = queue.length > 0;
+  } catch (e: any) {
+    // A refusal, not a dropped connection or a 429 (see the interceptor).
+    const refused = e?.response ? [401, 403].includes(e.response.status) : e?.message === 'No refresh token';
+    const stranded = queue.length > 0 && refused;
     queue.forEach((p) => p.reject(e));
     queue = [];
 

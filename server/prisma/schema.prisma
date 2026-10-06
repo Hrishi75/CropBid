@@ -167,6 +167,7 @@ enum RequirementStatus {
 
 enum RequirementOfferStatus {
   PENDING // Awaiting the buyer's decision
+  COUNTERED // The buyer sent a price back; awaiting the seller (buyerCounterPrice)
   ACCEPTED // Buyer took it — a Listing + Bid + Transaction now exist
   REJECTED // Buyer declined
   WITHDRAWN // Farmer pulled it before the buyer decided
@@ -197,6 +198,11 @@ model User {
   // in with a code has NO password, and login must refuse the password path
   // for those accounts rather than comparing against an empty hash.
   password   String? // Hashed with bcrypt — NEVER store plain text
+  /// Google's stable id for this person (the ID token's `sub`), set the first
+  /// time they sign in with Google. Matched on before the email, because an
+  /// address can be changed at Google and the sub cannot. Not a secret, but it
+  /// is an identifier, so safeUser keeps it off the wire. See signInWithGoogle.
+  googleId   String?  @unique
   role       Role
   phone      String?  @unique
   location   String?
@@ -214,7 +220,10 @@ model User {
   /// Prepaid credits. Optional because a wallet is created on first read, not
   /// at signup: most accounts never top one up, and a row per user that is
   /// always zero is a row that only exists to be joined against.
-  wallet Wallet?
+  wallet            Wallet?
+  creditApplication CreditApplication?
+  contractsAsBuyer  SupplyContract[]   @relation("ContractBuyer")
+  contractsAsSeller SupplyContract[]   @relation("ContractSeller")
 
   // The SHA-256 of the session's refresh token, null when logged out.
   // WHY STORE IT AT ALL? So logout, suspension and a password reset can end a
@@ -415,10 +424,10 @@ model FarmerProfile {
   // is an allow-list, so these cannot leak by simply existing; the only way out
   // is the admin endpoint that reads them, which writes an audit row every time.
   // The seller themselves gets them back masked.
-  payoutUpiId        String? // "ramesh@okhdfc"
-  payoutAccountName  String? // The name the bank holds, which need not be the account holder's display name
+  payoutUpiId         String? // "ramesh@okhdfc"
+  payoutAccountName   String? // The name the bank holds, which need not be the account holder's display name
   payoutAccountNumber String?
-  payoutIfsc         String? // "HDFC0001234"
+  payoutIfsc          String? // "HDFC0001234"
 
   // Superseded by the four columns above, and never written: the only code that
   // ever touched it cleared it on account deletion. Left in place rather than
@@ -512,6 +521,11 @@ model Listing {
   // it is never inventory, so listing.service and analytics filter it out.
   // Same marker technique as Bid.isDirectPurchase.
   isRequirementFill Boolean @default(false)
+
+  // Set on a batch of a supply contract (which is also isRequirementFill:
+  // born SOLD, never inventory). Null on every ordinary lot.
+  supplyContractId String?
+  supplyContract   SupplyContract? @relation(fields: [supplyContractId], references: [id], onDelete: SetNull)
 
   // Dates
   harvestDate DateTime? // When the crop was/will be harvested
@@ -611,6 +625,32 @@ model BuyerRequirement {
   paymentTerms  String? // LC | NET7 | NET15 — validated at the API boundary
   deliveryTerms String? // FOB | CIF — validated at the API boundary
 
+  // An exporter's request (utils/exportSpec.ts). The port is also written into
+  // deliveryLocation/deliveryState, so a seller sees one place to deliver to.
+  forExport      Boolean  @default(false)
+  exportPort     String? // JNPT | MUNDRA | ... validated at the API boundary
+  maxMoisturePct Float? // the driest the exporter will accept, in percent
+  packing        String? // in the exporter's words, e.g. "50 kg new jute bags"
+  requiredDocs   String[] @default([]) // LAB_REPORT | ORGANIC_CERT | GST_INVOICE
+
+  // A restaurant's request is negotiated, never filled at the posted price:
+  // every fill is an offer the buyer agrees to. Set at posting from the buyer's
+  // company type, so it holds even if that type later changes.
+  negotiateOnly Boolean @default(false)
+
+  // Repeat orders. A request with a repeat interval posts a fresh copy of
+  // itself every repeatEveryDays; nextRepeatAt is when, and only the newest
+  // copy of a series carries it. seriesId is the first request's id.
+  repeatEveryDays Int?
+  nextRepeatAt    DateTime?
+  seriesId        String?
+
+  // A restock list: several crops posted together for one delivery (a
+  // retailer's shopping list). Each item is still its own request that sellers
+  // offer on; listId groups them, and listName is the buyer's label for it.
+  listId   String?
+  listName String?
+
   status RequirementStatus @default(OPEN)
 
   createdAt DateTime @default(now())
@@ -623,6 +663,8 @@ model BuyerRequirement {
   @@index([status, createdAt])
   @@index([cropName, status])
   @@index([deliveryState, status])
+  @@index([listId])
+  @@index([nextRepeatAt])
   @@index([buyerId, createdAt])
 }
 
@@ -657,6 +699,10 @@ model RequirementOffer {
   message      String?
 
   status RequirementOfferStatus @default(PENDING)
+
+  // The buyer's price back, while the offer is COUNTERED. Cleared when the
+  // seller revises; becomes the deal price when the seller accepts it.
+  buyerCounterPrice Float?
 
   // Set the moment the offer becomes a real deal. Nullable because a PENDING /
   // REJECTED / WITHDRAWN offer never produces one. @unique means the database
@@ -878,7 +924,7 @@ model RetailOrder {
   // Called off before the shop dispatched it, by the shopper or by the shop
   // itself. Cancelling puts every lot back on the shelf, so it is all or
   // nothing across the order and only possible while every lot is PENDING.
-  cancelledAt DateTime?
+  cancelledAt   DateTime?
   // The User who cancelled it. A plain id, not a relation: it is read to say
   // "you cancelled this" or "the shop cancelled this", which is a comparison
   // with buyerId and sellerId, and the row should outlive that account.
@@ -1156,6 +1202,136 @@ enum WalletEntryType {
   REFUND
   /// A human correction, made by an admin. Always leaves a note.
   ADJUSTMENT
+}
+
+// =============================================================================
+// Model: SupplyContract — one price, a large total, delivered in batches
+// =============================================================================
+// How a packaged-food company buys (CLAUDE.md §9): agree a price with one
+// seller for, say, 500 t of wheat, delivered 50 t every two weeks. Proposed by
+// the buyer from a lot, accepted or declined by the seller. Each batch, when it
+// falls due, becomes an ordinary deal through the same path a requirement fill
+// takes (a SOLD Listing, an ACCEPTED Bid, a Transaction), so escrow, the 2%
+// fee and transport booking are exactly what they are for any deal.
+//
+// scheduledQuantity counts batches already turned into deals, not goods
+// delivered; delivery is read off each batch's own Transaction.
+
+model SupplyContract {
+  id String @id @default(uuid())
+
+  buyerId  String
+  buyer    User   @relation("ContractBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  /// The seller's User id. Batches hang off their FarmerProfile at batch time.
+  farmerId String
+  farmer   User   @relation("ContractSeller", fields: [farmerId], references: [id], onDelete: Cascade)
+
+  /// The lot it was proposed from, for reference only. A contract outlives
+  /// that lot, and batches never draw on its stock.
+  sourceListingId String?
+
+  cropName     String
+  cropVariety  String?
+  unit         Unit
+  qualityGrade QualityGrade
+  organic      Boolean      @default(false)
+
+  /// One price for every batch, fixed when the seller accepts.
+  pricePerUnit Float
+  currency     Currency @default(INR)
+
+  totalQuantity Float
+  batchQuantity Float
+  /// Days between batches: 7, 14 or 30.
+  everyDays     Int
+  startsAt      DateTime
+
+  deliveryAddress String
+  contactPhone    String
+  message         String?
+
+  status            SupplyContractStatus @default(PROPOSED)
+  scheduledQuantity Float                @default(0)
+  /// When the next batch becomes a deal. Null unless ACTIVE.
+  nextBatchAt       DateTime?
+
+  respondedAt DateTime?
+  endedAt     DateTime?
+  /// BUYER or SELLER, on a cancel.
+  endedBy     String?
+
+  batches Listing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, createdAt])
+  @@index([farmerId, createdAt])
+  @@index([status, nextBatchAt])
+}
+
+enum SupplyContractStatus {
+  PROPOSED // Sent by the buyer; waiting on the seller
+  ACTIVE // Accepted; batches become deals on schedule
+  COMPLETED // Every batch has been turned into a deal
+  DECLINED // The seller said no
+  CANCELLED // Called off by either side; batches already made stay deals
+}
+
+// =============================================================================
+// Model: CreditApplication — a business buyer asking for credit to buy produce
+// =============================================================================
+// CROPBID DOES NOT LEND. This is an application that a person reads and, with
+// the buyer's consent, puts in front of a lending partner. Nothing here moves
+// credits into a wallet: an APPROVED row records a limit somebody agreed to,
+// and setting it up is a manual step outside the app (CLAUDE.md §9).
+//
+// One per account. A buyer edits theirs while it is SUBMITTED and applies
+// again after a DECLINED; IN_REVIEW and APPROVED are a person's decision and
+// cannot be overwritten from the app.
+
+model CreditApplication {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  businessName    String
+  gstin           String?
+  yearsInBusiness Int
+  /// Rupees of produce the business buys in a typical month.
+  monthlyPurchase Float
+  /// Rupees of credit asked for.
+  amountWanted    Float
+  /// Days the buyer would like to repay in: 30, 60 or 90.
+  repaymentDays   Int
+  /// What they mean to buy with it, in their words.
+  purpose         String?
+  /// The number a lender or CropBid should call. Not User.phone, which an
+  /// email-only account does not have.
+  contactPhone    String
+
+  /// When the buyer agreed to their details being shared with lending
+  /// partners. Required: without it there is nobody to pass the application to.
+  consentAt DateTime
+
+  status        CreditApplicationStatus @default(SUBMITTED)
+  /// Set only on APPROVED: the rupee limit somebody agreed to.
+  approvedLimit Float?
+  /// Shown to the buyer. Required on DECLINED, so a refusal always says why.
+  reviewNote    String?
+  reviewedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+enum CreditApplicationStatus {
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  DECLINED
 }
 
 // =============================================================================

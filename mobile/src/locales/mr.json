@@ -129,6 +129,10 @@
   "Marketplace": "मार्केटप्लेस",
   "How it works": "हे कसे काम करते",
 
+  "Choose your seller": "तुमचा विक्रेता निवडा",
+  "{{n}} seller today": "आज {{n}} विक्रेता",
+  "{{n}} sellers today": "आज {{n}} विक्रेते",
+  "CropBid seller": "CropBid विक्रेता",
   "Choose your farmer": "तुमचा शेतकरी निवडा",
   "{{n}} farmer selling today": "आज {{n}} शेतकरी विकत आहे",
   "{{n}} farmers selling today": "आज {{n}} शेतकरी विकत आहेत",

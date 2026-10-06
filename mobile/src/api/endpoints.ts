@@ -1,6 +1,7 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
+  CreditApplication, CreditApplicationInput, CreditRules, ExportOptions, ProposeContractInput, SupplyContract,
   Address,
   AddressInput,
   AgentConfig,
@@ -259,6 +260,14 @@ export async function browse(params?: {
   // City, matched exactly. Retail orders are small enough that a farm outside
   // the shopper's own city can never deliver them — see browse.service.
   location?: string;
+  // The trade filters (an exporter's export-ready lots): grade, organic, and
+  // the smallest lot in quintals whatever unit each lot is listed in.
+  quality?: 'A' | 'B' | 'C';
+  organic?: boolean;
+  minQuintals?: number;
+  // Leave this account's own lots out of the page and the total.
+  excludeSellerUserId?: string;
+  limit?: number;
 }): Promise<Paginated<Listing>> {
   const { data } = await api.get<Paginated<Listing>>('/browse', { params });
   return data;
@@ -350,6 +359,17 @@ export async function placeBid(input: {
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids', input);
   return data;
+}
+
+/** Change the price of a bid that is still open. Puts it back to PENDING. */
+export async function updateBid(id: string, bidPricePerUnit: number): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/update`, { bidPricePerUnit });
+  return data;
+}
+
+/** Take back a bid that has not been accepted. */
+export async function withdrawBid(id: string): Promise<void> {
+  await api.delete(`/bids/${id}`);
 }
 
 export async function myBids(): Promise<Bid[]> {
@@ -509,13 +529,40 @@ export interface RequirementInput {
   neededBy?: string;
   description?: string;
   organic: boolean;
-  paymentTerms?: string;
-  deliveryTerms?: string;
+  paymentTerms?: 'LC' | 'NET7' | 'NET15';
+  deliveryTerms?: 'FOB' | 'CIF';
+  forExport?: boolean;
+  exportPort?: string;
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
+  /** 3, 7 or 14 to repeat; omitted or null for once. */
+  repeatEveryDays?: number | null;
 }
 
-export async function myRequirements(status?: string): Promise<RequirementFeedPage> {
+// A restock list: several crops for one delivery, posted together (all or none).
+export async function createRequirementList(input: {
+  listName?: string | null;
+  items: Array<{ cropName: string; quantity: number; unit: Unit; qualityGrade: QualityGrade; pricePerUnit: number; organic?: boolean }>;
+  deliveryLocation: string;
+  deliveryState: string;
+  neededBy?: string;
+  description?: string;
+  repeatEveryDays?: number | null;
+}): Promise<{ listId: string; listName: string | null; requirements: BuyerRequirement[] }> {
+  const { data } = await api.post('/requirements/list', input);
+  return data;
+}
+
+// The ports and documents an export request can name. Served, not copied.
+export async function fetchExportOptions(): Promise<ExportOptions> {
+  const { data } = await api.get<ExportOptions>('/requirements/export-options');
+  return data;
+}
+
+export async function myRequirements(status?: string, limit?: number, page?: number): Promise<RequirementFeedPage> {
   const { data } = await api.get<RequirementFeedPage>('/requirements/my', {
-    params: status ? { status } : undefined,
+    params: { ...(status ? { status } : {}), ...(limit ? { limit } : {}), ...(page ? { page } : {}) },
   });
   return data;
 }
@@ -536,6 +583,28 @@ export async function offersForRequirement(id: string): Promise<RequirementOffer
 
 export async function acceptRequirementOffer(offerId: string): Promise<RequirementOffer> {
   const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/accept`);
+  return data;
+}
+
+// The back-and-forth on an offer. The buyer counters with a lower price; the
+// seller accepts that price (which makes the deal) or sends a new one.
+export async function counterRequirementOffer(offerId: string, pricePerUnit: number): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/counter`, { pricePerUnit });
+  return data;
+}
+
+export async function reviseRequirementOffer(offerId: string, pricePerUnit: number): Promise<RequirementOffer> {
+  const { data } = await api.put<RequirementOffer>(`/requirements/offers/${offerId}/revise`, { pricePerUnit });
+  return data;
+}
+
+export async function acceptBuyerCounter(offerId: string): Promise<void> {
+  await api.put(`/requirements/offers/${offerId}/accept-counter`);
+}
+
+/** Start, change or stop a request repeating. null stops it. */
+export async function setRequirementRepeat(id: string, repeatEveryDays: number | null): Promise<BuyerRequirement> {
+  const { data } = await api.put<BuyerRequirement>(`/requirements/${id}/repeat`, { repeatEveryDays });
   return data;
 }
 
@@ -728,6 +797,18 @@ export async function deleteAddress(id: string): Promise<void> {
 // All authenticated, and all scoped to the caller: there is no userId in any of
 // these, so there is no call that can read or move somebody else's credits.
 
+// Business credit: buyers only. The rules come back with the application so the
+// form keeps no copy of the limits.
+export async function fetchCredit(): Promise<{ rules: CreditRules; application: CreditApplication | null }> {
+  const { data } = await api.get('/credit');
+  return data;
+}
+
+export async function applyForCredit(body: CreditApplicationInput): Promise<CreditApplication> {
+  const { data } = await api.post<{ application: CreditApplication }>('/credit', body);
+  return data.application;
+}
+
 export async function fetchWallet(): Promise<Wallet> {
   const { data } = await api.get<Wallet>('/wallet');
   return data;
@@ -764,5 +845,27 @@ export async function verifyWalletTopup(handshake: {
     '/wallet/topup/verify',
     handshake,
   );
+  return data;
+}
+
+// Supply contracts. The buyer proposes from a lot; the seller answers; either
+// side can end one. Batches show up as ordinary deals in Contracts.
+export async function mySupplyContracts(): Promise<SupplyContract[]> {
+  const { data } = await api.get<{ contracts: SupplyContract[] }>('/contracts/mine');
+  return data.contracts;
+}
+
+export async function proposeSupplyContract(input: ProposeContractInput): Promise<SupplyContract> {
+  const { data } = await api.post<SupplyContract>('/contracts', input);
+  return data;
+}
+
+export async function respondSupplyContract(id: string, accept: boolean): Promise<SupplyContract> {
+  const { data } = await api.put<SupplyContract>(`/contracts/${id}/respond`, { accept });
+  return data;
+}
+
+export async function cancelSupplyContract(id: string): Promise<SupplyContract> {
+  const { data } = await api.put<SupplyContract>(`/contracts/${id}/cancel`);
   return data;
 }

@@ -22,6 +22,10 @@ import { acceptBid, counterBid, incomingBids, rejectBid } from '../../api/endpoi
 import { errorMessage } from '../../api/client';
 import type { Bid, BidStatus } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
+import { cropEmojiFor } from '../../utils/cropImages';
+import { Appear } from '../../components/motion';
+import { IconCheck, IconClock } from '../../components/icons';
+import { SupplyContracts } from '../../components/SupplyContracts';
 
 const TABS: { value: '' | BidStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -56,6 +60,8 @@ function statusWord(status: string) {
 
 export default function IncomingBidsScreen() {
   const insets = useSafeAreaInsets();
+  // Contract proposals waiting on this seller, reported by SupplyContracts.
+  const [contractsWaiting, setContractsWaiting] = useState(0);
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -107,9 +113,14 @@ export default function IncomingBidsScreen() {
         <View style={styles.headerPad}>
           <Eyebrow>Offers from buyers</Eyebrow>
           <Text style={styles.h1}>
-            {pending} {pending === 1 ? 'offer waits' : 'offers wait'} <Text style={styles.h1Serif}>for your reply.</Text>
+            {pending + contractsWaiting === 0
+              ? <>You're <Text style={styles.h1Serif}>all caught up.</Text></>
+              : <>{pending + contractsWaiting} {pending + contractsWaiting === 1 ? 'offer waits' : 'offers wait'} <Text style={styles.h1Serif}>for your reply.</Text></>}
           </Text>
         </View>
+
+        {/* Contract proposals and running contracts, above single offers. */}
+        <SupplyContracts side="SELLER" onWaiting={setContractsWaiting} />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {TABS.map((t) => {
@@ -139,8 +150,10 @@ export default function IncomingBidsScreen() {
           </View>
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 10 }}>
-            {visible.map((b) => (
-              <BidRow key={b.id} bid={b} showExplainer={b.id === firstPendingId} onChanged={load} />
+            {visible.map((b, i) => (
+              <Appear key={b.id} index={i}>
+                <BidRow bid={b} showExplainer={b.id === firstPendingId} onChanged={load} />
+              </Appear>
             ))}
           </View>
         )}
@@ -183,34 +196,72 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
   }
 
   const isPending = bid.status === 'PENDING';
+  const l = bid.listing;
+  // Where their price sits against the seller's own range: the one comparison
+  // a farmer makes before deciding, done for them.
+  const verdict = l
+    ? bid.bidPricePerUnit >= l.pricePerUnitMax
+      ? { text: '✓ Your hoped price or more', tone: 'good' as const }
+      : bid.bidPricePerUnit >= l.pricePerUnitMin
+        ? { text: 'In your price range', tone: 'ok' as const }
+        : { text: `Below your ${money(l.pricePerUnitMin, currency)} floor`, tone: 'low' as const }
+    : null;
+  const phone = bid.contactPhone || bid.buyer?.phone;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, isPending && styles.cardPending]}>
       <View style={styles.cardHead}>
+        <View style={styles.cropTile}>
+          <Text style={styles.cropEmoji}>{cropEmojiFor(l?.cropName)}</Text>
+        </View>
         <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.cardCrop} numberOfLines={1}>
+            {l?.cropName ?? 'Listing'}{l?.cropVariety ? ` · ${l.cropVariety}` : ''}
+          </Text>
           <Text style={styles.buyer} numberOfLines={1}>
             {bid.buyer?.name ?? 'Buyer'}
-            {bid.isAgentBid ? <Text style={styles.agentTag}>  · agent</Text> : null}
-          </Text>
-          <Text style={styles.cardCrop} numberOfLines={1}>
-            {bid.listing?.cropName ?? 'Listing'}{bid.listing?.cropVariety ? ` · ${bid.listing.cropVariety}` : ''}
+            {bid.isAgentBid ? ' · agent' : ''}
+            {bid.buyer?.trustScore != null ? ` · trust ${Math.round(bid.buyer.trustScore)}` : ''}
           </Text>
         </View>
-        <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{statusWord(bid.status)}</StatusPill>
+        <View style={{ alignItems: 'flex-end', gap: 4 }}>
+          <StatusPill tone={STATUS_TONE[bid.status] ?? 'paper'}>{statusWord(bid.status)}</StatusPill>
+          <Mono style={styles.ago}>{timeAgo(bid.createdAt).toUpperCase()}</Mono>
+        </View>
       </View>
 
-      <Text style={styles.sub}>
-        {bid.buyer?.trustScore != null ? `Trust ${Math.round(bid.buyer.trustScore)} · ` : ''}
-        {bid.quantity.toLocaleString('en-IN')} {unit} · {timeAgo(bid.createdAt)}
-      </Text>
-
-      <View style={styles.figs}>
-        <Fig label="THEIR PRICE" value={`${money(bid.bidPricePerUnit, currency)}/${unit}`} />
-        {bid.counterPrice != null ? <Fig label="YOUR PRICE" value={`${money(bid.counterPrice, currency)}/${unit}`} hot /> : null}
-        <Fig label="TOTAL MONEY" value={money(bid.totalAmount, currency)} />
+      {/* The offer itself: their price large, what it comes to beside it. */}
+      <View style={styles.offerBox}>
+        <View style={styles.offerMain}>
+          <Mono style={styles.figLabel}>THEY OFFER</Mono>
+          <Text style={styles.offerPrice}>
+            {money(bid.bidPricePerUnit, currency)}
+            <Text style={styles.offerUnit}> /{unit}</Text>
+          </Text>
+          {verdict ? (
+            <View style={[styles.verdict, styles[`verdict_${verdict.tone}`]]}>
+              <Text style={[styles.verdictText, styles[`verdictText_${verdict.tone}`]]} numberOfLines={1}>
+                {verdict.text}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.offerSide}>
+          <Fig label="QUANTITY" value={`${bid.quantity.toLocaleString('en-IN')} ${unit}`} />
+          <Fig label="TOTAL" value={money(bid.totalAmount, currency)} />
+        </View>
       </View>
 
-      {(bid.deliveryAddress || bid.contactPhone || bid.buyer?.phone) ? (
+      {bid.counterPrice != null ? (
+        <View style={styles.youAsked}>
+          <Mono style={styles.figLabel}>YOU ASKED</Mono>
+          <Text style={styles.youAskedVal}>{money(bid.counterPrice, currency)}/{unit}</Text>
+        </View>
+      ) : null}
+
+      {bid.message ? <Text style={styles.message}>“{bid.message}”</Text> : null}
+
+      {(bid.deliveryAddress || phone) ? (
         <View style={styles.orderInfo}>
           {bid.deliveryAddress ? (
             <Text style={styles.orderInfoLine}>
@@ -218,86 +269,109 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
               {bid.deliveryAddress}
             </Text>
           ) : null}
-          {(bid.contactPhone || bid.buyer?.phone) ? (
-            <Text
-              style={styles.orderInfoLine}
-              onPress={() => Linking.openURL(`tel:${bid.contactPhone || bid.buyer?.phone}`)}
-            >
-              <Text style={styles.orderInfoLabel}>CALL BUYER  </Text>
-              <Text style={styles.orderInfoPhone}>☎ {bid.contactPhone || bid.buyer?.phone}</Text>
-            </Text>
+          {phone ? (
+            <Pressable onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.callBtn}>
+              <Text style={styles.callText}>☎ Call buyer · {phone}</Text>
+            </Pressable>
           ) : null}
         </View>
       ) : null}
 
-      {bid.message ? <Text style={styles.message}>“{bid.message}”</Text> : null}
-
       {isPending ? (
         <>
+          <Pressable
+            style={({ pressed }) => [styles.btnAccept, pressed && { opacity: 0.9 }]}
+            onPress={() => act('accept')}
+            disabled={!!busy}
+          >
+            {busy === 'accept' ? (
+              <ActivityIndicator size="small" color="#f4f1ea" />
+            ) : (
+              <>
+                <IconCheck size={16} stroke="#f4f1ea" />
+                <Text style={styles.btnAcceptText}>
+                  Accept {money(bid.bidPricePerUnit, currency)}/{unit}
+                </Text>
+              </>
+            )}
+          </Pressable>
           <View style={styles.actions}>
             <Pressable
-              style={({ pressed }) => [styles.btnAccept, pressed && { opacity: 0.9 }]}
-              onPress={() => act('accept')}
+              style={({ pressed }) => [styles.btnGhost, showCounter && styles.btnGhostOn, pressed && { opacity: 0.85 }]}
+              onPress={() => setShowCounter((v) => !v)}
               disabled={!!busy}
             >
-              {busy === 'accept' ? (
-                <ActivityIndicator size="small" color="#f4f1ea" />
-              ) : (
-                <Text style={styles.btnAcceptText}>Accept {money(bid.bidPricePerUnit, currency)}</Text>
-              )}
-            </Pressable>
-            <Pressable style={styles.btnGhost} onPress={() => setShowCounter((s) => !s)} disabled={!!busy}>
               <Text style={styles.btnGhostText}>Ask my price</Text>
             </Pressable>
-            <Pressable style={styles.btnLink} onPress={() => act('reject')} disabled={!!busy}>
+            <Pressable
+              style={({ pressed }) => [styles.btnGhost, styles.btnDecline, pressed && { opacity: 0.85 }]}
+              onPress={() => act('reject')}
+              disabled={!!busy}
+            >
               {busy === 'reject' ? (
                 <ActivityIndicator size="small" color={colors.ember} />
               ) : (
-                <Text style={styles.btnLinkText}>Decline</Text>
+                <Text style={styles.btnDeclineText}>Decline</Text>
               )}
             </Pressable>
           </View>
-          {showExplainer ? (
-            <Text style={styles.explain}>
-              If you accept, the deal is fixed. The buyer pays first — the money is kept safe and
-              comes to you after the crop is delivered.
-            </Text>
-          ) : null}
 
           {showCounter ? (
-            <View style={styles.counterRow}>
-              <TextInput
-                style={styles.counterInput}
-                value={counter}
-                onChangeText={setCounter}
-                keyboardType="numeric"
-                placeholder={`Your price per ${unit}`}
-                placeholderTextColor={design.ink3}
-              />
-              <Pressable
-                style={({ pressed }) => [styles.btnSend, (pressed || !(Number(counter) > 0)) && { opacity: 0.5 }]}
-                onPress={() => act('counter')}
-                disabled={!(Number(counter) > 0) || !!busy}
-              >
-                {busy === 'counter' ? <ActivityIndicator size="small" color="#f4f1ea" /> : <Text style={styles.btnSendText}>Send</Text>}
-              </Pressable>
+            <View style={styles.counterBox}>
+              {/* One tap to ask for the price they already said they hoped
+                  for, which is what most counters are. */}
+              {l && l.pricePerUnitMax > bid.bidPricePerUnit ? (
+                <Pressable onPress={() => setCounter(String(l.pricePerUnitMax))} style={styles.suggest}>
+                  <Text style={styles.suggestText}>
+                    Use your hoped price · {money(l.pricePerUnitMax, currency)}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <View style={styles.counterRow}>
+                <View style={styles.counterField}>
+                  <Text style={styles.rupee}>₹</Text>
+                  <TextInput
+                    style={styles.counterInput}
+                    value={counter}
+                    onChangeText={setCounter}
+                    keyboardType="numeric"
+                    placeholder={`Your price per ${unit}`}
+                    placeholderTextColor={design.ink3}
+                  />
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.btnSend, (pressed || !(Number(counter) > 0)) && { opacity: 0.5 }]}
+                  onPress={() => act('counter')}
+                  disabled={!(Number(counter) > 0) || !!busy}
+                >
+                  {busy === 'counter' ? <ActivityIndicator size="small" color="#f4f1ea" /> : <Text style={styles.btnSendText}>Send</Text>}
+                </Pressable>
+              </View>
             </View>
+          ) : null}
+
+          {showExplainer ? (
+            <Text style={styles.explain}>
+              If you accept, the deal is fixed. The buyer pays first, CropBid holds the money,
+              and it comes to you after the crop is delivered.
+            </Text>
           ) : null}
         </>
       ) : bid.status === 'COUNTERED' ? (
-        <Mono style={styles.waiting}>
-          You asked for {bid.counterPrice != null ? `${money(bid.counterPrice, currency)}/${unit}` : 'a different price'} — waiting for the buyer's reply.
-        </Mono>
+        <View style={styles.waiting}>
+          <IconClock size={14} stroke={design.ink3} />
+          <Text style={styles.waitingText}>Waiting for the buyer to answer your price.</Text>
+        </View>
       ) : null}
     </View>
   );
 }
 
-function Fig({ label, value, hot }: { label: string; value: string; hot?: boolean }) {
+function Fig({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ flex: 1 }}>
+    <View>
       <Mono style={styles.figLabel}>{label}</Mono>
-      <Mono style={[styles.figVal, hot && { color: colors.ember }]}>{value}</Mono>
+      <Text style={styles.figVal} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     </View>
   );
 }
@@ -311,43 +385,86 @@ const styles = StyleSheet.create({
   chips: { gap: 8, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 14 },
   chip: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 999 },
   chipActive: { backgroundColor: colors.forest },
-  chipIdle: { backgroundColor: design.paper2, borderWidth: 1, borderColor: design.line },
+  chipIdle: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line },
   chipText: { fontFamily: font.sansMed, fontSize: 13 },
 
   errorText: { fontFamily: font.sans, fontSize: 13.5, color: design.ink3, textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
   emptyCard: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 18 },
   emptyText: { fontFamily: font.sans, fontSize: 14, lineHeight: 21, color: design.ink2 },
 
-  card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 16, padding: 16 },
-  cardHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
-  buyer: { fontFamily: font.sansMed, fontSize: 15.5, color: design.ink },
-  agentTag: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3 },
-  cardCrop: { fontFamily: font.sans, fontSize: 13, color: design.ink3, marginTop: 1 },
-  sub: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 8 },
+  card: { backgroundColor: design.paper, borderWidth: 1, borderColor: design.line, borderRadius: 18, padding: 16, gap: 12 },
+  cardPending: { borderColor: 'rgba(200,96,43,0.35)' },
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cropTile: {
+    width: 44, height: 44, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: design.mint,
+  },
+  cropEmoji: { fontSize: 22 },
+  cardCrop: { fontFamily: font.sansBold, fontSize: 16, letterSpacing: -0.2, color: design.ink },
+  buyer: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, marginTop: 2 },
+  ago: { fontSize: 9, letterSpacing: 0.5, color: design.ink3 },
 
-  figs: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  figLabel: { fontSize: 10, letterSpacing: 0.5, color: design.ink3 },
-  figVal: { fontFamily: font.monoSemi, fontSize: 15, color: design.ink, marginTop: 2 },
+  offerBox: {
+    flexDirection: 'row', gap: 12,
+    backgroundColor: design.bg, borderRadius: 14, padding: 14,
+  },
+  offerMain: { flex: 1.4, minWidth: 0 },
+  offerSide: { flex: 1, minWidth: 0, gap: 10, borderLeftWidth: 1, borderLeftColor: design.line, paddingLeft: 12 },
+  offerPrice: { fontFamily: font.sansBold, fontSize: 24, letterSpacing: -0.6, color: design.ink, marginTop: 2 },
+  offerUnit: { fontFamily: font.sans, fontSize: 13, color: design.ink3 },
+  verdict: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8, maxWidth: '100%' },
+  verdict_good: { backgroundColor: design.mint },
+  verdict_ok: { backgroundColor: design.paper2 },
+  verdict_low: { backgroundColor: 'rgba(200,96,43,0.12)' },
+  verdictText: { fontFamily: font.sansSemi, fontSize: 11 },
+  verdictText_good: { color: colors.forest },
+  verdictText_ok: { color: design.ink2 },
+  verdictText_low: { color: colors.ember },
+  figLabel: { fontSize: 9, letterSpacing: 0.6, color: design.ink3 },
+  figVal: { fontFamily: font.sansSemi, fontSize: 14.5, color: design.ink, marginTop: 2 },
 
-  message: { fontFamily: font.sans, fontStyle: 'italic', fontSize: 13, color: design.ink2, marginTop: 12, padding: 10, backgroundColor: design.paper2, borderRadius: 8 },
-  orderInfo: { marginTop: 12, padding: 10, backgroundColor: design.paper2, borderRadius: 8, gap: 4 },
+  youAsked: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  youAskedVal: { fontFamily: font.sansBold, fontSize: 15, color: colors.ember },
+
+  message: { fontFamily: font.sans, fontStyle: 'italic', fontSize: 13, lineHeight: 19, color: design.ink2, borderLeftWidth: 2, borderLeftColor: design.mint, paddingLeft: 10 },
+  orderInfo: { padding: 12, backgroundColor: design.paper2, borderRadius: 12, gap: 8 },
   orderInfoLine: { fontFamily: font.sans, fontSize: 13, color: design.ink },
-  orderInfoLabel: { fontFamily: font.mono, fontSize: 10.5, color: design.ink3, letterSpacing: 0.4 },
-  orderInfoPhone: { fontFamily: font.sansMed, color: colors.forest },
-  explain: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: design.ink3, marginTop: 10 },
+  orderInfoLabel: { fontFamily: font.mono, fontSize: 10, color: design.ink3, letterSpacing: 0.4 },
+  callBtn: { alignSelf: 'flex-start', backgroundColor: design.mint, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  callText: { fontFamily: font.sansSemi, fontSize: 13, color: colors.forest },
+  explain: { fontFamily: font.sans, fontSize: 12, lineHeight: 17, color: design.ink3 },
 
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
-  btnAccept: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 10, backgroundColor: colors.forest },
-  btnAcceptText: { fontFamily: font.sansMed, fontSize: 13.5, color: '#f4f1ea' },
-  btnGhost: { paddingVertical: 11, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: design.line },
-  btnGhostText: { fontFamily: font.sansMed, fontSize: 13.5, color: design.ink2 },
-  btnLink: { paddingVertical: 11, paddingHorizontal: 8 },
-  btnLinkText: { fontFamily: font.sansMed, fontSize: 13.5, color: colors.ember },
+  btnAccept: {
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, borderRadius: 14, backgroundColor: colors.forest,
+  },
+  btnAcceptText: { fontFamily: font.sansSemi, fontSize: 15, color: '#f4f1ea' },
+  actions: { flexDirection: 'row', gap: 10, marginTop: -2 },
+  btnGhost: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: design.line, backgroundColor: design.paper,
+  },
+  btnGhostOn: { borderColor: colors.forest, backgroundColor: design.mint },
+  btnGhostText: { fontFamily: font.sansSemi, fontSize: 14, color: colors.forest },
+  btnDecline: { borderColor: 'rgba(200,96,43,0.3)' },
+  btnDeclineText: { fontFamily: font.sansSemi, fontSize: 14, color: colors.ember },
 
-  counterRow: { flexDirection: 'row', gap: 10, marginTop: 12, alignItems: 'center' },
-  counterInput: { flex: 1, borderWidth: 1, borderColor: design.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontFamily: font.sans, fontSize: 15, color: design.ink, backgroundColor: design.bg },
-  btnSend: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: 10, backgroundColor: colors.forest },
-  btnSendText: { fontFamily: font.sansMed, fontSize: 14, color: '#f4f1ea' },
+  counterBox: { gap: 8 },
+  suggest: { alignSelf: 'flex-start', backgroundColor: design.paper2, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 },
+  suggestText: { fontFamily: font.sansMed, fontSize: 12.5, color: colors.forest },
+  counterRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  counterField: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    borderWidth: 1, borderColor: design.line, borderRadius: 12, backgroundColor: design.bg, paddingLeft: 12,
+  },
+  rupee: { fontFamily: font.sansSemi, fontSize: 15, color: design.ink3 },
+  counterInput: { flex: 1, paddingHorizontal: 8, paddingVertical: 12, fontFamily: font.sans, fontSize: 15, color: design.ink },
+  btnSend: { paddingVertical: 13, paddingHorizontal: 20, borderRadius: 12, backgroundColor: colors.forest },
+  btnSendText: { fontFamily: font.sansSemi, fontSize: 14, color: '#f4f1ea' },
 
-  waiting: { fontSize: 12, color: design.ink3, marginTop: 12 },
+  waiting: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: design.paper2, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+  },
+  waitingText: { flex: 1, fontFamily: font.sans, fontSize: 12.5, color: design.ink2 },
 });

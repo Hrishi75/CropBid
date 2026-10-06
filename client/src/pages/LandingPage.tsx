@@ -26,8 +26,8 @@
 // =============================================================================
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import type { CSSProperties, ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
@@ -37,12 +37,22 @@ import { LiveShelf } from './consumer/LiveShelf';
 import { CartLink } from '../components/consumer/CartBar';
 import type { User } from '../types';
 import { useRatesHeading } from '../utils/ratesDate';
+import { hasOpenApplication, partnerApplication, PARTNER_STATUS_META } from '../utils/partner';
 import {
   type Country, type CurrencyCode, type UnitCode,
   UNIT_LABEL, formatUnitPrice,
   loadCountry, saveCountry, CountrySelector,
   ArcMark, ArrowIcon, SearchIcon, CBFooter, India2047Mark,
 } from './landing/shared';
+
+// The seller's main verb, by kind: a shop adds stock, a wholesaler lists a
+// lot, and only a farm sells a crop or lists a harvest.
+function sellVerb(user: { farmerProfile?: { sellerType?: string | null } | null } | null | undefined, long = false): string {
+  const kind = user?.farmerProfile?.sellerType;
+  if (kind === 'LOCAL_SHOP') return 'Add stock';
+  if (kind === 'WHOLESALER') return 'List a lot';
+  return long ? 'List your harvest' : 'Sell a crop';
+}
 
 // =============================================================================
 // Reference prices — the ONLY hardcoded numbers left on this page
@@ -390,7 +400,7 @@ function StoreHeader({
                   to={user.role === 'FARMER' ? '/farmer/listings/new' : '/buyer/browse'}
                   className="cb-btn cb-btn-primary"
                 >
-                  {user.role === 'FARMER' ? t('Sell a crop') : t('Browse live lots')}
+                  {user.role === 'FARMER' ? t(sellVerb(user)) : t('Browse live lots')}
                   <ArrowIcon />
                 </Link>
               ) : (
@@ -424,6 +434,13 @@ function StoreHeader({
                     <Link to={account.to} role="menuitem" className="cb-nav-menu-link" onClick={closeAccount}>
                       {t(account.label)}
                     </Link>
+                    {/* A shopper who applied to sell or buy stays a shopper until
+                        approved, so this is their one way back to the decision. */}
+                    {hasOpenApplication(user) && (
+                      <Link to="/partner/status" role="menuitem" className="cb-nav-menu-link" onClick={closeAccount}>
+                        {t('Your application')} · <span style={{ color: PARTNER_STATUS_META[partnerApplication(user)!.status].color }}>{t(PARTNER_STATUS_META[partnerApplication(user)!.status].label)}</span>
+                      </Link>
+                    )}
                     <button
                       type="button"
                       role="menuitem"
@@ -534,7 +551,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   // their orders. A signed-in shopper must not fall through to the guest CTA —
   // "Sell your harvest" is the one thing they are certainly not here to do.
   const secondary = user?.role === 'FARMER'
-    ? { to: '/farmer/listings/new', label: 'List your harvest' }
+    ? { to: '/farmer/listings/new', label: sellVerb(user, true) }
     : user?.role === 'BUYER'
       ? { to: '/buyer/bids', label: 'My bids' }
       : user?.role === 'CONSUMER'
@@ -570,7 +587,7 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
           <span className="italic">{t('farmer-fair')}</span> {t('prices.')}
         </h1>
         <p className="st-banner-lede">
-          {t('Buy vegetables, fruits, grains and spices straight from the grower — today\'s real mandi price behind every pack, escrow-settled, delivered farm to door.')}
+          {t('Buy vegetables, fruits, grains and spices from local shops and farms near you, with today\'s real mandi price behind every pack and payment held in escrow.')}
         </p>
         <div className="st-banner-actions">
           <button type="button" className="cb-btn st-btn-cream" onClick={onShop}>
@@ -617,6 +634,149 @@ function HeroBanner({ onShop, board, currency, user }: { onShop: () => void; boa
   );
 }
 
+// The two partner banners that slide in beside the hero. Each is one picture
+// (the copy is part of the artwork), so the whole card is the button and the
+// label says what pressing it does.
+const PARTNER_SLIDES = [
+  {
+    key: 'sell',
+    src: '/banners/partner-sell.webp',
+    to: '/partner#sell',
+    label: 'Become a selling partner: list your produce and sell directly to approved buyers across India',
+    title: <>Sign in to<br /><span className="cb-italic">become a selling partner.</span></>,
+  },
+  {
+    key: 'buy',
+    src: '/banners/partner-buy.webp',
+    to: '/partner#buy',
+    label: 'Become a buying partner: source produce directly from farmers and approved sellers',
+    title: <>Sign in to<br /><span className="cb-italic">become a buying partner.</span></>,
+  },
+] as const;
+
+const AUTOPLAY_MS = 5000;
+
+// The hero, then the partner banners, on one swipeable track. Scroll-snap does
+// the sliding, so touch, trackpad and keyboard scrolling all work without a
+// gesture library. On a wide screen the two banners sit side by side as one
+// page; below 960px each is a page of its own. The pages are read off the
+// slides' own positions rather than counted, so the dots match whichever
+// layout the CSS chose.
+function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User | null; authLoading: boolean }) {
+  const navigate = useNavigate();
+  const { openAuth } = useAuthModal();
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [pages, setPages] = useState<number[]>([0]);
+  const [active, setActive] = useState(0);
+  // Held only while a finger or mouse button is down on the track, so a
+  // swipe in progress is not yanked away. It rotates the rest of the time;
+  // a manual move changes `active`, which restarts the timer from zero.
+  const [held, setHeld] = useState(false);
+
+  // An approved seller is not asked to become one, nor a buyer a buyer. A
+  // seller still sees the buying banner, since a seller can apply to buy.
+  const slides = PARTNER_SLIDES.filter((s) =>
+    !(s.key === 'sell' && user?.role === 'FARMER') && !(s.key === 'buy' && user?.role === 'BUYER'));
+
+  const measure = useCallback(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    const max = track.scrollWidth - track.clientWidth;
+    const stops: number[] = [];
+    for (const el of Array.from(track.children) as HTMLElement[]) {
+      // The track is positioned, so offsetLeft is measured from it.
+      const x = Math.min(el.offsetLeft, max);
+      if (!stops.some((s) => Math.abs(s - x) < 4)) stops.push(x);
+    }
+    setPages(stops.length ? stops : [0]);
+  }, []);
+
+  // A ResizeObserver reports once on observe, so this also takes the first
+  // measurement, and again whenever the layout switches between one and two
+  // banners a page.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    return () => ro.disconnect();
+  }, [measure, slides.length]);
+
+  const onScroll = () => {
+    const track = trackRef.current;
+    if (!track) return;
+    let best = 0;
+    pages.forEach((p, i) => { if (Math.abs(p - track.scrollLeft) < Math.abs(pages[best] - track.scrollLeft)) best = i; });
+    setActive(best);
+  };
+
+  const goTo = useCallback((i: number) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const n = (i + pages.length) % pages.length;
+    track.scrollTo({ left: pages[n], behavior: 'smooth' });
+  }, [pages]);
+
+  useEffect(() => {
+    if (held || pages.length < 2) return;
+    const id = window.setInterval(() => goTo(active + 1), AUTOPLAY_MS);
+    return () => window.clearInterval(id);
+  }, [held, pages.length, active, goTo]);
+
+  // Signed in: straight to the partner page, at the matching section. Signed
+  // out: the sign-in window, and the partner page once they are in. While the
+  // session is still being restored `user` is null either way, and /partner
+  // works signed out too, so send them there rather than pop a prompt on a
+  // session about to come back.
+  const openPartner = (slide: (typeof PARTNER_SLIDES)[number]) => {
+    if (user || authLoading) { navigate(slide.to); return; }
+    openAuth({ redirectTo: slide.to, title: slide.title });
+  };
+
+  return (
+    <section
+      className="st-hero-carousel"
+      aria-roledescription="carousel"
+      aria-label="Highlights"
+    >
+      <div
+        className="st-hero-track"
+        ref={trackRef}
+        onScroll={onScroll}
+        onPointerDown={() => setHeld(true)}
+        onPointerUp={() => setHeld(false)}
+        onPointerCancel={() => setHeld(false)}
+        onPointerLeave={() => setHeld(false)}
+      >
+        <div className="st-hero-slide">{hero}</div>
+        {slides.map((s) => (
+          <button key={s.key} type="button" className="st-partner-slide" aria-label={s.label} onClick={() => openPartner(s)}>
+            <img src={s.src} alt="" width={972} height={809} loading="lazy" decoding="async" />
+          </button>
+        ))}
+      </div>
+      {pages.length > 1 && (
+        <div className="st-hero-controls">
+          <button type="button" className="st-hero-arrow" aria-label="Previous slide" onClick={() => goTo(active - 1)}>‹</button>
+          <div className="st-hero-dots">
+            {pages.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                className={`st-hero-dot${i === active ? ' on' : ''}`}
+                aria-label={`Slide ${i + 1} of ${pages.length}`}
+                aria-current={i === active}
+                onClick={() => goTo(i)}
+              />
+            ))}
+          </div>
+          <button type="button" className="st-hero-arrow" aria-label="Next slide" onClick={() => goTo(active + 1)}>›</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 // Placeholder cards that occupy exactly the height the real board will, so the
 // swap to live rates moves nothing. Real elements carrying real (transparent)
 // text rather than fixed-height bars: the line boxes are then identical to the
@@ -649,7 +809,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <section className="st-rates">
         <div className="st-rates-head">
           <div className="st-rates-title">
-            <span className="cb-eyebrow">Mandi rates</span>
+            <h2 className="cb-eyebrow">Mandi rates</h2>
           </div>
           <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
           <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
@@ -665,7 +825,7 @@ function LiveRatesBoard({ board, pending, currency }: { board: RatesBoardData | 
       <div className="st-rates-head">
         <div className="st-rates-title">
           {board.live && <span className="st-live-dot" />}
-          <span className="cb-eyebrow">{heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}</span>
+          <h2 className="cb-eyebrow">{heading.title}{board.live ? ' · live' : ''}{heading.date ? ` · ${heading.date}` : ''}</h2>
         </div>
         <span className="cb-mono st-rates-src">GOVT. AGMARKNET · ₹ WHOLESALE · vs USUAL</span>
         <Link to="/rates" className="st-seeall">full board, every mandi <ArrowIcon size={12} /></Link>
@@ -740,7 +900,7 @@ function ForecastStrip() {
       <section className="st-fc">
         <div className="st-rates-head">
           <div className="st-rates-title">
-            <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+            <h2 className="cb-eyebrow">CropBid forecast · where prices go next</h2>
           </div>
           <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
           <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
@@ -759,7 +919,7 @@ function ForecastStrip() {
     <section className="st-fc">
       <div className="st-rates-head">
         <div className="st-rates-title">
-          <span className="cb-eyebrow">CropBid forecast · where prices go next</span>
+          <h2 className="cb-eyebrow">CropBid forecast · where prices go next</h2>
         </div>
         <span className="cb-mono st-rates-src">DEMAND &amp; SUPPLY MODEL · NEXT 7 DAYS</span>
         <Link to="/forecast" className="st-seeall">full forecast, with the why <ArrowIcon size={12} /></Link>
@@ -828,6 +988,10 @@ function SellCTA({ user }: { user: User | null }) {
   // farmer-targeted. A household shopper is the last person to pitch "list your
   // harvest" at, and they were falling through to the guest version of it.
   if (user?.role === 'BUYER' || user?.role === 'CONSUMER') return null;
+  // "Grow it?" is a farmer's question; a shop or a wholesaler already sells
+  // here and grows nothing.
+  const kind = user?.farmerProfile?.sellerType;
+  if (kind === 'LOCAL_SHOP' || kind === 'WHOLESALER') return null;
   // /partner rather than /signup, for the reason given on the hero's link.
   const sellHref = user?.role === 'FARMER' ? '/farmer/listings/new' : '/partner';
   const sellLabel = user?.role === 'FARMER' ? 'List your harvest' : 'Start selling free';
@@ -839,7 +1003,7 @@ function SellCTA({ user }: { user: User | null }) {
           <div>
             <h2 className="cb-h1">{t('Grow it?')} <span className="italic">{t('Sell it here.')}</span></h2>
             <p className="cb-body cta-lede">
-              {t('List your harvest in two minutes and let verified buyers bid it up. No mandi trips, no guesswork — you keep the margin.')}
+              {t('List your harvest in two minutes and let approved buyers bid it up. No mandi trips, no guesswork — you keep the margin.')}
             </p>
           </div>
           <div className="cta-actions">
@@ -1031,7 +1195,7 @@ export function LandingPage() {
             shelf itself, so a search hides the marketing sections around it
             rather than routing to a separate results page over demo data. */}
         {!searching && (
-          <HeroBanner
+          <HeroCarousel user={user} authLoading={authLoading} hero={<HeroBanner
             onShop={() => {
               // While the initial /auth/refresh is still in flight, `user` is
               // null whether or not this is a returning shopper. Scroll now,
@@ -1048,7 +1212,7 @@ export function LandingPage() {
             board={board}
             currency={currency}
             user={user}
-          />
+          />} />
         )}
         <LiveShelf query={query} />
         {!searching && (

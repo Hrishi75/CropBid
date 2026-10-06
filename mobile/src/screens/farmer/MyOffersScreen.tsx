@@ -9,6 +9,10 @@
 // A pending counter can still be pulled back; nothing else can, which is why
 // Withdraw only appears on one of them.
 //
+// A BUYER CAN COUNTER BACK (a restaurant negotiates every order). That offer
+// is COUNTERED and leads the list as "Buyer countered": accept their price,
+// which makes the deal, or send a new one between theirs and yours.
+//
 // Mirrors client/src/pages/farmer/MyOffers.tsx.
 // =============================================================================
 
@@ -16,6 +20,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
+  TextInput,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,13 +31,14 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Eyebrow, Mono } from '../../components/buyerKit';
 import { PressScale } from '../../components/motion';
-import { myRequirementOffers, withdrawRequirementOffer } from '../../api/endpoints';
+import { acceptBuyerCounter, myRequirementOffers, reviseRequirementOffer, withdrawRequirementOffer } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import type { RequirementOffer, RequirementOfferStatus } from '../../api/types';
 import { colors, design, font } from '../../theme';
 
 const TABS: Array<{ value: RequirementOfferStatus | ''; label: string }> = [
+  { value: 'COUNTERED', label: 'Buyer countered' },
   { value: 'PENDING', label: 'Awaiting buyer' },
   { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'REJECTED', label: 'Rejected' },
@@ -41,6 +47,7 @@ const TABS: Array<{ value: RequirementOfferStatus | ''; label: string }> = [
 
 const STATUS_COLOR: Record<RequirementOfferStatus, string> = {
   PENDING: colors.wheat,
+  COUNTERED: colors.ember,
   ACCEPTED: colors.sage,
   REJECTED: design.ink3,
   WITHDRAWN: design.ink3,
@@ -55,11 +62,17 @@ export default function MyOffersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<RequirementOfferStatus | ''>('PENDING');
+  const [revising, setRevising] = useState<string | null>(null);
+  const [newPrice, setNewPrice] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setOffers(await myRequirementOffers());
+      const list = await myRequirementOffers();
+      setOffers(list);
       setError(null);
+      // A counter is the seller's move, so it is where they land.
+      if (list.some((o) => o.status === 'COUNTERED')) setTab((t) => (t === 'PENDING' ? 'COUNTERED' : t));
     } catch (e) {
       setError(errorMessage(e, 'Could not load your offers'));
     } finally {
@@ -85,6 +98,35 @@ export default function MyOffersScreen() {
     () => (tab ? offers.filter((o) => o.status === tab) : offers),
     [offers, tab],
   );
+
+  async function takeTheirPrice(o: RequirementOffer) {
+    setBusy(o.id);
+    try {
+      await acceptBuyerCounter(o.id);
+      Alert.alert('Deal made', 'The buyer has been told. It is in your deliveries once they pay.');
+      await load();
+    } catch (e) {
+      Alert.alert('Could not accept it', errorMessage(e, 'Please try again'));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendNewPrice(o: RequirementOffer) {
+    const price = Number(newPrice);
+    if (!(price > 0)) { Alert.alert('Enter a price', 'Type your new price per unit.'); return; }
+    setBusy(o.id);
+    try {
+      await reviseRequirementOffer(o.id, price);
+      setRevising(null);
+      setNewPrice('');
+      await load();
+    } catch (e) {
+      Alert.alert('Could not send it', errorMessage(e, 'Please try again'));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   function confirmWithdraw(o: RequirementOffer) {
     Alert.alert('Withdraw this offer?', 'The buyer stops seeing it. You can offer again later.', [
@@ -167,7 +209,7 @@ export default function MyOffersScreen() {
                 <Text style={styles.crop} numberOfLines={1}>
                   {r ? `${r.cropName}${r.cropVariety ? ` · ${r.cropVariety}` : ''}` : 'Requirement'}
                 </Text>
-                <Mono style={[styles.status, { color: STATUS_COLOR[o.status] }]}>● {o.status}</Mono>
+                <Mono style={[styles.status, { color: STATUS_COLOR[o.status] }]}>● {o.status === 'COUNTERED' ? 'BUYER COUNTERED' : o.status}</Mono>
               </View>
 
               <Text style={styles.terms}>
@@ -183,7 +225,40 @@ export default function MyOffersScreen() {
 
               {/* Only a counter still waiting on the buyer can be pulled back.
                   An accepted offer is a deal, and a rejected one is over. */}
-              {o.status === 'PENDING' && o.kind === 'COUNTER' ? (
+              {o.status === 'COUNTERED' && o.buyerCounterPrice != null ? (
+                <View style={styles.counterBox}>
+                  <Text style={styles.counterLine}>
+                    They would pay {money(o.buyerCounterPrice, o.currency)}{unit ? `/${unit}` : ''} · {money(o.buyerCounterPrice * o.quantity, o.currency)} in all
+                  </Text>
+                  {revising === o.id ? (
+                    <View style={styles.reviseRow}>
+                      <TextInput
+                        style={styles.reviseInput}
+                        value={newPrice}
+                        onChangeText={(t) => setNewPrice(t.replace(/[^0-9.]/g, ''))}
+                        keyboardType="decimal-pad"
+                        placeholder={`Between ${money(o.buyerCounterPrice, o.currency)} and ${money(o.pricePerUnit, o.currency)}`}
+                        placeholderTextColor={design.ink3}
+                        autoFocus
+                      />
+                      <PressScale onPress={busy ? undefined : () => void sendNewPrice(o)} cardStyle={[styles.btn, styles.btnPrimary]}>
+                        <Text style={styles.btnPrimaryText}>Send</Text>
+                      </PressScale>
+                    </View>
+                  ) : (
+                    <View style={styles.reviseRow}>
+                      <PressScale onPress={busy ? undefined : () => void takeTheirPrice(o)} style={{ flex: 1 }} cardStyle={[styles.btn, styles.btnPrimary, busy === o.id && { opacity: 0.6 }]}>
+                        <Text style={styles.btnPrimaryText}>Accept {money(o.buyerCounterPrice, o.currency)}</Text>
+                      </PressScale>
+                      <PressScale onPress={() => { setRevising(o.id); setNewPrice(''); }} style={{ flex: 1 }} cardStyle={styles.btn}>
+                        <Text style={styles.btnText}>New price</Text>
+                      </PressScale>
+                    </View>
+                  )}
+                </View>
+              ) : null}
+
+              {(o.status === 'PENDING' || o.status === 'COUNTERED') && o.kind === 'COUNTER' ? (
                 <Pressable onPress={() => confirmWithdraw(o)} hitSlop={6}>
                   <Text style={styles.withdraw}>Withdraw offer</Text>
                 </Pressable>
@@ -198,6 +273,17 @@ export default function MyOffersScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: design.bg },
+  counterBox: { backgroundColor: 'rgba(200,96,43,0.08)', borderRadius: 12, padding: 12, gap: 10, marginTop: 4 },
+  counterLine: { fontFamily: font.sansSemi, fontSize: 14, color: design.ink },
+  reviseRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  reviseInput: {
+    flex: 1, borderWidth: 1, borderColor: design.line, borderRadius: 11, backgroundColor: design.paper,
+    paddingHorizontal: 12, paddingVertical: 10, fontFamily: font.sans, fontSize: 14.5, color: design.ink,
+  },
+  btn: { borderWidth: 1, borderColor: design.line, borderRadius: 11, paddingVertical: 11, paddingHorizontal: 14, alignItems: 'center', backgroundColor: design.paper },
+  btnPrimary: { backgroundColor: colors.forest, borderColor: colors.forest },
+  btnText: { fontFamily: font.sansSemi, fontSize: 14, color: design.ink },
+  btnPrimaryText: { fontFamily: font.sansSemi, fontSize: 14, color: colors.textInverse },
   head: {
     paddingHorizontal: 16,
     paddingBottom: 12,

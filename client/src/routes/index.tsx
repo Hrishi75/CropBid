@@ -37,6 +37,8 @@ import { IncomingBids } from '../pages/farmer/IncomingBids';
 import { Deliveries } from '../pages/farmer/Deliveries';
 import { DemandBoard } from '../pages/shared/DemandBoard';
 import { MyOffers } from '../pages/farmer/MyOffers';
+import { CreditApply } from '../pages/buyer/CreditApply';
+import { ContractsPage } from '../pages/shared/ContractsPage';
 import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
 import { BrowseListings } from '../pages/buyer/BrowseListings';
 import { MyBids } from '../pages/buyer/MyBids';
@@ -44,12 +46,14 @@ import { MyRequirements } from '../pages/buyer/MyRequirements';
 import { CreateRequirement } from '../pages/buyer/CreateRequirement';
 import { RequirementDetail } from '../pages/buyer/RequirementDetail';
 import { PlaceBid } from '../pages/buyer/PlaceBid';
+import { RestockList } from '../pages/buyer/RestockList';
 import { AdminDashboard } from '../pages/admin/AdminDashboard';
 import { AdminUsers } from '../pages/admin/AdminUsers';
 import { AdminPartners } from '../pages/admin/AdminPartners';
 import { AdminListings } from '../pages/admin/AdminListings';
 import { AdminTransactions } from '../pages/admin/AdminTransactions';
 import { AdminEnquiries } from '../pages/admin/AdminEnquiries';
+import { AdminCredit } from '../pages/admin/AdminCredit';
 import { AdminInputs } from '../pages/admin/AdminInputs';
 import { AdminEquipment } from '../pages/admin/AdminEquipment';
 import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
@@ -306,10 +310,34 @@ export function AppRoutes() {
       {/* Requirements — /new and /:id/edit declared before /:id, matching how
           the farmer's listing routes are ordered. */}
       <Route
+        path="/contracts"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER', 'FARMER']}>
+            <ContractsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/credit"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <CreditApply />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/buyer/requirements/new"
         element={
           <ProtectedRoute allowedRoles={['BUYER']}>
             <CreateRequirement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buyer/requirements/list"
+        element={
+          <ProtectedRoute allowedRoles={['BUYER']}>
+            <RestockList />
           </ProtectedRoute>
         }
       />
@@ -566,6 +594,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminEnquiries />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/credit"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminCredit />
           </ProtectedRoute>
         }
       />

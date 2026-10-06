@@ -69,6 +69,29 @@ export async function getPlatformStats() {
 // =============================================================================
 // LIST USERS — Paginated user list with search
 // =============================================================================
+// Phone numbers are stored as typed: sign-up drops spaces, the profile editor
+// keeps whatever it is given, so one person is `9822055667`, another
+// `+919822055667` and a third `98220-55667` (CLAUDE.md §4). Both sides are
+// therefore compared as digits only: the search with any leading 91 country
+// code dropped, the stored number with its punctuation stripped in the query,
+// matched as a substring so either form finds either.
+//
+// Only a search with no letters and no @ in it is a phone search, and only from
+// four digits: "Ward 2026" is somebody's name, and its digits would otherwise
+// match every account whose number contains 2026. Any other punctuation is let
+// through, because the profile editor accepts any, so `98220.55667` is a real
+// stored number an admin may paste back in. Letters in any script count, so a
+// name typed in Devanagari is a name too.
+export function phoneSearchDigits(search: string): string | null {
+  if (/[\p{L}@]/u.test(search)) return null;
+  let digits = search.replace(/\D/g, '');
+  const typedCountryCode = /^\s*(\+91|91\D)/.test(search);
+  if (typedCountryCode || (digits.length === 12 && digits.startsWith('91'))) {
+    digits = digits.slice(2);
+  }
+  return digits.length >= 4 ? digits : null;
+}
+
 export async function getUsers(search?: string, role?: string, limit = 20, offset = 0) {
   const where: any = {};
 
@@ -77,6 +100,15 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
       { name: { contains: search, mode: 'insensitive' } },
       { email: { contains: search, mode: 'insensitive' } },
     ];
+    const phone = phoneSearchDigits(search);
+    if (phone) {
+      // Prisma cannot strip characters inside a where clause, so the ids come
+      // from raw SQL. `phone` is digits only, so it holds no LIKE wildcards.
+      const matches = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User"
+        WHERE regexp_replace(phone, '[^0-9]', '', 'g') LIKE '%' || ${phone} || '%'`;
+      where.OR.push({ id: { in: matches.map((m) => m.id) } });
+    }
   }
 
   if (role && ['FARMER', 'BUYER', 'ADMIN'].includes(role)) {
@@ -396,21 +428,26 @@ export async function deleteListing(listingId: string) {
 // What decides whether an account can go. The user list sends the answer on
 // every row and deleteUser applies it, from this one function, so the panel
 // can never offer a delete the server then refuses.
+// A proposed or running supply contract blocks it too: the contract cascades
+// with either party, so deleting one would silently end the other side's
+// agreement before its first batch was ever a deal.
+const LIVE_CONTRACT = { where: { status: { in: ['PROPOSED', 'ACTIVE'] as ('PROPOSED' | 'ACTIVE')[] } } };
 const DELETE_BLOCKER_SELECT = {
-  _count: { select: { farmerTransactions: true, buyerTransactions: true } },
+  _count: { select: { farmerTransactions: true, buyerTransactions: true, contractsAsBuyer: LIVE_CONTRACT, contractsAsSeller: LIVE_CONTRACT } },
   wallet: { select: { _count: { select: { entries: true } } } },
 } as const;
 
-export type UserDeleteBlocker = 'ADMIN' | 'TRANSACTIONS' | 'WALLET';
+export type UserDeleteBlocker = 'ADMIN' | 'TRANSACTIONS' | 'WALLET' | 'CONTRACTS';
 
 export function userDeleteBlocker(u: {
   role: string;
-  _count: { farmerTransactions: number; buyerTransactions: number };
+  _count: { farmerTransactions: number; buyerTransactions: number; contractsAsBuyer?: number; contractsAsSeller?: number };
   wallet: { _count: { entries: number } } | null;
 }): UserDeleteBlocker | null {
   if (u.role === 'ADMIN') return 'ADMIN';
   if (u._count.farmerTransactions + u._count.buyerTransactions > 0) return 'TRANSACTIONS';
   if ((u.wallet?._count.entries ?? 0) > 0) return 'WALLET';
+  if ((u._count.contractsAsBuyer ?? 0) + (u._count.contractsAsSeller ?? 0) > 0) return 'CONTRACTS';
   return null;
 }
 
@@ -449,6 +486,8 @@ export async function deleteUser(userId: string, actingAdminId: string) {
         throw new ApiError(409, 'User has transactions and cannot be hard-deleted');
       case 'WALLET':
         throw new ApiError(409, 'User has wallet history and cannot be hard-deleted: that is money they paid us');
+      case 'CONTRACTS':
+        throw new ApiError(409, 'User has a proposed or running supply contract. End it first.');
     }
 
     const agent = await tx.agentConfig.findUnique({ where: { userId } });

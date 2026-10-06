@@ -50,7 +50,8 @@ export type TabParamList = {
 export type BuyerTabParamList = {
   Home: undefined;
   Dashboard: undefined;
-  Agents: undefined;
+  /** What this buyer has asked for, and the offers on it. */
+  Requests: undefined;
   Contracts: undefined;
   You: undefined;
 };
@@ -67,12 +68,17 @@ export type RootStackParamList = {
   Demand: undefined;
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyRequirements: undefined;
-  CreateRequirement: undefined;
+  // `crop` prefills the crop, from a lot a restaurant cannot bid on.
+  // A retailer's shopping list: many crops, one delivery.
+  RestockList: undefined;
+  CreateRequirement: { crop?: string } | undefined;
   Auction: { listingId?: string } | undefined;
   CropSellers: { crop: string; preview?: Listing[]; retailIn?: string };
   ListingDetail: { id: string; preview?: Listing };
   Rates: { tab?: 'rates' | 'forecast' } | undefined;
   Wallet: undefined;
+  // Business credit, opened from the card on a buyer's wallet.
+  CreditApply: undefined;
   Schemes: undefined;
   Notifications: undefined;
 };
@@ -90,6 +96,8 @@ export type FarmerTabParamList = {
 
 export type FarmerStackParamList = {
   FarmerTabs: undefined;
+  /** A local shop applying to buy stock for itself, or seeing where that stands. */
+  BuyForShop: undefined;
   // Help, about and the policies. On EVERY stack, because they are the pages
   // anyone might need whatever they are: a farmer wants the terms as much as a
   // shopper, and a guest is entitled to read the privacy policy before handing
@@ -167,7 +175,8 @@ export type DemandStackParamList = {
   RequirementDetail: { id: string; preview?: BuyerRequirement };
   MyOffers: undefined;
   MyRequirements: undefined;
-  CreateRequirement: undefined;
+  // `crop` prefills the crop, from a lot a restaurant cannot bid on.
+  CreateRequirement: { crop?: string } | undefined;
 };
 
 // Partner app — where a seller or buyer waits while their application is
