@@ -18,7 +18,7 @@ import { config } from './config';
 import { initializeSocket } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
 import { purgeExpiredSignInData } from './services/retention.service';
-import { encryptStoredPayoutDetails } from './services/payoutDetails';
+import { countSealedPayoutDetails, encryptStoredPayoutDetails } from './services/payoutDetails';
 import { assertEncryptionKeyValid, isEncryptionConfigured } from './utils/fieldCrypto';
 import { warmRates } from './services/rates.service';
 import { repostDueRequirements } from './services/requirement.service';
@@ -51,13 +51,28 @@ void clearPlaintextRefreshTokens()
 
 // Payout details are encrypted at rest when PAYOUT_ENCRYPTION_KEY is set. A
 // malformed key stops the boot here rather than leaving details unreadable
-// later; a missing one is said out loud, then the rows already stored in the
-// clear are encrypted. Never fatal beyond the malformed key.
+// later. So does a MISSING key once anything has been encrypted with one: the
+// key was removed after use, every seller's account read and every payout
+// read would fail, and a seller re-saving their details would store them in
+// the clear. A failed start is seen at once, in the deploy; that is not.
+// With no key and nothing encrypted yet, it is said out loud and nothing else.
+// Otherwise the rows still stored in the clear are encrypted.
 assertEncryptionKeyValid();
 if (!isEncryptionConfigured()) {
-  if (config.nodeEnv === 'production') {
-    console.warn('⚠️  PAYOUT_ENCRYPTION_KEY is not set: seller bank details are stored unencrypted');
-  }
+  void countSealedPayoutDetails()
+    .then((sealed) => {
+      if (sealed > 0) {
+        console.error(
+          `FATAL: ${sealed} seller profile(s) hold encrypted payout details but PAYOUT_ENCRYPTION_KEY is not set. ` +
+            'Restore the key that encrypted them.',
+        );
+        process.exit(1);
+      }
+      if (config.nodeEnv === 'production') {
+        console.warn('⚠️  PAYOUT_ENCRYPTION_KEY is not set: seller bank details are stored unencrypted');
+      }
+    })
+    .catch((err) => console.error('Could not check for encrypted payout details:', err));
 } else {
   void encryptStoredPayoutDetails()
     .then((n) => {

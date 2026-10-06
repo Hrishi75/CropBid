@@ -269,3 +269,14 @@ export async function encryptStoredPayoutDetails(): Promise<number> {
   }
   return sealed;
 }
+
+/**
+ * How many seller profiles hold an encrypted payout detail. Boot asks this when
+ * no key is set: any at all means the key was removed after use, and every
+ * read of those rows would fail.
+ */
+export async function countSealedPayoutDetails(): Promise<number> {
+  return prisma.farmerProfile.count({
+    where: { OR: SEALED_COLUMNS.map((column) => ({ [column]: { startsWith: 'enc:' } })) },
+  });
+}

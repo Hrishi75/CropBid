@@ -1902,6 +1902,10 @@ model SecurityIncident {
   dataCategories       String? // e.g. "phone numbers, delivery addresses"
   usersAffected        Int?
   actionsTaken         String?
+  /// Why an incident once recorded as exposing personal data was found not
+  /// to. Required to untick personalDataAffected, so the reporting duty
+  /// cannot disappear without a reason on record (incident.service).
+  exposureRuledOut String?
 
   boardNotifiedAt DateTime? // First intimation to the Board, without delay
   boardReportAt   DateTime? // Detailed report to the Board, due within 72 hours

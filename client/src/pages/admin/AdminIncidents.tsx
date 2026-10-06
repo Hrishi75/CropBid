@@ -31,6 +31,7 @@ interface Incident {
   dataCategories: string | null;
   usersAffected: number | null;
   actionsTaken: string | null;
+  exposureRuledOut: string | null;
   boardNotifiedAt: string | null;
   boardReportAt: string | null;
   usersNotifiedAt: string | null;
@@ -62,20 +63,34 @@ function timeLeft(dueIso: string): string {
   return ms >= 0 ? `${hours}h ${minutes}m left` : `${hours}h ${minutes}m overdue`;
 }
 
+interface Summary { notClosed: number; reportOwed: number; reportOverdue: number }
+
 export function AdminIncidents() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  // Counted by the server over the whole register: a report owed on page two
+  // is still owed, so the headline cannot be the rows on screen.
+  const [summary, setSummary] = useState<Summary | null>(null);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
   async function load() {
     setLoading(true);
     setFailed(false);
     try {
-      const res = await api.get('/admin/incidents');
+      const res = await api.get('/admin/incidents', { params: { page } });
       setIncidents(res.data.incidents);
+      setSummary(res.data.summary);
+      setPages(res.data.pagination?.totalPages ?? 1);
+      setTotal(res.data.pagination?.total ?? res.data.incidents.length);
     } catch (err) {
       console.error('Failed to load incidents:', err);
       // Said, not shown as an empty register: "no incidents" is a claim.
@@ -99,14 +114,12 @@ export function AdminIncidents() {
     }
   }
 
-  const open = incidents.filter((i) => i.status !== 'CLOSED');
-  const owed = incidents.filter((i) => i.personalDataAffected && !i.boardReportAt && i.status !== 'CLOSED');
 
   return (
     <DashboardLayout>
       <div className="cb-section-head">
         <div>
-          <div className="cb-page-eyebrow">Breach register · {failed ? '—' : incidents.length} logged</div>
+          <div className="cb-page-eyebrow">Breach register · {failed ? '—' : total} logged</div>
           <h1 className="cb-page-title" style={{ marginTop: 12 }}>
             Write it down<br />
             <span className="cb-italic">the moment you suspect it.</span>
@@ -125,15 +138,17 @@ export function AdminIncidents() {
       <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Not closed</div>
-          <div className="cb-kpi-value">{failed ? '—' : open.length}</div>
+          <div className="cb-kpi-value">{failed || !summary ? '—' : summary.notClosed}</div>
           <div className="cb-kpi-delta">open or contained</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Report owed</div>
-          <div className="cb-kpi-value" style={owed.some((i) => i.reportOverdue) ? { color: 'var(--cb-ember)' } : undefined}>
-            {failed ? '—' : owed.length}
+          <div className="cb-kpi-value" style={summary?.reportOverdue ? { color: 'var(--cb-ember)' } : undefined}>
+            {failed || !summary ? '—' : summary.reportOwed}
           </div>
-          <div className="cb-kpi-delta">personal data, Board not yet sent the report</div>
+          <div className="cb-kpi-delta">
+            {summary?.reportOverdue ? `${summary.reportOverdue} past the 72 hours` : 'personal data, Board not yet sent the report'}
+          </div>
         </div>
       </div>
 
@@ -162,6 +177,14 @@ export function AdminIncidents() {
           ))}
         </div>
       )}
+
+      {pages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginTop: 20 }}>
+          <button type="button" className="cb-btn cb-btn-link" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← newer</button>
+          <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>page {page} of {pages}</span>
+          <button type="button" className="cb-btn cb-btn-link" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>older →</button>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
@@ -187,6 +210,10 @@ function IncidentForm({ incident, onSave }: { incident?: Incident; onSave: (body
   const [categories, setCategories] = useState(incident?.dataCategories ?? '');
   const [users, setUsers] = useState(incident?.usersAffected != null ? String(incident.usersAffected) : '');
   const [actions, setActions] = useState(incident?.actionsTaken ?? '');
+  // Unticking "personal data" on an incident that had it ticked drops the duty
+  // to tell the Board, so the server wants a reason (incident.service).
+  const [ruledOut, setRuledOut] = useState('');
+  const unticking = Boolean(incident?.personalDataAffected) && !personal;
   const [boardNotified, setBoardNotified] = useState(toLocalInput(incident?.boardNotifiedAt ?? null));
   const [boardReport, setBoardReport] = useState(toLocalInput(incident?.boardReportAt ?? null));
   const [usersNotified, setUsersNotified] = useState(toLocalInput(incident?.usersNotifiedAt ?? null));
@@ -201,6 +228,7 @@ function IncidentForm({ incident, onSave }: { incident?: Incident; onSave: (body
       dataCategories: categories || null,
       usersAffected: users ? Number(users) : null,
       actionsTaken: actions || null,
+      ...(unticking ? { exposureRuledOut: ruledOut } : {}),
       boardNotifiedAt: fromLocalInput(boardNotified),
       boardReportAt: fromLocalInput(boardReport),
       usersNotifiedAt: fromLocalInput(usersNotified),
@@ -227,6 +255,11 @@ function IncidentForm({ incident, onSave }: { incident?: Incident; onSave: (body
         <input type="checkbox" checked={personal} onChange={(e) => setPersonal(e.target.checked)} />
         Personal data may have been exposed (then the Board and the people affected must be told)
       </label>
+      {unticking && (
+        <Field label="WHY EXPOSURE OF PERSONAL DATA HAS BEEN RULED OUT">
+          <textarea className="cb-input" style={{ ...INPUT, minHeight: 60 }} value={ruledOut} onChange={(e) => setRuledOut(e.target.value)} required />
+        </Field>
+      )}
       {personal && (
         <Field label="WHAT KINDS OF PERSONAL DATA">
           <input className="cb-input" style={INPUT} value={categories} onChange={(e) => setCategories(e.target.value)} placeholder="e.g. phone numbers, delivery addresses, bank details" />
@@ -249,7 +282,7 @@ function IncidentForm({ incident, onSave }: { incident?: Incident; onSave: (body
         </div>
       )}
       <div>
-        <button type="submit" className="cb-btn cb-btn-primary" disabled={!title.trim() || !description.trim() || !detectedAt}>
+        <button type="submit" className="cb-btn cb-btn-primary" disabled={!title.trim() || !description.trim() || !detectedAt || (unticking && !ruledOut.trim())}>
           {incident ? 'Save' : 'Log incident'}
         </button>
       </div>
@@ -289,6 +322,11 @@ function Row({ incident: i, last, onSave }: {
       )}
 
       <div className="cb-small" style={{ marginBottom: 8, color: 'var(--cb-ink-2)', whiteSpace: 'pre-wrap' }}>{i.description}</div>
+      {i.exposureRuledOut && (
+        <div className="cb-small" style={{ marginBottom: 8, color: 'var(--cb-ink-2)', whiteSpace: 'pre-wrap' }}>
+          Personal data ruled out: {i.exposureRuledOut}
+        </div>
+      )}
       {i.actionsTaken && (
         <div className="cb-small" style={{ marginBottom: 8, color: 'var(--cb-ink-2)', whiteSpace: 'pre-wrap' }}>Done: {i.actionsTaken}</div>
       )}

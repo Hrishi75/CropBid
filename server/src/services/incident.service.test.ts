@@ -75,4 +75,27 @@ describe('the breach register', () => {
     await expect(updateIncident(ADMIN, incident.id, { status: 'CONTAINED' }, NOW)).rejects.toMatchObject({ statusCode: 409 });
     spy.mockRestore();
   });
+
+  it('will not drop the reporting duty by unticking personal data without a reason', async () => {
+    const incident = await createIncident(ADMIN, { ...base, detectedAt: hoursAgo(10), personalDataAffected: true }, NOW);
+
+    await expect(updateIncident(ADMIN, incident.id, { personalDataAffected: false }, NOW))
+      .rejects.toMatchObject({ statusCode: 400 });
+
+    const ruledOut = await updateIncident(ADMIN, incident.id, {
+      personalDataAffected: false,
+      exposureRuledOut: 'Logs show the session never reached a payout endpoint',
+    }, NOW);
+    expect(ruledOut.personalDataAffected).toBe(false);
+    expect(ruledOut.exposureRuledOut).toMatch(/never reached/);
+  });
+
+  it('counts the headline numbers over the whole register, not the page', async () => {
+    for (let i = 0; i < 3; i++) {
+      await createIncident(ADMIN, { ...base, detectedAt: hoursAgo(80), personalDataAffected: true }, NOW);
+    }
+    const { summary } = await listIncidents(1, NOW);
+    expect(summary.reportOwed).toBeGreaterThanOrEqual(3);
+    expect(summary.reportOverdue).toBeGreaterThanOrEqual(3);
+  });
 });

@@ -16,6 +16,7 @@ const fields = {
   dataCategories: text(500).nullable(),
   usersAffected: z.number().int().min(0).nullable(),
   actionsTaken: text(5000).nullable(),
+  exposureRuledOut: text(2000).nullable(),
   boardNotifiedAt: optionalWhen,
   boardReportAt: optionalWhen,
   usersNotifiedAt: optionalWhen,

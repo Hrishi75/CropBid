@@ -20,7 +20,7 @@ vi.mock('../config', async (importOriginal) => {
 });
 
 import { prisma } from '../lib/prisma';
-import { encryptStoredPayoutDetails } from './payoutDetails';
+import { countSealedPayoutDetails, encryptStoredPayoutDetails } from './payoutDetails';
 import { isSealed, open, seal } from '../utils/fieldCrypto';
 
 const TAG = 'payout-encrypt-test';
@@ -73,5 +73,17 @@ describe('encryptStoredPayoutDetails', () => {
     const row = await seller(4, { payoutUpiId: 'ramesh@okhdfc' });
     expect(await encryptStoredPayoutDetails()).toBe(0);
     expect((await prisma.farmerProfile.findUniqueOrThrow({ where: { id: row.id } })).payoutUpiId).toBe('ramesh@okhdfc');
+  });
+});
+
+// Boot refuses to start without the key once anything is encrypted, and this
+// count is what it asks. Plain rows must not count, or a server that never had
+// a key could never start.
+describe('countSealedPayoutDetails', () => {
+  it('counts encrypted rows and nothing else', async () => {
+    await seller(5, { payoutUpiId: 'plain@okhdfc' });
+    expect(await countSealedPayoutDetails()).toBe(0);
+    await seller(6, { payoutAccountNumber: seal('50100123456789') });
+    expect(await countSealedPayoutDetails()).toBeGreaterThanOrEqual(1);
   });
 });

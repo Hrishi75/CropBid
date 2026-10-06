@@ -12,6 +12,7 @@ CREATE TABLE "SecurityIncident" (
     "dataCategories" TEXT,
     "usersAffected" INTEGER,
     "actionsTaken" TEXT,
+    "exposureRuledOut" TEXT,
     "boardNotifiedAt" TIMESTAMP(3),
     "boardReportAt" TIMESTAMP(3),
     "usersNotifiedAt" TIMESTAMP(3),

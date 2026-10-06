@@ -37,6 +37,8 @@ vi.mock('../lib/prisma', () => {
     phoneChallenge: { deleteMany: vi.fn() },
     pendingSignup: { deleteMany: vi.fn() },
     auditLog: { create: vi.fn(), updateMany: vi.fn() },
+    // The wallet lock inside the delete. Empty unless a test says otherwise.
+    $queryRaw: vi.fn(() => Promise.resolve([])),
   };
   return {
     prisma: {
@@ -44,6 +46,7 @@ vi.mock('../lib/prisma', () => {
       transaction: { count: vi.fn() },
       // No wallet history unless a test says so.
       walletEntry: { count: vi.fn(() => Promise.resolve(0)) },
+      wallet: { findUnique: vi.fn(() => Promise.resolve(null)) },
       // No live supply contract unless a test says so.
       supplyContract: { count: vi.fn(() => Promise.resolve(0)) },
       listing: { findMany: vi.fn(() => Promise.resolve([])) },
@@ -87,9 +90,11 @@ beforeEach(async () => {
       payoutIfsc: 'HDFC0001234',
     },
   });
-  for (const model of Object.values(tx)) {
-    for (const fn of Object.values(model)) fn.mockResolvedValue({ count: 0 });
+  for (const [name, model] of Object.entries(tx)) {
+    if (name === '$queryRaw') continue;
+    for (const fn of Object.values(model as Record<string, ReturnType<typeof vi.fn>>)) fn.mockResolvedValue({ count: 0 });
   }
+  (tx.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 });
 
 describe('a live supply contract', () => {
@@ -158,6 +163,14 @@ describe('anonymising a seller who has settled deals', () => {
     expect(tx.agriInputEnquiry.deleteMany).toHaveBeenCalledWith({ where: { userId: 'seller-1' } });
   });
 
+  it('overwrites the delivery place on every request they posted', async () => {
+    await deleteAccount('seller-1', PASSWORD);
+    const all = tx.buyerRequirement.updateMany.mock.calls.map((c) => c[0]).find((c) => !c.where.status)!;
+    expect(all.data.deliveryLocation).not.toBeUndefined();
+    expect(all.data.deliveryLocation).toBe(all.data.deliveryState);
+    expect(all.data.deliveryLocation).toMatch(/Removed/);
+  });
+
   it('closes their open requests and stops every one repeating', async () => {
     await deleteAccount('seller-1', PASSWORD);
     const calls = tx.buyerRequirement.updateMany.mock.calls.map((c) => c[0]);
@@ -202,5 +215,23 @@ describe('deleting an account with wallet history and no deals', () => {
 
     expect(tx.user.delete).not.toHaveBeenCalled();
     expect(tx.user.update).toHaveBeenCalled();
+  });
+});
+
+// Credits are their money, and anonymising would strand it behind a login
+// that no longer works. Returning it is a manual transfer, so the delete waits.
+describe('deleting an account with credits left in the wallet', () => {
+  it('refuses before touching anything', async () => {
+    mock((prisma as unknown as { wallet: { findUnique: unknown } }).wallet.findUnique).mockResolvedValueOnce({ balance: 250 });
+    await expect(deleteAccount('seller-1', PASSWORD)).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses a top-up that landed after the first check, under the wallet lock', async () => {
+    mock(prisma.transaction.count).mockResolvedValue(0);
+    (tx.$queryRaw as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ balance: 100 }]);
+    await expect(deleteAccount('seller-1', PASSWORD)).rejects.toMatchObject({ statusCode: 409 });
+    expect(tx.user.delete).not.toHaveBeenCalled();
+    expect(tx.user.update).not.toHaveBeenCalled();
   });
 });

@@ -917,6 +917,13 @@ export async function changePassword(
 // Either way, untransacted listings and bids go first — they cascade the
 // bids/negotiations hanging off them, which also frees the agent config's
 // negotiation references so it can cascade (or be safely switched off).
+function walletNotEmpty(balance: number) {
+  return new ApiError(
+    409,
+    `You have ₹${balance.toLocaleString('en-IN')} of credits in your wallet. Write to info@cropbid.in to have it returned, then delete your account.`,
+  );
+}
+
 export async function deleteAccount(userId: string, password: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -982,6 +989,14 @@ export async function deleteAccount(userId: string, password: string) {
   const walletHistory = await prisma.walletEntry.count({ where: { wallet: { userId } } });
   const mustKeepRecords = settledDeals > 0 || walletHistory > 0;
 
+  // Credits still in the wallet are their money. Anonymising would leave it
+  // there with no way left to sign in and spend it, and returning it is a
+  // manual transfer (CLAUDE.md §6), so the delete waits until it is settled.
+  // Checked again inside the transaction, under the wallet lock, so a top-up
+  // landing in between cannot slip past.
+  const wallet = await prisma.wallet.findUnique({ where: { userId }, select: { balance: true } });
+  if (wallet && wallet.balance > 0) throw walletNotEmpty(wallet.balance);
+
   // Upload paths of the listings about to be hard-deleted — cleaned from
   // storage after the commit. Transacted listings keep their images (the
   // transaction detail page still renders them).
@@ -997,6 +1012,12 @@ export async function deleteAccount(userId: string, password: string) {
   const scrambledPassword = await bcrypt.hash(randomUUID(), 12);
 
   await prisma.$transaction(async (tx) => {
+    // The same lock applyEntry takes, so a top-up either commits before this
+    // read (and the delete is refused) or waits until the account is gone.
+    const [locked] = await tx.$queryRaw<{ balance: number }[]>`
+      SELECT balance FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
+    if (locked && locked.balance > 0) throw walletNotEmpty(locked.balance);
+
     if (user.farmerProfile) {
       // Never-transacted lots can go; sold lots are pinned by Transaction FKs,
       // so they stay but leave the market.
@@ -1106,7 +1127,12 @@ export async function deleteAccount(userId: string, password: string) {
       });
       await tx.buyerRequirement.updateMany({
         where: { buyerId: userId },
-        data: { nextRepeatAt: null, description: null, descriptionEn: null, descriptionHi: null, descriptionMr: null },
+        // The delivery place is where they live or work. Both columns are
+        // required, so they are overwritten rather than cleared.
+        data: {
+          nextRepeatAt: null, description: null, descriptionEn: null, descriptionHi: null, descriptionMr: null,
+          deliveryLocation: removed, deliveryState: removed,
+        },
       });
       // Their own offers on other people's requests: live ones are pulled,
       // and every message they wrote goes.

@@ -11,6 +11,9 @@
 //   - An incident that touched personal data cannot be CLOSED until the
 //     Board's report and the notice to the people affected are both recorded.
 //     Closing is the step that would otherwise let the duty be forgotten.
+//   - Nor can that duty be dropped by unticking "personal data affected": once
+//     ticked, it is unticked only with a written reason why exposure was ruled
+//     out, which stays on the incident and in the audit log.
 //
 // Every write leaves an audit row naming who made it.
 // =============================================================================
@@ -32,6 +35,8 @@ export interface IncidentInput {
   dataCategories?: string | null;
   usersAffected?: number | null;
   actionsTaken?: string | null;
+  /** Required to untick personalDataAffected once it has been ticked. */
+  exposureRuledOut?: string | null;
   boardNotifiedAt?: Date | null;
   boardReportAt?: Date | null;
   usersNotifiedAt?: Date | null;
@@ -74,6 +79,20 @@ function withDeadline(incident: Incident, now: Date) {
   return { ...incident, reportDueAt, reportOverdue: owed && now > reportDueAt };
 }
 
+/**
+ * The register's headline numbers, counted over every incident rather than the
+ * page on screen: a report owed on page two is still owed.
+ */
+async function summarise(now: Date) {
+  const owed = { personalDataAffected: true, boardReportAt: null, status: { not: 'CLOSED' as const } };
+  const [notClosed, reportOwed, reportOverdue] = await Promise.all([
+    prisma.securityIncident.count({ where: { status: { not: 'CLOSED' } } }),
+    prisma.securityIncident.count({ where: owed }),
+    prisma.securityIncident.count({ where: { ...owed, detectedAt: { lt: new Date(now.getTime() - REPORT_DUE_MS) } } }),
+  ]);
+  return { notClosed, reportOwed, reportOverdue };
+}
+
 export async function listIncidents(page = 1, now = new Date()) {
   const take = 50;
   const skip = (Math.max(1, page) - 1) * take;
@@ -88,6 +107,7 @@ export async function listIncidents(page = 1, now = new Date()) {
   ]);
   return {
     incidents: rows.map((r) => withDeadline(r, now)),
+    summary: await summarise(now),
     pagination: { page, limit: take, total, totalPages: Math.max(1, Math.ceil(total / take)) },
   };
 }
@@ -107,6 +127,7 @@ export async function createIncident(adminId: string, input: IncidentInput, now 
     dataCategories: input.dataCategories?.trim() || null,
     usersAffected: input.usersAffected ?? null,
     actionsTaken: input.actionsTaken?.trim() || null,
+    exposureRuledOut: null,
     boardNotifiedAt: input.boardNotifiedAt ?? null,
     boardReportAt: input.boardReportAt ?? null,
     usersNotifiedAt: input.usersNotifiedAt ?? null,
@@ -135,6 +156,17 @@ export async function updateIncident(adminId: string, id: string, input: Inciden
     if (!input.description.trim()) throw new ApiError(400, 'Say what happened, as far as is known');
     patch.description = input.description.trim();
   }
+  if (existing.personalDataAffected && input.personalDataAffected === false) {
+    const reason = input.exposureRuledOut?.trim();
+    if (!reason) {
+      throw new ApiError(
+        400,
+        'This incident was recorded as exposing personal data. Say why that has been ruled out before changing it',
+      );
+    }
+    patch.exposureRuledOut = reason;
+  }
+
   for (const key of ['dataCategories', 'actionsTaken'] as const) {
     if (input[key] !== undefined) patch[key] = input[key]?.trim() || null;
   }
@@ -158,7 +190,11 @@ export async function updateIncident(adminId: string, id: string, input: Inciden
   await recordAudit({
     actorId: adminId, actorRole: 'ADMIN',
     action: 'security.incident.updated', entityType: 'SecurityIncident', entityId: id,
-    metadata: { fields: Object.keys(patch), status: patch.status ?? existing.status },
+    metadata: {
+      fields: Object.keys(patch),
+      status: patch.status ?? existing.status,
+      ...(patch.exposureRuledOut ? { exposureRuledOut: patch.exposureRuledOut } : {}),
+    },
   });
   return withDeadline(await prisma.securityIncident.findUniqueOrThrow({ where: { id } }), now);
 }
