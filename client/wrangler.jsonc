@@ -4,7 +4,9 @@
 // for requests no file matches.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "cropbid-web",
+  // Must match the Worker's name in the Cloudflare dashboard, or the build
+  // fails with "Failed to bind worker".
+  "name": "cropbid",
   "compatibility_date": "2026-09-01",
   "main": "./worker.js",
   "assets": {
