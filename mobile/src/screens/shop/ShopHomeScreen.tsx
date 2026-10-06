@@ -22,7 +22,7 @@
 
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -33,7 +33,7 @@ import { NotificationBell } from '../../components/NotificationBell';
 import { IconArrow, IconCheck, IconClock, IconPlus } from '../../components/icons';
 import { Alert } from '../../lib/alert';
 import { useAuth } from '../../context/AuthContext';
-import { myListings, myTransactions, updateDeliveryStatus } from '../../api/endpoints';
+import { cancelRetailOrder, myListings, myTransactions, updateDeliveryStatus } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
 import type { DeliveryStatus, Listing, Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
@@ -43,6 +43,9 @@ import { colors, design, font } from '../../theme';
 /** One household order: every lot bought from this shop in one basket. */
 interface ShopOrder {
   key: string;
+  /** The shop order id, which is what can be cancelled. Null for a lot bought
+   *  before shop orders existed. */
+  retailOrderId: string | null;
   lines: Transaction[];
   buyer: string;
   phone: string | null;
@@ -66,6 +69,7 @@ function groupOrders(txs: Transaction[]): ShopOrder[] {
     const order = first.retailOrder;
     return {
       key,
+      retailOrderId: order?.id ?? null,
       lines,
       buyer: first.buyer?.name ?? 'Customer',
       phone: first.bid?.contactPhone ?? null,
@@ -147,6 +151,24 @@ export default function ShopHomeScreen() {
     }
   }
 
+  // The whole order is called off and every item goes back on the shelf. A
+  // shop must say why (the server refuses otherwise); the shopper is shown it.
+  async function cancel(o: ShopOrder, reason: string) {
+    if (!o.retailOrderId) return;
+    setBusy(o.key);
+    try {
+      await cancelRetailOrder(o.retailOrderId, reason);
+      Alert.alert('Order cancelled', o.paid
+        ? 'The items are back on your shelf. The customer is told why, and CropBid refunds their payment.'
+        : 'The items are back on your shelf, and the customer is told why.');
+    } catch (e) {
+      Alert.alert('Could not cancel the order', errorMessage(e));
+    } finally {
+      await load();
+      setBusy(null);
+    }
+  }
+
   return (
     <View style={styles.flex}>
       <ScrollView
@@ -209,6 +231,7 @@ export default function ShopHomeScreen() {
                   busy={busy === o.key}
                   onSend={() => advance(o, 'IN_TRANSIT')}
                   onDelivered={() => advance(o, 'DELIVERED')}
+                  onCancel={(reason) => cancel(o, reason)}
                 />
               </Appear>
             ))
@@ -250,10 +273,17 @@ function BoardStat({ n, label, hot }: { n: number; label: string; hot?: boolean 
   );
 }
 
+// The reasons a shop most often gives, so cancelling is two taps, not typing.
+const CANCEL_REASONS = ['Out of stock', "Can't deliver today", 'Shop closed'];
+
 function OrderCard({
-  order: o, busy, onSend, onDelivered,
-}: { order: ShopOrder; busy: boolean; onSend: () => void; onDelivered: () => void }) {
+  order: o, busy, onSend, onDelivered, onCancel,
+}: { order: ShopOrder; busy: boolean; onSend: () => void; onDelivered: () => void; onCancel: (reason: string) => void }) {
   const onTheWay = o.status === 'IN_TRANSIT';
+  const [cancelling, setCancelling] = useState(false);
+  const [reason, setReason] = useState('');
+  // Only until the shop marks it on the way, the server's cut-off too.
+  const canCancel = Boolean(o.retailOrderId) && o.status === 'PENDING';
   return (
     <View style={[styles.order, o.paid && !onTheWay && styles.orderReady]}>
       <View style={styles.rowBetween}>
@@ -313,6 +343,45 @@ function OrderCard({
           ) : null}
         </View>
       )}
+
+      {canCancel && !cancelling ? (
+        <Pressable onPress={() => setCancelling(true)} hitSlop={8} style={styles.cantLink}>
+          <Text style={styles.cantLinkText}>Can't fulfil this order?</Text>
+        </Pressable>
+      ) : null}
+      {canCancel && cancelling ? (
+        <View style={styles.cancelBox}>
+          <Text style={styles.cancelTitle}>Cancel the whole order</Text>
+          <Text style={styles.cancelBody}>Everything goes back on your shelf. The customer sees your reason.</Text>
+          <View style={styles.reasonRow}>
+            {CANCEL_REASONS.map((r) => (
+              <Pressable key={r} onPress={() => setReason(r)} style={[styles.reasonChip, reason === r && styles.reasonChipOn]}>
+                <Text style={[styles.reasonText, reason === r && styles.reasonTextOn]}>{r}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Or write a reason"
+            placeholderTextColor={design.ink3}
+            style={styles.reasonInput}
+            maxLength={300}
+          />
+          <View style={styles.actions}>
+            <Pressable
+              disabled={busy || !reason.trim()}
+              onPress={() => onCancel(reason.trim())}
+              style={({ pressed }) => [styles.cancelBtn, (!reason.trim() || busy) && styles.cancelBtnOff, pressed && styles.pressed]}
+            >
+              {busy ? <ActivityIndicator size="small" color="#f4f1ea" /> : <Text style={styles.cancelBtnText}>Cancel order</Text>}
+            </Pressable>
+            <Pressable onPress={() => { setCancelling(false); setReason(''); }} style={({ pressed }) => [styles.callBtn, pressed && styles.pressed]}>
+              <Text style={styles.callText}>Keep it</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -374,6 +443,20 @@ const styles = StyleSheet.create({
   doneText: { color: colors.forest },
   callBtn: { borderWidth: 1, borderColor: design.line, borderRadius: 12, paddingHorizontal: 16, justifyContent: 'center' },
   callText: { fontFamily: font.sansSemi, fontSize: 13.5, color: colors.forest },
+  cantLink: { alignSelf: 'flex-start', paddingVertical: 2 },
+  cantLinkText: { fontFamily: font.sans, fontSize: 12.5, color: design.ink3, textDecorationLine: 'underline' },
+  cancelBox: { gap: 8, borderTopWidth: 1, borderTopColor: design.line, paddingTop: 12 },
+  cancelTitle: { fontFamily: font.sansSemi, fontSize: 14, color: design.ink },
+  cancelBody: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 17, color: design.ink3 },
+  reasonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  reasonChip: { borderWidth: 1, borderColor: design.line, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: design.paper },
+  reasonChipOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  reasonText: { fontFamily: font.sans, fontSize: 12.5, color: design.ink2 },
+  reasonTextOn: { color: '#f4f1ea' },
+  reasonInput: { borderWidth: 1, borderColor: design.line, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, fontFamily: font.sans, fontSize: 13.5, color: design.ink, backgroundColor: design.paper },
+  cancelBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ember, borderRadius: 999, paddingVertical: 11 },
+  cancelBtnOff: { opacity: 0.45 },
+  cancelBtnText: { fontFamily: font.sansSemi, fontSize: 13.5, color: '#f4f1ea' },
 
   quickRow: { flexDirection: 'row', gap: 10 },
   quickPrimary: {

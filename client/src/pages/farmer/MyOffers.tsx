@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import type { RequirementOffer } from '../../types';
 
 const STATUS_TABS = [
+  { value: 'COUNTERED', label: 'Buyer countered' },
   { value: 'PENDING', label: 'Awaiting buyer' },
   { value: 'ACCEPTED', label: 'Accepted' },
   { value: 'REJECTED', label: 'Rejected' },
@@ -31,6 +32,10 @@ export function MyOffers() {
   const [offers, setOffers] = useState<RequirementOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('PENDING');
+  // Opens on the tab that needs the seller: a buyer's counter is their move,
+  // and it sat unseen behind "Awaiting buyer". Only on the first load, so a
+  // refresh after an action does not yank them off the tab they chose.
+  const [picked, setPicked] = useState(false);
 
   useEffect(() => { fetchOffers(); }, []);
 
@@ -39,6 +44,10 @@ export function MyOffers() {
     try {
       const { data } = await api.get('/requirements/offers/my');
       setOffers(data);
+      if (!picked) {
+        setPicked(true);
+        if ((data as RequirementOffer[]).some((o) => o.status === 'COUNTERED')) setTab('COUNTERED');
+      }
     } catch {
       toast.error('Failed to load offers');
     } finally {

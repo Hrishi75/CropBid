@@ -33,7 +33,9 @@ export type PaymentStatus = 'AWAITING_PAYMENT' | 'ESCROW' | 'RELEASED' | 'REFUND
 export type DeliveryStatus = 'PENDING' | 'IN_TRANSIT' | 'DELIVERED' | 'CONFIRMED' | 'CANCELLED';
 export type NegotiationOutcome = 'DEAL' | 'NO_DEAL' | 'IN_PROGRESS';
 export type RequirementStatus = 'OPEN' | 'FULFILLED' | 'CLOSED' | 'EXPIRED';
-export type RequirementOfferStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
+// PENDING waits on the buyer; COUNTERED waits on the seller, who accepts the
+// buyer's price (buyerCounterPrice) or sends a new one.
+export type RequirementOfferStatus = 'PENDING' | 'COUNTERED' | 'ACCEPTED' | 'REJECTED' | 'WITHDRAWN' | 'EXPIRED';
 export type RequirementOfferKind = 'INSTANT' | 'COUNTER';
 
 // --- Models ---
@@ -265,6 +267,21 @@ export interface BuyerRequirement {
   // On the feed this counts ALL offers; on /my it counts only PENDING ones,
   // because that's the number the buyer needs to act on.
   _count?: { offers: number };
+  /** A restaurant's request: offers only, never filled at the posted price. */
+  negotiateOnly?: boolean;
+  /** Repeats every N days; nextRepeatAt is when. */
+  repeatEveryDays?: number | null;
+  nextRepeatAt?: string | null;
+  /** A restock list: items posted together share listId. */
+  listId?: string | null;
+  listName?: string | null;
+  /** An export request delivers to a port. */
+  forExport?: boolean;
+  exportPort?: string | null;
+  /** What the exporter asked the seller to meet (server/src/utils/exportSpec). */
+  maxMoisturePct?: number | null;
+  packing?: string | null;
+  requiredDocs?: string[];
 }
 
 export interface RequirementOffer {
@@ -279,6 +296,8 @@ export interface RequirementOffer {
   totalAmount: number;
   currency: Currency;
   message: string | null;
+  /** The buyer's price back while COUNTERED. */
+  buyerCounterPrice?: number | null;
   status: RequirementOfferStatus;
   listingId: string | null;
   bidId: string | null;

@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { NotificationDropdown } from './NotificationDropdown';
 import { LanguageSwitcher } from '../ui/LanguageSwitcher';
 import { getNavSections, isNavItemActive } from './nav';
+import { ModeSwitch } from './ModeSwitch';
 
 interface NavbarProps {
   onMenuClick?: () => void;
@@ -115,6 +116,7 @@ export function Navbar({ onMenuClick }: NavbarProps) {
                       <span style={{ fontSize: 13.5, fontWeight: 500, color: 'var(--cb-ink)' }}>{user.name}</span>
                       <span className="cb-tiny" style={{ textTransform: 'lowercase' }}>{user.role.toLowerCase()}</span>
                     </div>
+                    <ModeSwitch onSwitched={() => setMenuOpen(false)} />
                     {settingsSection?.items.map((item) => (
                       <Link
                         key={item.path}

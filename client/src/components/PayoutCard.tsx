@@ -8,7 +8,9 @@
 // which is the one seller screen on the web that everybody opens.
 //
 // Two states, because they are two different jobs. With nothing on file it is
-// a warning and the form is open: this seller cannot be paid. With something
+// a warning with one button that opens the form: this seller cannot be paid.
+// The form used to start open, and its five fields filled the top of the
+// dashboard, pushing everything the seller came to do below the fold. With something
 // on file it is a line of masked text and a link, since changing a bank
 // account is rare and a permanently open form invites an accidental
 // half-edit.
@@ -26,7 +28,7 @@ export function PayoutCard() {
   const profile = user?.farmerProfile || null;
   const onFile = !!(profile?.payoutUpiId || profile?.payoutAccountNumber);
 
-  const [open, setOpen] = useState(!onFile);
+  const [open, setOpen] = useState(false);
   const [values, setValues] = useState<PayoutValues>(EMPTY_PAYOUT);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -102,10 +104,13 @@ export function PayoutCard() {
       </div>
 
       {!onFile && (
-        <p className="cb-tiny" style={{ margin: 0, color: 'var(--cb-ember)' }}>
-          We have nowhere to send your money. Add a UPI id or a bank account so a completed sale
-          can be paid out to you.
-        </p>
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <p className="cb-small" style={{ margin: 0, color: 'var(--cb-ember)', flex: '1 1 260px' }}>
+            We have nowhere to send your money. Add a UPI id or a bank account so a completed sale
+            can be paid out to you.
+          </p>
+          {!open && <Button size="sm" onClick={() => setOpen(true)}>Add payout details</Button>}
+        </div>
       )}
 
       {/* Not while the form is open: the same masked line is inside it, under
