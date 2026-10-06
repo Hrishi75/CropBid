@@ -96,6 +96,18 @@ describe('an account that already has the email', () => {
     expect(await prisma.auditLog.count({ where: { entityId: existing.id, action: 'auth.google.linked' } })).toBe(1);
   });
 
+  // Rows from before emails were normalised can differ by case alone. The one
+  // that matches Google's address exactly must win over an older look-alike.
+  it('prefers the exact address over an older one differing only by case', async () => {
+    await passwordAccount(`Asha${DOMAIN}`);
+    const exact = await passwordAccount(`asha${DOMAIN}`);
+    googleSays(`asha${DOMAIN}`);
+
+    const result = await signInWithGoogle('token');
+
+    expect(result.user.id).toBe(exact.id);
+  });
+
   it('is found by Google id even after the Google address changes', async () => {
     const existing = await passwordAccount(`asha${DOMAIN}`, { googleId: SUB });
     googleSays(`asha.new${DOMAIN}`);

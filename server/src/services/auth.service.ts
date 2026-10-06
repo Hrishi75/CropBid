@@ -1806,13 +1806,17 @@ export async function signInWithGoogle(credential: string) {
   let user = await prisma.user.findUnique({ where: { googleId: identity.sub }, include: withProfiles });
   let linking = false;
   if (!user) {
-    // Case-insensitive and oldest first, like the password login's fallback:
-    // rows from before emails were normalised can differ by case alone.
-    user = await prisma.user.findFirst({
-      where: { email: { equals: identity.email, mode: 'insensitive' } },
-      orderBy: { createdAt: 'asc' },
-      include: withProfiles,
-    });
+    // Exact match first, then case-insensitive oldest first, the same order as
+    // password login: rows from before emails were normalised can differ by
+    // case alone, and going case-insensitive first would let an arbitrary one
+    // of them answer for the address Google actually gave. Review caught it.
+    user =
+      (await prisma.user.findFirst({ where: { email: identity.email }, include: withProfiles })) ??
+      (await prisma.user.findFirst({
+        where: { email: { equals: identity.email, mode: 'insensitive' } },
+        orderBy: { createdAt: 'asc' },
+        include: withProfiles,
+      }));
     if (user?.googleId) {
       // Linked to a different Google account, which then changed its address
       // to this one. Moving the link would hand the account over.

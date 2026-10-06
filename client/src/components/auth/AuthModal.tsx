@@ -178,6 +178,8 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // rather than under the last box whatever went wrong.
   const [confirm, setConfirm] = useState('');
   const [errorField, setErrorField] = useState<SignupField>();
+  // Google's own, shown under its button rather than under a field nobody used.
+  const [googleError, setGoogleError] = useState<string>();
 
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -205,6 +207,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       setEmail(''); setNeedsEmail(false);
       setIdentifier(''); setPassword(''); setConfirm('');
       setError(undefined); setErrorField(undefined); setCooldown(0);
+      setGoogleError(undefined);
     }
   // openingMode is derived from a prop that only changes together with `open`.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -285,10 +288,11 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   }
 
   // Google: the button hands back a token, and the server signs in, links or
-  // creates. Errors land in the lane's own error slot, like a wrong password.
+  // creates. A refusal is shown under the Google button, which is what it is
+  // about; the form's own error slots belong to fields Google never touched.
   async function handleGoogle(credential: string) {
     const attempt = attemptRef.current;
-    setSigningIn(true); setError(undefined); setErrorField(undefined);
+    setSigningIn(true); setGoogleError(undefined);
     try {
       const { user, created } = await signInWithGoogle(credential);
       if (attemptRef.current !== attempt) return;
@@ -297,10 +301,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       routeAfterAuth(user, created);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
-      const message = err.response?.data?.message || 'Could not sign you in with Google just now';
-      if (mode === 'signup') { setErrorField('confirm'); }
-      setError(message);
-      toast.error(message);
+      setGoogleError(err.response?.data?.message || 'Could not sign you in with Google just now');
     } finally {
       if (attemptRef.current === attempt) setSigningIn(false);
     }
@@ -349,7 +350,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // what they entered really is a number, since the code step has nowhere to
   // send an email address. Passwords never travel.
   function switchTo(next: Mode) {
-    setError(undefined); setErrorField(undefined);
+    setError(undefined); setErrorField(undefined); setGoogleError(undefined);
     attemptRef.current += 1;
     if (next === 'code') {
       const typed = identifier.trim();
@@ -458,7 +459,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   : "Takes a minute. You start as a shopper, and can apply to sell or buy in bulk once you're in."}
               </p>
 
-              <GoogleButton onCredential={handleGoogle} />
+              <GoogleButton onCredential={handleGoogle} error={googleError} />
 
               <form onSubmit={handleSignup} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input
@@ -536,7 +537,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                 With the email or phone number and the password you signed up with.
               </p>
 
-              <GoogleButton onCredential={handleGoogle} />
+              <GoogleButton onCredential={handleGoogle} error={googleError} />
 
               <form onSubmit={handlePasswordSignIn} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 <Input

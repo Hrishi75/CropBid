@@ -21,9 +21,11 @@ let forward: ((credential: string) => void) | null = null;
 
 interface Props {
   onCredential: (credential: string) => void;
+  /** Why the last Google sign-in failed, shown under the button it is about. */
+  error?: string;
 }
 
-export function GoogleButton({ onCredential }: Props) {
+export function GoogleButton({ onCredential, error }: Props) {
   const slotRef = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -67,8 +69,12 @@ export function GoogleButton({ onCredential }: Props) {
           });
         };
         draw();
-        observer = new ResizeObserver(draw);
-        observer.observe(slot);
+        // Without ResizeObserver the first draw stands; throwing here would
+        // take the button away altogether.
+        if (typeof ResizeObserver !== 'undefined') {
+          observer = new ResizeObserver(draw);
+          observer.observe(slot);
+        }
       })
       .catch(() => { if (live) setFailed(true); });
 
@@ -85,6 +91,11 @@ export function GoogleButton({ onCredential }: Props) {
     <>
       {/* Fixed height so the form below does not jump when Google's iframe lands. */}
       <div ref={slotRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center' }} />
+      {error && (
+        <p role="alert" className="cb-small" style={{ marginTop: 8, marginBottom: 0, textAlign: 'center', color: 'var(--cb-ember)' }}>
+          {error}
+        </p>
+      )}
       <div className="cb-auth-or" aria-hidden="true"><span>or</span></div>
     </>
   );
