@@ -198,6 +198,11 @@ model User {
   // in with a code has NO password, and login must refuse the password path
   // for those accounts rather than comparing against an empty hash.
   password   String? // Hashed with bcrypt — NEVER store plain text
+  /// Google's stable id for this person (the ID token's `sub`), set the first
+  /// time they sign in with Google. Matched on before the email, because an
+  /// address can be changed at Google and the sub cannot. Not a secret, but it
+  /// is an identifier, so safeUser keeps it off the wire. See signInWithGoogle.
+  googleId   String?  @unique
   role       Role
   phone      String?  @unique
   location   String?

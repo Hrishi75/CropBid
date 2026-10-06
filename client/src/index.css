@@ -2644,6 +2644,15 @@ body * {
 .cb-auth-modal-main .cb-small { font-size: 13.5px; line-height: 1.5; color: var(--cb-ink-2); }
 .cb-auth-modal-main .cb-tiny { font-size: 11.5px; line-height: 1.4; }
 
+/* The rule between Google's button and the form under it. */
+.cb-auth-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 16px 0; color: var(--cb-ink-3); font-size: 12px;
+}
+.cb-auth-or::before, .cb-auth-or::after {
+  content: ''; flex: 1; height: 1px; background: var(--cb-line);
+}
+
 .cb-auth-modal-side {
   padding: 34px 28px 28px;
   background: var(--cb-forest);

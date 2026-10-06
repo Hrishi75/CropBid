@@ -125,6 +125,7 @@ Production demo stack — all free tier:
    |-----|-------|
    | `VITE_API_URL` | `https://cropbid-api.onrender.com/api` |
    | `VITE_SOCKET_URL` | `https://cropbid-api.onrender.com` |
+   | `VITE_GOOGLE_CLIENT_ID` | the OAuth web client id (optional; blank hides the Google button). The API needs the same value as `GOOGLE_CLIENT_ID` |
 
    > Vite inlines these at **build time** — they must be set before/at deploy.
 4. Deploy → note the URL, e.g. `https://cropbid.vercel.app`.
