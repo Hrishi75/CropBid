@@ -23,6 +23,8 @@
 // =============================================================================
 
 import { ApiError } from '../utils/ApiError';
+import { isEncryptionConfigured, isSealed, open, seal } from '../utils/fieldCrypto';
+import { prisma } from '../lib/prisma';
 
 // A UPI id is <handle>@<psp>: "ramesh@okhdfc", "9822055667@ybl". The local part
 // is loose by design (banks allow dots, hyphens, underscores) and the PSP side
@@ -166,11 +168,14 @@ function maskTail(value: string, keep = 4): string {
  * unable to tell a wrong entry from a right one, which is the whole point of
  * showing them anything.
  */
-export function maskPayoutDetails<T extends PayoutDetailsInput>(profile: T): T & {
+export function maskPayoutDetails<T extends PayoutDetailsInput>(stored: T): T & {
   payoutUpiId: string | null;
   payoutAccountNumber: string | null;
   hasPayoutDetails: boolean;
 } {
+  // Masking needs the real value (the last four of the account number, the
+  // name whole), so whatever was stored encrypted is opened first.
+  const profile = openPayoutColumns(stored);
   const upi = (profile.payoutUpiId ?? '').trim();
   const account = (profile.payoutAccountNumber ?? '').trim();
   const [local, psp] = upi.includes('@') ? [upi.slice(0, upi.lastIndexOf('@')), upi.slice(upi.lastIndexOf('@'))] : [upi, ''];
@@ -191,4 +196,87 @@ export function maskPayoutDetails<T extends PayoutDetailsInput>(profile: T): T &
 export function maskUserPayoutDetails<T extends { farmerProfile?: PayoutDetailsInput | null }>(user: T): T {
   if (!user.farmerProfile) return user;
   return { ...user, farmerProfile: maskPayoutDetails(user.farmerProfile) };
+}
+
+// -----------------------------------------------------------------------------
+// At rest: encrypted (utils/fieldCrypto)
+// -----------------------------------------------------------------------------
+// The UPI id, the account number and the name on the account are encrypted in
+// the database. The IFSC is not: it names a branch, not an account, and the
+// seller is shown it whole anyway. Every write goes through sealPayoutColumns
+// and every read that needs the values through openPayoutColumns; nothing else
+// needs them, because hasPayoutDetails only asks whether a column is blank,
+// which ciphertext answers the same way.
+
+const SEALED_COLUMNS = ['payoutUpiId', 'payoutAccountName', 'payoutAccountNumber'] as const;
+
+/** Encrypt the columns parsePayoutDetails produced, ready to write. */
+export function sealPayoutColumns(columns: PayoutDetailsColumns): PayoutDetailsColumns {
+  return {
+    ...columns,
+    payoutUpiId: seal(columns.payoutUpiId),
+    payoutAccountName: seal(columns.payoutAccountName),
+    payoutAccountNumber: seal(columns.payoutAccountNumber),
+  };
+}
+
+/** Decrypt whichever payout columns this row carries. */
+export function openPayoutColumns<T extends PayoutDetailsInput>(row: T): T {
+  const opened: PayoutDetailsInput = { ...row };
+  for (const column of SEALED_COLUMNS) {
+    if (column in row) opened[column] = open(row[column]);
+  }
+  return opened as T;
+}
+
+/**
+ * Encrypt any payout details still stored in the clear: rows written before
+ * the key was set. Run at boot, and harmless to run twice.
+ *
+ * Each row is rewritten only if it still holds the values read a moment ago,
+ * so a seller saving new details while this runs is never overwritten with
+ * their old ones.
+ */
+export async function encryptStoredPayoutDetails(): Promise<number> {
+  if (!isEncryptionConfigured()) return 0;
+
+  const rows = await prisma.farmerProfile.findMany({
+    where: {
+      OR: SEALED_COLUMNS.map((column) => ({
+        AND: [{ [column]: { not: null } }, { NOT: { [column]: { startsWith: 'enc:' } } }],
+      })),
+    },
+    select: { id: true, payoutUpiId: true, payoutAccountName: true, payoutAccountNumber: true },
+  });
+
+  let sealed = 0;
+  for (const row of rows) {
+    const data: Record<string, string | null> = {};
+    for (const column of SEALED_COLUMNS) {
+      const value = row[column];
+      if (value !== null && !isSealed(value)) data[column] = seal(value);
+    }
+    const { count } = await prisma.farmerProfile.updateMany({
+      where: {
+        id: row.id,
+        payoutUpiId: row.payoutUpiId,
+        payoutAccountName: row.payoutAccountName,
+        payoutAccountNumber: row.payoutAccountNumber,
+      },
+      data,
+    });
+    sealed += count;
+  }
+  return sealed;
+}
+
+/**
+ * How many seller profiles hold an encrypted payout detail. Boot asks this when
+ * no key is set: any at all means the key was removed after use, and every
+ * read of those rows would fail.
+ */
+export async function countSealedPayoutDetails(): Promise<number> {
+  return prisma.farmerProfile.count({
+    where: { OR: SEALED_COLUMNS.map((column) => ({ [column]: { startsWith: 'enc:' } })) },
+  });
 }

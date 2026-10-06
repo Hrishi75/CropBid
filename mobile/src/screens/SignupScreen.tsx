@@ -79,6 +79,10 @@ export default function SignupScreen() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The age declaration and the agreement, in one box that starts unticked.
+  // The server records when it was ticked (server/src/utils/consent.ts),
+  // because under the DPDP Act proving consent is on us.
+  const [agreed, setAgreed] = useState(false);
 
   // Mirrors passwordSchema on the server, which is what actually enforces it.
   const rules = useMemo(
@@ -100,6 +104,7 @@ export default function SignupScreen() {
         : !parsedContact ? 'Enter a valid email address or phone number'
         : !passwordValid ? 'Password does not meet the requirements'
         : confirm !== password ? 'The two passwords do not match'
+        : !agreed ? 'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy'
         : null;
     if (problem || !parsedContact) {
       setError(problem);
@@ -108,7 +113,7 @@ export default function SignupScreen() {
     setError(null);
     setSubmitting(true);
     try {
-      await signUp({ name: name.trim(), ...parsedContact, password });
+      await signUp({ name: name.trim(), ...parsedContact, password, consent: true });
     } catch (e) {
       setError(errorMessage(e, 'Signup failed'));
     } finally {
@@ -195,6 +200,24 @@ export default function SignupScreen() {
           />
           {mismatch ? <Text style={styles.hint}>Does not match yet.</Text> : null}
 
+          <Pressable
+            onPress={() => { setAgreed((v) => !v); setError(null); }}
+            style={styles.consentRow}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: agreed }}
+            hitSlop={4}
+          >
+            <View style={[styles.box, agreed && styles.boxOn]}>
+              {agreed ? <Text style={styles.tick}>✓</Text> : null}
+            </View>
+            <Text style={styles.consentText}>
+              I am 18 or older and agree to the{' '}
+              <Text style={styles.consentLink} onPress={() => navigation.navigate('Policy', { kind: 'terms' })}>terms</Text>
+              {' '}and{' '}
+              <Text style={styles.consentLink} onPress={() => navigation.navigate('Policy', { kind: 'privacy' })}>privacy policy</Text>.
+            </Text>
+          </Pressable>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <View style={styles.spacer} />
@@ -246,6 +269,15 @@ const styles = StyleSheet.create({
   ruleText: { fontSize: 12, color: colors.textMuted },
   ruleTextOk: { color: colors.sage },
   error: { color: colors.error, fontSize: 14, marginBottom: spacing.sm },
+  consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.lg },
+  box: {
+    width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center', marginTop: 1, backgroundColor: colors.surface,
+  },
+  boxOn: { backgroundColor: colors.forest, borderColor: colors.forest },
+  tick: { color: '#fff', fontSize: 13, fontWeight: '800', lineHeight: 15 },
+  consentText: { flex: 1, fontSize: 13, lineHeight: 19, color: colors.textSecondary },
+  consentLink: { color: colors.ember, fontWeight: '600' },
   spacer: { height: spacing.xs },
   switch: { textAlign: 'center', marginTop: spacing.xl, color: colors.textSecondary, fontSize: 14 },
   switchLink: { color: colors.ember, fontWeight: '600' },

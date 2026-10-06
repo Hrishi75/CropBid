@@ -39,6 +39,7 @@ import { prisma } from '../lib/prisma';
 import { startPhoneSignIn, verifyPhoneSignIn } from './auth.service';
 import { deliverOtp } from './otpDelivery.service';
 import { hashPhoneOtp } from '../utils/phoneOtp';
+import { POLICY_VERSION } from '../utils/consent';
 
 const CODE = '483920';
 const PHONE = '+919822011223';
@@ -90,4 +91,39 @@ describe('verifyPhoneSignIn', () => {
       );
     });
   }
+});
+
+// The code lane makes accounts too, so it records consent the same way as the
+// password form (utils/consent.ts), and refuses an unticked box before the
+// code is spent, so ticking it and trying again still works.
+describe('verifyPhoneSignIn records consent on a new account', () => {
+  beforeEach(() => {
+    vi.mocked(prisma.phoneChallenge.findUnique).mockResolvedValue({
+      id: 'ch-1',
+      phone: PHONE,
+      codeHash: hashPhoneOtp(CODE),
+      intendedRole: 'CONSUMER',
+      attempts: 0,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as any);
+    vi.mocked(prisma.user.create).mockResolvedValue({
+      id: 'user-1', name: 'Ravi Kale', phone: PHONE, role: 'CONSUMER',
+    } as any);
+  });
+
+  it('stamps the consent when the box was ticked', async () => {
+    await verifyPhoneSignIn({ challengeId: 'ch-1', code: CODE, name: 'Ravi Kale', consent: true });
+
+    const data = (vi.mocked(prisma.user.create).mock.calls[0][0] as any).data;
+    expect(data.consentAt).toBeInstanceOf(Date);
+    expect(data.consentVersion).toBe(POLICY_VERSION);
+  });
+
+  it('refuses an unticked box without spending the code', async () => {
+    await expect(
+      verifyPhoneSignIn({ challengeId: 'ch-1', code: CODE, name: 'Ravi Kale', consent: false }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(prisma.phoneChallenge.deleteMany).not.toHaveBeenCalled();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
 });

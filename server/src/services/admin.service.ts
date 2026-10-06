@@ -10,7 +10,8 @@ import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
 import { sendPartnerStatusEmail } from './email.service';
 import { recordAudit } from './audit.service';
-import { hasPayoutDetails } from './payoutDetails';
+import { hasPayoutDetails, openPayoutColumns } from './payoutDetails';
+import { checkPasswordResetVolume, checkPayoutReadVolume } from './securityAlert.service';
 import { generateTempPassword } from '../utils/tempPassword';
 import bcrypt from 'bcryptjs';
 
@@ -961,6 +962,10 @@ export async function resetUserPassword(adminId: string, userId: string) {
     }),
   ]);
 
+  // Many resets from one admin in an hour is a takeover in progress
+  // (securityAlert.service). Counted from the row just committed.
+  void checkPasswordResetVolume(adminId);
+
   return { id: user.id, name: user.name, tempPassword };
 }
 
@@ -1012,12 +1017,18 @@ export async function getSellerPayoutDetails(adminId: string, profileId: string)
     },
   });
 
+  // One admin opening many of these in an hour is how a stolen admin session
+  // looks (securityAlert.service). Counted from the row just written.
+  void checkPayoutReadVolume(adminId);
+
+  // Stored encrypted; opened only here, after the read is on the record.
+  const opened = openPayoutColumns(profile);
   return {
     id: profile.id,
     sellerName: profile.businessName || profile.user.name,
-    payoutUpiId: profile.payoutUpiId,
-    payoutAccountName: profile.payoutAccountName,
-    payoutAccountNumber: profile.payoutAccountNumber,
+    payoutUpiId: opened.payoutUpiId,
+    payoutAccountName: opened.payoutAccountName,
+    payoutAccountNumber: opened.payoutAccountNumber,
     payoutIfsc: profile.payoutIfsc,
     hasPayoutDetails: hasPayoutDetails(profile),
   };

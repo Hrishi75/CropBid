@@ -56,6 +56,9 @@ export const signupSchema = z.object({
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI', 'MR']).optional(),
+  // The "18 or older and agree" tickbox (utils/consent.ts). Optional because
+  // older app builds never send it; the service refuses an explicit false.
+  consent: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   // Cross-field, so it cannot live on either property. The path points back at
   // a field so a client can highlight it.
@@ -155,9 +158,12 @@ const updateAccountBasicsSchema = z.object(accountFields);
 // WHY THESE OPTIONS?
 //   httpOnly: true   → JavaScript cannot access it (prevents XSS theft)
 //   secure           → HTTPS only in production (required when sameSite='none')
-//   sameSite         → In production the API (Render) and client (Vercel) live on
-//                      different domains, so the refresh cookie is cross-site and
-//                      MUST be 'none' to be sent on XHR. 'none' requires secure:true.
+//   sameSite         → 'none' in production, which requires secure:true. It was
+//                      required when the API (Render) and client (Vercel) were on
+//                      different domains. Both now sit under cropbid.in
+//                      (api.cropbid.in and cropbid.in), which is the same site,
+//                      so 'lax' would also be sent; moving to it is a separate
+//                      change, not a cleanup.
 //                      In development both run on localhost, so 'lax' is fine.
 //   maxAge           → The idle window PLUS a grace period, re-set on every
 //                      refresh so the cookie slides forward with the token it
@@ -207,10 +213,10 @@ export async function signupHandler(req: Request, res: Response) {
     return;
   }
 
-  const { name, email, password, phone, country, currency, language } = parsed.data;
+  const { name, email, password, phone, country, currency, language, consent } = parsed.data;
 
   const result = await authService.signup({
-    name, email, password, phone, country, currency, language,
+    name, email, password, phone, country, currency, language, consent,
   });
 
   // Set refresh token as httpOnly cookie
@@ -576,6 +582,8 @@ const verifyPhoneSignInSchema = z.object({
   ),
   // Only read when the code creates a new account.
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100).optional(),
+  // Likewise, the sign-up tickbox (utils/consent.ts).
+  consent: z.boolean().optional(),
 });
 
 // POST /api/auth/phone/verify — check the code, sign in or create the account
