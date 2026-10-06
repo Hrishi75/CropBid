@@ -664,7 +664,7 @@ const AUTOPLAY_MS = 5000;
 // layout the CSS chose.
 function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User | null; authLoading: boolean }) {
   const navigate = useNavigate();
-  const { openAuth } = useAuthModal();
+  const { openAuth, isAuthOpen } = useAuthModal();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [pages, setPages] = useState<number[]>([0]);
   const [active, setActive] = useState(0);
@@ -714,7 +714,10 @@ function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User
     const track = trackRef.current;
     if (!track) return;
     const n = (i + pages.length) % pages.length;
-    track.scrollTo({ left: pages[n], behavior: 'smooth' });
+    // It rotates for everyone (the user's call), but a visitor who asked for
+    // less motion gets a cut rather than a slide.
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    track.scrollTo({ left: pages[n], behavior: reduce ? 'instant' : 'smooth' });
   }, [pages]);
 
   useEffect(() => {
@@ -724,13 +727,35 @@ function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User
   }, [held, pages.length, active, goTo]);
 
   // Signed in: straight to the partner page, at the matching section. Signed
-  // out: the sign-in window, and the partner page once they are in. While the
-  // session is still being restored `user` is null either way, and /partner
-  // works signed out too, so send them there rather than pop a prompt on a
-  // session about to come back.
-  const openPartner = (slide: (typeof PARTNER_SLIDES)[number]) => {
-    if (user || authLoading) { navigate(slide.to); return; }
+  // out: the sign-in window, and the partner page once they are in.
+  //
+  // While the session is still being restored `user` is null whether or not
+  // they are signed in, so a click then is parked and decided once the check
+  // answers. Guessing at click time either skips the sign-in a guest was
+  // promised or pops one on a session about to come back.
+  const pendingSlide = useRef<(typeof PARTNER_SLIDES)[number] | null>(null);
+  const openPartner = useCallback((slide: (typeof PARTNER_SLIDES)[number]) => {
+    if (user) { navigate(slide.to); return; }
     openAuth({ redirectTo: slide.to, title: slide.title });
+  }, [user, navigate, openAuth]);
+
+  useEffect(() => {
+    if (authLoading || !pendingSlide.current) return;
+    const slide = pendingSlide.current;
+    pendingSlide.current = null;
+    openPartner(slide);
+  }, [authLoading, openPartner]);
+
+  // A sign-in window appearing by any route (the header, say) while a click
+  // is parked discharges it, so a guest who then closes it is not shown it
+  // a second time when the session check answers.
+  useEffect(() => {
+    if (isAuthOpen) pendingSlide.current = null;
+  }, [isAuthOpen]);
+
+  const onBanner = (slide: (typeof PARTNER_SLIDES)[number]) => {
+    if (authLoading) { pendingSlide.current = slide; return; }
+    openPartner(slide);
   };
 
   return (
@@ -750,7 +775,15 @@ function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User
       >
         <div className="st-hero-slide">{hero}</div>
         {slides.map((s) => (
-          <button key={s.key} type="button" className="st-partner-slide" aria-label={s.label} onClick={() => openPartner(s)}>
+          <button
+            key={s.key}
+            type="button"
+            // A lone banner (an approved seller or buyer sees one) takes the
+            // whole page, or on a wide screen it would sit beside half the hero.
+            className={`st-partner-slide${slides.length === 1 ? ' solo' : ''}`}
+            aria-label={s.label}
+            onClick={() => onBanner(s)}
+          >
             <img src={s.src} alt="" width={972} height={809} loading="lazy" decoding="async" />
           </button>
         ))}
