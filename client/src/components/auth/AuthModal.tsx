@@ -243,7 +243,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   const nameValid = !needsName || name.trim().length >= 2;
   const passwordFormValid = identifier.trim().length > 0 && password.length > 0;
   const unmetRules = PASSWORD_RULES.filter((r) => !r.test(password));
-  const clearError = () => { setError(undefined); setErrorField(undefined); };
+  // One message on screen at a time: using a form retires Google's, and
+  // trying Google retires the form's (handleGoogle).
+  const clearError = () => { setError(undefined); setErrorField(undefined); setGoogleError(undefined); };
 
   // Where a freshly signed-in account lands, decided once for both lanes. A
   // brand-new partner has an application to fill in; a partner mid-review has
@@ -266,6 +268,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
 
   async function handlePasswordSignIn(e: React.FormEvent) {
     e.preventDefault();
+    setGoogleError(undefined);
     if (!passwordFormValid) { setError('Enter your phone or email and your password'); return; }
     const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined);
@@ -292,7 +295,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // about; the form's own error slots belong to fields Google never touched.
   async function handleGoogle(credential: string) {
     const attempt = attemptRef.current;
-    setSigningIn(true); setGoogleError(undefined);
+    setSigningIn(true); setGoogleError(undefined); setError(undefined); setErrorField(undefined);
     try {
       const { user, created, passwordRemoved } = await signInWithGoogle(credential);
       if (attemptRef.current !== attempt) return;
@@ -318,6 +321,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // 'verification-required'.
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
+    setGoogleError(undefined);
     const contact = readContact(identifier);
     const fail = (field: SignupField, message: string) => { setErrorField(field); setError(message); };
     if (name.trim().length < 2) return fail('name', 'Tell us your name (at least 2 characters)');
@@ -551,7 +555,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   placeholder="you@example.com or +91-9876543210"
                   autoComplete="username"
                   value={identifier}
-                  onChange={(e) => { setIdentifier(e.target.value); setError(undefined); }}
+                  onChange={(e) => { setIdentifier(e.target.value); clearError(); }}
                   autoFocus
                   required
                 />
@@ -562,7 +566,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                     placeholder="Your password"
                     autoComplete="current-password"
                     value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(undefined); }}
+                    onChange={(e) => { setPassword(e.target.value); clearError(); }}
                     error={error}
                     required
                   />
