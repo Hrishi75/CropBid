@@ -155,9 +155,12 @@ const updateAccountBasicsSchema = z.object(accountFields);
 // WHY THESE OPTIONS?
 //   httpOnly: true   → JavaScript cannot access it (prevents XSS theft)
 //   secure           → HTTPS only in production (required when sameSite='none')
-//   sameSite         → In production the API (Render) and client (Vercel) live on
-//                      different domains, so the refresh cookie is cross-site and
-//                      MUST be 'none' to be sent on XHR. 'none' requires secure:true.
+//   sameSite         → 'none' in production, which requires secure:true. It was
+//                      required when the API (Render) and client (Vercel) were on
+//                      different domains. Both now sit under cropbid.in
+//                      (api.cropbid.in and cropbid.in), which is the same site,
+//                      so 'lax' would also be sent; moving to it is a separate
+//                      change, not a cleanup.
 //                      In development both run on localhost, so 'lax' is fine.
 //   maxAge           → The idle window PLUS a grace period, re-set on every
 //                      refresh so the cookie slides forward with the token it

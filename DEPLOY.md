@@ -143,11 +143,19 @@ file matched (a 404 for `/assets/*` and `/api/*`, the app shell otherwise), and
    visitor downloads. Never give a secret a `VITE_` name.
 4. Deploy → test on the `*.workers.dev` URL. Signing in fails there by design:
    the API's CORS allows `CLIENT_URL` exactly.
-5. Worker → **Settings** → **Domains & Routes** → add `cropbid.in` and
-   `www.cropbid.in` as custom domains (the zone must be on Cloudflare DNS, and
-   any old A/CNAME for those names deleted first). Then a redirect rule sends
-   `www` to the apex with a 301, because `CLIENT_URL` is the apex.
-6. Leave `api.cropbid.in` **DNS only** (grey cloud): Caddy on the box gets its own
+5. Worker → **Domains** → **Add Domain** → `cropbid.in` (the zone must be on
+   Cloudflare DNS, and any old A/CNAME for the apex deleted first). The Worker's
+   name must match `name` in `client/wrangler.jsonc`, or the build fails with
+   "Failed to bind worker".
+6. `www` is **not** a Worker domain, because `CLIENT_URL` is the apex and `www`
+   only ever forwards:
+   - DNS → add a **CNAME** `www` → `cropbid.in`, **Proxied** (orange).
+   - Rules → Redirect Rule → Wildcard pattern: request URL
+     `https://www.cropbid.in/*`, target `https://cropbid.in/${1}`, **301**,
+     Preserve query string.
+   - SSL/TLS → Edge Certificates → **Always Use HTTPS: On**. The rule only matches
+     `https`; without this, `http://www.cropbid.in` returns a 522.
+7. Leave `api.cropbid.in` **DNS only** (grey cloud): Caddy on the box gets its own
    certificate and the auction socket is long-lived. Email records (Zoho MX,
    DKIM, Brevo) are DNS only too.
 
@@ -189,6 +197,6 @@ which reports only from `cropbid.in` in a production build.
   and point `DATABASE_URL` at `localhost:5432`.
 
 > _Deployed API: `https://cropbid-api-oyfv.onrender.com` · Web: `https://cropbid.in`
-> (canonical origin — `www.` 308-redirects to the apex; `CLIENT_URL` must be the apex)_
+> (canonical origin: `www.` 301-redirects to the apex; `CLIENT_URL` must be the apex)_
 
 <!-- deploy marker: order-details (PR #70) — re-trigger after missed webhook -->

@@ -53,7 +53,7 @@ const app = express();
 // Middleware Stack (order matters!)
 // =============================================================================
 
-// Trust the first proxy (Render/Vercel/any reverse proxy terminating TLS).
+// Trust the first proxy (Caddy on the Lightsail box, or any reverse proxy terminating TLS).
 // WHY? Behind a proxy, the client IP arrives in X-Forwarded-For and the original
 // protocol in X-Forwarded-Proto. Without this:
 //   - express-rate-limit sees one shared proxy IP (or throws a validation error)
@@ -65,7 +65,7 @@ app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: false,       // CSP handled separately or by frontend
   crossOriginEmbedderPolicy: false,   // allow image loading from uploads
-  // Allow the Vercel-hosted frontend to load /uploads images from this API origin.
+  // Allow the website (cropbid.in) to load /uploads images from this API origin.
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
