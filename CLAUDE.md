@@ -300,6 +300,12 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
 - Privacy must disclose Vercel Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
 
+### The homepage hero slides to two partner banners (2026-10-06)
+
+`HeroCarousel` in `LandingPage.tsx`: the existing hero, then "Become a Partner to Sell" and "... to Buy" (`client/public/banners/`), on one scroll-snap track with arrows, dots, and a slide every 5 seconds that loops for good (the user's call: it always rotates). It holds only while a finger or mouse button is down on it, and a manual move restarts the 5 seconds. Both banners are one page side by side above 960px, one each below. A banner is a button: signed in, it goes to `/partner#sell` or `#buy`; signed out, it opens the sign-in window with that as `redirectTo`. An approved seller is not shown the sell banner, nor a buyer the buy banner.
+
+**The copy is baked into the artwork, so it is outside this file's reach unless someone regenerates the picture.** As supplied, the sell banner says "Faster Payments" (payouts are a manual transfer, §6) and the buy banner "Quality Produce" (nothing checks a lot, §2b). Both are on screen until the images are redone.
+
 ### The cookie notice (shipped 2026-09-03)
 
 `components/ui/CookieNotice.tsx`, mounted in `App.tsx` beside Toaster and Analytics so the prerender never bakes it into the static markup. A bottom-left card, dismissed with one button. It links to `/privacy#cookies`, which is a real anchored section, reached by an effect on the page because a client-side route change does not make the browser jump to a hash on its own.
