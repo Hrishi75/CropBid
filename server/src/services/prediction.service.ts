@@ -353,8 +353,14 @@ function predictCrop(
   const high = roundPrice(center * (1 + bandWidth), rate.unit);
 
   // A handful of mandis is not a market read, however far the price moved.
+  // High also needs a past to compare with: a crop on its first day on record
+  // is forecast off one day's spread, however many mandis reported it.
   const confidence: Confidence =
-    rate.source === 'reference' || mandis < 4 ? 'low' : mandis >= 12 ? 'high' : 'medium';
+    rate.source === 'reference' || mandis < 4
+      ? 'low'
+      : mandis >= 12 && hasHistory
+        ? 'high'
+        : 'medium';
 
   // --- advice — two sides of the same forecast --------------------------------
   const move = `${Math.abs(pct7d).toFixed(1)}%`;

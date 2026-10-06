@@ -771,7 +771,7 @@ It used to ask the feed per crop and per state, and the day it was checked prope
 
 **The forecast covers the same list (2026-09-27).** `getForecastBoard` read the board, so `/forecast` and the app's Forecast tab stopped at 30 crops while `/rates` listed about 220. It now reads `getAllRates()` for all India, and both surfaces gained the rates page's search box. Two things follow from widening it:
 - **Seasonality and the platform signal still cover the board crops only.** Nobody has checked a harvest calendar for kulthi or tinda, and a guessed one would be printed as a reason. Every other crop is forecast on the feed alone (price vs usual, how many mandis reported, how far they disagree), and its drivers say only that.
-- **A thin crop cannot lead.** Under four reporting mandis is `low` confidence, and the list is ranked by confidence before size of move, because the storefront strip and `/how-it-works` take the first few as "biggest movers" and a crop two mandis reported can post the largest move on the board.
+- **A thin crop cannot lead.** Under four reporting mandis is `low` confidence, and the list is ranked by confidence before size of move, because the storefront strip and `/how-it-works` take the first few as "biggest movers" and a crop two mandis reported can post the largest move on the board. **High confidence also needs a past to compare with**: a crop on its first day on record is `medium` at most, however many mandis reported it.
 
 **Production had no registered key until 2026-09-21.** It is set in the Lightsail `.env` now. A registered key is also shared by anything else that uses it, local development included.
 

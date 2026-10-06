@@ -158,9 +158,9 @@ export function ForecastBody() {
 
   const counts = board
     ? {
-        rise: board.predictions.filter((p) => p.outlook.direction === 'rise').length,
-        ease: board.predictions.filter((p) => p.outlook.direction === 'ease').length,
-        hold: board.predictions.filter((p) => p.outlook.direction === 'hold').length,
+        rise: shown.filter((p) => p.outlook.direction === 'rise').length,
+        ease: shown.filter((p) => p.outlook.direction === 'ease').length,
+        hold: shown.filter((p) => p.outlook.direction === 'hold').length,
       }
     : null;
 
@@ -190,7 +190,7 @@ export function ForecastBody() {
           {board?.live ? <Pulse style={styles.liveDot} /> : null}
           <Mono style={styles.srcText}>
             {board
-              ? `${board.live ? 'LIVE' : 'REFERENCE'} · ${t('next 7 days').toUpperCase()} · ${board.date} · ${board.predictions.length} ${board.predictions.length === 1 ? 'CROP' : 'CROPS'}`
+              ? `${board.live ? 'LIVE' : 'REFERENCE'} · ${t('next 7 days').toUpperCase()} · ${board.date} · ${t(board.predictions.length === 1 ? '{{n}} CROP' : '{{n}} CROPS', { n: board.predictions.length })}`
               : 'PREDICTION ENGINE'}
           </Mono>
         </View>
@@ -236,7 +236,7 @@ export function ForecastBody() {
 
         {board && (
           <Text style={styles.foot}>
-            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, the Indian harvest calendar, and live CropBid activity. An explainable estimate to negotiate around — not a guarantee.")}
+            {t("The forecast is a deterministic model over the Government of India's Agmarknet feed, plus, for the 30 board crops, the Indian harvest calendar and live CropBid activity. An explainable estimate to negotiate around, not a guarantee.")}
           </Text>
         )}
       </ScrollView>

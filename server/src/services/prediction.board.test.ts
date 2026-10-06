@@ -57,6 +57,14 @@ describe('getForecastBoard', () => {
     const [p] = (await getForecastBoard()).predictions;
     expect(p.demand.drivers[0]).toMatch(/Not enough price history/);
     expect(Number.isFinite(p.outlook.pct7d)).toBe(true);
+    // Thirty mandis, but nothing to compare today with: not a high-confidence read.
+    expect(p.outlook.confidence).toBe('medium');
+  });
+
+  it('gives high confidence to a widely reported crop with history', async () => {
+    rates.push(rate('Tomato'));
+    const [p] = (await getForecastBoard()).predictions;
+    expect(p.outlook.confidence).toBe('high');
   });
 
   it('puts a well-reported crop ahead of a thin one that moved further', async () => {
