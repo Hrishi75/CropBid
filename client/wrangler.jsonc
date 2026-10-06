@@ -9,6 +9,10 @@
   "name": "cropbid",
   "compatibility_date": "2026-09-01",
   "main": "./worker.js",
+  // Present so `npx wrangler preview`, which Cloudflare runs for every non-main
+  // branch, can build a PR preview; without it those builds fail. Empty means
+  // previews use the same settings as production.
+  "previews": {},
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
