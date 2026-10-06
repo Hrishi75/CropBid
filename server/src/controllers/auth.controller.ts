@@ -599,6 +599,34 @@ export async function verifyPhoneSignInHandler(req: Request, res: Response) {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/google: sign in (or up) with a Google ID token
+// ---------------------------------------------------------------------------
+// The body is the `credential` the Google button hands the browser. Everything
+// it proves is checked in the service; this is only its shape.
+const googleSignInSchema = z.object({
+  credential: z.string({ error: 'Google did not send a sign-in. Try again.' })
+    .min(1, 'Google did not send a sign-in. Try again.').max(4096),
+});
+
+export async function googleSignInHandler(req: Request, res: Response) {
+  const parsed = googleSignInSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: true, message: parsed.error.issues[0]?.message || 'Invalid input' });
+    return;
+  }
+  const result = await authService.signInWithGoogle(parsed.data.credential);
+
+  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  res.status(result.created ? 201 : 200).json({
+    user: result.user,
+    accessToken: result.accessToken,
+    created: result.created,
+    passwordRemoved: Boolean('passwordRemoved' in result && result.passwordRemoved),
+    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/onboarding/farmer — submit (or resubmit) a SELLER application
 // ---------------------------------------------------------------------------
 // Field shapes are checked here; WHICH fields a given sellerType must provide
