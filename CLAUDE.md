@@ -313,7 +313,17 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
-- Privacy must disclose Vercel Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+- Privacy must disclose Cloudflare Web Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+
+### The website is hosted on Cloudflare (decided 2026-10-06)
+
+**A static-assets-only Cloudflare Worker serves `client/dist`; Vercel is being retired.** Vercel's free plan is for non-commercial use only, and CropBid takes money, so staying meant Pro at $20 a member a month. Cloudflare's free plan allows commercial sites. The build is unchanged: `npm run build` already prerenders every public page to a file, so any static host works.
+
+- **`client/wrangler.jsonc` is the routing.** `drop-trailing-slash` serves `/faq` from `faq/index.html` and redirects `/faq/` to `/faq`; the default would do the opposite and split every page across two URLs against the canonical tags and the sitemap. `single-page-application` serves the app shell for signed-in paths. `client/public/_headers` carries the cache headers.
+- **`vercel.json` stays until Vercel is switched off**, because Vercel keeps serving cropbid.in until the domain is moved and still builds every merge.
+- **Page views are Cloudflare Web Analytics** (`components/ui/PageAnalytics.tsx`), cookie-free like Vercel's was, so the cookie notice stays a notice. It reports only from `cropbid.in` in a production build. Its token is public by design but is a build variable (`VITE_CF_ANALYTICS_TOKEN`), not a literal, because GitGuardian flags any token-shaped string in the repo; unset, nothing reports.
+- **DNS is on Cloudflare**, moved from Hostinger (still the registrar). Only `cropbid.in` and `www` are proxied. `api.cropbid.in` stays DNS only (Caddy gets its own certificate, and the auction socket is long-lived), and so do the Zoho MX, DKIM and Brevo link records: proxied, those break email and the links inside it.
+- **Every `VITE_` build variable is public**, inlined into the bundle each visitor downloads: the API origin, the Google client id and the analytics token. Secrets live only in the API's `.env` on Lightsail.
 
 ### The homepage hero slides to two partner banners (2026-10-06)
 

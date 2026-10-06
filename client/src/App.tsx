@@ -1,11 +1,11 @@
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
 import { AuthModalProvider } from './context/AuthModalContext';
 import { CartProvider } from './context/CartContext';
 import { CartBar } from './components/consumer/CartBar';
 import { CookieNotice } from './components/ui/CookieNotice';
+import { PageAnalytics } from './components/ui/PageAnalytics';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -34,7 +34,7 @@ import { useSeo } from './lib/useSeo';
  *   - this file wraps it in BrowserRouter for the browser
  *   - entry-server.tsx wraps it in StaticRouter to prerender public pages
  *
- * Toaster, Analytics and CookieNotice deliberately stay OUT of it. All three
+ * Toaster, PageAnalytics and CookieNotice deliberately stay OUT of it. All three
  * are browser-only side effects with nothing to contribute to static markup,
  * and keeping them on the client side of the line means the prerender build
  * never has to load them. The cookie notice in particular is a statement about
@@ -78,7 +78,7 @@ function App() {
           },
         }}
       />
-      <Analytics />
+      <PageAnalytics />
     </BrowserRouter>
   );
 }

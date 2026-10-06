@@ -1,0 +1,19 @@
+// Cloudflare Workers config for the website: a static-assets-only Worker, no
+// server code. Cloudflare's build runs `npm run build` in client/ (tsc, both
+// Vite passes and the prerender), then `npx wrangler deploy` uploads dist/.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "cropbid-web",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    // The prerender writes each public page as dist/<path>/index.html. The
+    // default would redirect /faq to /faq/, splitting every page across two
+    // URLs against the canonical tags and the sitemap, which use no slash.
+    // This serves /faq from that file and redirects /faq/ to /faq instead.
+    "html_handling": "drop-trailing-slash",
+    // Signed-in pages (/orders, /cart, ...) have no file of their own: serve
+    // the app shell and let the router draw them, as vercel.json's rewrite did.
+    "not_found_handling": "single-page-application"
+  }
+}

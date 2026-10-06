@@ -1,4 +1,4 @@
-# 🚀 Deploying CropBid (Neon + Render + Vercel)
+# 🚀 Deploying CropBid (Neon + Render + Cloudflare)
 
 Production demo stack — all free tier:
 
@@ -6,7 +6,7 @@ Production demo stack — all free tier:
 |-------|------|-------|
 | Database | **Neon** | Serverless Postgres. Works with the `pg` driver adapter unchanged. |
 | Backend | **Render** | Express + Socket.io. Needs a persistent process (not serverless) for WebSockets + in-memory auctions. |
-| Frontend | **Vercel** | Static Vite build. |
+| Frontend | **Cloudflare Workers** | Static Vite build, served as static assets (`client/wrangler.jsonc`). |
 
 > ⚠️ **Render free tier sleeps after ~15 min idle** → first request cold-starts in ~50s.
 > For a live demo, hit the URL ~2 min early to warm it, or upgrade to the $7/mo instance.
@@ -114,38 +114,58 @@ Production demo stack — all free tier:
 
 ---
 
-## 2. Frontend → Vercel
+## 2. Frontend → Cloudflare Workers
 
-1. Vercel → **Add New → Project** → import `Hrishi75/CropBid`.
-2. **Root Directory: `client`** (important — repo is a monorepo).
-   Framework preset: **Vite**. Build command / output (`dist`) are auto-detected.
-3. Add Environment Variables (Production):
+The site is a static-assets-only Worker: no server code. `client/wrangler.jsonc`
+holds the routing (`/faq` served from `faq/index.html`, every other path gets the
+app shell) and `client/public/_headers` the cache headers.
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repository**
+   → connect GitHub → pick `Hrishi75/CropBid`.
+2. Build settings:
+   - **Build command:** `npm run build`
+   - **Deploy command:** `npx wrangler deploy`
+   - **Path / root directory:** `client` (the repo is a monorepo)
+3. Under **Build variables** (not runtime Variables: Vite reads these while
+   building and inlines them into the bundle):
 
    | Key | Value |
    |-----|-------|
-   | `VITE_API_URL` | `https://cropbid-api.onrender.com/api` |
-   | `VITE_SOCKET_URL` | `https://cropbid-api.onrender.com` |
+   | `VITE_API_URL` | `https://api.cropbid.in/api` |
+   | `VITE_SOCKET_URL` | `https://api.cropbid.in` |
    | `VITE_GOOGLE_CLIENT_ID` | the OAuth web client id (optional; blank hides the Google button). The API needs the same value as `GOOGLE_CLIENT_ID` |
+   | `VITE_CF_ANALYTICS_TOKEN` | the Web Analytics token for cropbid.in (Cloudflare → Web Analytics → Manage site). Blank means no page views are counted |
+   | `NODE_VERSION` | `22` |
 
-   > Vite inlines these at **build time** — they must be set before/at deploy.
-4. Deploy → note the URL, e.g. `https://cropbid.vercel.app`.
+   None of these is a secret: every `VITE_` value ends up in the code every
+   visitor downloads. Never give a secret a `VITE_` name.
+4. Deploy → test on the `*.workers.dev` URL. Signing in fails there by design:
+   the API's CORS allows `CLIENT_URL` exactly.
+5. Worker → **Settings** → **Domains & Routes** → add `cropbid.in` and
+   `www.cropbid.in` as custom domains (the zone must be on Cloudflare DNS, and
+   any old A/CNAME for those names deleted first). Then a redirect rule sends
+   `www` to the apex with a 301, because `CLIENT_URL` is the apex.
+6. Leave `api.cropbid.in` **DNS only** (grey cloud): Caddy on the box gets its own
+   certificate and the auction socket is long-lived. Email records (Zoho MX,
+   DKIM, Brevo) are DNS only too.
 
----
+Page views are counted by Cloudflare Web Analytics (`components/ui/PageAnalytics.tsx`),
+which reports only from `cropbid.in` in a production build.
 
 ## 3. Close the loop (CORS / cookies)
 
-1. Back in Render → set `CLIENT_URL` = exact Vercel URL (e.g. `https://cropbid.vercel.app`,
+1. Back in Render → set `CLIENT_URL` = the site's exact origin (`https://cropbid.in`,
    **no trailing slash**) → save (triggers a redeploy).
 
    Why: CORS uses an exact origin (can't be `*` with credentials), and the refresh
    cookie is cross-site (`SameSite=None; Secure`) — it only flows to/from this origin.
-2. If you later add a custom domain on Vercel, update `CLIENT_URL` to match.
+2. If the site's domain ever changes, update `CLIENT_URL` to match.
 
 ---
 
 ## 4. Smoke test the live demo
 
-- Open the Vercel URL.
+- Open https://cropbid.in.
 - Log in with a seeded account (password `password123`):
   - Farmer: `rajesh@cropbid.test`
   - Buyer:  `vikram@cropbid.test`
