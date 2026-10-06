@@ -664,7 +664,7 @@ const AUTOPLAY_MS = 5000;
 // layout the CSS chose.
 function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User | null; authLoading: boolean }) {
   const navigate = useNavigate();
-  const { openAuth } = useAuthModal();
+  const { openAuth, isAuthOpen } = useAuthModal();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [pages, setPages] = useState<number[]>([0]);
   const [active, setActive] = useState(0);
@@ -745,6 +745,13 @@ function HeroCarousel({ hero, user, authLoading }: { hero: ReactNode; user: User
     pendingSlide.current = null;
     openPartner(slide);
   }, [authLoading, openPartner]);
+
+  // A sign-in window appearing by any route (the header, say) while a click
+  // is parked discharges it, so a guest who then closes it is not shown it
+  // a second time when the session check answers.
+  useEffect(() => {
+    if (isAuthOpen) pendingSlide.current = null;
+  }, [isAuthOpen]);
 
   const onBanner = (slide: (typeof PARTNER_SLIDES)[number]) => {
     if (authLoading) { pendingSlide.current = slide; return; }
