@@ -1503,6 +1503,9 @@ body * {
   background: #f9f6ee; cursor: pointer;
   transition: transform .15s ease, box-shadow .15s ease;
 }
+.st-partner-slide.solo { flex-basis: 100%; }
+/* full width would make the picture over a thousand pixels tall on a desktop */
+.st-partner-slide.solo img { width: auto; max-width: 100%; max-height: 480px; }
 .st-partner-slide:hover { box-shadow: 0 10px 28px rgba(20,20,15,0.12); }
 .st-partner-slide:focus-visible { outline: 3px solid var(--cb-forest); outline-offset: -3px; }
 .st-partner-slide img { display: block; width: 100%; height: auto; }
