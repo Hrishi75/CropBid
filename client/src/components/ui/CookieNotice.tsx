@@ -3,7 +3,7 @@
 // =============================================================================
 // CropBid sets exactly ONE cookie: the httpOnly `refreshToken` that keeps a
 // signed-in session alive (auth.controller.ts, REFRESH_COOKIE_OPTIONS). Nothing
-// else. Vercel Analytics is cookie-free, and there is no ad or retargeting
+// else. Cloudflare Web Analytics is cookie-free, and there is no ad or retargeting
 // pixel anywhere in the app. The rest of what lives on a visitor's device is
 // localStorage the site cannot work without: the basket, the delivery city, the
 // chosen language, the idle-timeout clock.
@@ -20,7 +20,7 @@
 // consent, and the EU rules for anyone reachable from there): opt-in by
 // default-off, a genuine reject, and a way to change the answer later.
 //
-// It mounts OUTSIDE AppContent, next to Toaster and Analytics, for the reason
+// It mounts OUTSIDE AppContent, next to Toaster and PageAnalytics, for the reason
 // given in App.tsx: it is a browser-only side effect with nothing to say to a
 // crawler, so the prerender never renders it into the static markup.
 // =============================================================================

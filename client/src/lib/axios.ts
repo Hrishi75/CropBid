@@ -26,8 +26,8 @@ import { markSynced, setLogoutReason } from './idle';
 // Create a custom axios instance (not the global one)
 // This lets us add interceptors without affecting other axios usage
 // In dev, Vite proxies /api to the local Express server (vite.config.ts).
-// In prod (Vercel), VITE_API_URL points at the deployed backend, e.g.
-//   https://cropbid-api.onrender.com/api
+// In prod (Cloudflare), VITE_API_URL points at the deployed backend:
+//   https://api.cropbid.in/api
 // Fallback to '/api' so local dev keeps working without an .env file.
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? '/api',
