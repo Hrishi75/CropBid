@@ -20,7 +20,9 @@ import { generateTokens, isTokenExpiredError, verifyRefreshToken } from '../util
 import { generateResetToken, hashResetToken, resetTokenExpiry } from '../utils/resetToken';
 import { hashRefreshToken, refreshTokenMatches } from '../utils/refreshToken';
 import { ApiError } from '../utils/ApiError';
-import { maskPayoutDetails, maskUserPayoutDetails, parsePayoutDetails } from './payoutDetails';
+import { assertConsentNotRefused, consentFields } from '../utils/consent';
+import { recordFailedSignIn } from './securityAlert.service';
+import { maskPayoutDetails, maskUserPayoutDetails, parsePayoutDetails, sealPayoutColumns } from './payoutDetails';
 import { sendPasswordResetEmail, sendSignupOtpEmail } from './email.service';
 import {
   SIGNUP_OTP_MAX_ATTEMPTS,
@@ -98,6 +100,13 @@ function safeUser<T extends Record<string, any>>(user: T) {
   return maskUserPayoutDetails(rest);
 }
 
+// What a seller typed, checked and normalised, then encrypted for the
+// database. Null when they said nothing about payout.
+function sealedPayout(input: Parameters<typeof parsePayoutDetails>[0]) {
+  const parsed = parsePayoutDetails(input);
+  return parsed ? sealPayoutColumns(parsed) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Signup — Create a new user account
 // ---------------------------------------------------------------------------
@@ -111,6 +120,8 @@ interface SignupInput {
   country?: string;
   currency?: 'INR' | 'USD' | 'EUR' | 'GBP';
   language?: UserLanguage;
+  /** The sign-up tickbox (utils/consent.ts). Absent on old app builds. */
+  consent?: boolean;
 }
 
 // The three languages the UI actually offers. Mirrors the Language enum in
@@ -157,6 +168,7 @@ async function createUserAndIssueTokens(data: {
   country?: string;
   currency?: SignupInput['currency'];
   language?: SignupInput['language'];
+  consent?: boolean;
 }) {
   // Two concurrent signups can both pass the pre-check above; the unique index
   // decides the race, so map the loser's P2002 to the same 409 instead of
@@ -172,6 +184,7 @@ async function createUserAndIssueTokens(data: {
         country: data.country || 'India',
         currency: data.currency || 'INR',
         language: data.language || 'EN',
+        ...consentFields(data.consent),
       },
       include: {
         farmerProfile: true,
@@ -228,6 +241,7 @@ export async function signup(input: Omit<SignupInput, 'role'>) {
   if (!email && !phone) {
     throw new ApiError(400, 'Enter an email address or a phone number');
   }
+  assertConsentNotRefused(input.consent);
 
   await assertIdentifiersFree(phone, email);
 
@@ -244,6 +258,7 @@ export async function signup(input: Omit<SignupInput, 'role'>) {
     country: input.country,
     currency: input.currency,
     language: input.language,
+    consent: input.consent,
   });
 }
 
@@ -518,6 +533,11 @@ export async function login(input: LoginInput) {
   if (!user) {
     // SECURITY: Don't reveal whether the account exists or not
     // "Invalid credentials" for both cases
+    //
+    // Counted towards the platform-wide burst alert (securityAlert.service):
+    // credential stuffing tries numbers that have no account as often as
+    // ones that do.
+    recordFailedSignIn();
     throw new ApiError(401, 'Invalid phone/email or password');
   }
 
@@ -528,12 +548,14 @@ export async function login(input: LoginInput) {
   // on the null. Refuse the password path outright, with the same generic
   // message so an attacker learns nothing about which accounts are passwordless.
   if (!user.password) {
+    recordFailedSignIn();
     throw new ApiError(401, 'Invalid phone/email or password');
   }
 
   const isPasswordValid = await bcrypt.compare(input.password, user.password);
 
   if (!isPasswordValid) {
+    recordFailedSignIn();
     throw new ApiError(401, 'Invalid phone/email or password');
   }
 
@@ -885,14 +907,26 @@ export async function changePassword(
 // FKs deliberately do NOT cascade, so there are two shapes:
 //   - never transacted → hard-delete the user row; profiles, agent config,
 //     bids, and notifications cascade with it.
-//   - has settled deals → the rows a Transaction points at survive, but every
-//     personal field and credential is scrubbed: the user becomes an
-//     anonymous shell ("Deleted account", unusable email, scrambled password,
-//     all sessions revoked), transacted listings leave the market (EXPIRED),
-//     and the buyer profile, notifications, and bank details are removed.
+//   - has settled deals or wallet history → the rows a Transaction or wallet
+//     entry points at survive, but every personal field and credential is
+//     scrubbed: the user becomes an anonymous shell ("Deleted account",
+//     unusable email, scrambled password, all sessions revoked), transacted
+//     listings leave the market (EXPIRED), and the buyer profile,
+//     notifications, bank and licence details, saved addresses, the delivery
+//     addresses copied onto bids and shipments, enquiries and free-text
+//     messages are removed. Open requests are closed and stop repeating.
+//     This is the DPDP right to erasure, so a new column holding personal
+//     data belongs in this list the day it is added.
 // Either way, untransacted listings and bids go first — they cascade the
 // bids/negotiations hanging off them, which also frees the agent config's
 // negotiation references so it can cascade (or be safely switched off).
+function walletNotEmpty(balance: number) {
+  return new ApiError(
+    409,
+    `You have ₹${balance.toLocaleString('en-IN')} of credits in your wallet. Write to info@cropbid.in to have it returned, then delete your account.`,
+  );
+}
+
 export async function deleteAccount(userId: string, password: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -952,6 +986,19 @@ export async function deleteAccount(userId: string, password: string) {
   const settledDeals = await prisma.transaction.count({
     where: { OR: [{ farmerId: userId }, { buyerId: userId }] },
   });
+  // A wallet that has ever moved is money they paid us, and its entries
+  // cascade with the user row. Like a settled deal, it is a record we must
+  // keep, so it sends the account down the anonymising path instead.
+  const walletHistory = await prisma.walletEntry.count({ where: { wallet: { userId } } });
+  const mustKeepRecordsBefore = settledDeals > 0 || walletHistory > 0;
+
+  // Credits still in the wallet are their money. Anonymising would leave it
+  // there with no way left to sign in and spend it, and returning it is a
+  // manual transfer (CLAUDE.md §6), so the delete waits until it is settled.
+  // Checked again inside the transaction, under the wallet lock, so a top-up
+  // landing in between cannot slip past.
+  const wallet = await prisma.wallet.findUnique({ where: { userId }, select: { balance: true } });
+  if (wallet && wallet.balance > 0) throw walletNotEmpty(wallet.balance);
 
   // Upload paths of the listings about to be hard-deleted — cleaned from
   // storage after the commit. Transacted listings keep their images (the
@@ -967,7 +1014,24 @@ export async function deleteAccount(userId: string, password: string) {
 
   const scrambledPassword = await bcrypt.hash(randomUUID(), 12);
 
-  await prisma.$transaction(async (tx) => {
+  const anonymized = await prisma.$transaction(async (tx) => {
+    // The user row first. A first top-up creates the wallet, and a new deal
+    // its transaction, both with a foreign key to this row, so both wait on
+    // this lock: there may be no wallet row yet for the lock below to hold.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    // The same lock applyEntry takes, so a top-up either commits before this
+    // read (and the delete is refused) or waits until the account is gone.
+    const [locked] = await tx.$queryRaw<{ balance: number }[]>`
+      SELECT balance FROM "Wallet" WHERE "userId" = ${userId} FOR UPDATE`;
+    if (locked && locked.balance > 0) throw walletNotEmpty(locked.balance);
+    // Read again under both locks: a wallet or deal that appeared since the
+    // counts above must send the account down the anonymising path, or the
+    // hard delete would cascade away the record of money paid in.
+    const mustKeepRecords =
+      mustKeepRecordsBefore ||
+      (await tx.walletEntry.count({ where: { wallet: { userId } } })) > 0 ||
+      (await tx.transaction.count({ where: { OR: [{ farmerId: userId }, { buyerId: userId }] } })) > 0;
+
     if (user.farmerProfile) {
       // Never-transacted lots can go; sold lots are pinned by Transaction FKs,
       // so they stay but leave the market.
@@ -981,7 +1045,19 @@ export async function deleteAccount(userId: string, password: string) {
     }
     await tx.bid.deleteMany({ where: { buyerId: userId, transaction: null } });
 
-    if (settledDeals === 0) {
+    // Rows keyed by the email or phone rather than by the user, so neither a
+    // cascade nor the anonymising update below reaches them.
+    const identifiers = [
+      ...(user.email ? [{ email: user.email }] : []),
+      ...(user.phone ? [{ phone: user.phone }] : []),
+    ];
+    if (identifiers.length > 0) {
+      await tx.phoneChallenge.deleteMany({ where: { OR: identifiers } });
+      await tx.pendingSignup.deleteMany({ where: { OR: identifiers } });
+    }
+    if (user.email) await tx.waitlist.deleteMany({ where: { email: user.email } });
+
+    if (!mustKeepRecords) {
       await tx.user.delete({ where: { id: userId } });
     } else {
       // The farmer profile must survive when transacted listings cascade from
@@ -1002,6 +1078,15 @@ export async function deleteAccount(userId: string, password: string) {
             payoutIfsc: null,
             fpoName: null,
             apmcLicense: null,
+            // A shop is known by its name, so the name identifies the
+            // person as surely as their own does; the licence numbers and
+            // address lead straight back to them too.
+            businessName: null,
+            address: null,
+            fssaiLicense: null,
+            gstin: null,
+            certificationBody: null,
+            statusNote: null,
           },
         });
       }
@@ -1016,6 +1101,61 @@ export async function deleteAccount(userId: string, password: string) {
         data: { active: false, autoNegotiate: false },
       });
       await tx.notification.deleteMany({ where: { userId } });
+
+      // EVERYTHING BELOW IS PERSONAL DATA THAT SURVIVED ON A KEPT RECORD.
+      // Anonymising is only anonymous if no row still leads back to them.
+      //
+      // Their saved addresses: a cascade on a hard delete, but nothing here.
+      await tx.address.deleteMany({ where: { userId } });
+      // The delivery address and phone they gave at checkout, copied onto
+      // every bid they placed, including the ones a settled deal keeps.
+      await tx.bid.updateMany({
+        where: { buyerId: userId },
+        data: { deliveryAddress: null, contactPhone: null },
+      });
+      // A shipment copies the pickup and drop addresses as text. The deal
+      // keeps its shipment; the end that was theirs loses the address.
+      const removed = 'Removed when the account was deleted';
+      await tx.shipment.updateMany({
+        where: { transaction: { buyerId: userId } },
+        data: { deliveryLocation: removed },
+      });
+      await tx.shipment.updateMany({
+        where: { transaction: { farmerId: userId } },
+        data: { pickupLocation: removed },
+      });
+      // Leads to a dealer or input shop are not records anyone must keep,
+      // and the message on them is free text that often holds a number.
+      await tx.equipmentEnquiry.deleteMany({ where: { userId } });
+      await tx.agriInputEnquiry.deleteMany({ where: { userId } });
+      // Their open requests leave the demand board and stop repeating, and
+      // the offers waiting on them end, as a withdrawal does. Without this a
+      // deleted account's weekly order went on posting itself.
+      await tx.requirementOffer.updateMany({
+        where: { requirement: { buyerId: userId, status: 'OPEN' }, status: { in: ['PENDING', 'COUNTERED'] } },
+        data: { status: 'EXPIRED', respondedAt: new Date() },
+      });
+      await tx.buyerRequirement.updateMany({
+        where: { buyerId: userId, status: 'OPEN' },
+        data: { status: 'CLOSED' },
+      });
+      await tx.buyerRequirement.updateMany({
+        where: { buyerId: userId },
+        // The delivery place is where they live or work. Both columns are
+        // required, so they are overwritten rather than cleared.
+        data: {
+          nextRepeatAt: null, description: null, descriptionEn: null, descriptionHi: null, descriptionMr: null,
+          deliveryLocation: removed, deliveryState: removed,
+        },
+      });
+      // Their own offers on other people's requests: live ones are pulled,
+      // and every message they wrote goes.
+      await tx.requirementOffer.updateMany({
+        where: { farmerId: userId, status: { in: ['PENDING', 'COUNTERED'] } },
+        data: { status: 'WITHDRAWN', respondedAt: new Date() },
+      });
+      await tx.requirementOffer.updateMany({ where: { farmerId: userId }, data: { message: null } });
+
       await tx.user.update({
         where: { id: userId },
         data: {
@@ -1028,12 +1168,15 @@ export async function deleteAccount(userId: string, password: string) {
           refreshToken: null,
           passwordResetToken: null,
           passwordResetExpires: null,
+          mustChangePassword: false,
+          passwordResetAt: null,
           // A login like the rest. Left in place, the person's Google account
           // would still sign in to the shell of the account they deleted.
           googleId: null,
         },
       });
     }
+    return mustKeepRecords;
   });
 
   // Best-effort upload cleanup — removeImage never throws.
@@ -1046,7 +1189,7 @@ export async function deleteAccount(userId: string, password: string) {
     action: 'auth.account.deleted',
     entityType: 'User',
     entityId: userId,
-    metadata: { anonymized: settledDeals > 0 },
+    metadata: { anonymized },
   });
 }
 
@@ -1227,7 +1370,8 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     // null when the application said nothing about payout, which leaves
     // whatever is already on file alone. A resubmission is not a reason to
     // wipe an account somebody has already been paid into.
-    ...(parsePayoutDetails(input) ?? {}),
+    // Encrypted before it is written (payoutDetails.sealPayoutColumns).
+    ...(sealedPayout(input) ?? {}),
   };
 
   const existing = await prisma.farmerProfile.findUnique({ where: { userId } });
@@ -1332,7 +1476,7 @@ export async function updateFarmerProfile(userId: string, input: UpdateFarmerPro
   // them, so writing a new UPI id while leaving yesterday's bank account
   // beside it would leave two answers to one question in front of whoever
   // makes the transfer.
-  const payout = parsePayoutDetails(input);
+  const payout = sealedPayout(input);
   if (payout) Object.assign(profileData, payout);
 
   // One transaction so the two rows never drift if the second write fails.
@@ -1628,7 +1772,7 @@ export async function startPhoneSignIn(input: {
 // ---------------------------------------------------------------------------
 // Step 2 — check the code, then sign in or create the account
 // ---------------------------------------------------------------------------
-export async function verifyPhoneSignIn(input: { challengeId: string; code: string; name?: string }) {
+export async function verifyPhoneSignIn(input: { challengeId: string; code: string; name?: string; consent?: boolean }) {
   const challenge = await prisma.phoneChallenge.findUnique({ where: { id: input.challengeId } });
 
   // An unknown id and an expired one are the same thing to the user: whatever
@@ -1694,6 +1838,9 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
   if (!existing && (!name || name.length < 2)) {
     throw new ApiError(400, 'Tell us your name to finish creating your account');
   }
+  // Checked with the name, before the challenge is spent, so a refused box
+  // costs them nothing but a tick. Only a new account is asked.
+  if (!existing) assertConsentNotRefused(input.consent);
 
   // Correct code, and everything needed is present: the challenge is spent.
   //
@@ -1749,6 +1896,7 @@ export async function verifyPhoneSignIn(input: { challengeId: string; code: stri
         // rule can still hold FARMER or BUYER for the few minutes it lives.
         role: 'CONSUMER',
         country: 'India',
+        ...consentFields(input.consent),
       },
       include: { farmerProfile: true, buyerProfile: true },
     })

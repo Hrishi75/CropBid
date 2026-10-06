@@ -6,7 +6,8 @@
 // an SMTP account to test it. So:
 //   - SMTP_HOST set     → send real email via nodemailer
 //   - SMTP_HOST not set → print the full email to the server console
-//     (the reset link is clickable straight from the terminal)
+//     (the reset link is clickable straight from the terminal), except on
+//     production, where it throws instead: see sendEmail
 //
 // The transporter is created lazily and cached so the SMTP connection pool is
 // shared across sends. All senders here throw on failure — callers decide
@@ -48,6 +49,16 @@ export interface EmailInput {
 
 export async function sendEmail(input: EmailInput): Promise<void> {
   if (!isSmtpConfigured()) {
+    // Never on production. The body is a password-reset link or a sign-in
+    // code, and a server log is read by more people, and kept longer, than an
+    // inbox: printing it there hands the account to whoever reads the log. So
+    // production fails the send like any other SMTP outage, and every caller
+    // already treats a throw as "not delivered".
+    if (config.nodeEnv === 'production') {
+      console.error(`[email] SMTP is not configured; "${input.subject}" was not sent`);
+      throw new Error('Email is not configured on this server');
+    }
+
     // Development fallback — make the email impossible to miss in the console.
     console.log(
       [

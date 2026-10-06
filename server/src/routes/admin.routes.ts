@@ -7,6 +7,7 @@ import { authenticate } from '../middleware/auth';
 import { requireRole } from '../middleware/roleGuard';
 import * as adminController from '../controllers/admin.controller';
 import * as creditController from '../controllers/credit.controller';
+import * as incidentController from '../controllers/incident.controller';
 
 const router = Router();
 
@@ -59,6 +60,13 @@ router.patch('/enquiries/:id', adminController.updateEnquiryStatus);
 // PATCH /api/admin/credit-applications/:id     — move one along (audited)
 router.get('/credit-applications', creditController.adminList);
 router.patch('/credit-applications/:id', creditController.adminReview);
+
+// GET   /api/admin/incidents      : the breach register, open ones first
+// POST  /api/admin/incidents      : log a suspected breach (starts the 72 hours)
+// PATCH /api/admin/incidents/:id  : record what was done and who was told
+router.get('/incidents', incidentController.list);
+router.post('/incidents', incidentController.create);
+router.patch('/incidents/:id', incidentController.update);
 
 // --- Seeds & fertiliser: the /inputs catalogue, including what the licence
 // gate hides from farmers, and adding to it. ---

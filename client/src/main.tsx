@@ -14,6 +14,10 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import './i18n'
 import App from './App.tsx'
+import { initSentry } from './lib/sentry'
+
+// Error monitoring, only when VITE_SENTRY_DSN is set (lib/sentry.ts).
+initSentry()
 
 // document.getElementById('root') can theoretically be null; the "!" asserts it
 // exists because index.html always ships the #root container.

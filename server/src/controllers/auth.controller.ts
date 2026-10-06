@@ -56,6 +56,9 @@ export const signupSchema = z.object({
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI', 'MR']).optional(),
+  // The "18 or older and agree" tickbox (utils/consent.ts). Optional because
+  // older app builds never send it; the service refuses an explicit false.
+  consent: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   // Cross-field, so it cannot live on either property. The path points back at
   // a field so a client can highlight it.
@@ -210,10 +213,10 @@ export async function signupHandler(req: Request, res: Response) {
     return;
   }
 
-  const { name, email, password, phone, country, currency, language } = parsed.data;
+  const { name, email, password, phone, country, currency, language, consent } = parsed.data;
 
   const result = await authService.signup({
-    name, email, password, phone, country, currency, language,
+    name, email, password, phone, country, currency, language, consent,
   });
 
   // Set refresh token as httpOnly cookie
@@ -579,6 +582,8 @@ const verifyPhoneSignInSchema = z.object({
   ),
   // Only read when the code creates a new account.
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100).optional(),
+  // Likewise, the sign-up tickbox (utils/consent.ts).
+  consent: z.boolean().optional(),
 });
 
 // POST /api/auth/phone/verify — check the code, sign in or create the account

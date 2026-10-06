@@ -245,6 +245,13 @@ model User {
   /// it signs them in and nothing else, because the access token carries this
   /// flag and `authenticate` refuses every request but the change itself.
   /// Cleared by changePassword, which is the only thing that clears it.
+  /// When they ticked "I am 18 or older and agree to the Terms and Privacy
+  /// Policy" at sign-up, and which version of those pages it pointed at
+  /// (utils/consent.ts). The DPDP Act puts proving consent on us. Null means
+  /// none was recorded: accounts made before 2026-10-05, or by an app build
+  /// that did not show the box.
+  consentAt      DateTime?
+  consentVersion String?
   mustChangePassword Boolean @default(false)
 
   /// When support last reset this password. A token allowed to skip the
@@ -1058,6 +1065,11 @@ model Notification {
 // Model 10: Waitlist — Early access signups
 // =============================================================================
 
+// No longer collected: nothing on the website or in the app has used it, and
+// POST /api/waitlist was removed on 2026-10-06 rather than keep gathering
+// emails for nothing (DPDP: collect only for a purpose). The rows already here
+// stay until somebody decides to delete them, which cannot be undone. Account
+// deletion removes a person's own row (auth.service.deleteAccount).
 model Waitlist {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -1860,4 +1872,53 @@ model MandiFeedCopy {
   rowCount  Int // checked against the rows on load, so a damaged copy is not served
   rows      Bytes // gzipped JSON of MandiRow[], about 300 KB for a full day
   updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// SecurityIncident: the breach register (/admin/incidents)
+// =============================================================================
+// The DPDP Rules require a personal data breach to be reported to the Data
+// Protection Board and to every affected person without delay, with a full
+// report to the Board within 72 hours of becoming aware. This is where a
+// suspected breach is written down the moment someone suspects it, so the
+// clock, what was done and when anyone was told are on record rather than in
+// somebody's memory. docs/breach-runbook.md is the procedure around it.
+//
+// No foreign key to the admin who logged it: an incident record must outlive
+// any account, including the one that wrote it.
+enum IncidentStatus {
+  OPEN // Being investigated, or still happening
+  CONTAINED // Stopped; reporting and follow-up may still be owed
+  CLOSED // Done. Refused while a breach of personal data is unreported
+}
+
+model SecurityIncident {
+  id          String @id @default(uuid())
+  title       String
+  description String
+
+  /// When CropBid became aware. The 72-hour report deadline runs from here.
+  detectedAt DateTime
+  status     IncidentStatus @default(OPEN)
+
+  /// Whether personal data was involved. Only then is the Board and the
+  /// people affected owed a notice, so it decides what closing requires.
+  personalDataAffected Boolean @default(false)
+  dataCategories       String? // e.g. "phone numbers, delivery addresses"
+  usersAffected        Int?
+  actionsTaken         String?
+  /// Why an incident once recorded as exposing personal data was found not
+  /// to. Required to untick personalDataAffected, so the reporting duty
+  /// cannot disappear without a reason on record (incident.service).
+  exposureRuledOut String?
+
+  boardNotifiedAt DateTime? // First intimation to the Board, without delay
+  boardReportAt   DateTime? // Detailed report to the Board, due within 72 hours
+  usersNotifiedAt DateTime? // Each affected person told
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, detectedAt])
 }

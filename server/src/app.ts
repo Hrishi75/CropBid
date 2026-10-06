@@ -15,6 +15,8 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import * as Sentry from '@sentry/node';
+import { sentryEnabled } from './instrument';
 import path from 'path';
 import { config } from './config';
 import { errorHandler } from './middleware/errorHandler';
@@ -38,7 +40,6 @@ import * as paymentController from './controllers/payment.controller';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
 import analyticsRoutes from './routes/analytics.routes';
-import waitlistRoutes from './routes/waitlist.routes';
 import logisticsRoutes from './routes/logistics.routes';
 import statsRoutes from './routes/stats.routes';
 import ratesRoutes from './routes/rates.routes';
@@ -133,7 +134,6 @@ app.use('/api/addresses', addressRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/waitlist', waitlistRoutes);
 app.use('/api/logistics', logisticsRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/rates', ratesRoutes);
@@ -149,6 +149,10 @@ app.use('/api/voice', voiceRoutes);
 // =============================================================================
 // Express only routes errors to middleware with 4 parameters (err, req, res, next).
 // This catches all errors thrown in routes/controllers/services above.
+// Reports 5xx errors to Sentry when SENTRY_DSN is set (instrument.ts), before
+// our own handler turns them into a response. A 4xx is the client's mistake
+// and is not reported.
+if (sentryEnabled) Sentry.setupExpressErrorHandler(app);
 app.use(errorHandler);
 
 export default app;
