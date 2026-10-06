@@ -16,7 +16,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { ArcMark, ArrowIcon } from '../../components/ui/Brand';
-import { partnerApplication, PARTNER_STATUS_META } from '../../utils/partner';
+import { partnerApplication, PARTNER_STATUS_META, SELLER_TYPE_LABEL } from '../../utils/partner';
 import api, { keepAliveSession } from '../../lib/axios';
 
 // The three review stages, as a timeline. Which dot is lit depends on status.
@@ -50,7 +50,7 @@ function Timeline({ status }: { status: string }) {
 }
 
 export function PartnerStatusPage() {
-  const { user, updateUser, logout } = useAuth();
+  const { user, loading, updateUser, logout } = useAuth();
   const navigate = useNavigate();
   const app = partnerApplication(user);
 
@@ -98,12 +98,17 @@ export function PartnerStatusPage() {
   }, []);
 
   useEffect(() => {
+    // Wait for the session to be restored, or opening this page from a link
+    // (the decision email, a refresh) always bounced to sign-in.
+    if (loading) return;
     if (!user) { navigate('/login', { replace: true }); return; }
     if (!app) { navigate(user.role === 'FARMER' || user.role === 'BUYER' ? '/onboarding' : '/', { replace: true }); return; }
     if (app.status === 'APPROVED') {
-      navigate(user.role === 'FARMER' ? '/farmer' : '/buyer', { replace: true });
+      // By the side that was approved, not the role: the role can still read
+      // CONSUMER for the moment between approval and the refetch above.
+      navigate(app.kind === 'SELLER' ? '/farmer' : '/buyer', { replace: true });
     }
-  }, [user, app, navigate]);
+  }, [user, app, loading, navigate]);
 
   if (!user || !app || app.status === 'APPROVED') return null;
 
@@ -123,7 +128,18 @@ export function PartnerStatusPage() {
         ? 'We couldn\'t approve the application as submitted. The note below says why — fix it and resubmit whenever you\'re ready.'
         : app.status === 'SUSPENDED'
           ? 'An administrator has suspended your partner account. If you believe this is a mistake, contact support and we\'ll look into it.'
-          : 'Our team reviews every application by hand — usually within 24–48 hours. We\'ll notify you here and by email the moment there\'s a decision.';
+          // An account made with a phone number alone has no email to send to.
+          : `Our team reviews every application by hand, usually within 24 to 48 hours. We'll tell you ${user.email ? 'here and by email' : 'here'} the moment there's a decision.`;
+
+  // What they applied as, so the page is about their application, not any.
+  const fp = user.farmerProfile;
+  const bp = user.buyerProfile;
+  const appliedAs = app.kind === 'SELLER' && fp
+    ? { what: SELLER_TYPE_LABEL[fp.sellerType ?? 'FARMER'], who: fp.businessName || user.name, where: fp.state }
+    : bp
+      ? { what: `Buyer · ${bp.companyType.replace(/_/g, ' ').toLowerCase()}`, who: bp.companyName || user.name, where: user.location }
+      : null;
+  const shopper = user.role === 'CONSUMER';
 
   return (
     <div className="cb-app" style={{ minHeight: '100vh' }}>
@@ -144,7 +160,16 @@ export function PartnerStatusPage() {
         <h1 className="cb-page-title" style={{ marginTop: 14 }}>{heading}</h1>
         <p className="cb-body" style={{ marginTop: 16 }}>{body}</p>
 
-        {app.status !== 'SUSPENDED' && <Timeline status={app.status} />}
+        <div className="cb-card cb-ps-card">
+          {appliedAs && (
+            <div className="cb-ps-applied">
+              <span className="cb-eyebrow">Applied as</span>
+              <strong>{appliedAs.what}</strong>
+              <span>{[appliedAs.who, appliedAs.where].filter(Boolean).join(' · ')}</span>
+            </div>
+          )}
+          {app.status !== 'SUSPENDED' && <Timeline status={app.status} />}
+        </div>
 
         {app.note && (app.status === 'NEEDS_INFO' || app.status === 'REJECTED' || app.status === 'SUSPENDED') && (
           <div
@@ -163,7 +188,7 @@ export function PartnerStatusPage() {
               <ArrowIcon />
             </Link>
           )}
-          <Link to="/" className="cb-btn cb-btn-ghost">Browse the marketplace</Link>
+          <Link to="/" className="cb-btn cb-btn-ghost">{shopper ? 'Keep shopping' : 'Browse the marketplace'}</Link>
           <button
             type="button"
             className="cb-btn cb-btn-link"
@@ -175,8 +200,9 @@ export function PartnerStatusPage() {
 
         {(app.status === 'SUBMITTED' || app.status === 'UNDER_REVIEW') && (
           <p className="cb-tiny" style={{ marginTop: 32, color: 'var(--cb-ink-3)' }}>
-            While you wait: the marketplace, live rates and the public demand
-            board are open to browse. Your dashboard unlocks on approval.
+            {shopper
+              ? 'Your shopping account works as before while you wait. Your partner dashboard opens on approval; find this page again from the account menu.'
+              : 'While you wait: the marketplace, live rates and the public demand board are open to browse. Your dashboard unlocks on approval.'}
           </p>
         )}
       </main>

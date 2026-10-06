@@ -18,6 +18,8 @@ import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SkeletonCard } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
+import { useAuth } from '../../context/AuthContext';
+import { postPath, restocksByList } from '../../utils/restock';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import type { BuyerRequirement } from '../../types';
@@ -32,6 +34,8 @@ const STATUS_FILTERS = [
 
 export function MyRequirements() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const postTo = postPath(user);
   const [requirements, setRequirements] = useState<BuyerRequirement[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -96,9 +100,14 @@ export function MyRequirements() {
             </button>
           ))}
         </div>
-        <Button onClick={() => navigate('/buyer/requirements/new')}>
-          Post a requirement <ArrowIcon />
-        </Button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {restocksByList(user) && (
+            <Link to="/buyer/requirements/new" className="cb-btn cb-btn-link">Just one crop</Link>
+          )}
+          <Button onClick={() => navigate(postTo)}>
+            {restocksByList(user) ? 'New restock list' : 'Post a requirement'} <ArrowIcon />
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -116,12 +125,26 @@ export function MyRequirements() {
               : "Post what you need — crop, volume and the price you'll pay — and farmers can fill it directly."
           }
           actionLabel={statusFilter ? undefined : 'Post a requirement'}
-          onAction={statusFilter ? undefined : () => navigate('/buyer/requirements/new')}
+          onAction={statusFilter ? undefined : () => navigate(postTo)}
         />
       ) : (
         <div className="cb-cards" style={{ gap: 16 }}>
-          {requirements.map((r) => (
-            <RequirementCard key={r.id} requirement={r} href={`/buyer/requirements/${r.id}`}>
+          {requirements.map((r, i) => {
+            // The first item of a restock list on this page carries a header
+            // for the list: its items were posted together, so they sit together.
+            const listItems = r.listId ? requirements.filter((x) => x.listId === r.listId) : [];
+            const listHead = r.listId && requirements.findIndex((x) => x.listId === r.listId) === i;
+            const listOffers = listItems.reduce((n, x) => n + (x._count?.offers ?? 0), 0);
+            return (
+            <div key={r.id} className={r.listId ? 'cb-rl-member' : undefined} style={{ display: 'contents' }}>
+            {listHead && (
+              <div className="cb-rl-group">
+                <span className="cb-mono">RESTOCK LIST · {listItems.length} ITEMS{r.repeatEveryDays ? ` · EVERY ${r.repeatEveryDays} DAYS` : ''}</span>
+                <strong>{r.listName || `To ${r.deliveryLocation}`}</strong>
+                <span>{listItems.map((x) => x.cropName).join(', ')}{listOffers > 0 ? ` · ${listOffers} ${listOffers === 1 ? 'offer' : 'offers'} waiting` : ''}</span>
+              </div>
+            )}
+            <RequirementCard requirement={r} href={`/buyer/requirements/${r.id}`}>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
                 <Link to={`/buyer/requirements/${r.id}`} className="cb-btn cb-btn-secondary cb-btn-sm">
                   {r._count?.offers ? `${r._count.offers} offer${r._count.offers === 1 ? '' : 's'} waiting` : 'View offers'}
@@ -138,7 +161,9 @@ export function MyRequirements() {
                 )}
               </div>
             </RequirementCard>
-          ))}
+            </div>
+            );
+          })}
         </div>
       )}
 

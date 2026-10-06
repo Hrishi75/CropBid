@@ -16,12 +16,41 @@ import { RatesBoard } from '../../components/listings/RatesBoard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon } from '../../components/ui/Brand';
+import { useAuth } from '../../context/AuthContext';
+import { buysSmall } from '../../utils/smallBuyer';
 import api from '../../lib/axios';
 import { FRESH_PRODUCE_CROPS } from '../../utils/crops';
 import toast from 'react-hot-toast';
 import type { Listing } from '../../types';
 
+// Smallest lot shown, in quintals (GET /browse minQuintals). 0 is no floor.
+const LOT_SIZES = [0, 10, 50, 100];
+type Scope = 'city' | 'state' | 'all';
+
 export function BrowseListings() {
+  const { user } = useAuth();
+  // An exporter filling a container has no use for a 40 kg lot or a Grade C
+  // one, so Grade A and 10+ quintals are on when they arrive, shown as chips
+  // so what is hidden is never a secret. Filtered on the server, not over the
+  // page, or the next page's matches would never show.
+  const isExporter = user?.role === 'BUYER' && user.buyerProfile?.companyType === 'EXPORTER';
+  const [minQuintals, setMinQuintals] = useState(isExporter ? 10 : 0);
+  // A small buyer starts with lots in their own state, as in the app: a few
+  // quintals are not worth freighting across the country.
+  const small = buysSmall(user);
+  const myCity = user?.location?.trim() ?? '';
+  // Their state: a shop's own, or the state the lots in their city are listed
+  // under, since a buyer account carries a city and no state.
+  const ownState = user?.farmerProfile?.state?.trim() ?? '';
+  const [cityState, setCityState] = useState('');
+  const myState = ownState || cityState;
+  useEffect(() => {
+    if (!small || ownState || !myCity) return;
+    api.get(`/browse?location=${encodeURIComponent(myCity)}&limit=1`)
+      .then(({ data }) => setCityState(data.listings?.[0]?.state ?? ''))
+      .catch(() => {});
+  }, [small, ownState, myCity]);
+  const [scope, setScope] = useState<Scope>(small && myCity ? 'state' : 'all');
   const [listings, setListings] = useState<(Listing & { _count?: { bids: number } })[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -30,15 +59,15 @@ export function BrowseListings() {
   const [view, setView] = useState<'grid' | 'row'>('grid');
 
   const [filters, setFilters] = useState({
-    search: '', crop: '', state: '', quality: '',
+    search: '', crop: '', state: '', quality: isExporter ? 'A' : '',
     organic: '', freshProduce: '', priceMin: '', priceMax: '', sort: 'createdAt',
   });
 
-  useEffect(() => { setPage(1); }, [filters]);
+  useEffect(() => { setPage(1); }, [filters, minQuintals, scope]);
 
   useEffect(() => {
     fetchListings();
-  }, [filters, page]);
+  }, [filters, page, minQuintals, scope, myState]);
 
   async function fetchListings() {
     setLoading(true);
@@ -48,7 +77,13 @@ export function BrowseListings() {
       params.set('limit', '12');
       if (filters.search) params.set('search', filters.search);
       if (filters.crop) params.set('crop', filters.crop);
-      if (filters.state) params.set('state', filters.state);
+      // Until their state is known, "their state" is their city.
+      if ((scope === 'city' || (scope === 'state' && !myState)) && myCity) params.set('location', myCity);
+      else if (scope === 'state' && myState) params.set('state', myState);
+      else if (filters.state) params.set('state', filters.state);
+      if (minQuintals > 0) params.set('minQuintals', String(minQuintals));
+      // A seller on its buying side never sees its own lots, in the page or the count.
+      if (user?.farmerProfile && user.id) params.set('excludeSellerUserId', user.id);
       if (filters.quality) params.set('quality', filters.quality);
       if (filters.organic) params.set('organic', filters.organic);
       if (filters.freshProduce === 'true' && !filters.crop) {
@@ -100,6 +135,34 @@ export function BrowseListings() {
         <ListingFilters filters={filters} onChange={setFilters} />
 
         <div>
+          <div className="cb-bl-bar">
+            {small && (
+              <div className="cb-bl-group">
+                <span className="cb-bl-label">Buy from</span>
+                <div className="cb-pill-group">
+                  {myCity && <button type="button" className={`cb-pill ${scope === 'city' ? 'active' : ''}`} onClick={() => setScope('city')}>{myCity}</button>}
+                  {myState && <button type="button" className={`cb-pill ${scope === 'state' ? 'active' : ''}`} onClick={() => setScope('state')}>{myState}</button>}
+                  <button type="button" className={`cb-pill ${scope === 'all' ? 'active' : ''}`} onClick={() => setScope('all')}>All India</button>
+                </div>
+              </div>
+            )}
+            <div className="cb-bl-group">
+              <span className="cb-bl-label">Lot size</span>
+              <div className="cb-pill-group">
+                {LOT_SIZES.map((q) => (
+                  <button key={q} type="button" className={`cb-pill ${minQuintals === q ? 'active' : ''}`} onClick={() => setMinQuintals(q)}>
+                    {q === 0 ? 'Any' : `${q}+ quintal`}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="cb-bl-note">
+              {loading ? 'Loading…' : `${total} ${total === 1 ? 'lot' : 'lots'}`}
+              {scope === 'city' && myCity ? ` in ${myCity}` : scope === 'state' && myState ? ` in ${myState}` : ''}
+              {isExporter && (filters.quality === 'A' || minQuintals > 0) ? ' · export-ready filters on' : ''}
+              {small && scope !== 'all' && !loading && total === 0 ? ' · try a wider area' : ''}
+            </div>
+          </div>
           {loading ? (
             <div className={view === 'grid' ? 'cb-cards-sm' : ''} style={{ display: 'grid', gap: 16 }}>
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} height={view === 'grid' ? 320 : 80} />)}

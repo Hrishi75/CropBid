@@ -162,8 +162,21 @@ export const equipmentEnquiryLimiter = rateLimit({
 // Keys by (ip + account) when the body names an account so an attacker cannot
 // rotate IPs to bypass per-account locking, and cannot enumerate accounts
 // from a single IP either. Falls back to IP-only on routes that name none.
+//
+// Keeping a session alive is NOT an attempt: /refresh, /me and /logout are
+// skipped here and left to apiLimiter. A refresh runs on every page load and
+// every few minutes in every open tab, and it names no account, so it fell into
+// the IP-only bucket: 15 a quarter-hour shared by every user behind one address
+// (one office, or a mobile carrier's NAT, which is most of India). Past that the
+// refresh came back 429 and the client signed the user out. None of the three
+// can be used to guess a credential: refresh needs a signed token, and the
+// other two need a valid access token.
+export const SESSION_ROUTES = new Set(['/refresh', '/me', '/logout']);
+export const isSessionRoute = (path: string) => SESSION_ROUTES.has(path.replace(/\/+$/, ''));
+
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
+  skip: (req) => isSessionRoute(req.path),
   max: 15,                   // 15 attempts per 15 min per (ip, account)
   standardHeaders: true,
   legacyHeaders: false,
