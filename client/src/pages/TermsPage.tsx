@@ -38,7 +38,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '6 October 2026';
+const UPDATED = '7 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -172,7 +172,8 @@ export function TermsPage() {
           </p>
           <p>
             You must comply with the law that applies to you, including food safety rules and
-            any licence your trade requires. Local shops must hold a valid FSSAI licence.
+            any licence your trade requires. Every seller must give us their PAN, local shops
+            must hold a valid FSSAI licence, and wholesalers must be registered for GST.
           </p>
         </Section>
 
@@ -180,6 +181,11 @@ export function TermsPage() {
           <p>
             A bid is an offer you are bound to if the seller accepts it. A household order is
             a purchase at the price shown, and is confirmed as soon as you place it.
+          </p>
+          <p>
+            A business applying to buy must give us its PAN. A business that cooks, processes
+            or packs food must also hold a valid FSSAI licence, and an exporter an
+            Importer-Exporter Code. Households need none of these.
           </p>
           <p>
             Check what you are buying before you commit: quantity, grade, price, and where it

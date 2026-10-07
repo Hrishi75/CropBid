@@ -405,7 +405,12 @@ model FarmerProfile {
   shopType      String? // kirana / vegetable / dairy / bakery / general / other
   address       String? // Street address; city lives on User.location
   fssaiLicense  String? // Food licence — required before a shop's stock can go live
-  gstin         String? // Optional for shops (most are under threshold), expected for wholesalers
+  gstin         String? // Optional for shops (most are under threshold), required of wholesalers
+  // Required of every seller from 2026-10-07; null on applications filed
+  // before. The deal's tax (TDS under s.194O) is reported against it, and a
+  // payout through Razorpay Route will need it too. utils/businessIds checks
+  // its shape; nothing checks it belongs to them.
+  pan           String?
   minOrderValue Float? // WHOLESALER: minimum order value in account currency
   leadTimeDays  Int? // WHOLESALER: days from order to dispatch
 
@@ -477,6 +482,15 @@ model BuyerProfile {
   // Tax ID label changes by country:
   //   India = GST Number, US = EIN, EU = VAT Number
   taxId String?
+
+  // Required of every buyer from 2026-10-07, null on applications before.
+  pan          String?
+  // Required of the food businesses (RESTAURANT, PROCESSOR, FMCG): they cook,
+  // process or pack what they buy, which is what FSSAI licenses.
+  fssaiLicense String?
+  // Required of an EXPORTER: DGFT's Importer-Exporter Code, without which
+  // nothing they buy here can leave the country.
+  iecCode      String?
 
   annualProcurementVolume String? // e.g., "500-1000 tonnes"
   outletCount             Int? // RESTAURANT chains: how many kitchens take delivery

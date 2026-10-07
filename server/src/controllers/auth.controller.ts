@@ -657,6 +657,9 @@ const sellerApplicationSchema = z.object({
   address: z.string().max(240).optional(),
   fssaiLicense: z.string().max(40).optional(),
   gstin: z.string().max(20).optional(),
+  // Required by the service, which owns the rule and the message; zod only
+  // bounds the length so an essay never reaches it.
+  pan: z.string().max(20).optional(),
   minOrderValue: z.number().positive().optional(),
   leadTimeDays: z.number().int().min(0).max(60).optional(),
   // Payout details. Optional everywhere: see payoutDetails.ts for why a blank
@@ -690,6 +693,9 @@ const buyerApplicationSchema = z.object({
   companyType: z.enum(['PROCESSOR', 'FMCG', 'RESTAURANT', 'EXPORTER', 'RETAILER', 'WHOLESALER', 'SMALL_BUSINESS']),
   country: z.string().max(60).optional(),
   taxId: z.string().max(40).optional(),
+  pan: z.string().max(20).optional(),
+  fssaiLicense: z.string().max(40).optional(),
+  iecCode: z.string().max(20).optional(),
   annualProcurementVolume: z.string().max(80).optional(),
   outletCount: z.number().int().min(1).max(10_000).optional(),
 });

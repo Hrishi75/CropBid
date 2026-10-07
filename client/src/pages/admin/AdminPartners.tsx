@@ -42,6 +42,7 @@ interface ApplicationRow {
   address?: string | null;
   fssaiLicense?: string | null;
   gstin?: string | null;
+  pan?: string | null;
   minOrderValue?: number | null;
   leadTimeDays?: number | null;
   fpoName?: string | null;
@@ -57,6 +58,7 @@ interface ApplicationRow {
   companyName?: string;
   companyType?: string;
   taxId?: string | null;
+  iecCode?: string | null;
   annualProcurementVolume?: string | null;
   outletCount?: number | null;
 }
@@ -281,6 +283,7 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
                   </>
                 )}
                 {app.sellerType === 'LOCAL_SHOP' && <Field label="SHOP TYPE" value={shopTypeLabel} />}
+                <Field label="PAN" value={app.pan} mono />
                 <Field label="FSSAI" value={app.fssaiLicense} mono />
                 <Field label="GSTIN" value={app.gstin} mono />
                 <Field label="APMC" value={app.apmcLicense} mono />
@@ -293,7 +296,10 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
               </>
             ) : (
               <>
-                <Field label="GST / TAX ID" value={app.taxId} mono />
+                <Field label="PAN" value={app.pan} mono />
+                <Field label="GSTIN" value={app.taxId} mono />
+                <Field label="FSSAI" value={app.fssaiLicense} mono />
+                <Field label="IEC" value={app.iecCode} mono />
                 <Field label="VOLUME" value={app.annualProcurementVolume} />
                 <Field label="OUTLETS" value={app.outletCount} mono />
               </>

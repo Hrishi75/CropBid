@@ -45,6 +45,7 @@ import { recordAudit } from './audit.service';
 import { removeImage } from './imageStorage';
 import { config } from '../config';
 import { verifyGoogleIdToken } from '../utils/googleIdToken';
+import { assertPanMatchesGstin, parseId } from '../utils/businessIds';
 
 // ---------------------------------------------------------------------------
 // Phone normalization — the stored/lookup form of a phone number
@@ -1085,6 +1086,7 @@ export async function deleteAccount(userId: string, password: string) {
             address: null,
             fssaiLicense: null,
             gstin: null,
+            pan: null,
             certificationBody: null,
             statusNote: null,
           },
@@ -1274,6 +1276,7 @@ interface FarmerOnboardingInput {
   address?: string;
   fssaiLicense?: string;
   gstin?: string;
+  pan?: string;
   minOrderValue?: number;
   leadTimeDays?: number;
   // Optional on purpose: a blank payout field is a bad reason to hold up a
@@ -1289,6 +1292,9 @@ interface BuyerOnboardingInput {
   companyType: 'PROCESSOR' | 'FMCG' | 'RESTAURANT' | 'EXPORTER' | 'RETAILER' | 'WHOLESALER' | 'SMALL_BUSINESS';
   country?: string;
   taxId?: string;
+  pan?: string;
+  fssaiLicense?: string;
+  iecCode?: string;
   annualProcurementVolume?: string;
   outletCount?: number;
 }
@@ -1301,7 +1307,7 @@ const RESUBMITTABLE: PartnerStatus[] = ['NEEDS_INFO', 'REJECTED'];
 // What each seller type must provide. Field-level shape is enforced by zod in
 // the controller; THIS is the cross-field business rule (which fields matter
 // for which type), so it lives with the rest of the domain logic.
-function validateSellerApplication(input: FarmerOnboardingInput): void {
+function validateSellerApplication(input: FarmerOnboardingInput) {
   const type = input.sellerType || 'FARMER';
   if (type === 'FARMER') {
     if (!input.farmSizeAcres || input.farmSizeAcres <= 0) {
@@ -1317,13 +1323,45 @@ function validateSellerApplication(input: FarmerOnboardingInput): void {
     if (type === 'LOCAL_SHOP') {
       if (!input.shopType?.trim()) throw new ApiError(400, 'Pick what kind of shop you run');
       if (!input.address?.trim()) throw new ApiError(400, 'Shop address is required');
-      // Food on a consumer shelf needs a licence behind it — non-negotiable.
-      if (!input.fssaiLicense?.trim()) throw new ApiError(400, 'FSSAI licence number is required for a food shop');
-    }
-    if (type === 'WHOLESALER' && !input.gstin?.trim()) {
-      throw new ApiError(400, 'GSTIN is required for a wholesale application');
     }
   }
+  // Every seller, a farm included: tax on their sales through the platform
+  // is reported against it (s.194O), whatever they sell. A farmer selling
+  // their own produce needs no GSTIN and no FSSAI, but does have a PAN.
+  const pan = parseId('pan', input.pan, 'Your PAN is required: tax on your sales is reported against it');
+  // Food on a consumer shelf needs a licence behind it, non-negotiable.
+  const fssaiLicense = parseId(
+    'fssai', input.fssaiLicense,
+    type === 'LOCAL_SHOP' ? 'FSSAI licence number is required for a food shop' : undefined,
+  );
+  const gstin = parseId(
+    'gstin', input.gstin,
+    type === 'WHOLESALER' ? 'GSTIN is required for a wholesale application' : undefined,
+  );
+  assertPanMatchesGstin(pan, gstin);
+  return { pan, fssaiLicense, gstin };
+}
+
+// A buyer is a business, so every one gives a PAN; what else depends on what
+// the business does with the produce.
+const NEEDS_FSSAI: BuyerOnboardingInput['companyType'][] = ['RESTAURANT', 'PROCESSOR', 'FMCG'];
+
+function validateBuyerApplication(input: BuyerOnboardingInput) {
+  const pan = parseId('pan', input.pan, 'Your business PAN is required');
+  // taxId is the GSTIN: the column predates India-only and kept its name.
+  const gstin = parseId('gstin', input.taxId);
+  assertPanMatchesGstin(pan, gstin);
+  const fssaiLicense = parseId(
+    'fssai', input.fssaiLicense,
+    NEEDS_FSSAI.includes(input.companyType)
+      ? 'An FSSAI licence number is required for a business that cooks, processes or packs food'
+      : undefined,
+  );
+  const iecCode = parseId(
+    'iec', input.iecCode,
+    input.companyType === 'EXPORTER' ? 'Your Importer-Exporter Code (IEC) is required to export' : undefined,
+  );
+  return { pan, taxId: gstin, fssaiLicense, iecCode };
 }
 
 // APPLYING, not editing. The role you are applying for cannot also be the
@@ -1348,7 +1386,7 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     throw new ApiError(403, 'This account cannot submit a seller application');
   }
 
-  validateSellerApplication(input);
+  const ids = validateSellerApplication(input);
 
   const data = {
     sellerType: input.sellerType || ('FARMER' as const),
@@ -1363,8 +1401,7 @@ export async function completeFarmerOnboarding(userId: string, input: FarmerOnbo
     businessName: input.businessName?.trim() || null,
     shopType: input.shopType || null,
     address: input.address?.trim() || null,
-    fssaiLicense: input.fssaiLicense?.trim() || null,
-    gstin: input.gstin?.trim() || null,
+    ...ids,
     minOrderValue: input.minOrderValue ?? null,
     leadTimeDays: input.leadTimeDays ?? null,
     // null when the application said nothing about payout, which leaves
@@ -1546,7 +1583,23 @@ export async function updateBuyerProfile(userId: string, input: UpdateBuyerProfi
   } = {};
   if (input.companyName !== undefined) profileData.companyName = input.companyName;
   if (input.companyType !== undefined) profileData.companyType = input.companyType;
-  if (input.taxId !== undefined) profileData.taxId = input.taxId;
+  if (input.taxId !== undefined) {
+    profileData.taxId = parseId('gstin', input.taxId);
+    assertPanMatchesGstin(user.buyerProfile.pan, profileData.taxId);
+  }
+
+  // Switching type after approval must not walk round the documents the new
+  // type would have been asked for at application: a retailer that becomes a
+  // restaurant here was never asked for its FSSAI licence.
+  const nextType = input.companyType;
+  if (nextType && nextType !== user.buyerProfile.companyType) {
+    if (NEEDS_FSSAI.includes(nextType) && !user.buyerProfile.fssaiLicense) {
+      throw new ApiError(400, 'A business that cooks, processes or packs food needs an FSSAI licence on file. Write to info@cropbid.in to change your business type');
+    }
+    if (nextType === 'EXPORTER' && !user.buyerProfile.iecCode) {
+      throw new ApiError(400, 'An exporter needs an IEC on file. Write to info@cropbid.in to change your business type');
+    }
+  }
   if (input.annualProcurementVolume !== undefined) {
     profileData.annualProcurementVolume = input.annualProcurementVolume;
   }
@@ -1595,11 +1648,12 @@ export async function completeBuyerOnboarding(userId: string, input: BuyerOnboar
     throw new ApiError(403, 'This account cannot submit a buyer application');
   }
 
+  const ids = validateBuyerApplication(input);
   const data = {
     companyName: input.companyName,
     companyType: input.companyType,
     country: input.country || user.country || 'India',
-    taxId: input.taxId || null,
+    ...ids,
     annualProcurementVolume: input.annualProcurementVolume || null,
     outletCount: input.outletCount ?? null,
   };

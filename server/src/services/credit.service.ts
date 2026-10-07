@@ -15,6 +15,7 @@
 
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
+import { GSTIN } from '../utils/businessIds';
 import { createNotification } from './notification.service';
 import { recordAudit } from './audit.service';
 import type { CreditApplicationStatus } from '../generated/prisma/client';
@@ -25,8 +26,6 @@ export const CREDIT_RULES = {
   maxAmount: 10_00_000,
   repaymentDays: [30, 60, 90] as const,
 };
-
-const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 export interface CreditApplicationInput {
   businessName: string;

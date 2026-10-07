@@ -28,7 +28,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { errorMessage } from '../api/client';
-import { buyerOnboarding, farmerOnboarding, type BuyerOnboardingInput } from '../api/endpoints';
+import { BUYER_NEEDS_FSSAI, buyerOnboarding, farmerOnboarding, type BuyerOnboardingInput } from '../api/endpoints';
 import { Button } from '../components/ui';
 import { IconArrowLeft } from '../components/icons';
 import { partnerApplication } from '../lib/partner';
@@ -139,6 +139,9 @@ export default function OnboardingScreen({
   const [address, setAddress] = useState('');
   const [fssai, setFssai] = useState('');
   const [gstin, setGstin] = useState('');
+  // Every seller kind. Prefilled on a resubmission: unlike payout details it
+  // comes back unmasked, so it cannot post a mask back.
+  const [pan, setPan] = useState(user?.farmerProfile?.pan || '');
 
   // Starts empty even on a resubmission: what the server sends back is masked,
   // so prefilling from the profile would post the mask back. See PayoutFields.
@@ -163,7 +166,12 @@ export default function OnboardingScreen({
     companyTypeProp ?? null,
   );
   const [taxId, setTaxId] = useState('');
+  // A seller applying to buy has given its PAN once already.
+  const [buyerPan, setBuyerPan] = useState(user?.buyerProfile?.pan || user?.farmerProfile?.pan || '');
+  const [buyerFssai, setBuyerFssai] = useState(user?.buyerProfile?.fssaiLicense || '');
+  const [iecCode, setIecCode] = useState(user?.buyerProfile?.iecCode || '');
   const [volume, setVolume] = useState('');
+  const needsFssai = !!companyType && BUYER_NEEDS_FSSAI.includes(companyType);
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -191,9 +199,13 @@ export default function OnboardingScreen({
         }
         if (isWholesaler && !gstin.trim()) return 'Enter your GSTIN';
       }
+      if (!pan.trim()) return 'Enter your PAN';
     } else {
       if (!companyName.trim()) return 'Enter your company name';
       if (!companyType) return 'Pick what kind of business you are';
+      if (!buyerPan.trim()) return 'Enter your business PAN';
+      if (needsFssai && !buyerFssai.trim()) return 'Enter your FSSAI licence number';
+      if (companyType === 'EXPORTER' && !iecCode.trim()) return 'Enter your Importer-Exporter Code (IEC)';
     }
     return null;
   }
@@ -214,6 +226,7 @@ export default function OnboardingScreen({
           // as a farm.
           sellerType,
           state: state.trim(),
+          pan: pan.trim(),
           organicCertified: organic,
           // Left out entirely when untouched, which keeps whatever is already
           // on file rather than clearing it.
@@ -238,6 +251,10 @@ export default function OnboardingScreen({
           // Non-null by here: validate() refuses without it.
           companyType: companyType!,
           taxId: taxId.trim() || undefined,
+          pan: buyerPan.trim(),
+          // Only what this business type is asked for.
+          fssaiLicense: needsFssai ? buyerFssai.trim() : undefined,
+          iecCode: companyType === 'EXPORTER' ? iecCode.trim() : undefined,
           annualProcurementVolume: volume.trim() || undefined,
         });
       }
@@ -429,6 +446,23 @@ export default function OnboardingScreen({
                 </>
               ) : null}
 
+              {/* Every seller kind: tax on their sales is reported against it. */}
+              <Text style={styles.label}>PAN</Text>
+              <TextInput
+                style={styles.input}
+                value={pan}
+                onChangeText={(v) => setPan(v.toUpperCase())}
+                placeholder="e.g., ABCDE1234F"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="characters"
+                maxLength={10}
+              />
+              <Text style={styles.hint}>
+                {isWholesaler
+                  ? 'The PAN your GSTIN was issued to. Tax on your sales through CropBid is reported against it.'
+                  : 'Tax on your sales through CropBid is reported against your PAN. You need one even with no GSTIN.'}
+              </Text>
+
               {/* Every seller kind, after whatever their kind asked for. Not
                   required to apply: a reviewer approves people, not bank
                   accounts, and the nag at first payment is what makes sure it
@@ -479,6 +513,47 @@ export default function OnboardingScreen({
                   </View>
                 </>
               )}
+
+              <Text style={styles.label}>Business PAN</Text>
+              <TextInput
+                style={styles.input}
+                value={buyerPan}
+                onChangeText={(v) => setBuyerPan(v.toUpperCase())}
+                placeholder="e.g., ABCDE1234F"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="characters"
+                maxLength={10}
+              />
+
+              {needsFssai ? (
+                <>
+                  <Text style={styles.label}>FSSAI licence number</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={buyerFssai}
+                    onChangeText={setBuyerFssai}
+                    placeholder="14 digits, from your licence"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                  />
+                  <Text style={styles.hint}>A business that cooks, processes or packs food needs one.</Text>
+                </>
+              ) : null}
+
+              {companyType === 'EXPORTER' ? (
+                <>
+                  <Text style={styles.label}>Importer-Exporter Code (IEC)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={iecCode}
+                    onChangeText={(v) => setIecCode(v.toUpperCase())}
+                    placeholder="10 characters, from DGFT"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="characters"
+                    maxLength={10}
+                  />
+                </>
+              ) : null}
 
               <Text style={[styles.label, styles.optional]}>{taxLabel(country)} (optional)</Text>
               <TextInput
