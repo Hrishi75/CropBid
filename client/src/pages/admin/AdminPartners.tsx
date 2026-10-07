@@ -114,6 +114,66 @@ function Field({ label, value, mono }: { label: string; value: React.ReactNode; 
   );
 }
 
+// Where a reviewer confirms each number by hand. The server checks only that a
+// number is the right shape (utils/businessIds), so these pages are where
+// "real, and theirs" gets checked, free, behind each portal's captcha.
+// None accepts the number in the URL, which is why each sits beside a Copy.
+// Confirmed live 2026-10-07, except FoSCoS, which refused the connection: its
+// licence search is reached from the home page.
+const GOVT_CHECK = {
+  PAN: {
+    url: 'https://eportal.incometax.gov.in/iec/foservices/#/pre-login/verifyYourPAN',
+    site: 'Income Tax site',
+    // Asks for the holder's name, date of birth and a mobile it sends an OTP
+    // to, so a reviewer cannot finish it alone.
+    note: 'Needs the applicant: it sends an OTP to their phone.',
+  },
+  GSTIN: { url: 'https://services.gst.gov.in/services/searchtp', site: 'GST site' },
+  FSSAI: { url: 'https://foscos.fssai.gov.in/', site: 'FoSCoS', note: 'Use FBO Search on the home page.' },
+  IEC: {
+    url: 'https://www.dgft.gov.in/CP/?opt=view-any-ice',
+    site: 'DGFT',
+    note: 'View Any IEC: needs the first three letters of the firm name too.',
+  },
+} as const;
+
+const LINK: React.CSSProperties = { color: 'var(--cb-forest)', textDecoration: 'underline' };
+
+// A business number with the two things a reviewer does with it: copy it,
+// and open the government page that confirms it.
+function IdField({ label, value }: { label: keyof typeof GOVT_CHECK; value?: string | null }) {
+  if (!value) return null;
+  const check: { url: string; site: string; note?: string } = GOVT_CHECK[label];
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value!);
+      toast.success(`${label} copied`);
+    } catch {
+      // Refused in plenty of contexts; the number is on screen to retype.
+      toast.error('Could not copy it. Read it from the screen.');
+    }
+  }
+
+  return (
+    <div>
+      <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginBottom: 2 }}>{label}</div>
+      <div className="cb-mono" style={{ fontSize: 13.5 }}>{value}</div>
+      <div className="cb-tiny" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+        <button type="button" onClick={copy} style={{ ...LINK, background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit' }}>
+          Copy
+        </button>
+        <a href={check.url} target="_blank" rel="noopener noreferrer" style={LINK}>
+          Check on {check.site} ↗
+        </a>
+      </div>
+      {check.note && (
+        <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>{check.note}</div>
+      )}
+    </div>
+  );
+}
+
 interface PayoutDetails {
   payoutUpiId: string | null;
   payoutAccountName: string | null;
@@ -283,9 +343,9 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
                   </>
                 )}
                 {app.sellerType === 'LOCAL_SHOP' && <Field label="SHOP TYPE" value={shopTypeLabel} />}
-                <Field label="PAN" value={app.pan} mono />
-                <Field label="FSSAI" value={app.fssaiLicense} mono />
-                <Field label="GSTIN" value={app.gstin} mono />
+                <IdField label="PAN" value={app.pan} />
+                <IdField label="FSSAI" value={app.fssaiLicense} />
+                <IdField label="GSTIN" value={app.gstin} />
                 <Field label="APMC" value={app.apmcLicense} mono />
                 {app.sellerType === 'WHOLESALER' && (
                   <>
@@ -296,15 +356,21 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
               </>
             ) : (
               <>
-                <Field label="PAN" value={app.pan} mono />
-                <Field label="GSTIN" value={app.taxId} mono />
-                <Field label="FSSAI" value={app.fssaiLicense} mono />
-                <Field label="IEC" value={app.iecCode} mono />
+                <IdField label="PAN" value={app.pan} />
+                <IdField label="GSTIN" value={app.taxId} />
+                <IdField label="FSSAI" value={app.fssaiLicense} />
+                <IdField label="IEC" value={app.iecCode} />
                 <Field label="VOLUME" value={app.annualProcurementVolume} />
                 <Field label="OUTLETS" value={app.outletCount} mono />
               </>
             )}
           </div>
+
+          {(app.pan || app.gstin || app.taxId || app.fssaiLicense || app.iecCode) && (
+            <p className="cb-tiny" style={{ marginTop: 12, color: 'var(--cb-ink-3)' }}>
+              Numbers are checked for format only. Confirm them on the government site before approving.
+            </p>
+          )}
 
           {app.kind === 'SELLER' && <PayoutReveal profileId={app.id} hasDetails={app.hasPayoutDetails} />}
 
