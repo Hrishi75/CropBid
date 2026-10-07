@@ -120,22 +120,44 @@ function Field({ label, value, mono }: { label: string; value: React.ReactNode; 
 // None accepts the number in the URL, which is why each sits beside a Copy.
 // Confirmed live 2026-10-07, except FoSCoS, which refused the connection: its
 // licence search is reached from the home page.
+//
+// `shape` mirrors server/src/utils/businessIds.ts. A number filed before
+// 2026-10-07 was never checked, and a buyer's tax number may be an EIN or VAT
+// number from before India-only, so a number that does not fit gets no link:
+// sending it to a portal that cannot find it reads as "not real".
 const GOVT_CHECK = {
   PAN: {
+    shape: /^[A-Z]{5}[0-9]{4}[A-Z]$/,
     url: 'https://eportal.incometax.gov.in/iec/foservices/#/pre-login/verifyYourPAN',
     site: 'Income Tax site',
     // Asks for the holder's name, date of birth and a mobile it sends an OTP
     // to, so a reviewer cannot finish it alone.
     note: 'Needs the applicant: it sends an OTP to their phone.',
   },
-  GSTIN: { url: 'https://services.gst.gov.in/services/searchtp', site: 'GST site' },
-  FSSAI: { url: 'https://foscos.fssai.gov.in/', site: 'FoSCoS', note: 'Use FBO Search on the home page.' },
+  GSTIN: {
+    shape: /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/,
+    url: 'https://services.gst.gov.in/services/searchtp',
+    site: 'GST site',
+  },
+  FSSAI: {
+    shape: /^[0-9]{14}$/,
+    url: 'https://foscos.fssai.gov.in/',
+    site: 'FoSCoS',
+    note: 'Use FBO Search on the home page.',
+  },
   IEC: {
+    shape: /^[0-9A-Z]{10}$/,
     url: 'https://www.dgft.gov.in/CP/?opt=view-any-ice',
     site: 'DGFT',
     note: 'View Any IEC: needs the first three letters of the firm name too.',
   },
 } as const;
+
+// Old numbers were stored as typed, so "27abcde 1234f1z5" is a GSTIN too.
+// Same clean-up as the server's normaliseId.
+function fitsShape(label: keyof typeof GOVT_CHECK, value: string) {
+  return GOVT_CHECK[label].shape.test(value.replace(/[\s-]/g, '').toUpperCase());
+}
 
 const LINK: React.CSSProperties = { color: 'var(--cb-forest)', textDecoration: 'underline' };
 
@@ -143,7 +165,8 @@ const LINK: React.CSSProperties = { color: 'var(--cb-forest)', textDecoration: '
 // and open the government page that confirms it.
 function IdField({ label, value }: { label: keyof typeof GOVT_CHECK; value?: string | null }) {
   if (!value) return null;
-  const check: { url: string; site: string; note?: string } = GOVT_CHECK[label];
+  const check: { shape: RegExp; url: string; site: string; note?: string } = GOVT_CHECK[label];
+  const fits = fitsShape(label, value);
 
   async function copy() {
     try {
@@ -163,11 +186,17 @@ function IdField({ label, value }: { label: keyof typeof GOVT_CHECK; value?: str
         <button type="button" onClick={copy} style={{ ...LINK, background: 'none', border: 0, padding: 0, cursor: 'pointer', font: 'inherit' }}>
           Copy
         </button>
-        <a href={check.url} target="_blank" rel="noopener noreferrer" style={LINK}>
-          Check on {check.site} ↗
-        </a>
+        {fits && (
+          <a href={check.url} target="_blank" rel="noopener noreferrer" style={LINK}>
+            Check on {check.site} ↗
+          </a>
+        )}
       </div>
-      {check.note && (
+      {!fits ? (
+        <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 2 }}>
+          Not in the {label} format. Ask for it with Needs info.
+        </div>
+      ) : check.note && (
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>{check.note}</div>
       )}
     </div>
@@ -357,7 +386,11 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
             ) : (
               <>
                 <IdField label="PAN" value={app.pan} />
-                <IdField label="GSTIN" value={app.taxId} />
+                {/* An EIN or VAT number from before India-only is a tax number,
+                    not a GSTIN with a typo, so it is shown plain. */}
+                {app.taxId && !fitsShape('GSTIN', app.taxId)
+                  ? <Field label="TAX ID" value={app.taxId} mono />
+                  : <IdField label="GSTIN" value={app.taxId} />}
                 <IdField label="FSSAI" value={app.fssaiLicense} />
                 <IdField label="IEC" value={app.iecCode} />
                 <Field label="VOLUME" value={app.annualProcurementVolume} />
@@ -368,7 +401,8 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
 
           {(app.pan || app.gstin || app.taxId || app.fssaiLicense || app.iecCode) && (
             <p className="cb-tiny" style={{ marginTop: 12, color: 'var(--cb-ink-3)' }}>
-              Numbers are checked for format only. Confirm them on the government site before approving.
+              Numbers filed since 7 October 2026 are checked for format only, and older ones not at all.
+              Confirm them on the government site before approving.
             </p>
           )}
 
