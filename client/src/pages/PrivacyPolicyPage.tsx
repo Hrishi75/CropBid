@@ -25,7 +25,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '6 October 2026';
+const UPDATED = '7 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -140,9 +140,11 @@ export function PrivacyPolicyPage() {
             <strong>If you apply to sell,</strong> we collect what the application asks for and
             what your trade requires: whether you are a farmer, a local shop or a wholesaler,
             your business or shop name and type, your address, your state, farm size and crops
-            grown, an FSSAI licence number for a shop, a GSTIN, an APMC licence, an FPO name,
-            organic certification details, and minimum order value and lead time for a
-            wholesaler. We keep the outcome of the review and any note the reviewer wrote.
+            grown, your PAN, an FSSAI licence number for a shop, a GSTIN, an APMC licence, an
+            FPO name, organic certification details, and minimum order value and lead time for
+            a wholesaler. We keep the outcome of the review and any note the reviewer wrote.
+            We ask every seller for a PAN because tax law requires the tax on sales made
+            through a marketplace to be reported against the seller&rsquo;s PAN.
           </p>
           <p>
             <strong>If you sell, we ask where to pay you:</strong> a UPI id, or the name on your
@@ -156,8 +158,9 @@ export function PrivacyPolicyPage() {
           </p>
           <p>
             <strong>If you apply to buy at volume,</strong> we collect your company name and
-            type, country, tax identifier and annual procurement volume, and the outcome of
-            that review.
+            type, country, your business PAN, a GSTIN if you give one, an FSSAI licence number
+            if your business cooks, processes or packs food, an Importer-Exporter Code if you
+            export, and annual procurement volume, and the outcome of that review.
           </p>
           <p>
             <strong>Trading activity.</strong> The listings you create, the photographs on

@@ -259,9 +259,11 @@ The server was always ready for this: `validateSellerApplication` has required a
 
 | Kind | The form asks for |
 |---|---|
-| Farm | acreage, crops, FPO and APMC |
-| Local shop | shop name, shop type, address, **FSSAI licence** |
-| Wholesaler | firm name, **GSTIN** |
+| Farm | acreage, crops, FPO and APMC, **PAN** |
+| Local shop | shop name, shop type, address, **FSSAI licence**, **PAN** |
+| Wholesaler | firm name, **GSTIN**, **PAN** |
+
+What each kind must hand over, and why, is its own subsection below ("What a partner must hand over").
 
 Buyers get the same shape: which of the seven company types, then the form. The type is chosen on the step before and **the form no longer asks again**, because two pickers for one field invite two answers. The old in-form chip row defaulted to `PROCESSOR`, so any buyer who did not notice it was filed as one, and it offered five of the seven: `WHOLESALER` and `SMALL_BUSINESS` could not be selected at all.
 
@@ -286,6 +288,32 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 - **Self-dealing was already refused**: a bid on your own lot and filling your own requirement both 400.
 - **The website has the switch too (2026-10-05):** in the account menu, the mobile drawer, and on a shop's or wholesaler's dashboard (`components/layout/ModeSwitch`), with the same rules: `AuthContext` hands pages the account as a BUYER and `lib/axios` sends the header. A shop or wholesaler not yet approved gets a card on its dashboard to apply (`components/BuyStockCard`), which opens the buyer form through the same door `/partner` uses.
 - **Not covered:** the live-auction socket authenticates separately and ignores the header, so auctions are not open in buying mode; a shop still cannot use the household cart.
+
+### What a partner must hand over (decided 2026-10-07)
+
+**A PAN from every seller and every business buyer; beyond that, the licence their trade actually needs.** The user's call, from an engineering view of Indian law that a CA or lawyer has not yet confirmed.
+
+| Who | Required | Optional |
+|---|---|---|
+| Farm | PAN | FPO, APMC, organic certificate |
+| Local shop | PAN, FSSAI | GSTIN |
+| Wholesaler | PAN, GSTIN | FSSAI, APMC |
+| Restaurant, processor, FMCG buyer | PAN, FSSAI | GSTIN |
+| Exporter | PAN, IEC | GSTIN |
+| Retailer, wholesaler or small-business buyer | PAN | GSTIN |
+| Household | nothing | |
+
+- **Why PAN for everyone, a farm included.** Tax on a seller's sales through a marketplace (s.194O TDS) is reported against their PAN, and Razorpay Route, which automatic payouts would need (§6), asks for one per linked account. A farmer selling their own produce needs no GSTIN (outside GST) and no FSSAI, but does have a PAN. **Nothing deducts that TDS today**: settlement moves no money (§6), so this collects what the deduction will need, not the deduction.
+- **Why FSSAI for those three buyer types**: they cook, process or pack what they buy, which is what FSSAI licenses. `NEEDS_FSSAI` in `auth.service.ts`, mirrored as `BUYER_NEEDS_FSSAI` on the web form and in `mobile/src/api/endpoints.ts`.
+- **Why IEC for an exporter**: DGFT issues it and nothing leaves the country without it.
+- **Not asked for, deliberately:** Aadhaar (the Aadhaar Act limits who may hold it, the same call as business credit), bank statements, ITRs, or scans of any certificate. A number the reviewer can look up beats a file CropBid has to protect.
+
+**Shape, not truth.** `utils/businessIds.ts` normalises each number (spaces, dashes, case) and checks its format: PAN 10 characters, GSTIN 15, FSSAI 14 digits, IEC 10. **A PAN must be the one inside the GSTIN beside it** (characters 3 to 12), on both applications and on a buyer's profile edit, because a mismatch is a typo or two businesses on one form. Nothing asks the issuing authority whether a number is real or theirs; the reviewer sees a well-formed number, not a verified one. Checking against an API (Razorpay, Signzy and Cashfree all sell PAN, GST and FSSAI lookups) is the next step and is unbuilt.
+
+- **Required at submission, not at approval.** Applications filed before 2026-10-07 have none of the new numbers and approved partners keep trading; a reviewer handling an old application asks for them with "Needs info", and a resubmission is held to the rule. **App builds from before this send no PAN, so their applications are refused** with a message naming it, which is the right answer for a required field.
+- **A buyer cannot change type round the documents.** The profile editor refuses a switch to a food-business type with no FSSAI on file, or to exporter with no IEC, and sends them to `info@cropbid.in`.
+- **A seller applying to buy** (§4, "A seller can also buy") is asked for PAN too, prefilled from its seller profile.
+- **Who sees them:** the applicant, unmasked, and admins in the review queue. None is in a public select. **Deleting an account scrubs a seller's PAN** with the other licence numbers, and a buyer profile is deleted outright. `/privacy` and `/terms` §4 and §5 say all of this (7 October 2026).
 
 ### 4a. Where a seller's money goes (shipped 2026-09-21)
 
@@ -801,7 +829,7 @@ It used to ask the feed per crop and per state, and the day it was checked prope
 - **Security alerts** (`securityAlert.service.ts`) to every admin's bell, the `SECURITY_ALERT_EMAIL` inbox and the audit log: 50 failed sign-ins platform-wide in 10 minutes, one admin opening 20 sellers' payout details in an hour, one admin resetting 5 passwords in an hour. At most one alert an hour per kind and subject, and never able to fail the request that tripped it.
 - **The breach register**, `/admin/incidents` (`SecurityIncident`): logged the moment a breach is suspected, it counts down the 72 hours to the Board's report, refuses times in the future, and **will not close an incident that touched personal data until the Board's report and the notice to users are recorded**. Unticking "personal data affected" once ticked needs a written reason (`exposureRuledOut`), kept on the incident and in the audit log, or the duty could be dropped by a checkbox. Its headline counts are the server's, over the whole register, not the page on screen. `docs/breach-runbook.md` is the procedure.
 - **Sentry**, off unless `SENTRY_DSN` (server) or `VITE_SENTRY_DSN` (web) is set. Every `dataCollection` category is off and `beforeSend` strips request bodies, headers, cookies, queries and user again; console breadcrumbs are dropped, because the log carries phone numbers. The web drops session tracking, so the cookie notice's "nothing optional" stays true. **Sentry is a processor once enabled, and `/privacy` does not list it yet.**
-- **A named Grievance Officer: Ayush Gaikwad**, `ayush.gaikwad@cropbid.in`, +91 86260 47528 (2026-10-06). The IT Rules 2021 and the E-Commerce Rules 2020 require a marketplace to publish a name and contact details, which the DPDP Act alone does not. Shown on `/privacy` (`#grievance`), `/terms` §15 and the app's Help screen, from `client/src/content/grievance.ts` on the web and a copy in `HelpScreen.tsx` in the app; change both together. **The pages promise acknowledgement within 24 hours and resolution within 15 days** (the IT Rules' limits, which also meet the e-commerce rules'), so that is a commitment ops must keep. Both pages' "Last updated" moved to 6 October 2026, and `POLICY_VERSION` with them.
+- **A named Grievance Officer: Ayush Gaikwad**, `ayush.gaikwad@cropbid.in`, +91 86260 47528 (2026-10-06). The IT Rules 2021 and the E-Commerce Rules 2020 require a marketplace to publish a name and contact details, which the DPDP Act alone does not. Shown on `/privacy` (`#grievance`), `/terms` §15 and the app's Help screen, from `client/src/content/grievance.ts` on the web and a copy in `HelpScreen.tsx` in the app; change both together. **The pages promise acknowledgement within 24 hours and resolution within 15 days** (the IT Rules' limits, which also meet the e-commerce rules'), so that is a commitment ops must keep. Both pages' "Last updated" moved to 6 October 2026, and `POLICY_VERSION` with them; then to 7 October 2026, when the applications started asking for PAN, FSSAI and IEC (§4).
 - **The waitlist stopped collecting.** Nothing used `POST /api/waitlist`, so it is gone. The emails already stored are untouched: deleting them is the user's call.
 
 **Not built yet:** a self-service copy of one's data (access), nominating someone to act for you, an in-app grievance form, deleting inactive accounts and old notifications after a set time, keeping server logs a year (journalctl on Lightsail keeps far less), admin reads of users' contact details are not audited (left alone on purpose for now), and the processor agreements with every vendor, which are paperwork.

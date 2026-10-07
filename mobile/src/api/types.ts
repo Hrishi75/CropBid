@@ -64,10 +64,15 @@ export interface User {
     payoutAccountNumber?: string | null;
     payoutIfsc?: string | null;
     hasPayoutDetails?: boolean;
+    /** Required on applications since 2026-10-07; null on older ones. */
+    pan?: string | null;
   } | null;
   buyerProfile?: {
     companyName?: string;
     companyType?: string;
+    pan?: string | null;
+    fssaiLicense?: string | null;
+    iecCode?: string | null;
     status?: PartnerStatus;
     statusNote?: string | null;
   } | null;

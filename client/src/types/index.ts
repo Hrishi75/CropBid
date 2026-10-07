@@ -78,6 +78,8 @@ export interface FarmerProfile {
   address: string | null;
   fssaiLicense: string | null;
   gstin: string | null;
+  // Required on applications since 2026-10-07; null on older ones.
+  pan: string | null;
   minOrderValue: number | null;
   leadTimeDays: number | null;
   country: string;
@@ -114,7 +116,14 @@ export interface BuyerProfile {
   reviewedAt: string | null;
   outletCount: number | null;
   country: string;
+  // The GSTIN. Named before the product was India-only.
   taxId: string | null;
+  // Required on applications since 2026-10-07; null on older ones.
+  pan: string | null;
+  // Required of RESTAURANT, PROCESSOR and FMCG buyers.
+  fssaiLicense: string | null;
+  // Required of an EXPORTER.
+  iecCode: string | null;
   annualProcurementVolume: string | null;
   verified: boolean;
   createdAt: string;

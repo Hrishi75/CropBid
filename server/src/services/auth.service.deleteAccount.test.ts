@@ -127,7 +127,7 @@ describe('anonymising a seller who has settled deals', () => {
     });
   });
 
-  it('scrubs the shop name, address and licence numbers, which identify them too', async () => {
+  it('scrubs the shop name, address, licence numbers and PAN, which identify them too', async () => {
     await deleteAccount('seller-1', PASSWORD);
 
     const scrubbed = tx.farmerProfile.update.mock.calls.at(-1)?.[0].data;
@@ -136,6 +136,7 @@ describe('anonymising a seller who has settled deals', () => {
       address: null,
       fssaiLicense: null,
       gstin: null,
+      pan: null,
     });
   });
 

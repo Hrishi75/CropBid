@@ -225,6 +225,9 @@ export interface FarmerOnboardingInput {
   address?: string;
   fssaiLicense?: string;
   gstin?: string;
+  // Every kind of seller, required since 2026-10-07. The server checks its
+  // shape, and that it is the PAN inside the GSTIN when both are given.
+  pan?: string;
   // Where the money goes. Optional: an application is not held up for a blank
   // one, and the seller is asked again the first time a buyer actually pays.
   // Sent only when typed, so a resubmission does not clear what is on file.
@@ -241,9 +244,20 @@ export interface BuyerOnboardingInput {
   companyType:
     | 'RESTAURANT' | 'SMALL_BUSINESS' | 'WHOLESALER'
     | 'PROCESSOR' | 'FMCG' | 'EXPORTER' | 'RETAILER';
+  /** The GSTIN, optional. */
   taxId?: string;
+  /** Required of every business buyer since 2026-10-07. */
+  pan?: string;
+  /** Required of RESTAURANT, PROCESSOR and FMCG (BUYER_NEEDS_FSSAI). */
+  fssaiLicense?: string;
+  /** Required of an EXPORTER. */
+  iecCode?: string;
   annualProcurementVolume?: string;
 }
+
+// Buyers who cook, process or pack food, and so hold an FSSAI licence. The
+// server holds the same list (auth.service NEEDS_FSSAI) and refuses without it.
+export const BUYER_NEEDS_FSSAI: BuyerOnboardingInput['companyType'][] = ['RESTAURANT', 'PROCESSOR', 'FMCG'];
 
 export async function farmerOnboarding(input: FarmerOnboardingInput): Promise<void> {
   await api.post('/auth/onboarding/farmer', input);

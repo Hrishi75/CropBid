@@ -191,6 +191,10 @@ function Stepper() {
 
 // Buyer company types, prominent ones first — the three from the partner
 // landing lead, the legacy corporate types follow.
+// Buyers who cook, process or pack food, and so hold an FSSAI licence. The
+// server holds the same list (auth.service NEEDS_FSSAI) and refuses without it.
+const BUYER_NEEDS_FSSAI: CompanyType[] = ['RESTAURANT', 'PROCESSOR', 'FMCG'];
+
 const BUYER_TYPE_PILLS: { value: CompanyType; label: string }[] = [
   { value: 'RESTAURANT', label: 'Restaurant / café' },
   { value: 'SMALL_BUSINESS', label: 'Small business' },
@@ -279,6 +283,7 @@ export function OnboardingPage() {
   const [address, setAddress] = useState(existingSeller?.address || '');
   const [fssai, setFssai] = useState(existingSeller?.fssaiLicense || '');
   const [gstin, setGstin] = useState(existingSeller?.gstin || '');
+  const [pan, setPan] = useState(existingSeller?.pan || '');
   const [minOrderValue, setMinOrderValue] = useState(existingSeller?.minOrderValue?.toString() || '');
   const [leadTimeDays, setLeadTimeDays] = useState(existingSeller?.leadTimeDays?.toString() || '');
 
@@ -293,6 +298,10 @@ export function OnboardingPage() {
     || (hint?.role === 'BUYER' && BUYER_TYPE_PILLS.some((p) => p.value === hint.type) ? hint.type as CompanyType : 'RESTAURANT')
   );
   const [taxId, setTaxId] = useState(existingBuyer?.taxId || '');
+  // A seller applying to buy has given its PAN once already.
+  const [buyerPan, setBuyerPan] = useState(existingBuyer?.pan || user?.farmerProfile?.pan || '');
+  const [buyerFssai, setBuyerFssai] = useState(existingBuyer?.fssaiLicense || '');
+  const [iecCode, setIecCode] = useState(existingBuyer?.iecCode || '');
   const [volume, setVolume] = useState(existingBuyer?.annualProcurementVolume || '');
   const [outletCount, setOutletCount] = useState(existingBuyer?.outletCount?.toString() || '');
 
@@ -318,6 +327,7 @@ export function OnboardingPage() {
         await api.post('/auth/onboarding/farmer', {
           sellerType,
           state,
+          pan,
           // Omitted entirely when untouched, which leaves whatever is already
           // on file alone rather than clearing it.
           ...(isPayoutUntouched(payout) ? {} : payout),
@@ -353,6 +363,11 @@ export function OnboardingPage() {
           companyName,
           companyType,
           taxId: taxId || undefined,
+          pan: buyerPan,
+          // Only what this business type is asked for, so a form switched
+          // from restaurant to retailer does not carry a stale licence.
+          fssaiLicense: BUYER_NEEDS_FSSAI.includes(companyType) ? buyerFssai : undefined,
+          iecCode: companyType === 'EXPORTER' ? iecCode : undefined,
           annualProcurementVolume: volume || undefined,
           outletCount: companyType === 'RESTAURANT' && outletCount ? parseInt(outletCount, 10) : undefined,
         });
@@ -587,7 +602,7 @@ export function OnboardingPage() {
                   label="GSTIN (optional)"
                   placeholder="e.g., 27AABCA1234A1ZA"
                   value={gstin}
-                  onChange={(e) => setGstin(e.target.value)}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
                 />
                 <p className="cb-field-hint">
                   Food sold to homes must trace to a licence — reviewers check this first.
@@ -615,7 +630,7 @@ export function OnboardingPage() {
                   label="GSTIN"
                   placeholder="e.g., 27AABCA1234A1ZA"
                   value={gstin}
-                  onChange={(e) => setGstin(e.target.value)}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   required
                 />
                 <Input
@@ -652,6 +667,24 @@ export function OnboardingPage() {
                 <CropPicker selected={selectedCrops} onToggle={toggleCrop} />
               </SectionCard>
             </>
+          )}
+
+          {/* --------- PAN (every seller kind) --------- */}
+          {isFarmer && (
+            <SectionCard title="Tax">
+              <Input
+                label="PAN"
+                placeholder="e.g., ABCDE1234F"
+                value={pan}
+                onChange={(e) => setPan(e.target.value.toUpperCase())}
+                required
+              />
+              <p className="cb-field-hint">
+                {isWholesale
+                  ? 'The PAN your GSTIN was issued to. Tax on your sales through CropBid is reported against it.'
+                  : 'Tax on your sales through CropBid is reported against your PAN. You need one even if you have no GSTIN.'}
+              </p>
+            </SectionCard>
           )}
 
           {/* --------- GETTING PAID (every seller kind) --------- */}
@@ -691,22 +724,42 @@ export function OnboardingPage() {
                 )}
               </SectionCard>
 
-              <SectionCard title="Tax" optional>
+              <SectionCard title="Business documents">
                 <Input
-                  label={
-                    userCountry === 'India' ? 'GST number'
-                      : userCountry === 'United States' ? 'EIN'
-                        : ['Germany', 'France', 'Netherlands', 'United Kingdom'].includes(userCountry) ? 'VAT number'
-                          : 'Tax ID'
-                  }
-                  placeholder={
-                    userCountry === 'India' ? 'e.g., 27AABCA1234A1ZA'
-                      : userCountry === 'United States' ? 'e.g., 12-3456789'
-                        : 'Tax identification number'
-                  }
-                  value={taxId}
-                  onChange={(e) => setTaxId(e.target.value)}
+                  label="Business PAN"
+                  placeholder="e.g., ABCDE1234F"
+                  value={buyerPan}
+                  onChange={(e) => setBuyerPan(e.target.value.toUpperCase())}
+                  required
                 />
+                <Input
+                  label="GSTIN (optional)"
+                  placeholder="e.g., 27ABCDE1234F1Z5"
+                  value={taxId}
+                  onChange={(e) => setTaxId(e.target.value.toUpperCase())}
+                />
+                {BUYER_NEEDS_FSSAI.includes(companyType) && (
+                  <Input
+                    label="FSSAI licence number"
+                    placeholder="14-digit FSSAI number"
+                    value={buyerFssai}
+                    onChange={(e) => setBuyerFssai(e.target.value)}
+                    required
+                  />
+                )}
+                {companyType === 'EXPORTER' && (
+                  <Input
+                    label="Importer-Exporter Code (IEC)"
+                    placeholder="10 characters, from DGFT"
+                    value={iecCode}
+                    onChange={(e) => setIecCode(e.target.value.toUpperCase())}
+                    required
+                  />
+                )}
+                <p className="cb-field-hint">
+                  If you give a GSTIN, the PAN must be the one inside it.
+                  {BUYER_NEEDS_FSSAI.includes(companyType) && ' A business that cooks, processes or packs food needs an FSSAI licence.'}
+                </p>
               </SectionCard>
 
               <SectionCard title="Volume" optional>

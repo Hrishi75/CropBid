@@ -41,11 +41,18 @@ export default function BuyForShopScreen() {
 
   const [name, setName] = useState(app?.companyName || sellerDisplayName(user));
   const [gstin, setGstin] = useState('');
+  // Given once already on the seller application, when it was filed after
+  // PAN became required.
+  const [pan, setPan] = useState(app?.pan || user?.farmerProfile?.pan || '');
   const [saving, setSaving] = useState(false);
 
   async function submit() {
     if (name.trim().length < 2) {
       Alert.alert('Name missing', `Enter the name your ${place} buys under.`);
+      return;
+    }
+    if (!pan.trim()) {
+      Alert.alert('PAN missing', `Enter the PAN your ${place} trades under.`);
       return;
     }
     setSaving(true);
@@ -54,6 +61,7 @@ export default function BuyForShopScreen() {
         companyName: name.trim(),
         companyType: isWholesaler ? 'WHOLESALER' : 'SMALL_BUSINESS',
         taxId: gstin.trim() || undefined,
+        pan: pan.trim(),
       });
       await refreshUser();
     } catch (e) {
@@ -122,6 +130,15 @@ export default function BuyForShopScreen() {
               value={name}
               onChangeText={setName}
               placeholder={`Your ${place}'s name`}
+              placeholderTextColor={design.ink3}
+            />
+            <Mono style={[styles.label, { marginTop: 6 }]}>PAN</Mono>
+            <TextInput
+              style={styles.input}
+              value={pan}
+              onChangeText={(v) => setPan(v.toUpperCase())}
+              autoCapitalize="characters"
+              placeholder="ABCDE1234F"
               placeholderTextColor={design.ink3}
             />
             <Mono style={[styles.label, { marginTop: 6 }]}>GSTIN · OPTIONAL</Mono>
