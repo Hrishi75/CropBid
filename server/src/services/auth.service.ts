@@ -1583,7 +1583,11 @@ export async function updateBuyerProfile(userId: string, input: UpdateBuyerProfi
   } = {};
   if (input.companyName !== undefined) profileData.companyName = input.companyName;
   if (input.companyType !== undefined) profileData.companyType = input.companyType;
-  if (input.taxId !== undefined) {
+  // Checked only when it changes. Settings sends the saved value back on every
+  // save, and applications before 2026-10-07 took any tax number (an EIN, a
+  // VAT number), so checking an untouched one would stop an older buyer from
+  // changing their phone number.
+  if (input.taxId !== undefined && (input.taxId?.trim() || null) !== user.buyerProfile.taxId) {
     profileData.taxId = parseId('gstin', input.taxId);
     assertPanMatchesGstin(user.buyerProfile.pan, profileData.taxId);
   }

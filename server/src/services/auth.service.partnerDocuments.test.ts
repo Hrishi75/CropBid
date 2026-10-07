@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../lib/prisma', () => {
   const prisma = {
-    user: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), update: vi.fn() },
     farmerProfile: {
       findUnique: vi.fn(() => Promise.resolve(null)),
       create: vi.fn(({ data }: { data: object }) => Promise.resolve({ id: 'fp-1', ...data })),
@@ -126,6 +126,14 @@ describe('editing a buyer profile', () => {
   it('will not switch to exporter without an IEC on file', async () => {
     db.user.findUnique.mockResolvedValue(approved({}));
     await expect(updateBuyerProfile('u-1', { companyType: 'EXPORTER' })).rejects.toMatchObject({ message: expect.stringContaining('IEC') });
+  });
+
+  // Settings posts the saved tax number back on every save, and older
+  // applications took any tax number, so an untouched one is left alone.
+  it('lets a buyer with a legacy tax number save other changes', async () => {
+    db.user.findUnique.mockResolvedValue(approved({ taxId: '12-3456789' }));
+    await updateBuyerProfile('u-1', { name: 'New Name', taxId: '12-3456789' });
+    expect(db.$transaction).toHaveBeenCalled();
   });
 
   it('checks a GSTIN typed into the profile like one on the application', async () => {

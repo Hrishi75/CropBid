@@ -602,7 +602,6 @@ export function OnboardingPage() {
                   label="GSTIN (optional)"
                   placeholder="e.g., 27AABCA1234A1ZA"
                   value={gstin}
-                  maxLength={15}
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                 />
                 <p className="cb-field-hint">
@@ -631,7 +630,6 @@ export function OnboardingPage() {
                   label="GSTIN"
                   placeholder="e.g., 27AABCA1234A1ZA"
                   value={gstin}
-                  maxLength={15}
                   onChange={(e) => setGstin(e.target.value.toUpperCase())}
                   required
                 />
@@ -678,7 +676,6 @@ export function OnboardingPage() {
                 label="PAN"
                 placeholder="e.g., ABCDE1234F"
                 value={pan}
-                maxLength={10}
                 onChange={(e) => setPan(e.target.value.toUpperCase())}
                 required
               />
@@ -732,7 +729,6 @@ export function OnboardingPage() {
                   label="Business PAN"
                   placeholder="e.g., ABCDE1234F"
                   value={buyerPan}
-                  maxLength={10}
                   onChange={(e) => setBuyerPan(e.target.value.toUpperCase())}
                   required
                 />
@@ -740,7 +736,6 @@ export function OnboardingPage() {
                   label="GSTIN (optional)"
                   placeholder="e.g., 27ABCDE1234F1Z5"
                   value={taxId}
-                  maxLength={15}
                   onChange={(e) => setTaxId(e.target.value.toUpperCase())}
                 />
                 {BUYER_NEEDS_FSSAI.includes(companyType) && (
@@ -757,7 +752,6 @@ export function OnboardingPage() {
                     label="Importer-Exporter Code (IEC)"
                     placeholder="10 characters, from DGFT"
                     value={iecCode}
-                    maxLength={10}
                     onChange={(e) => setIecCode(e.target.value.toUpperCase())}
                     required
                   />

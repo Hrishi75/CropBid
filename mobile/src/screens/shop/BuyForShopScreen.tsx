@@ -138,7 +138,6 @@ export default function BuyForShopScreen() {
               value={pan}
               onChangeText={(v) => setPan(v.toUpperCase())}
               autoCapitalize="characters"
-              maxLength={10}
               placeholder="ABCDE1234F"
               placeholderTextColor={design.ink3}
             />

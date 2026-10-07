@@ -455,7 +455,6 @@ export default function OnboardingScreen({
                 placeholder="e.g., ABCDE1234F"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="characters"
-                maxLength={10}
               />
               <Text style={styles.hint}>
                 {isWholesaler
@@ -522,7 +521,6 @@ export default function OnboardingScreen({
                 placeholder="e.g., ABCDE1234F"
                 placeholderTextColor={colors.textMuted}
                 autoCapitalize="characters"
-                maxLength={10}
               />
 
               {needsFssai ? (
@@ -550,7 +548,6 @@ export default function OnboardingScreen({
                     placeholder="10 characters, from DGFT"
                     placeholderTextColor={colors.textMuted}
                     autoCapitalize="characters"
-                    maxLength={10}
                   />
                 </>
               ) : null}
