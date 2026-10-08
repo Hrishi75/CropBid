@@ -1,6 +1,25 @@
 # Cloudflare response headers, copied into dist/ by the build and read on
 # deploy (never served as a file).
 
+# Security headers on every page. The API sets its own through helmet.
+#
+# The CSP is Report-Only on purpose: a source missing from it would silently
+# break checkout or Google sign-in on production, so violations go to the
+# browser console first. Once a real payment and a Google sign-in show none,
+# rename the header to Content-Security-Policy. Third parties it allows:
+#   Razorpay (checkout script, its frames, its API and logging), Google
+#   sign-in (gsi), Cloudflare Web Analytics, Google Fonts, Sentry ingest, and
+#   the API with its auction socket. Images are any https origin, because
+#   listing photos come from Cloudinary and the API's /uploads.
+# frame-ancestors is ignored in Report-Only, so X-Frame-Options does that job.
+# The app's in-app policy pages are unaffected: a native WebView is not a frame.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://checkout.razorpay.com https://accounts.google.com/gsi/client https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.cropbid.in wss://api.cropbid.in https://accounts.google.com/gsi/ https://api.razorpay.com https://lumberjack.razorpay.com https://cloudflareinsights.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io; frame-src https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com/gsi/; object-src 'none'; base-uri 'self'; form-action 'self' https://api.razorpay.com; frame-ancestors 'none'
+
 # Vite fingerprints every file in /assets, so a changed file gets a new name
 # and these can be cached for a year.
 /assets/*
