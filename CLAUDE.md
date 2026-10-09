@@ -373,7 +373,7 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 - **Not on** `/cart`, `/checkout` (it would sit on the pay button on a phone), `/admin`, or inside the app (`?app=1`). It lifts above the basket bar, and on a phone waits for the cookie card to be dismissed rather than covering it.
 - **`/privacy` says** that a chat is carried by WhatsApp and that we see the number, WhatsApp name and messages, used only to answer (9 October 2026, `POLICY_VERSION` with it). **It also promises we delete a chat when asked**, and that deleting a CropBid account does not touch it, because the chats live on the support phone, outside `deleteAccount`. That is a commitment ops must keep.
 - **It sits below the dashboard's mobile menu** (z-index 50, under its 55 backdrop), so an open menu covers it. Cart and checkout are left out through `utils/billPages.ts`, the same list the basket bar uses.
-- **Not built:** the phone app has no WhatsApp button; its Help screen is still email only.
+- **The app has it too (2026-10-09):** a floating button on the storefront home only (`mobile/src/components/WhatsAppButton.tsx`), lifted above the basket bar, and a "Chat on WhatsApp" card on Help, which every stack reaches. Not on every screen, because the app's bottom edge already carries the tab bar, the basket bar and the pay buttons. The number is `EXPO_PUBLIC_WHATSAPP_NUMBER` (`mobile/src/lib/whatsapp.ts`), inlined at build time, so it must be in the EAS build's env (an `env` entry in `eas.json` or an EAS environment variable) and a new build is needed to show it; unset, neither is drawn.
 
 ### The cookie notice (shipped 2026-09-03)
 
@@ -656,7 +656,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 - **Terms and Privacy open the live website, deliberately not copied.** See §5 for `?app=1`. **`react-native-webview` has no web implementation** and renders the sentence "React Native WebView does not support this platform." where the document should be: not an error, so `onError` never fires and a fallback never shows. `PolicyScreen` therefore renders a plain iframe on web and the WebView on native. `RazorpayCheckout` has the same problem and is unfixed, so payment cannot be exercised in a browser at all.
 - **`EXPO_PUBLIC_SITE_URL` overrides where those pages come from**, defaulting to production. Without it a change to the policy pages cannot be seen in the app until the web client deploys, which makes the pair untestable together.
 - **Notification toggles are device-local and say so.** There is no push infrastructure and no preference model on the server. A switch labelled "email alerts" that silently changed nothing is a lie the user cannot detect.
-- **Help is `info@cropbid.in`** and sets the expectation at a working day or two, because nobody is on a chat rota.
+- **Help is `info@cropbid.in`**, plus WhatsApp once the build carries a number (§5), and sets the expectation at a working day or two, because nobody is on a chat rota.
 
 ### A seller is not always a farmer
 
