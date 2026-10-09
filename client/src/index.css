@@ -3088,6 +3088,47 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
   .cb-cookie { animation: none; }
 }
 
+/* ===========================================================================
+   WhatsAppButton: "chat with us", bottom right (components/ui/WhatsAppButton)
+   ---------------------------------------------------------------------------
+   Outside .cb-landing/.cb-app like the cookie card, so no --cb-* tokens. The
+   green is WhatsApp's own, because the glyph is only recognised in it. It
+   shares the bottom of the screen with the basket bar and the cookie card and,
+   like them, learns they are there from the body rather than from props.
+   =========================================================================== */
+.cb-wa {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 65; /* above .cn-cartbar (60), below .cb-cookie (70) */
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #25d366;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(20, 20, 15, 0.24);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.cb-wa:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(20, 20, 15, 0.3); }
+.cb-wa:focus-visible { outline: 3px solid var(--color-forest); outline-offset: 3px; }
+body:has(.cn-cartbar) .cb-wa { bottom: 96px; }
+
+@media (max-width: 640px) {
+  .cb-wa { right: 12px; bottom: 12px; width: 52px; height: 52px; }
+  body:has(.cn-cartbar) .cb-wa { bottom: 84px; }
+  /* The cookie card spans the width on a phone, so the button waits for it
+     to be dismissed rather than sitting on its "Got it". */
+  body:has(.cb-cookie) .cb-wa { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-wa { transition: none; }
+  .cb-wa:hover { transform: none; }
+}
+
 /* ModeSwitch: Selling | Buying for a seller approved to buy (components/layout/ModeSwitch). */
 .cb-mode { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
 .cb-mode-label { color: var(--cb-ink-3); letter-spacing: 0.08em; padding: 0 2px; }

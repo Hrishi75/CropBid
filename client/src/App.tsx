@@ -6,6 +6,7 @@ import { CartProvider } from './context/CartContext';
 import { CartBar } from './components/consumer/CartBar';
 import { CookieNotice } from './components/ui/CookieNotice';
 import { PageAnalytics } from './components/ui/PageAnalytics';
+import { WhatsAppButton } from './components/ui/WhatsAppButton';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -67,6 +68,9 @@ function App() {
       {/* Inside the router because it links to the privacy policy, outside
           AppContent because it must never reach the prerendered HTML. */}
       <CookieNotice />
+      {/* Same side of the line as the cookie notice: browser-only, and a
+          crawler has no chat to open. */}
+      <WhatsAppButton />
       <Toaster
         position="top-right"
         toastOptions={{

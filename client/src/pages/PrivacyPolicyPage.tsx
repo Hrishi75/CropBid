@@ -25,7 +25,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '7 October 2026';
+const UPDATED = '9 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -292,6 +292,9 @@ export function PrivacyPolicyPage() {
             <strong>Meta (WhatsApp)</strong> — your phone number and a one-time code, to
             deliver your sign-in code. If we cannot reach you there we send the code by email
             instead, through our email provider.
+            If you message us on WhatsApp, the conversation is carried by WhatsApp, and we
+            see your number, your WhatsApp name and what you send, which we use only to
+            answer you.
           </p>
           <p>
             <strong>Sarvam AI</strong> (speech and translation) — the audio clip you record

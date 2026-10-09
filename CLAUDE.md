@@ -365,6 +365,15 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **The copy is baked into the artwork, so it is outside this file's reach unless someone regenerates the picture.** As supplied, the sell banner says "Faster Payments" (payouts are a manual transfer, §6) and the buy banner "Quality Produce" (nothing checks a lot, §2b). Both are on screen until the images are redone.
 
+### WhatsApp chat button (2026-10-09)
+
+**A round green button, bottom right on every website page, opening a WhatsApp chat with the company number** (`components/ui/WhatsAppButton.tsx`). A plain `wa.me` link with "Hi CropBid, I have a question." typed in: nothing passes through our servers.
+
+- **Off until configured.** The number is `VITE_WHATSAPP_NUMBER`, a Cloudflare build variable like the Google client id; blank, nothing is drawn. A bare ten-digit number gets `91` in front.
+- **Not on** `/cart`, `/checkout` (it would sit on the pay button on a phone), `/admin`, or inside the app (`?app=1`). It lifts above the basket bar, and on a phone waits for the cookie card to be dismissed rather than covering it.
+- **`/privacy` says** that a chat is carried by WhatsApp and that we see the number, WhatsApp name and messages, used only to answer (9 October 2026, `POLICY_VERSION` with it).
+- **Not built:** the phone app has no WhatsApp button; its Help screen is still email only.
+
 ### The cookie notice (shipped 2026-09-03)
 
 `components/ui/CookieNotice.tsx`, mounted in `App.tsx` beside Toaster and Analytics so the prerender never bakes it into the static markup. A bottom-left card, dismissed with one button. It links to `/privacy#cookies`, which is a real anchored section, reached by an effect on the page because a client-side route change does not make the browser jump to a hash on its own.
