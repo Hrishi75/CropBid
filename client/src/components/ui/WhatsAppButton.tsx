@@ -18,14 +18,18 @@
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { isEmbedded } from '../../utils/embedded';
+import { isBillPage } from '../../utils/billPages';
 
 /**
- * Digits only, country code first, which is what wa.me wants. A bare ten-digit
- * Indian number gets 91 in front, because writing it without the code is the
- * likely slip and wa.me would otherwise read it as some other country.
+ * Digits only, country code first, which is what wa.me wants. Leading zeros go
+ * first, because an Indian number is often written with the trunk 0
+ * (09822055667) or the international 00 (0091 ...), and wa.me reads neither.
+ * A bare ten-digit number then gets 91 in front, because writing it without
+ * the code is the likely slip and wa.me would otherwise read it as some other
+ * country.
  */
 function whatsAppDigits(raw: string | undefined): string | null {
-  const digits = (raw ?? '').replace(/\D/g, '');
+  const digits = (raw ?? '').replace(/\D/g, '').replace(/^0+/, '');
   if (digits.length === 10) return `91${digits}`;
   if (digits.length < 11 || digits.length > 15) return null;
   return digits;
@@ -33,15 +37,11 @@ function whatsAppDigits(raw: string | undefined): string | null {
 
 const NUMBER = whatsAppDigits(import.meta.env.VITE_WHATSAPP_NUMBER);
 
-// Where it stays away. The cart and checkout end in a pay button at the foot of
-// a phone screen, which a floating button would sit on; admin pages are ops,
-// who have the number already.
+// Where it stays away. The bill pages end in a pay button at the foot of a
+// phone screen, which a floating button would sit on; admin pages are ops, who
+// have the number already.
 function hiddenOn(pathname: string): boolean {
-  return (
-    pathname === '/cart' ||
-    pathname.startsWith('/checkout') ||
-    pathname.startsWith('/admin')
-  );
+  return isBillPage(pathname) || pathname.startsWith('/admin');
 }
 
 export function WhatsAppButton() {

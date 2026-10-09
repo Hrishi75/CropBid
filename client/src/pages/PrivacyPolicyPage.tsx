@@ -294,7 +294,9 @@ export function PrivacyPolicyPage() {
             instead, through our email provider.
             If you message us on WhatsApp, the conversation is carried by WhatsApp, and we
             see your number, your WhatsApp name and what you send, which we use only to
-            answer you.
+            answer you. The chat stays on our support phone until we delete it, and we delete
+            it when you ask. Deleting your CropBid account does not remove it on its own, so
+            ask us at the same time.
           </p>
           <p>
             <strong>Sarvam AI</strong> (speech and translation) — the audio clip you record

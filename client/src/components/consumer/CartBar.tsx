@@ -17,6 +17,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { formatCurrency } from '../../utils/currency';
+import { isBillPage } from '../../utils/billPages';
 
 export function CartBar() {
   const { user } = useAuth();
@@ -26,7 +27,7 @@ export function CartBar() {
   // Retail only. A farmer or buyer has no basket, and an empty one has nothing
   // to say.
   if (user?.role !== 'CONSUMER' || items.length === 0) return null;
-  if (pathname === '/cart' || pathname.startsWith('/checkout')) return null;
+  if (isBillPage(pathname)) return null;
 
   const label = count === 1 ? '1 lot' : `${count} lots`;
 

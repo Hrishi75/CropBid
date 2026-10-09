@@ -3100,7 +3100,10 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 65; /* above .cn-cartbar (60), below .cb-cookie (70) */
+  /* Below the dashboard's mobile menu (backdrop 55, drawer 60) so an open menu
+     covers it, and below every modal. It never needs to beat the basket bar,
+     which it moves above rather than over. */
+  z-index: 50;
   width: 56px;
   height: 56px;
   border-radius: 50%;
