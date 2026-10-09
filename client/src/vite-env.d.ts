@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_SOCKET_URL?: string;
   readonly VITE_GOOGLE_CLIENT_ID?: string;
   readonly VITE_CF_ANALYTICS_TOKEN?: string;
+  readonly VITE_WHATSAPP_NUMBER?: string;
 }
 
 interface ImportMeta {
