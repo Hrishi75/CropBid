@@ -12,7 +12,9 @@
 #   the API with its auction socket. Images are any https origin, because
 #   listing photos come from Cloudinary and the API's /uploads.
 # frame-ancestors is ignored in Report-Only, so X-Frame-Options does that job.
-# The app's in-app policy pages are unaffected: a native WebView is not a frame.
+# DENY is why the app's web build opens /terms, /privacy and /faq in a new tab
+# instead of an iframe (mobile/src/screens/profile/PolicyScreen). On a phone
+# they are unaffected: a native WebView renders the page top-level, not framed.
 /*
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff
