@@ -25,7 +25,7 @@
 
 import { ApiError } from './ApiError';
 
-export const POLICY_VERSION = '2026-10-07';
+export const POLICY_VERSION = '2026-10-09';
 
 export const CONSENT_REQUIRED_MESSAGE =
   'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy';
