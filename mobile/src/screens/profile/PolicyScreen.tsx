@@ -18,10 +18,13 @@
 // does not throw, so onError never fires and the fallback below never showed.
 // The same trap as Alert.alert being a silent no-op (see lib/alert).
 //
-// So web renders a plain iframe and native keeps the WebView. cropbid.in sends
-// no X-Frame-Options or frame-ancestors, so it frames; if that ever changes the
-// iframe goes blank, which is why "Open in browser" is always on screen rather
-// than only in the error state.
+// And web cannot frame it either: cropbid.in sends X-Frame-Options: DENY
+// (client/public/_headers, against clickjacking), so an iframe of it is blank.
+// Worse, the browser still fires the frame's onLoad, so the stall timer below
+// never shows its escape hatch. So on web the page opens in a new tab, from a
+// button rather than on mount, because a tab opened without a click is a popup
+// the browser blocks. Native keeps the WebView: it renders the page as the
+// top-level document, which no frame header applies to.
 // =============================================================================
 
 import React, { useEffect, useState } from 'react';
@@ -99,26 +102,28 @@ export default function PolicyScreen() {
     );
   }
 
+  // Web: the site refuses to be framed (see the header), so it opens in a tab.
+  // The full page, chrome and all, for the same reason as the escape hatch below.
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.fallback}>
+        <Text style={styles.failTitle}>{t('This page opens on our website')}</Text>
+        <Pressable onPress={() => Linking.openURL(url.replace(EMBED, ''))} style={styles.openBtn}>
+          <Text style={styles.openText}>{t('Open in browser')}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.flex}>
-      {Platform.OS === 'web' ? (
-        // createElement because React Native's JSX namespace has no <iframe>,
-        // and this file still has to compile for native.
-        React.createElement('iframe', {
-          src: url,
-          onLoad: () => setLoading(false),
-          style: { flex: 1, border: 'none', width: '100%', height: '100%' },
-          title: 'CropBid',
-        })
-      ) : (
-        <WebView
-          source={{ uri: url }}
-          onLoadEnd={() => setLoading(false)}
-          onError={() => { setLoading(false); setFailed(true); }}
-          onHttpError={() => { setLoading(false); setFailed(true); }}
-          style={styles.flex}
-        />
-      )}
+      <WebView
+        source={{ uri: url }}
+        onLoadEnd={() => setLoading(false)}
+        onError={() => { setLoading(false); setFailed(true); }}
+        onHttpError={() => { setLoading(false); setFailed(true); }}
+        style={styles.flex}
+      />
 
       {loading ? (
         <View style={styles.loading}>
