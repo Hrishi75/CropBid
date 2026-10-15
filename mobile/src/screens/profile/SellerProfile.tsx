@@ -17,11 +17,11 @@
 // Words come from lib/sellerType, so a shop is never told about its farm.
 // =============================================================================
 
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -32,7 +32,9 @@ import {
   IconAgent, IconBell, IconBell2, IconDoc, IconGlobe, IconHelp, IconInfo, IconLogout,
   IconMarket, IconPin, IconShare, IconShield, IconUser, IconWallet,
 } from '../../components/icons';
-import type { User } from '../../api/types';
+import type { CreditApplication, CreditSide, User } from '../../api/types';
+import { fetchCredit } from '../../api/endpoints';
+import { CreditCard } from '../../components/CreditCard';
 import type { ProfileParamList } from '../../navigation/types';
 import { accountTags, sellerDisplayName, sellerWords } from '../../lib/sellerType';
 import { colors, design, font } from '../../theme';
@@ -71,6 +73,20 @@ export function SellerProfile({
   // A local shop sells to households at a fixed price: no offers, no buyer
   // demand, no helper to bargain for it. Its tabs have no Offers screen.
   const isShop = farm?.sellerType === 'LOCAL_SHOP';
+
+  // Credit for a seller: a farm growing a crop, a shop or wholesaler growing.
+  // Read on focus, so coming back from the form shows the new state. Undefined
+  // until it loads (or if it fails), so the pitch never flashes over an
+  // application already in.
+  const [credit, setCredit] = useState<CreditApplication | null | undefined>(undefined);
+  const [creditSide, setCreditSide] = useState<CreditSide>('SELLER');
+  useFocusEffect(useCallback(() => {
+    let on = true;
+    fetchCredit()
+      .then((c) => { if (on) { setCredit(c.application); if (c.side) setCreditSide(c.side); } })
+      .catch(() => {});
+    return () => { on = false; };
+  }, []));
 
   return (
     <ScrollView
@@ -179,6 +195,10 @@ export function SellerProfile({
             </View>
           </PressScale>
         </View>
+      ) : null}
+
+      {credit !== undefined ? (
+        <CreditCard application={credit} side={creditSide} onApply={() => nav.navigate('CreditApply')} />
       ) : null}
 
       {/* Trade tools only: a shop has no offers or buyer demand. */}

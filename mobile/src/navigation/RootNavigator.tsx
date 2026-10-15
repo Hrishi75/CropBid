@@ -198,7 +198,7 @@ function BuyerNavigator() {
       <RootStack.Screen
         name="CreditApply"
         component={CreditApplyScreen}
-        options={{ headerShown: true, title: t('Business credit'), presentation: 'card', animation: 'slide_from_right' }}
+        options={{ headerShown: true, title: t('Credit'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <RootStack.Screen
         name="Schemes"
@@ -322,6 +322,12 @@ function FarmerNavigator() {
         name="Wallet"
         component={WalletScreen}
         options={{ headerShown: true, title: t('Wallet'), presentation: 'card', animation: 'slide_from_right' }}
+      />
+      {/* Credit is for sellers too: a farm growing a crop, a shop growing. */}
+      <FarmerStack.Screen
+        name="CreditApply"
+        component={CreditApplyScreen}
+        options={{ headerShown: true, title: t('Credit'), presentation: 'card', animation: 'slide_from_right' }}
       />
       <FarmerStack.Screen
         name="Schemes"

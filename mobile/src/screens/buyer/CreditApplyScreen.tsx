@@ -1,5 +1,6 @@
 // =============================================================================
-// CreditApplyScreen — a business buyer applying for credit to buy produce
+// CreditApplyScreen — a partner applying for credit: a buyer to stock up, a
+// seller (a farm, a shop, a wholesaler) to grow a crop or the business
 // =============================================================================
 // Opened from the business-credit card on the wallet. Asks only what a lender
 // would ask first: who the business is, how much it buys, how much it needs and
@@ -26,7 +27,8 @@ import { Mono } from '../../components/buyerKit';
 import { Button } from '../../components/ui';
 import { applyForCredit, fetchCredit } from '../../api/endpoints';
 import { errorMessage } from '../../api/client';
-import type { CreditRules } from '../../api/types';
+import type { CreditRules, CreditSide, CreditUse } from '../../api/types';
+import { SIDE_WORDS, USE_LABEL } from '../../lib/credit';
 import { useAuth } from '../../context/AuthContext';
 import { money } from '../../lib/format';
 import { colors, design, font } from '../../theme';
@@ -40,8 +42,18 @@ export default function CreditApplyScreen() {
 
   const [rules, setRules] = useState<CreditRules | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // The side this session applies from, as the server reads it (a seller in
+  // buying mode is a buyer here). The role says the same until it answers.
+  const [side, setSide] = useState<CreditSide>(user?.role === 'FARMER' ? 'SELLER' : 'BUYER');
+  const [useFor, setUseFor] = useState<CreditUse | null>(null);
+  const words = SIDE_WORDS[side];
 
-  const [businessName, setBusinessName] = useState(user?.buyerProfile?.companyName ?? user?.farmerProfile?.businessName ?? '');
+  // A seller applies under its business name, or a farmer under their own.
+  const [businessName, setBusinessName] = useState(
+    user?.role === 'FARMER'
+      ? user?.farmerProfile?.businessName || user?.name || ''
+      : user?.buyerProfile?.companyName ?? user?.farmerProfile?.businessName ?? '',
+  );
   const [gstin, setGstin] = useState('');
   const [years, setYears] = useState('');
   const [monthly, setMonthly] = useState('');
@@ -57,8 +69,9 @@ export default function CreditApplyScreen() {
 
   useEffect(() => {
     fetchCredit()
-      .then(({ rules: r, application: a }) => {
+      .then(({ rules: r, side: s, application: a }) => {
         setRules(r);
+        if (s) setSide(s);
         // Editing, or applying again after a no: start from what they sent.
         // The consent box still starts unticked, because each submission is a
         // fresh agreement to share it.
@@ -72,6 +85,8 @@ export default function CreditApplyScreen() {
           setDays(a.repaymentDays);
           setPurpose(a.purpose ?? '');
           setPhone(a.contactPhone);
+          // Carry the use across only if this side may pick it.
+          if (a.useFor && r.uses?.[s ?? 'BUYER']?.includes(a.useFor)) setUseFor(a.useFor);
         }
       })
       .catch((e) => setLoadError(errorMessage(e, 'Could not open the form.')));
@@ -81,9 +96,11 @@ export default function CreditApplyScreen() {
 
   function validate(): string | null {
     if (!rules) return 'Still loading. Try again in a moment.';
-    if (businessName.trim().length < 2) return 'Enter your business name';
+    // An older server serves no uses and takes none.
+    if (rules.uses && !useFor) return 'Choose what the money is for';
+    if (businessName.trim().length < 2) return side === 'SELLER' ? 'Enter your farm or business name' : 'Enter your business name';
     if (years === '') return 'How many years have you been in business?';
-    if (!(Number(monthly) > 0)) return 'Roughly how much produce do you buy in a month?';
+    if (!(Number(monthly) > 0)) return side === 'SELLER' ? 'Roughly how much do you sell in a month?' : 'Roughly how much produce do you buy in a month?';
     if (!(amountNum >= rules.minAmount && amountNum <= rules.maxAmount)) {
       return `Ask for between ${money(rules.minAmount)} and ${money(rules.maxAmount)}`;
     }
@@ -100,6 +117,7 @@ export default function CreditApplyScreen() {
     setSubmitting(true);
     try {
       await applyForCredit({
+        ...(useFor ? { useFor } : {}),
         businessName: businessName.trim(),
         gstin: gstin.trim() || null,
         yearsInBusiness: Number(years),
@@ -143,13 +161,26 @@ export default function CreditApplyScreen() {
           was otherwise the only way out of a quantity or price field. */}
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         <Text style={styles.intro}>
-          {t('Tell us about your business. A person reads every application and, with your permission, takes it to a lending partner. CropBid does not lend money.')}
+          {t(words.intro)}
         </Text>
 
+        {rules.uses ? (
+          <View style={styles.card}>
+            <Mono style={styles.eyebrow}>{t('WHAT IT IS FOR')}</Mono>
+            <View style={styles.pillRow}>
+              {rules.uses[side].map((u) => (
+                <Pressable key={u} onPress={() => { setError(null); setUseFor(u); }} style={[styles.pill, useFor === u && styles.pillOn]}>
+                  <Text style={[styles.pillText, useFor === u && styles.pillTextOn]}>{t(USE_LABEL[u])}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
-          <Mono style={styles.eyebrow}>{t('YOUR BUSINESS')}</Mono>
-          <Field label={t('Business name')}>
-            <TextInput style={styles.input} value={businessName} onChangeText={(v) => { setError(null); setBusinessName(v); }} placeholder="Vikram Foods" placeholderTextColor={design.ink3} />
+          <Mono style={styles.eyebrow}>{t(side === 'SELLER' ? 'YOU' : 'YOUR BUSINESS')}</Mono>
+          <Field label={t(words.nameLabel)}>
+            <TextInput style={styles.input} value={businessName} onChangeText={(v) => { setError(null); setBusinessName(v); }} placeholder={words.namePlaceholder} placeholderTextColor={design.ink3} />
           </Field>
           <View style={styles.row}>
             <View style={styles.rowField}>
@@ -163,8 +194,8 @@ export default function CreditApplyScreen() {
               </Field>
             </View>
           </View>
-          <Field label={t('Produce you buy in a month, roughly (₹)')}>
-            <TextInput style={styles.input} value={monthly} onChangeText={(v) => { setError(null); setMonthly(digits(v)); }} keyboardType="number-pad" placeholder="4,00,000" placeholderTextColor={design.ink3} />
+          <Field label={t(words.monthlyLabel)}>
+            <TextInput style={styles.input} value={monthly} onChangeText={(v) => { setError(null); setMonthly(digits(v)); }} keyboardType="number-pad" placeholder={words.monthlyPlaceholder} placeholderTextColor={design.ink3} />
           </Field>
         </View>
 
@@ -185,8 +216,8 @@ export default function CreditApplyScreen() {
               ))}
             </View>
           </Field>
-          <Field label={t('What will you buy with it? (optional)')}>
-            <TextInput style={[styles.input, styles.multiline]} value={purpose} onChangeText={setPurpose} multiline maxLength={500} placeholder={t('Onion for the dehydration line, stocking up before the season…')} placeholderTextColor={design.ink3} />
+          <Field label={t(words.moreLabel)}>
+            <TextInput style={[styles.input, styles.multiline]} value={purpose} onChangeText={setPurpose} multiline maxLength={500} placeholder={t(words.morePlaceholder)} placeholderTextColor={design.ink3} />
           </Field>
         </View>
 

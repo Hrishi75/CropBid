@@ -1,5 +1,6 @@
 // =============================================================================
-// CreditApply — a business buyer applying for credit to buy produce
+// CreditApply — a partner applying for credit: a buyer to stock up, a seller
+// (a farm, a shop, a wholesaler) to grow a crop or the business
 // =============================================================================
 // The website's twin of the app's CreditApplyScreen: what a lender asks first,
 // one POST /credit. The consent box starts unticked on every submission, and
@@ -16,16 +17,22 @@ import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../lib/axios';
 import { formatCurrency } from '../../utils/currency';
+import { SIDE_WORDS, USE_LABEL, type CreditRules, type CreditSide, type CreditUse } from '../../utils/credit';
 
-interface Rules { minAmount: number; maxAmount: number; repaymentDays: number[] }
 const digits = (v: string) => v.replace(/[^0-9]/g, '');
 
 export function CreditApply() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [rules, setRules] = useState<Rules | null>(null);
+  const [rules, setRules] = useState<CreditRules | null>(null);
+  // The side this session applies from, as the server reads it: a seller in
+  // buying mode is a buyer here. Until it answers, the role says the same.
+  const [side, setSide] = useState<CreditSide>(user?.role === 'FARMER' ? 'SELLER' : 'BUYER');
+  const [useFor, setUseFor] = useState<CreditUse | null>(null);
   const [editing, setEditing] = useState(false);
-  const [businessName, setBusinessName] = useState(user?.buyerProfile?.companyName ?? '');
+  const [businessName, setBusinessName] = useState(
+    user?.role === 'FARMER' ? user?.farmerProfile?.businessName ?? user?.name ?? '' : user?.buyerProfile?.companyName ?? '',
+  );
   const [gstin, setGstin] = useState('');
   const [years, setYears] = useState('');
   const [monthly, setMonthly] = useState('');
@@ -43,6 +50,7 @@ export function CreditApply() {
   useEffect(() => {
     api.get('/credit').then(({ data }) => {
       setRules(data.rules);
+      if (data.side) setSide(data.side);
       const a = data.application;
       if (a && (a.status === 'IN_REVIEW' || a.status === 'APPROVED')) {
         setLocked({ status: a.status, approvedLimit: a.approvedLimit ?? null });
@@ -52,16 +60,23 @@ export function CreditApply() {
         setBusinessName(a.businessName); setGstin(a.gstin ?? ''); setYears(String(a.yearsInBusiness));
         setMonthly(String(a.monthlyPurchase)); setAmount(String(a.amountWanted)); setDays(a.repaymentDays);
         setPurpose(a.purpose ?? ''); setPhone(a.contactPhone);
+        // Only carry the use across if it is one this side may pick.
+        if (a.useFor && data.rules?.uses?.[data.side ?? 'BUYER']?.includes(a.useFor)) setUseFor(a.useFor);
       }
     }).catch(() => setError('Could not open the form. Refresh to try again.'));
   }, []);
+
+  const words = SIDE_WORDS[side];
+  // Back to whichever dashboard this session is on.
+  const home = user?.role === 'FARMER' ? '/farmer' : '/buyer';
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!rules) return;
     const amt = Number(amount);
     const problem =
-      businessName.trim().length < 2 ? 'Enter your business name'
+      !useFor ? 'Choose what the money is for'
+        : businessName.trim().length < 2 ? (side === 'SELLER' ? 'Enter your farm or business name' : 'Enter your business name')
         : years === '' ? 'How many years have you been in business?'
           : !(Number(monthly) > 0) ? 'Roughly how much produce do you buy in a month?'
             : !(amt >= rules.minAmount && amt <= rules.maxAmount) ? `Ask for between ${formatCurrency(rules.minAmount, 'INR')} and ${formatCurrency(rules.maxAmount, 'INR')}`
@@ -73,12 +88,12 @@ export function CreditApply() {
     setSending(true);
     try {
       await api.post('/credit', {
-        businessName: businessName.trim(), gstin: gstin.trim() || null, yearsInBusiness: Number(years),
+        useFor, businessName: businessName.trim(), gstin: gstin.trim() || null, yearsInBusiness: Number(years),
         monthlyPurchase: Number(monthly), amountWanted: amt, repaymentDays: days, purpose: purpose.trim() || null,
         contactPhone: phone.trim(), consent,
       });
       toast.success('Application in. A person will read it and call you.');
-      navigate('/buyer');
+      navigate(home);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Could not send your application');
     } finally {
@@ -89,8 +104,8 @@ export function CreditApply() {
   return (
     <DashboardLayout>
       <div className="cb-page-head">
-        <div className="cb-page-eyebrow">Business credit</div>
-        <h1 className="cb-page-title">Money to stock up,<br /><span className="cb-italic">repaid later.</span></h1>
+        <div className="cb-page-eyebrow">Credit</div>
+        <h1 className="cb-page-title">{words.pageTitle[0]}<br /><span className="cb-italic">{words.pageTitle[1]}</span></h1>
         <p className="cb-page-lede">
           A person reads every application and, with your permission, takes it to a lending partner. CropBid does not lend money, and it is not instant.
         </p>
@@ -107,19 +122,27 @@ export function CreditApply() {
           </div>
           <p className="cb-small" style={{ margin: 0, color: 'var(--cb-ink-3)' }}>
             {locked.status === 'APPROVED'
-              ? 'We will call you to set it up. Nothing is added to your wallet until then.'
+              ? 'We will call you to set it up. Nothing is added to your account until then.'
               : 'It cannot be changed while it is being decided. We will tell you the answer here and call you.'}
           </p>
-          <div><Link to="/buyer" className="cb-btn cb-btn-ghost">Back to your dashboard</Link></div>
+          <div><Link to={home} className="cb-btn cb-btn-ghost">Back to your dashboard</Link></div>
         </div>
       ) : (
       <form onSubmit={send} className="cb-card" style={{ padding: 24, maxWidth: 680, display: 'grid', gap: 16 }}>
-        <Input label="Business name" value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+        <div>
+          <div className="cb-small" style={{ fontWeight: 500, marginBottom: 6 }}>What is it for?</div>
+          <div className="cb-pill-group">
+            {(rules?.uses?.[side] ?? []).map((u) => (
+              <button key={u} type="button" className={`cb-pill ${useFor === u ? 'active' : ''}`} onClick={() => setUseFor(u)}>{USE_LABEL[u]}</button>
+            ))}
+          </div>
+        </div>
+        <Input label={words.nameLabel} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
         <div className="cb-cols-2" style={{ gap: 12 }}>
           <Input label="GSTIN (optional)" value={gstin} maxLength={15} onChange={(e) => setGstin(e.target.value.toUpperCase())} placeholder="27ABCDE1234F1Z5" />
           <Input label="Years running" value={years} onChange={(e) => setYears(digits(e.target.value))} placeholder="5" />
         </div>
-        <Input label="Produce you buy in a month, roughly (₹)" value={monthly} onChange={(e) => setMonthly(digits(e.target.value))} placeholder="400000" />
+        <Input label={words.monthlyLabel} value={monthly} onChange={(e) => setMonthly(digits(e.target.value))} placeholder={words.monthlyPlaceholder} />
         <Input
           label="How much (₹)"
           value={amount}
@@ -135,7 +158,7 @@ export function CreditApply() {
             ))}
           </div>
         </div>
-        <Input label="What will you buy with it? (optional)" value={purpose} maxLength={500} onChange={(e) => setPurpose(e.target.value)} />
+        <Input label={side === 'SELLER' ? 'Tell us more: which crop, what equipment (optional)' : 'What will you buy with it? (optional)'} value={purpose} maxLength={500} onChange={(e) => setPurpose(e.target.value)} />
         <Input label="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98220 55667" />
         <label className="cb-small" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer' }}>
           <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />

@@ -519,12 +519,17 @@ export interface WalletTopupOrder {
   keyId: string;
 }
 
-// Business credit (server: services/credit.service). CropBid does not lend: an
-// application is read by a person and taken to a lending partner.
+// Credit (server: services/credit.service), for any approved partner: a buyer
+// stocking up, or a seller growing a crop or the business. CropBid does not
+// lend: an application is read by a person and taken to a lending partner.
 export type CreditStatus = 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'DECLINED';
+export type CreditSide = 'BUYER' | 'SELLER';
+export type CreditUse = 'STOCK' | 'CROP' | 'INPUTS' | 'EQUIPMENT' | 'GROW_BUSINESS';
 
 export interface CreditApplication {
   id: string;
+  side?: CreditSide;
+  useFor?: CreditUse;
   businessName: string;
   gstin: string | null;
   yearsInBusiness: number;
@@ -551,9 +556,12 @@ export interface CreditRules {
   minAmount: number;
   maxAmount: number;
   repaymentDays: number[];
+  /** What each side may ask the money for. Absent from older servers. */
+  uses?: Record<CreditSide, CreditUse[]>;
 }
 
 export interface CreditApplicationInput {
+  useFor?: CreditUse | null;
   businessName: string;
   gstin?: string | null;
   yearsInBusiness: number;

@@ -227,6 +227,31 @@ export function PartnerPage() {
           onApply={onApply}
         />
 
+        {/* Credit, for whoever applies above. The homepage's credit section
+            sends visitors here (#credit), since credit is for approved
+            partners: apply to trade first, then for credit. CropBid does not
+            lend (CLAUDE.md §9), so this says who decides and that it is not
+            instant. */}
+        <section id="credit" className="st-credit" style={{ marginTop: 56, scrollMarginTop: 24 }}>
+          <div className="st-credit-text">
+            <div className="st-credit-kicker">Credit for partners</div>
+            <h2 className="cb-h2" style={{ margin: '0 0 10px' }}>Need money <span className="cb-italic">to grow?</span></h2>
+            <p className="cb-body">
+              Once you are approved, farmers, shops and wholesalers can ask for credit to grow a new crop, buy seeds and
+              fertiliser or equipment, or grow the business, and buyers can ask for it to stock up. Repay over 30 days to a
+              season. A person reads every application and, with your permission, takes it to a lending partner, who sets the terms.
+            </p>
+          </div>
+          <div className="st-credit-act">
+            {user && (user.role === 'FARMER' || user.role === 'BUYER') ? (
+              <Link to="/credit" className="cb-btn cb-btn-primary">Apply for credit <ArrowIcon /></Link>
+            ) : (
+              <a href="#sell" className="cb-btn cb-btn-primary">Apply to trade first <ArrowIcon /></a>
+            )}
+            <span className="st-credit-note">Not instant. CropBid does not lend money.</span>
+          </div>
+        </section>
+
         {/* Consumer redirect — wrong door, point them home */}
         <div className="cb-card cb-card-flat" style={{ marginTop: 56, padding: 24, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, justifyContent: 'space-between' }}>
           <div>

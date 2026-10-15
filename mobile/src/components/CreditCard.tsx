@@ -1,5 +1,5 @@
 // =============================================================================
-// CreditCard — business credit, on a buyer's wallet
+// CreditCard — credit, on the wallet and a seller's profile
 // =============================================================================
 // Money to stock up now and repay later, applied for here and read by a person.
 //
@@ -18,32 +18,34 @@ import { StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Mono } from './buyerKit';
 import { PressScale } from './motion';
-import type { CreditApplication } from '../api/types';
+import type { CreditApplication, CreditSide } from '../api/types';
+import { SIDE_WORDS, USE_LABEL } from '../lib/credit';
 import { money, timeAgo } from '../lib/format';
 import { colors, design, font, radius, spacing } from '../theme';
 
 const STEPS: Array<[string, string]> = [
-  ['Tell us about your business', 'What you buy, roughly how much a month, and how much you need. Two minutes.'],
+  ['Tell us what you need', 'What it is for, roughly how much you trade a month, and how much you need. Two minutes.'],
   ['A person reads it', 'With your permission we share it with a lending partner. It is not instant.'],
   ['We call you with the answer', 'If a lender says yes, we set it up with you on the phone, terms and all.'],
 ];
 
 export function CreditCard({
-  application, onApply,
+  application, onApply, side = 'BUYER',
 }: {
   application: CreditApplication | null;
   onApply: () => void;
+  /** The side this session applies from, as GET /credit reports it. */
+  side?: CreditSide;
 }) {
   const { t } = useTranslation();
+  const words = SIDE_WORDS[side];
 
   if (!application) {
     return (
       <View style={styles.card}>
-        <Mono style={styles.kicker}>{t('BUSINESS CREDIT')}</Mono>
-        <Text style={styles.title}>{t('Need money to stock up?')}</Text>
-        <Text style={styles.lede}>
-          {t('Buy produce now and repay in 30, 60 or 90 days. Tell us about your business and we take it to a lending partner.')}
-        </Text>
+        <Mono style={styles.kicker}>{t('CREDIT')}</Mono>
+        <Text style={styles.title}>{t(words.pitchTitle)}</Text>
+        <Text style={styles.lede}>{t(words.pitchBody)}</Text>
         <View style={styles.steps}>
           {STEPS.map(([head, body], i) => (
             <View key={head} style={styles.step}>
@@ -56,7 +58,7 @@ export function CreditCard({
           ))}
         </View>
         <PressScale onPress={onApply} scaleTo={0.98} cardStyle={styles.cta}>
-          <Text style={styles.ctaText}>{t('Apply for business credit')}</Text>
+          <Text style={styles.ctaText}>{t('Apply for credit')}</Text>
         </PressScale>
         <Text style={styles.fine}>
           {t('CropBid does not lend money. Interest and repayment terms are set by the lender and told to you before you agree to anything.')}
@@ -66,7 +68,7 @@ export function CreditCard({
   }
 
   const a = application;
-  const asked = `${money(a.amountWanted)} · ${a.repaymentDays} ${t('days')}`;
+  const asked = `${money(a.amountWanted)} · ${a.repaymentDays} ${t('days')}${a.useFor ? ` · ${t(USE_LABEL[a.useFor]).toLowerCase()}` : ''}`;
 
   return (
     <View style={styles.card}>
@@ -114,7 +116,7 @@ export function CreditCard({
 const HEAD: Record<CreditApplication['status'], string> = {
   SUBMITTED: 'APPLICATION IN',
   IN_REVIEW: 'BEING READ',
-  APPROVED: 'BUSINESS CREDIT APPROVED',
+  APPROVED: 'CREDIT APPROVED',
   DECLINED: 'NOT APPROVED THIS TIME',
 };
 
