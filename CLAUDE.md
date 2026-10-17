@@ -346,6 +346,7 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
 - Privacy must disclose Cloudflare Web Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
+- **Privacy names lending partners** (2026-10-15): a credit application, from either side, goes to a lender only with the applicant's consent, and the page lists what the form collects. It was missing while credit was buyers-only, and opening credit to farmers with a public pitch turned the gap into a false "full list".
 
 ### The website is hosted on Cloudflare (decided 2026-10-06)
 

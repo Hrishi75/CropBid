@@ -31,7 +31,7 @@ export function CreditApply() {
   const [useFor, setUseFor] = useState<CreditUse | null>(null);
   const [editing, setEditing] = useState(false);
   const [businessName, setBusinessName] = useState(
-    user?.role === 'FARMER' ? user?.farmerProfile?.businessName ?? user?.name ?? '' : user?.buyerProfile?.companyName ?? '',
+    user?.role === 'FARMER' ? user?.farmerProfile?.businessName || user?.name || '' : user?.buyerProfile?.companyName ?? '',
   );
   const [gstin, setGstin] = useState('');
   const [years, setYears] = useState('');

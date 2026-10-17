@@ -246,7 +246,13 @@ export function PartnerPage() {
             {user && (user.role === 'FARMER' || user.role === 'BUYER') ? (
               <Link to="/credit" className="cb-btn cb-btn-primary">Apply for credit <ArrowIcon /></Link>
             ) : (
-              <a href="#sell" className="cb-btn cb-btn-primary">Apply to trade first <ArrowIcon /></a>
+              <>
+                <span className="st-credit-note" style={{ fontWeight: 600 }}>Apply to trade first, it is free:</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <a href="#sell" className="cb-btn cb-btn-primary">I sell <ArrowIcon /></a>
+                  <a href="#buy" className="cb-btn cb-btn-ghost">I buy for a business</a>
+                </div>
+              </>
             )}
             <span className="st-credit-note">Not instant. CropBid does not lend money.</span>
           </div>
