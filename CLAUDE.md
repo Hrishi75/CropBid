@@ -370,6 +370,8 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **A round green button, bottom right on every website page, opening a WhatsApp chat with the company number** (`components/ui/WhatsAppButton.tsx`). A plain `wa.me` link with "Hi CropBid, I have a question." typed in: nothing passes through our servers.
 
+- **Pressed, it opens a WhatsApp-styled card first (2026-10-23)**: a dark green header, a greeting bubble, six common questions that open their answers in place, "See all FAQs", and a **Start chat on WhatsApp** button. Each answer ends in "Still unsure? Ask us about this", which opens the chat with that question typed in. **The answers are read from `content/faq.ts` by question text, never copied**, so a question renamed there drops out of the card rather than going stale; the six are picked in `PICKED`. Escape, a click outside or a page change closes it.
+
 - **Off until configured.** The number is `VITE_WHATSAPP_NUMBER`, a Cloudflare build variable like the Google client id; blank, nothing is drawn. A bare ten-digit number gets `91` in front.
 - **Not on** `/cart`, `/checkout` (it would sit on the pay button on a phone), `/admin`, or inside the app (`?app=1`). It lifts above the basket bar, and on a phone waits for the cookie card to be dismissed rather than covering it.
 - **`/privacy` says** that a chat is carried by WhatsApp and that we see the number, WhatsApp name and messages, used only to answer (9 October 2026, `POLICY_VERSION` with it). **It also promises we delete a chat when asked**, and that deleting a CropBid account does not touch it, because the chats live on the support phone, outside `deleteAccount`. That is a commitment ops must keep.

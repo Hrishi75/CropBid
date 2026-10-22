@@ -3092,11 +3092,13 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
    WhatsAppButton: "chat with us", bottom right (components/ui/WhatsAppButton)
    ---------------------------------------------------------------------------
    Outside .cb-landing/.cb-app like the cookie card, so no --cb-* tokens. The
-   green is WhatsApp's own, because the glyph is only recognised in it. It
-   shares the bottom of the screen with the basket bar and the cookie card and,
-   like them, learns they are there from the body rather than from props.
+   greens are WhatsApp's own (button #25d366, header #075e54, chat paper
+   #efeae2), because the card is meant to read as "this is WhatsApp" at a
+   glance. It shares the bottom of the screen with the basket bar and the
+   cookie card and, like them, learns they are there from the body rather
+   than from props.
    =========================================================================== */
-.cb-wa {
+.cb-wa-root {
   position: fixed;
   right: 16px;
   bottom: 16px;
@@ -3104,32 +3106,240 @@ body:has(.cn-cartbar) .cb-cookie { bottom: 96px; }
      covers it, and below every modal. It never needs to beat the basket bar,
      which it moves above rather than over. */
   z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+}
+.cb-wa {
   width: 56px;
   height: 56px;
+  border: 0;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: #25d366;
   color: #fff;
+  cursor: pointer;
   box-shadow: 0 8px 24px rgba(20, 20, 15, 0.24);
-  transition: transform .15s ease, box-shadow .15s ease;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
 .cb-wa:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(20, 20, 15, 0.3); }
 .cb-wa:focus-visible { outline: 3px solid var(--color-forest); outline-offset: 3px; }
-body:has(.cn-cartbar) .cb-wa { bottom: 96px; }
+.cb-wa.is-open { background: #128c7e; }
+body:has(.cn-cartbar) .cb-wa-root { bottom: 96px; }
+
+/* The card */
+.cb-wa-panel {
+  width: 360px;
+  max-height: min(560px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #efeae2;
+  box-shadow: 0 18px 48px rgba(20, 20, 15, 0.28), 0 2px 6px rgba(20, 20, 15, 0.08);
+  transform-origin: bottom right;
+  animation: cb-wa-in .2s cubic-bezier(.2, .8, .3, 1);
+  outline: none;
+}
+@keyframes cb-wa-in {
+  from { opacity: 0; transform: translateY(10px) scale(.96); }
+  to { opacity: 1; transform: none; }
+}
+
+.cb-wa-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px 14px 16px;
+  background: #075e54;
+  color: #fff;
+}
+.cb-wa-avatar {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--color-paper);
+  color: var(--color-forest);
+  font-family: inherit;
+  font-size: 20px;
+  font-weight: 700;
+  position: relative;
+}
+/* WhatsApp's "online" dot. Not a promise that someone is there right now:
+   it marks the business account, as WhatsApp's own widgets do. */
+.cb-wa-avatar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #25d366;
+  border: 2px solid #075e54;
+}
+.cb-wa-who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.cb-wa-who strong { font-size: 16px; font-weight: 600; }
+.cb-wa-who span { font-size: 12.5px; opacity: .85; }
+.cb-wa-close {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+.cb-wa-close:hover { background: rgba(255, 255, 255, 0.14); }
+.cb-wa-close:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+
+.cb-wa-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* WhatsApp's doodled chat paper, suggested with two faint dot grids. */
+  background-color: #efeae2;
+  background-image:
+    radial-gradient(rgba(7, 94, 84, 0.06) 1px, transparent 1.2px),
+    radial-gradient(rgba(7, 94, 84, 0.04) 1px, transparent 1.2px);
+  background-size: 18px 18px, 18px 18px;
+  background-position: 0 0, 9px 9px;
+}
+
+/* An incoming message, tail top left. */
+.cb-wa-bubble {
+  position: relative;
+  align-self: flex-start;
+  max-width: 88%;
+  padding: 8px 12px;
+  border-radius: 0 10px 10px 10px;
+  background: #fff;
+  color: #111b21;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.cb-wa-bubble::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  border-top: 8px solid #fff;
+  border-left: 8px solid transparent;
+}
+.cb-wa-bubble p { margin: 0; font-size: 14px; line-height: 1.45; }
+
+/* The questions, as a stack of quick-reply cards. */
+.cb-wa-faqs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cb-wa-faqs details {
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  overflow: hidden;
+}
+.cb-wa-faqs summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #075e54;
+  cursor: pointer;
+}
+.cb-wa-faqs summary::-webkit-details-marker { display: none; }
+.cb-wa-faqs summary::after {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .15s ease;
+}
+.cb-wa-faqs details[open] summary::after { transform: rotate(-135deg) translate(-2px, -2px); }
+.cb-wa-faqs summary:hover { background: #f5f6f6; }
+.cb-wa-faqs summary:focus-visible { outline: 2px solid #128c7e; outline-offset: -2px; }
+.cb-wa-faqs details p {
+  margin: 0;
+  padding: 0 12px 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #3b4a54;
+}
+.cb-wa-ask {
+  display: inline-block;
+  margin: 0 12px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #128c7e;
+  text-decoration: none;
+}
+.cb-wa-ask:hover { text-decoration: underline; }
+
+.cb-wa-all {
+  align-self: center;
+  margin-top: 2px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #54656f;
+  text-decoration: none;
+}
+.cb-wa-all:hover { background: #fff; color: #075e54; }
+
+.cb-wa-foot { padding: 10px 12px 12px; background: #f0f2f5; border-top: 1px solid rgba(11, 20, 26, 0.06); }
+.cb-wa-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: #25d366;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background .15s ease;
+}
+.cb-wa-start:hover { background: #1ebe5b; }
+.cb-wa-start:focus-visible { outline: 3px solid #075e54; outline-offset: 2px; }
 
 @media (max-width: 640px) {
-  .cb-wa { right: 12px; bottom: 12px; width: 52px; height: 52px; }
-  body:has(.cn-cartbar) .cb-wa { bottom: 84px; }
+  .cb-wa-root { right: 12px; bottom: 12px; }
+  .cb-wa { width: 52px; height: 52px; }
+  body:has(.cn-cartbar) .cb-wa-root { bottom: 84px; }
+  /* Nearly the full width of a phone, and leaves the top of the screen. */
+  .cb-wa-panel { width: calc(100vw - 24px); max-height: calc(100vh - 100px); }
   /* The cookie card spans the width on a phone, so the button waits for it
      to be dismissed rather than sitting on its "Got it". */
-  body:has(.cb-cookie) .cb-wa { display: none; }
+  body:has(.cb-cookie) .cb-wa-root { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cb-wa { transition: none; }
+  .cb-wa, .cb-wa-faqs summary::after, .cb-wa-start { transition: none; }
   .cb-wa:hover { transform: none; }
+  .cb-wa-panel { animation: none; }
 }
 
 /* ModeSwitch: Selling | Buying for a seller approved to buy (components/layout/ModeSwitch). */
