@@ -88,11 +88,16 @@ function WhatsAppGlyph({ size }: { size: number }) {
 export function WhatsAppButton() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  // Remembered as the page it was opened on, so moving to another page closes
-  // it: it was opened about the page they were on.
-  const [openOn, setOpenOn] = useState<string | null>(null);
-  const open = openOn === pathname;
-  const setOpen = (next: boolean) => setOpenOn(next ? pathname : null);
+  const [open, setOpen] = useState(false);
+  // A new page closes the card: it was opened about the page they were on.
+  // Done while rendering rather than in an effect, and by clearing the state
+  // rather than comparing paths, so pressing Back to the page it was opened on
+  // does not bring it back unasked.
+  const [seenPath, setSeenPath] = useState(pathname);
+  if (seenPath !== pathname) {
+    setSeenPath(pathname);
+    setOpen(false);
+  }
   const [openQ, setOpenQ] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -106,12 +111,12 @@ export function WhatsAppButton() {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setOpenOn(null);
+        setOpen(false);
         toggleRef.current?.focus();
       }
     };
     const onDown = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpenOn(null);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown);
