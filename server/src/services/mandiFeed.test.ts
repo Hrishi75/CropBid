@@ -8,9 +8,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('../config', () => ({
-  config: { dataGov: { apiKey: 'test-key', resourceId: 'test-resource', usingDemoKey: false } },
+// Mutable so a test can route through the relay; reset before each test.
+const dataGov = vi.hoisted(() => ({
+  apiKey: 'test-key', resourceId: 'test-resource', usingDemoKey: false, relayUrl: '', relaySecret: '', relayDailyCap: 2_000,
 }));
+vi.mock('../config', () => ({ config: { dataGov } }));
 
 // The database copy, faked: `saved` is what a restart finds, and every save
 // is recorded. mandiFeedStore.test.ts covers the real table.
@@ -32,6 +34,9 @@ let feed: Feed;
 let warnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
+  dataGov.relayUrl = '';
+  dataGov.relaySecret = '';
+  dataGov.relayDailyCap = 2_000;
   store.saved = null;
   store.load.mockReset();
   store.load.mockImplementation(async () => store.saved);
@@ -350,6 +355,84 @@ describe('across a restart', () => {
     await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 5 * 60 * 1000);
     expect(fetchMock.mock.calls.length).toBeGreaterThan(calls);
     expect((await feed.getMandiSnapshot())?.rows[0]).toMatchObject({ modal: 2600 });
+  });
+});
+
+describe('the Mumbai relay', () => {
+  // Production's box is in the US and data.gov.in refuses it, so production
+  // reads the feed through infra/datagov-relay.
+  const headerOf = (call: unknown[]) => ((call[1] as RequestInit).headers as Record<string, string>)['x-relay-secret'];
+
+  it('goes straight to data.gov.in when no relay is set', async () => {
+    const fetch = fakeFeed([rec('Onion', 'Maharashtra', 2000)]);
+    vi.stubGlobal('fetch', fetch);
+    await feed.getMandiSnapshot();
+    const url = new URL(fetch.mock.calls[0][0] as string);
+    expect(url.origin).toBe('https://api.data.gov.in');
+    expect(headerOf(fetch.mock.calls[0])).toBeUndefined();
+  });
+
+  it('sends the same request to the relay, with the secret, when both are set', async () => {
+    dataGov.relayUrl = 'https://relay.example.on.aws';
+    dataGov.relaySecret = 's'.repeat(40);
+    const fetch = fakeFeed([rec('Onion', 'Maharashtra', 2000)]);
+    vi.stubGlobal('fetch', fetch);
+    const snap = await feed.getMandiSnapshot();
+    expect(snap?.rows).toHaveLength(1);
+    const url = new URL(fetch.mock.calls[0][0] as string);
+    expect(url.origin).toBe('https://relay.example.on.aws');
+    expect(url.pathname).toBe('/resource/test-resource');
+    expect(url.searchParams.get('api-key')).toBe('test-key');
+    expect(headerOf(fetch.mock.calls[0])).toBe('s'.repeat(40));
+  });
+
+  it('does not use a relay URL that has no secret', async () => {
+    dataGov.relayUrl = 'https://relay.example.on.aws';
+    const fetch = fakeFeed([rec('Onion', 'Maharashtra', 2000)]);
+    vi.stubGlobal('fetch', fetch);
+    await feed.getMandiSnapshot();
+    expect(new URL(fetch.mock.calls[0][0] as string).origin).toBe('https://api.data.gov.in');
+  });
+
+  it('stops sending to the relay at the daily cap, and starts again the next day', async () => {
+    dataGov.relayUrl = 'https://relay.example.on.aws';
+    dataGov.relaySecret = 's'.repeat(40);
+    dataGov.relayDailyCap = 5;
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T10:00:00Z'));
+    // Too big for one request, so a sweep is one request per state, far more than 5.
+    const rows = [
+      ...Array.from({ length: WINDOW }, () => rec('Onion', 'Maharashtra', 2000)),
+      rec('Wheat', 'Punjab', 2500),
+    ];
+    const fetch = fakeFeed(rows);
+    vi.stubGlobal('fetch', fetch);
+
+    expect(await feed.getMandiSnapshot()).toBeNull();
+    // Exactly the cap, and not retried: the sweep stopped where the budget ran out.
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('relay daily cap of 5 requests reached'));
+
+    // Later the same day, a retry falls due and is refused without sending anything.
+    vi.setSystemTime(new Date('2026-10-23T11:00:00Z'));
+    expect(await feed.getMandiSnapshot()).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(5);
+
+    // The next day the budget is fresh.
+    vi.setSystemTime(new Date('2026-10-24T00:30:00Z'));
+    await feed.getMandiSnapshot();
+    expect(fetch.mock.calls.length).toBeGreaterThan(5);
+  });
+
+  it('names the relay when it refuses', async () => {
+    dataGov.relayUrl = 'https://relay.example.on.aws';
+    dataGov.relaySecret = 's'.repeat(40);
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', fakeFeed([], { fail: () => 403 }));
+    const pending = feed.getMandiSnapshot();
+    await vi.advanceTimersByTimeAsync(2 * 60 * 1000);
+    await pending;
+    await vi.waitFor(() => expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('data.gov.in via relay 403')));
   });
 });
 

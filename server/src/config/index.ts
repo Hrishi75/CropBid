@@ -81,6 +81,16 @@ export const config = {
     usingDemoKey: !process.env.DATA_GOV_API_KEY,
     // Resource id for "Current Daily Price of Various Commodities from Markets (Mandi)"
     resourceId: process.env.DATA_GOV_MANDI_RESOURCE || '9ef84268-d588-465a-a308-a864a43d0070',
+    // data.gov.in refuses connections from outside India, and the production
+    // box is in the US, so production reaches it through a relay in Mumbai
+    // (infra/datagov-relay). Both set: requests go to the relay with the
+    // secret in a header. Either blank: straight to data.gov.in, which is
+    // right for anything running in India, local development included.
+    relayUrl: (process.env.DATA_GOV_RELAY_URL || '').replace(/\/+$/, ''),
+    relaySecret: process.env.DATA_GOV_RELAY_SECRET || '',
+    // Relay requests a day, at most (mandiFeed.ts). The relay is on Lambda's
+    // free tier; normal use is about 450 a day.
+    relayDailyCap: 2_000,
   },
 
   // Sign in with Google. The OAuth "Web application" client id from Google
