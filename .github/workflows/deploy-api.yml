@@ -74,9 +74,17 @@ jobs:
 
             sudo systemctl restart cropbid-api
 
-            # Give it a moment to boot, then confirm it's actually serving
-            # traffic — not just that systemd marks it "active". A crash-loop
-            # right after restart would otherwise pass silently.
+            # Confirm it's actually serving traffic, not just that systemd
+            # marks it "active". A crash-loop right after restart would
+            # otherwise pass silently.
+            #
+            # Asked once a second for up to 30 seconds, not once after a fixed
+            # wait. The API does checks before it listens (the payout
+            # encryption check, CLAUDE.md §12), so on some boots it is not
+            # answering 3 seconds in: a single check then failed deploys that
+            # had in fact succeeded (2026-10-09, 2026-10-22). The unit is
+            # checked on every pass, so a crash still fails at once rather
+            # than after the full 30 seconds.
             #
             # No `sudo` on is-active: querying a system unit's status is a
             # read-only operation systemd allows any local user to run.
@@ -84,6 +92,20 @@ jobs:
             # elevated NOPASSWD grant — keeping that the ONLY thing in
             # sudoers means this script can grow without the sudoers file
             # needing to grow in lockstep with it.
-            sleep 3
-            systemctl is-active --quiet cropbid-api
-            curl -sf http://127.0.0.1:5000/api/health > /dev/null
+            healthy=0
+            for attempt in $(seq 1 30); do
+              sleep 1
+              if ! systemctl is-active --quiet cropbid-api; then
+                echo "cropbid-api is not running after restart" >&2
+                exit 1
+              fi
+              if curl -sf --max-time 2 http://127.0.0.1:5000/api/health > /dev/null; then
+                echo "API healthy after ${attempt}s"
+                healthy=1
+                break
+              fi
+            done
+            if [ "$healthy" -ne 1 ]; then
+              echo "API did not answer /api/health within 30s" >&2
+              exit 1
+            fi
