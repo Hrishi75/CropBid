@@ -60,7 +60,9 @@ export const handler = async (event) => {
   if (SECRET.length < 32) return reply(503, 'relay not configured');
   if (event.requestContext?.http?.method !== 'GET') return reply(405, 'GET only');
   if (!sameSecret(event.headers?.['x-relay-secret'] ?? '')) return reply(403, 'forbidden');
-  if (!RESOURCE_PATH.test(event.rawPath ?? '')) return reply(404, 'not found');
+  // A function URL copied with its trailing slash makes "//resource/...".
+  const path = (event.rawPath ?? '').replace(/^\/+/, '/');
+  if (!RESOURCE_PATH.test(path)) return reply(404, 'not found');
   if (overHourlyCap()) {
     console.warn(`[relay] over ${MAX_PER_HOUR} requests this hour; refusing until the hour turns`);
     return reply(429, 'relay hourly limit reached');
@@ -70,7 +72,7 @@ export const handler = async (event) => {
   let res;
   let body;
   try {
-    res = await fetch(`${UPSTREAM}${event.rawPath}${query}`, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+    res = await fetch(`${UPSTREAM}${path}${query}`, { signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
     body = await res.text();
   } catch (err) {
     const reason = err?.name === 'TimeoutError' ? 'timed out' : (err?.cause?.code ?? err?.message ?? 'failed');
