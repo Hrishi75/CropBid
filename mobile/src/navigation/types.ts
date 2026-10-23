@@ -101,6 +101,8 @@ export type FarmerStackParamList = {
   FarmerTabs: undefined;
   /** A local shop applying to buy stock for itself, or seeing where that stands. */
   BuyForShop: undefined;
+  /** Credit for a seller: a farm growing a crop, a shop or wholesaler growing. */
+  CreditApply: undefined;
   // Help, about and the policies. On EVERY stack, because they are the pages
   // anyone might need whatever they are: a farmer wants the terms as much as a
   // shopper, and a guest is entitled to read the privacy policy before handing

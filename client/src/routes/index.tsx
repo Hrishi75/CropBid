@@ -318,14 +318,18 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      {/* Credit is for every approved partner, buyer or seller, so it has a
+          path of its own. /buyer/credit is where older notifications and
+          bookmarks point. */}
       <Route
-        path="/buyer/credit"
+        path="/credit"
         element={
-          <ProtectedRoute allowedRoles={['BUYER']}>
+          <ProtectedRoute allowedRoles={['BUYER', 'FARMER']}>
             <CreditApply />
           </ProtectedRoute>
         }
       />
+      <Route path="/buyer/credit" element={<Navigate to="/credit" replace />} />
       <Route
         path="/buyer/requirements/new"
         element={

@@ -1324,7 +1324,13 @@ model CreditApplication {
   businessName    String
   gstin           String?
   yearsInBusiness Int
-  /// Rupees of produce the business buys in a typical month.
+  /// Which side applied: a buyer stocking up, or a seller (a farm, a shop, a
+  /// wholesaler) growing what it sells. Read off the session at submission.
+  side            CreditSide @default(BUYER)
+  /// What the money is for. The choices offered differ by side (CREDIT_USES).
+  useFor          CreditUse  @default(STOCK)
+  /// Rupees of trade in a typical month: what a buyer buys, or what a seller
+  /// sells. The column kept its first name; `side` says which.
   monthlyPurchase Float
   /// Rupees of credit asked for.
   amountWanted    Float
@@ -1351,6 +1357,19 @@ model CreditApplication {
   updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
+}
+
+enum CreditSide {
+  BUYER
+  SELLER
+}
+
+enum CreditUse {
+  STOCK
+  CROP
+  INPUTS
+  EQUIPMENT
+  GROW_BUSINESS
 }
 
 enum CreditApplicationStatus {

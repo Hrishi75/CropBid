@@ -1,5 +1,5 @@
 // =============================================================================
-// CreditCard — business credit, on the buyer dashboard
+// CreditCard — credit, on the buyer and seller dashboards
 // =============================================================================
 // The website's twin of the app's wallet card (mobile/components/CreditCard).
 // CROPBID DOES NOT LEND: a person reads each application and, with the
@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../lib/axios';
 import { formatCurrency } from '../../utils/currency';
+import { SIDE_WORDS, USE_LABEL, type CreditSide, type CreditUse } from '../../utils/credit';
 
 export interface CreditApplication {
   id: string;
@@ -21,6 +22,7 @@ export interface CreditApplication {
   repaymentDays: number;
   contactPhone: string;
   status: 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'DECLINED';
+  useFor?: CreditUse;
   approvedLimit: number | null;
   reviewNote: string | null;
 }
@@ -34,10 +36,12 @@ const HEAD: Record<CreditApplication['status'], { label: string; color: string; 
 
 export function CreditCard() {
   const [app, setApp] = useState<CreditApplication | null | undefined>(undefined);
+  const [side, setSide] = useState<CreditSide>('BUYER');
 
   useEffect(() => {
-    api.get('/credit').then((r) => setApp(r.data.application)).catch(() => setApp(undefined));
+    api.get('/credit').then((r) => { setApp(r.data.application); if (r.data.side) setSide(r.data.side); }).catch(() => setApp(undefined));
   }, []);
+  const words = SIDE_WORDS[side];
 
   // Not loaded (or failed): say nothing rather than flash the pitch at a
   // buyer whose application is already in.
@@ -46,17 +50,15 @@ export function CreditCard() {
   if (!app) {
     return (
       <div className="cb-card cb-bd-credit">
-        <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>BUSINESS CREDIT</div>
-        <div className="cb-bd-credit-title">Need money to stock up?</div>
-        <p className="cb-small" style={{ color: 'var(--cb-ink-2)', margin: 0 }}>
-          Buy produce now and repay in 30, 60 or 90 days. Tell us about your business and we take it to a lending partner.
-        </p>
+        <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-sage)' }}>CREDIT</div>
+        <div className="cb-bd-credit-title">{words.pitchTitle}</div>
+        <p className="cb-small" style={{ color: 'var(--cb-ink-2)', margin: 0 }}>{words.pitchBody}</p>
         <ol className="cb-bd-steps">
-          <li><strong>Tell us about your business.</strong> Two minutes.</li>
+          <li><strong>Tell us what you need.</strong> Two minutes.</li>
           <li><strong>A person reads it.</strong> With your permission, a lending partner sees it. Not instant.</li>
           <li><strong>We call you with the answer.</strong> The lender sets the terms.</li>
         </ol>
-        <Link to="/buyer/credit" className="cb-btn cb-btn-primary" style={{ alignSelf: 'flex-start' }}>Apply for business credit</Link>
+        <Link to="/credit" className="cb-btn cb-btn-primary" style={{ alignSelf: 'flex-start' }}>Apply for credit</Link>
         <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>CropBid does not lend money.</div>
       </div>
     );
@@ -65,7 +67,7 @@ export function CreditCard() {
   const h = HEAD[app.status];
   return (
     <div className="cb-card cb-bd-credit">
-      <div className="cb-mono cb-tiny" style={{ color: h.color }}>● BUSINESS CREDIT · {h.label}</div>
+      <div className="cb-mono cb-tiny" style={{ color: h.color }}>● CREDIT · {h.label}</div>
       {app.status === 'APPROVED' && app.approvedLimit != null ? (
         <>
           <div className="cb-bd-credit-limit">{formatCurrency(app.approvedLimit, 'INR')}</div>
@@ -76,7 +78,9 @@ export function CreditCard() {
       ) : (
         <>
           <div className="cb-bd-credit-title">{app.businessName}</div>
-          <div className="cb-small">You asked for {formatCurrency(app.amountWanted, 'INR')} over {app.repaymentDays} days</div>
+          <div className="cb-small">
+            You asked for {formatCurrency(app.amountWanted, 'INR')} over {app.repaymentDays} days{app.useFor ? ` · ${USE_LABEL[app.useFor].toLowerCase()}` : ''}
+          </div>
           <p className="cb-small" style={{ margin: 0, color: 'var(--cb-ink-3)' }}>{h.body}</p>
         </>
       )}
@@ -84,7 +88,7 @@ export function CreditCard() {
         <div className="cb-small" style={{ background: 'var(--cb-paper-2)', borderRadius: 8, padding: 10 }}>Why: {app.reviewNote}</div>
       )}
       {(app.status === 'SUBMITTED' || app.status === 'DECLINED') && (
-        <Link to="/buyer/credit" className="cb-btn cb-btn-ghost" style={{ alignSelf: 'flex-start' }}>
+        <Link to="/credit" className="cb-btn cb-btn-ghost" style={{ alignSelf: 'flex-start' }}>
           {app.status === 'DECLINED' ? 'Apply again' : 'Edit your application'}
         </Link>
       )}

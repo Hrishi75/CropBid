@@ -1,7 +1,7 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
-  CreditApplication, CreditApplicationInput, CreditRules, ExportOptions, ProposeContractInput, SupplyContract,
+  CreditApplication, CreditApplicationInput, CreditRules, CreditSide, ExportOptions, ProposeContractInput, SupplyContract,
   Address,
   AddressInput,
   AgentConfig,
@@ -815,7 +815,7 @@ export async function deleteAddress(id: string): Promise<void> {
 
 // Business credit: buyers only. The rules come back with the application so the
 // form keeps no copy of the limits.
-export async function fetchCredit(): Promise<{ rules: CreditRules; application: CreditApplication | null }> {
+export async function fetchCredit(): Promise<{ rules: CreditRules; side?: CreditSide; application: CreditApplication | null }> {
   const { data } = await api.get('/credit');
   return data;
 }
