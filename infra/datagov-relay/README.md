@@ -27,8 +27,10 @@ The guards that keep it there:
   copies that is at most 432,000 a month. The API sends at most 2,000 a day to the
   relay (`relayDailyCap` in `server/src/config`), against normal use of about 450,
   so a bug that loops on the feed stops there instead of running up requests.
-- **Reserved concurrency of 2.** At most two copies run at once, so nothing can make
-  it run wide. The API only ever sends one request at a time.
+- **Reserved concurrency of 2, where the account allows it** (CropBid's does not, step
+  6). With it, at most two copies run at once. Without it the hourly cap is per copy,
+  so it is not a ceiling on its own, but only the secret's holder can run copies up,
+  and the API sends one request at a time within its daily cap.
 - **A zero-spend budget.** AWS emails you the moment anything costs a cent.
 - **Log retention of one week**, so logs cannot pile up (5 GB of logs a month is free;
   this writes a line only when data.gov.in fails).
@@ -51,9 +53,11 @@ The guards that keep it there:
    ```
    **Configuration → Environment variables → Edit**: add `RELAY_SECRET` with that
    value. Save. Keep the value: the API needs the same one.
-6. **Configuration → Concurrency → Edit**: Reserve concurrency, **2**. If AWS refuses
-   because the account's concurrency limit is 10 (new accounts), skip this step: the
-   secret and the budget still hold.
+6. **Configuration → Concurrency → Edit**: Reserve concurrency, **2**. AWS refuses this
+   with "The unreserved account concurrency can't go below 100" on an account whose
+   limit is under 102, which is what CropBid's was (2026-10-24). Cancel and skip it:
+   the secret, the API's daily cap and the budget still hold, and the account's own
+   low limit bounds how many copies can run.
 7. **Configuration → Function URL → Create function URL**: Auth type **NONE**
    (the secret is the check). Save, and copy the URL
    (`https://<random>.lambda-url.ap-south-1.on.aws/`).
