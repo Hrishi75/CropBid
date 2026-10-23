@@ -78,29 +78,45 @@ jobs:
             # marks it "active". A crash-loop right after restart would
             # otherwise pass silently.
             #
-            # Asked about once a second until 30 seconds have passed, not once
+            # Asked about every 2 seconds until 60 seconds have passed, not once
             # after a fixed wait. The API does checks before it listens (the
-            # payout encryption check, CLAUDE.md §12), so on some boots it is
-            # not answering 3 seconds in: a single check then failed deploys
-            # that had in fact succeeded (2026-10-09, 2026-10-22). The limit is
-            # a clock, not a count of tries, and each request may only use the
+            # payout encryption check reads Neon first, CLAUDE.md §12), so on
+            # some boots it is not answering 3 seconds in: a single check then
+            # failed deploys that had in fact succeeded (c88f37f on 2026-10-09,
+            # ee001dc on 2026-10-22, 7718f93 on 2026-10-23). The limit is a
+            # clock, not a count of tries, and each request may only use the
             # time left, so a health route that accepts connections and hangs
-            # still ends the check at 30 seconds. The unit is checked on every
+            # still ends the check at 60 seconds. The unit is checked on every
             # pass, so a crash still fails at once.
             #
-            # No `sudo` on is-active: querying a system unit's status is a
+            # A first 200 is not the end of it: a process that answers once and
+            # then dies would pass. So 5 seconds later the unit must still be
+            # active and still answering.
+            #
+            # No `sudo` here at all: querying a system unit's status is a
             # read-only operation systemd allows any local user to run.
             # `restart` above is the only step that actually needs the
-            # elevated NOPASSWD grant — keeping that the ONLY thing in
+            # elevated NOPASSWD grant. Keeping that the ONLY thing in
             # sudoers means this script can grow without the sudoers file
-            # needing to grow in lockstep with it.
+            # needing to grow in lockstep with it. For the same reason the
+            # journal is read without sudo, and skipped if this user cannot
+            # read it, rather than widening sudoers.
+            show_diagnostics() {
+              echo "---- systemctl status cropbid-api ----" >&2
+              systemctl status cropbid-api --no-pager >&2 || true
+              echo "---- journalctl -u cropbid-api (last 50 lines) ----" >&2
+              journalctl -u cropbid-api -n 50 --no-pager >&2 \
+                || echo "(journal not readable without sudo, skipped)" >&2
+            }
+
             started=$(date +%s)
-            deadline=$((started + 30))
+            deadline=$((started + 60))
             healthy=0
             while :; do
-              sleep 1
+              sleep 2
               if ! systemctl is-active --quiet cropbid-api; then
                 echo "cropbid-api is not running after restart" >&2
+                show_diagnostics
                 exit 1
               fi
               left=$((deadline - $(date +%s)))
@@ -115,7 +131,17 @@ jobs:
             done
             elapsed=$(( $(date +%s) - started ))
             if [ "$healthy" -ne 1 ]; then
-              echo "API did not answer /api/health within 30s (gave up after ${elapsed}s)" >&2
+              echo "API did not answer /api/health within 60s (gave up after ${elapsed}s)" >&2
+              show_diagnostics
               exit 1
             fi
             echo "API healthy after ${elapsed}s"
+
+            sleep 5
+            if ! systemctl is-active --quiet cropbid-api \
+              || ! curl -sf --max-time 5 http://127.0.0.1:5000/api/health > /dev/null; then
+              echo "API answered once, then stopped: likely a crash loop" >&2
+              show_diagnostics
+              exit 1
+            fi
+            echo "API still healthy 5s later"
