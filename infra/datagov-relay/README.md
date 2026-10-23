@@ -12,28 +12,38 @@ API's mandi-feed requests, so they reach data.gov.in from an Indian address.
 
 Lambda's free allowance renews every month and does not expire after a year.
 
-| | Free each month | This relay, worst case |
+| | Free each month | This relay, normal use (an estimate) |
 |---|---|---|
 | Requests | 1,000,000 | ~18,000 (about 37 per sweep, 12 sweeps a day; failed sweeps retry every 10 min but stop at the first refusal) |
 | Compute | 400,000 GB-seconds | ~3,600 (128 MB, about 80 s per sweep) |
 | Data out | 100 GB | under 1 GB (replies are gzipped, ~0.5 MB per sweep) |
 
-The guards that keep it there:
+**What the limits do and do not guarantee.** Every request to the function URL is a
+Lambda invocation and counts against the free million, including one refused for a
+wrong secret and one answered with the hourly cap's 429. So the limits keep the calls
+to data.gov.in down; they do not cap what Lambda counts. What keeps the count low is
+that only CropBid's API calls the URL, and the API holds itself to 2,000 a day. A
+stranger who learned the URL could run up invocations; the alerts below are how you
+would know, and deleting the function URL stops it at once.
 
 - **The secret.** Without it the function refuses before calling data.gov.in, in a
   few milliseconds. The function URL itself is a random address nobody else knows.
-- **Two rate limits.** The function forwards at most 300 requests an hour per running
-  copy, counted only after the secret check, so strangers cannot spend it; with two
-  copies that is at most 432,000 a month. The API sends at most 2,000 a day to the
-  relay (`relayDailyCap` in `server/src/config`), against normal use of about 450,
-  so a bug that loops on the feed stops there instead of running up requests.
+- **The API's daily cap** (`relayDailyCap` in `server/src/config`): at most 2,000
+  relay requests a day against normal use of about 450, so a bug in the API that loops
+  on the feed stops there. This is the one limit on what our own side can spend.
+- **The relay's hourly cap:** at most 300 forwarded requests an hour per running copy,
+  counted after the secret check. It protects data.gov.in and our standing with it, not
+  the Lambda bill: the count lives in one copy's memory and starts again whenever AWS
+  replaces that copy.
 - **Reserved concurrency of 2, where the account allows it** (CropBid's does not, step
-  6). With it, at most two copies run at once. Without it the hourly cap is per copy,
-  so it is not a ceiling on its own, but only the secret's holder can run copies up,
-  and the API sends one request at a time within its daily cap.
-- **A zero-spend budget.** AWS emails you the moment anything costs a cent.
+  6). It limits how many copies run at once, not how many requests are made.
+- **Alerts that do not fire on Lightsail.** AWS Free Tier alerts (Billing preferences)
+  email at 85% of any free allowance; a cost budget a little above the usual Lightsail
+  bill emails on any other charge. A whole-account zero-spend budget would fire every
+  month on Lightsail, and a Lambda-only budget cannot be made until Lambda has a cost
+  history.
 - **Log retention of one week**, so logs cannot pile up (5 GB of logs a month is free;
-  this writes a line only when data.gov.in fails).
+  normal use is a few MB).
 
 ## Setup (AWS console, about 10 minutes)
 
@@ -64,8 +74,11 @@ The guards that keep it there:
 8. **CloudWatch → Log groups → `/aws/lambda/cropbid-datagov-relay`** → Actions →
    Edit retention → **1 week**. (The group appears after the first request; come back
    after step 9.)
-9. **Billing and Cost Management → Budgets → Create budget** → template
-   **Zero spend budget**, your email. Create.
+9. **Alerts.** Billing and Cost Management → **Billing preferences → Alert preferences
+   → Edit**, tick **Receive AWS Free Tier alerts**, your email. Then **Budgets → Create
+   budget → Customize (advanced) → Cost budget**, monthly, fixed, at the usual monthly
+   bill plus $0.50, all services, alert at 100% actual. Not the Zero spend template: it
+   covers Lightsail and would email every month.
 
 ## Check it from the Lightsail box
 

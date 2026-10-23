@@ -30,10 +30,12 @@ const UPSTREAM_TIMEOUT_MS = 40_000;
 const SECRET = process.env.RELAY_SECRET ?? '';
 
 // At most this many forwarded requests an hour per running copy, counted only
-// after the secret is checked, so a stranger cannot spend it. With reserved
-// concurrency 2 that is under 300 x 2 x 24 x 30 = 432,000 a month, inside the
-// 1,000,000 free. Normal use is a sweep of about 37 every two hours. The API
-// treats the 429 like data.gov.in's own: it waits and tries once more later.
+// after the secret check, so a stranger cannot spend it. This protects
+// data.gov.in and our standing with it, NOT the Lambda bill: every call to the
+// function URL is an invocation whether or not it is forwarded, and the count
+// lives in this copy's memory and starts again when AWS replaces it. Normal
+// use is a sweep of about 37 every two hours. The API treats the 429 like
+// data.gov.in's own: it waits and tries once more later.
 const MAX_PER_HOUR = 300;
 let windowStart = 0;
 let forwarded = 0;
