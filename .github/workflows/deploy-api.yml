@@ -78,13 +78,15 @@ jobs:
             # marks it "active". A crash-loop right after restart would
             # otherwise pass silently.
             #
-            # Asked once a second for up to 30 seconds, not once after a fixed
-            # wait. The API does checks before it listens (the payout
-            # encryption check, CLAUDE.md §12), so on some boots it is not
-            # answering 3 seconds in: a single check then failed deploys that
-            # had in fact succeeded (2026-10-09, 2026-10-22). The unit is
-            # checked on every pass, so a crash still fails at once rather
-            # than after the full 30 seconds.
+            # Asked about once a second until 30 seconds have passed, not once
+            # after a fixed wait. The API does checks before it listens (the
+            # payout encryption check, CLAUDE.md §12), so on some boots it is
+            # not answering 3 seconds in: a single check then failed deploys
+            # that had in fact succeeded (2026-10-09, 2026-10-22). The limit is
+            # a clock, not a count of tries, and each request may only use the
+            # time left, so a health route that accepts connections and hangs
+            # still ends the check at 30 seconds. The unit is checked on every
+            # pass, so a crash still fails at once.
             #
             # No `sudo` on is-active: querying a system unit's status is a
             # read-only operation systemd allows any local user to run.
@@ -92,20 +94,28 @@ jobs:
             # elevated NOPASSWD grant — keeping that the ONLY thing in
             # sudoers means this script can grow without the sudoers file
             # needing to grow in lockstep with it.
+            started=$(date +%s)
+            deadline=$((started + 30))
             healthy=0
-            for attempt in $(seq 1 30); do
+            while :; do
               sleep 1
               if ! systemctl is-active --quiet cropbid-api; then
                 echo "cropbid-api is not running after restart" >&2
                 exit 1
               fi
-              if curl -sf --max-time 2 http://127.0.0.1:5000/api/health > /dev/null; then
-                echo "API healthy after ${attempt}s"
+              left=$((deadline - $(date +%s)))
+              if [ "$left" -le 0 ]; then
+                break
+              fi
+              wait_for=$(( left < 5 ? left : 5 ))
+              if curl -sf --max-time "$wait_for" http://127.0.0.1:5000/api/health > /dev/null; then
                 healthy=1
                 break
               fi
             done
+            elapsed=$(( $(date +%s) - started ))
             if [ "$healthy" -ne 1 ]; then
-              echo "API did not answer /api/health within 30s" >&2
+              echo "API did not answer /api/health within 30s (gave up after ${elapsed}s)" >&2
               exit 1
             fi
+            echo "API healthy after ${elapsed}s"
