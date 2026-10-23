@@ -20,6 +20,10 @@
 //     delivery cities are RETAIL_CITIES in server/src/utils/retailCities.
 //   - No promises about things we have not built. An FAQ is the page people
 //     quote back at you.
+//   - Plain words, short sentences. Readers include farmers reading in their
+//     second language: say "we send it back", not "funds are remitted".
+//   - The WhatsApp help card (components/ui/WhatsAppButton) picks questions
+//     by their exact wording, so renaming one means updating PICKED there.
 // =============================================================================
 
 export interface FaqItem {
@@ -40,27 +44,27 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'Which cities do you deliver to?',
-        a: 'Household delivery runs in Nagpur only for now. Fresh food does not travel well across a state and a few kilos cannot be freighted economically, so we only show you shops that can actually reach you. The wholesale side of CropBid, where lots move by the tonne, works across India.',
+        a: 'Right now we deliver to homes in Nagpur only. Fresh food does not travel well, and a few kilos cannot be sent far at a fair price, so we only show you shops that can reach you. Buying in bulk, by the quintal or the tonne, works anywhere in India.',
       },
       {
         q: 'How soon will my order arrive?',
-        a: 'It depends who you buy from, and every shop says which it is before you add anything. A local shop is already holding the stock near you and delivers the same day. A farm picks your order after you place it and sends it in overnight, so it reaches you the next morning. If your basket has both, it arrives as two deliveries and the cart tells you so before you pay.',
+        a: 'Every shop shows which kind it is before you add anything. A local shop already has the stock near you and delivers the same day. A farm picks your order after you place it and delivers the next morning. If your basket has both, it comes in two deliveries, and the cart tells you so before you pay.',
       },
       {
         q: 'What is the smallest amount I can buy?',
-        a: 'Half a kilo. Everything on the shop side is priced and sold by the kilogram, and the quantity picker moves in 500 g steps, so you can buy 500 g of chillies without taking on a sack. There is no minimum order: delivery is free on ₹200 or more from a shop, and ₹30 for that shop\u2019s order below ₹200. The quintal and tonne prices you may see elsewhere on CropBid are the wholesale market, which is a different part of the site.',
+        a: 'Half a kilo (500 g). Everything for homes is sold by the kilo, and you can change the amount in steps of 500 g. There is no minimum order. Delivery is free when you buy ₹200 or more from one shop. Below ₹200, delivery from that shop costs ₹30. Prices per quintal or tonne that you may see elsewhere on CropBid are for bulk buyers.',
       },
       {
         q: 'Why does the same vegetable cost different amounts at different shops?',
-        a: 'Because each shop sets its own price on its own stock, exactly as it does on the street. CropBid does not average those into a single price for a product, and you browse by shop rather than by item so you can see the difference and choose. What a shop paid, how fresh the stock is and what it costs them to hold it all show up in that number.',
+        a: 'Each shop sets its own price, just like in your local market. We do not mix them into one price. You pick a shop first and then see what it sells, so you can compare and choose.',
       },
       {
         q: 'Can I cancel an order?',
-        a: 'Yes, yourself, until the shop marks it as on the way. Open the order on the website or in the app and cancel it there. It calls off everything you bought from that shop in that order, because it comes as one delivery, and anything you have paid comes back to you including the delivery charge. After the shop has sent it you cannot cancel: the produce has been picked for you. A shop can also cancel before it sends an order if it cannot fulfil it, and has to tell you why.',
+        a: 'Yes, until the shop marks it as on the way. Open the order on the website or in the app and cancel it. Everything you ordered from that shop is cancelled together, because it comes as one delivery. If you already paid, we send back the full amount, delivery charge included. We do this by hand, so allow a few working days. Once the shop has sent your order, you cannot cancel it. A shop can also cancel if it cannot deliver, and it must tell you why.',
       },
       {
         q: 'When do I pay, and what if the order never turns up?',
-        a: 'You pay after placing the order, and CropBid holds the money rather than passing it straight on. The seller only becomes due their share once you confirm the delivery arrived. If it never arrives, do not confirm it: the money stays held, and you can report the problem to us.',
+        a: 'You pay when you place the order. CropBid keeps the money safe and does not pass it to the shop straight away. The shop is paid only after you confirm the order arrived. If your order never comes, do not confirm it: your money stays with us, and you can write to info@cropbid.in.',
       },
     ],
   },
@@ -70,37 +74,49 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How do farmers sell crops on CropBid?',
-        a: 'Sellers apply first: farmers, local shops and wholesalers submit an application with their location, licence numbers and payout details, and CropBid reviews it before the account can trade. Once approved, a seller lists the crop with quantity, quality grade and an asking price. Buyers place bids; the farmer accepts, rejects or counters. The listing can also be run as a live timed auction, or handed to an AI agent that negotiates within price limits the farmer sets. Live government mandi rates sit alongside every listing so both sides negotiate against the same reference price.',
+        a: 'First you apply: you tell us about your farm and give your PAN, and a person at CropBid checks it. Once you are approved, you list your crop with the amount, the quality and your price. Buyers send you offers, called bids. You can accept a bid, turn it down, or reply with your own price. You can also sell through a timed auction. Today’s government mandi rate is shown next to every crop, so you and the buyer both know the market price.',
+      },
+      {
+        q: 'What documents do I need to apply?',
+        a: 'Every seller, and every business that buys, gives a PAN. Some trades need one more number. A local shop gives its FSSAI food licence. A wholesaler gives its GSTIN. A restaurant, food processor or FMCG company that buys gives its FSSAI food licence. An exporter gives its IEC (Import Export Code). A farmer selling their own crops needs only a PAN. You type the numbers in; there is nothing to scan or upload. Families buying for their home need none of this.',
       },
       {
         q: 'Can I sell to households as well as to bulk buyers?',
-        a: 'Yes, from the same listing. A lot can be open for bidding by businesses and also carry a retail price for households buying by the kilo. The stock is shared, so anything sold direct comes off what a bulk buyer can bid for, and the listing closes when it runs out.',
+        a: 'Yes, from the same listing, if you are in Nagpur, where we deliver to homes. Add a price per kilo and families can buy small amounts while businesses bid on the rest. Both come out of the same stock, and the listing closes when it is sold out.',
+      },
+      {
+        q: 'Who pays for transport?',
+        a: 'For bulk deals, CropBid books the truck and the seller pays for it. The cost comes out of the seller’s payment, and the seller can see it in the payment details on the deal before any money is sent. We book the transport so that the delivery is ours to answer for. For home orders, the shopper pays the ₹30 delivery charge on a shop order under ₹200.',
       },
       {
         q: 'How long does seller approval take?',
-        a: 'Applications are reviewed by a person, usually within 24 to 48 hours. Until an application is approved the account can sign in and look around but cannot list stock or trade. If something is missing we send the application back with a note saying what is needed rather than rejecting it.',
+        a: 'A person at CropBid checks every application, usually within 24 to 48 hours. Until then you can sign in and look around, but you cannot sell. If something is missing, we send the application back and tell you what to add, instead of turning it down.',
       },
     ],
   },
   {
-    title: 'Money and pricing',
-    blurb: 'Fees, escrow and where the rates come from.',
+    title: 'Money, prices and quality',
+    blurb: 'Fees, payments, mandi rates and what we check.',
     items: [
       {
         q: 'How does payment work on CropBid?',
-        a: 'Once a price is agreed the buyer pays through Razorpay and the money is held by CropBid rather than passed straight on. The crop then ships. When the buyer confirms delivery the deal is marked settled and the seller is due their money less our 2% fee. That transfer is made by us separately and is not instant, so allow several working days for it to reach the seller\u2019s bank. Until a buyer confirms, nothing is owed to anyone: the buyer is protected against non-delivery and the seller against non-payment.',
+        a: 'When a price is agreed, the buyer pays through Razorpay. CropBid holds the money safely and does not pass it on straight away. The crop is then delivered. When the buyer confirms it arrived, the seller is owed the money minus our 2% fee and the transport cost. We send it to the seller’s UPI ID or bank account ourselves. This is not instant, so allow a few working days. Until the buyer confirms, nobody is paid: the buyer is protected if nothing arrives, and the seller is protected because the money is already paid in.',
       },
       {
         q: 'Does it cost anything to join CropBid?',
-        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, an email address or phone number, and a password, and sign in with the same, or on the website, continue with your Google account instead. CropBid is available in English, Hindi and Marathi.',
+        a: 'No. Making an account, listing crops and checking mandi rates are all free. We charge 2% only when a deal is completed. Households pay ₹30 delivery on a shop order under ₹200. To sign up you need your name, a phone number or email address, and a password. On the website you can use your Google account instead. CropBid works in English, Hindi and Marathi.',
+      },
+      {
+        q: 'Does CropBid check the quality of the crops?',
+        a: 'No, not yet. The quality grade on a listing is what the seller says it is. We do not inspect or test the produce. That is why the seller is paid only after the buyer confirms the delivery arrived. If what arrives is not what was agreed, do not confirm it, and write to info@cropbid.in.',
       },
       {
         q: 'What are live mandi rates and where do they come from?',
-        a: 'Mandi rates are the daily wholesale prices set at India’s regulated APMC markets. CropBid pulls them from government data covering more than 4,600 mandis and shows them free, so a farmer can see what a crop is actually fetching nearby before agreeing to any price. They are a reference price, not what you pay at a shop: a retail price includes handling, delivery and the shop’s own margin on top.',
+        a: 'Mandi rates are the daily wholesale prices at India’s government-regulated markets, called APMC mandis. We take them from official government data covering more than 4,600 mandis and show them free, so a farmer can see what a crop is selling for nearby before agreeing a price. They are a guide, not a shop price: a shop’s price also covers handling, delivery and its own margin.',
       },
       {
         q: 'Who buys on CropBid?',
-        a: 'Buyers of every size use the same exchange — restaurants and cafés, small food businesses, wholesalers, food processors, FMCG companies, exporters and retailers buying in bulk, alongside individual consumers buying household quantities direct from the seller. Business buyers apply and are reviewed the same way sellers are.',
+        a: 'Businesses of every size: restaurants and cafés, small food businesses, wholesalers, food processors, FMCG companies, exporters and shops. Families also buy small amounts for their home from local shops and farms. Businesses apply and are checked, just like sellers.',
       },
     ],
   },
@@ -110,19 +126,19 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'I did not get my sign-in code. What now?',
-        a: 'Codes go to WhatsApp first and fall back to email if we cannot reach your number there. A code lasts a few minutes, and you can ask for another after a short wait. If neither arrives, check that the number on your account is the one you are typing, and write to info@cropbid.in if it still does not come through.',
+        a: 'Most people sign in with their password and never need a code. If you asked for a code, it is sent on WhatsApp, or by email if WhatsApp cannot reach your number. A code works for a few minutes, and you can ask for a new one after a short wait. Check that you typed the same number that is on your account. If it still does not come, write to info@cropbid.in.',
       },
       {
         q: 'Can I sign in with Google?',
-        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, the first time you use Google it opens that account, and the password set on it before then stops working, because we cannot tell who set it. You can choose a new one with Forgot password, and a password you set after that keeps working. An account already linked to a different Google account cannot be opened this way: sign in with its password if it has one, or write to info@cropbid.in. A suspended account cannot be signed in to at all; write to info@cropbid.in. The phone app does not offer Google sign-in yet.',
+        a: 'Yes, on the website. Press Continue with Google in the sign-in window. If you are new, an account is made for you. If your Google email already has a CropBid account, Google opens that account, and the first time it does, the old password on it stops working, for your safety. You can set a new one with Forgot password. The phone app does not have Google sign-in yet. If anything goes wrong, write to info@cropbid.in.',
       },
       {
         q: 'Do I need an email address?',
-        a: 'No. You can sign up with a phone number instead, because many farmers do not have an email address. Without an email we cannot send you a password-reset link, so if you forget your password, sign in with a code sent to your phone instead.',
+        a: 'No. You can sign up with just a phone number, because many farmers do not use email. Without an email we cannot send you a link if you forget your password. Instead, sign in with a code sent to your phone, or write to info@cropbid.in and we will help you get back in.',
       },
       {
         q: 'How do I delete my account and what happens to my data?',
-        a: 'You can delete your account from Settings. If you have no settled trades, the account and its data are deleted outright. If you do have settled trades we cannot erase a completed transaction the other party is equally entitled to, so we anonymise instead: your name, phone number, location, photo and bank details are removed, your login is permanently disabled, and the transaction survives with no personal details attached. The privacy policy sets this out in full.',
+        a: 'Go to Settings on the website and choose to delete your account. You will need your password; if you only ever signed in with a code or with Google, set a password first. You cannot delete the account while money is still held for one of your deals, while there are credits in your wallet, or while a supply contract is running, so finish those first. If you have never completed a deal, everything is deleted. If you have, we keep the record of the deal, because the other person has a right to it too, but we remove your name, phone number, address, photo and bank details, and nobody can sign in to the account again. The privacy policy explains this in full.',
       },
     ],
   },
