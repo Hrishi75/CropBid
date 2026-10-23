@@ -74,7 +74,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
     items: [
       {
         q: 'How do farmers sell crops on CropBid?',
-        a: 'First you apply: you tell us about your farm and give your PAN, and a person at CropBid checks it. Once you are approved, you list your crop with the amount, the quality and your price. Buyers send you offers, called bids. You can accept a bid, turn it down, or reply with your own price. You can also sell through a timed auction. Today’s government mandi rate is shown next to every crop, so you and the buyer both know the market price.',
+        a: 'First you apply: you tell us about your farm and give your PAN, and a person at CropBid checks it. Once you are approved, you list your crop with the amount, the quality and your price. Buyers send you offers, called bids. You can accept a bid, turn it down, or reply with your own price. You can also sell through a timed auction. The latest government mandi rate is shown next to every crop, so you and the buyer both know the market price.',
       },
       {
         q: 'What documents do I need to apply?',
@@ -112,7 +112,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'What are live mandi rates and where do they come from?',
-        a: 'Mandi rates are the daily wholesale prices at India’s government-regulated markets, called APMC mandis. We take them from official government data covering more than 4,600 mandis and show them free, so a farmer can see what a crop is selling for nearby before agreeing a price. They are a guide, not a shop price: a shop’s price also covers handling, delivery and its own margin.',
+        a: 'Mandi rates are the daily wholesale prices at India’s government-regulated markets, called APMC mandis. We take them from official government data covering more than 4,600 mandis and show them free, so a farmer can see what a crop is selling for nearby before agreeing a price. The page shows the date of the latest report, which on some days is yesterday or older. When there is no report for a crop, we show an estimated price marked “ref” instead. They are a guide, not a shop price: a shop’s price also covers handling, delivery and its own margin.',
       },
       {
         q: 'Who buys on CropBid?',
