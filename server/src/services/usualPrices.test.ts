@@ -104,6 +104,31 @@ describe('folding a day in', () => {
   });
 });
 
+describe('after a long silence', () => {
+  it('starts the average over rather than comparing today with another season', async () => {
+    // The feed was unreachable from 2026-09-26 to 2026-10-23.
+    const u = await fresh();
+    await u.observeDay('2026-09-22', india(u, [[A, 100]]));
+    await u.observeDay('2026-09-23', india(u, [[A, 110]]));
+    await u.observeDay('2026-09-25', india(u, [[A, 120]]));
+    expect(u.usualFor(A, '')?.days).toBe(2);
+
+    await u.observeDay('2026-10-23', india(u, [[A, 300]]));
+    // No comparison on the first day back, then October's own history.
+    expect(u.usualFor(A, '')).toEqual({ perQuintal: 300, days: 0 });
+    expect(day((await row(A))?.lastDay)).toBeUndefined();
+    await u.observeDay('2026-10-24', india(u, [[A, 310]]));
+    expect(u.usualFor(A, '')).toEqual({ perQuintal: 300, days: 1 });
+  });
+
+  it('keeps an average through a gap of two weeks or less', async () => {
+    const u = await fresh();
+    await u.observeDay('2026-09-22', india(u, [[A, 100]]));
+    await u.observeDay('2026-10-06', india(u, [[A, 140]])); // 14 days on
+    expect(u.usualFor(A, '')).toEqual({ perQuintal: 100, days: 1 });
+  });
+});
+
 describe('state by state', () => {
   it('keeps a separate average for each state, beside the all-India one', async () => {
     const u = await fresh();

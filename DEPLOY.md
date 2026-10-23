@@ -93,6 +93,7 @@ Production demo stack — all free tier:
    | Key | Default | Value |
    |-----|---------|-------|
    | `DATA_GOV_API_KEY` | *(shared demo key)* | Your own [data.gov.in](https://data.gov.in/user/register) key for the daily Agmarknet mandi feed. **Set this.** The built-in default is data.gov.in's public demo key, shared by every project that never registered one — it spends most of the day returning `429 Rate limit exceeded`, and the storefront then falls back to static reference prices, so the hero chips and the ticker show `ref` instead of today's real move. A registered key is free and instant. |
+   | `DATA_GOV_RELAY_URL`, `DATA_GOV_RELAY_SECRET` | *(blank)* | The Mumbai relay for the mandi feed (`infra/datagov-relay/README.md`). data.gov.in refuses the US Lightsail box, so production needs both; blank goes straight to data.gov.in, which only works from India. |
    | `ORDER_ALERT_EMAIL` | `info@cropbid.in` | Inbox that gets one email per order placed — consumer buy, accepted bid, agent deal, auction win or requirement fill. Needs `SMTP_HOST` set, or the alert only reaches the server logs. |
    | `SMS_PROVIDER` | *(none)* | `fast2sms` \| `msg91` \| `twilio`. Leave unset to run WhatsApp + email only. SMS is worth adding once you have DLT, since it reaches people with no WhatsApp. |
    | `WHATSAPP_OTP_TEMPLATE_LANG` | `en` | Language your authentication template was approved in. A mismatch is rejected by Meta as "template not found". |

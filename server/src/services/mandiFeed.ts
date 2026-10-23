@@ -112,8 +112,41 @@ interface Page { total: number; limit: number; records: RawRecord[] }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+// data.gov.in refuses connections from outside India (production's box is in
+// the US), so production goes through the Mumbai relay in infra/datagov-relay.
+// The relay passes the path and query through, so the request is the same
+// either way and only the host and one header change.
+function feedRoute(): { base: string; headers: Record<string, string>; label: string } {
+  const { relayUrl, relaySecret } = config.dataGov;
+  if (relayUrl && relaySecret) return { base: relayUrl, headers: { 'x-relay-secret': relaySecret }, label: 'data.gov.in via relay' };
+  return { base: 'https://api.data.gov.in', headers: {}, label: 'data.gov.in' };
+}
+
+// The relay runs on Lambda's free tier, so the API holds itself to a daily
+// budget of relay requests: a bug that looped on the feed would otherwise be
+// a bill. Normal use is about 450 a day (a sweep of ~37 every two hours, plus
+// retries); the relay has its own hourly cap besides. Counted per process and
+// per UTC day, and a request over it is refused without being sent or retried.
+// The cap itself is config.dataGov.relayDailyCap.
+let relayDay = '';
+let relaySent = 0;
+
+class RelayCapReached extends Error {}
+
+function spendRelayBudget() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== relayDay) { relayDay = today; relaySent = 0; }
+  const cap = config.dataGov.relayDailyCap;
+  if (relaySent >= cap) {
+    throw new RelayCapReached(`relay daily cap of ${cap} requests reached; not sending until tomorrow (UTC)`);
+  }
+  relaySent += 1;
+}
+
 async function fetchPage(filters: Record<string, string>): Promise<Page> {
-  const url = new URL(`https://api.data.gov.in/resource/${config.dataGov.resourceId}`);
+  const route = feedRoute();
+  if (route.headers['x-relay-secret']) spendRelayBudget();
+  const url = new URL(`${route.base}/resource/${config.dataGov.resourceId}`);
   url.searchParams.set('api-key', config.dataGov.apiKey);
   url.searchParams.set('format', 'json');
   url.searchParams.set('limit', String(WINDOW));
@@ -123,8 +156,8 @@ async function fetchPage(filters: Record<string, string>): Promise<Page> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url.toString(), { signal: controller.signal });
-    if (!res.ok) throw new Error(`data.gov.in ${res.status}`);
+    const res = await fetch(url.toString(), { signal: controller.signal, headers: route.headers });
+    if (!res.ok) throw new Error(`${route.label} ${res.status}`);
     const json = (await res.json()) as { total?: number | string; limit?: number | string; records?: RawRecord[]; message?: string };
     // Upstream errors (a bad filter, the window) come back as HTTP 200 with
     // a message and no records.
@@ -147,7 +180,7 @@ async function fetchPatiently(filters: Record<string, string>): Promise<Page> {
       return await fetchPage(filters);
     } catch (err) {
       const wait = THROTTLE_WAITS_MS[attempt];
-      if (wait === undefined) throw err;
+      if (wait === undefined || err instanceof RelayCapReached) throw err;
       await sleep(wait);
     }
   }
