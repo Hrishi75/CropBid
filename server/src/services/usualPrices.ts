@@ -43,6 +43,14 @@ import { prisma } from '../lib/prisma';
 
 // Days the average spans once it is full.
 const SPAN_DAYS = 30;
+// A gap longer than this since the watched day restarts the average. An
+// average from before a long silence is another season's price, and compared
+// with today it reads as a move that never happened: the feed was unreachable
+// from 2026-09-26 to 2026-10-23, and the first live day would have set
+// October's prices against a few days of late September on every card and in
+// the forecast. Restarting shows no comparison for a day, which is the truth.
+// A crop out of season for a week or two keeps its average.
+const STALE_GAP_DAYS = 14;
 // After a failed read, how long before trying the database again, so a
 // database outage does not become one failed query per page view.
 const LOAD_RETRY_MS = 10 * 60 * 1000;
@@ -113,8 +121,9 @@ async function write(day: string, prices: Map<string, number>): Promise<void> {
   // The read has to land first, or it could overwrite what this write returns.
   await loadUsualPrices();
   try {
-    // For each row: a later date folds the watched day into the average (a
-    // plain mean while it fills, then a thirtieth) and starts watching the
+    // For each row: a date more than STALE_GAP_DAYS on starts the average
+    // over from that day; a later date folds the watched day into the average
+    // (a plain mean while it fills, then a thirtieth) and starts watching the
     // new one; the same date only updates the watched day's price; an older
     // date, from a stale copy, changes nothing. Every SET expression reads the
     // row as it was before this statement.
@@ -128,15 +137,21 @@ async function write(day: string, prices: Map<string, number>): Promise<void> {
         ${entries.map(([, price]) => price)}::float8[]
       ) AS t(commodity, state, price)
       ON CONFLICT ("commodity", "state") DO UPDATE SET
-        "perQuintal" = CASE WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay"
+        "perQuintal" = CASE
+          WHEN EXCLUDED."pendingDay" - "UsualPrice"."pendingDay" > ${STALE_GAP_DAYS}::int THEN EXCLUDED."perQuintal"
+          WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay"
           THEN "UsualPrice"."perQuintal"
              + ("UsualPrice"."pendingPerQuintal" - "UsualPrice"."perQuintal")
              / LEAST("UsualPrice"."days" + 1, ${SPAN_DAYS}::int)
           ELSE "UsualPrice"."perQuintal" END,
-        "days" = CASE WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay"
-          THEN "UsualPrice"."days" + 1 ELSE "UsualPrice"."days" END,
-        "lastDay" = CASE WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay"
-          THEN "UsualPrice"."pendingDay" ELSE "UsualPrice"."lastDay" END,
+        "days" = CASE
+          WHEN EXCLUDED."pendingDay" - "UsualPrice"."pendingDay" > ${STALE_GAP_DAYS}::int THEN 0
+          WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay" THEN "UsualPrice"."days" + 1
+          ELSE "UsualPrice"."days" END,
+        "lastDay" = CASE
+          WHEN EXCLUDED."pendingDay" - "UsualPrice"."pendingDay" > ${STALE_GAP_DAYS}::int THEN NULL
+          WHEN EXCLUDED."pendingDay" > "UsualPrice"."pendingDay" THEN "UsualPrice"."pendingDay"
+          ELSE "UsualPrice"."lastDay" END,
         "pendingPerQuintal" = CASE WHEN EXCLUDED."pendingDay" >= "UsualPrice"."pendingDay"
           THEN EXCLUDED."pendingPerQuintal" ELSE "UsualPrice"."pendingPerQuintal" END,
         "pendingDay" = GREATEST("UsualPrice"."pendingDay", EXCLUDED."pendingDay"),
