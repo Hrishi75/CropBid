@@ -70,6 +70,7 @@ import { useAuth } from '../context/AuthContext';
 import { sellerWords } from '../lib/sellerType';
 import { useCart, type CartPack } from '../context/CartContext';
 import { CartBar } from '../components/CartBar';
+import { WhatsAppButton } from '../components/WhatsAppButton';
 import { QuantityStepper } from '../components/QuantityStepper';
 import type { Listing, RetailShop, Unit } from '../api/types';
 import { money, unitLabel } from '../lib/format';
@@ -1173,6 +1174,10 @@ export default function StorefrontHomeScreen() {
           to measure — hence overTabBar. It renders nothing for anyone but a
           shopper with something in it. */}
       <CartBar overTabBar />
+
+      {/* Chat with us. Off until the build carries a number; sits above the
+          basket bar while that is showing. */}
+      <WhatsAppButton />
 
       <LoginSheet
         item={askItem}
