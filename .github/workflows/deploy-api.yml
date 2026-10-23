@@ -90,8 +90,13 @@ jobs:
             # pass, so a crash still fails at once.
             #
             # A first 200 is not the end of it: a process that answers once and
-            # then dies would pass. So 5 seconds later the unit must still be
-            # active and still answering.
+            # then dies would pass. And the unit restarts itself (Restart=always,
+            # RestartSec=3), so a crashed process can be replaced by one that
+            # answers again before any later check, and "active and answering"
+            # would then be true of a different process. So the restart counter
+            # is read right after `restart` and the process id at the first 200,
+            # and 5 seconds later the unit must be active, answering, on the same
+            # process, with no automatic restart since the deploy restarted it.
             #
             # No `sudo` here at all: querying a system unit's status is a
             # read-only operation systemd allows any local user to run.
@@ -108,6 +113,9 @@ jobs:
               journalctl -u cropbid-api -n 50 --no-pager >&2 \
                 || echo "(journal not readable without sudo, skipped)" >&2
             }
+
+            unit_prop() { systemctl show cropbid-api -p "$1" --value; }
+            restarts_before=$(unit_prop NRestarts)
 
             started=$(date +%s)
             deadline=$((started + 60))
@@ -136,11 +144,14 @@ jobs:
               exit 1
             fi
             echo "API healthy after ${elapsed}s"
+            pid_first=$(unit_prop MainPID)
 
             sleep 5
             if ! systemctl is-active --quiet cropbid-api \
-              || ! curl -sf --max-time 5 http://127.0.0.1:5000/api/health > /dev/null; then
-              echo "API answered once, then stopped: likely a crash loop" >&2
+              || ! curl -sf --max-time 5 http://127.0.0.1:5000/api/health > /dev/null \
+              || [ "$(unit_prop MainPID)" != "$pid_first" ] \
+              || [ "$(unit_prop NRestarts)" != "$restarts_before" ]; then
+              echo "API answered once, then stopped or was restarted: likely a crash loop" >&2
               show_diagnostics
               exit 1
             fi
