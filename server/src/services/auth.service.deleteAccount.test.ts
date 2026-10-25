@@ -137,6 +137,7 @@ describe('anonymising a seller who has settled deals', () => {
       fssaiLicense: null,
       gstin: null,
       pan: null,
+      farmerId: null,
     });
   });
 

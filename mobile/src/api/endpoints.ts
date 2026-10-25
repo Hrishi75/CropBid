@@ -219,6 +219,8 @@ export interface FarmerOnboardingInput {
   cropsGrown?: string[];
   fpoName?: string;
   apmcLicense?: string;
+  // AgriStack Farmer ID, optional; the server checks it is 11 to 14 digits.
+  farmerId?: string;
   // Local shop and wholesaler
   businessName?: string;
   shopType?: string;

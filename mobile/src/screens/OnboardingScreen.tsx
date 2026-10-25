@@ -130,6 +130,8 @@ export default function OnboardingScreen({
   const [organic, setOrganic] = useState(false);
   const [fpoName, setFpoName] = useState('');
   const [apmcLicense, setApmcLicense] = useState('');
+  // AgriStack Farmer ID, optional. Prefilled on a resubmission like the PAN.
+  const [farmerId, setFarmerId] = useState(user?.farmerProfile?.farmerId || '');
 
   // Shop and wholesaler fields. The server requires a different set for each
   // (auth.service `validateSellerApplication`), and the app used to send the
@@ -237,6 +239,7 @@ export default function OnboardingScreen({
                 cropsGrown: crops,
                 fpoName: fpoName.trim() || undefined,
                 apmcLicense: apmcLicense.trim() || undefined,
+                farmerId: farmerId.trim() || undefined,
               }
             : {
                 businessName: businessName.trim(),
@@ -440,6 +443,15 @@ export default function OnboardingScreen({
                     placeholder="e.g., MH-APMC-2024-1234"
                     placeholderTextColor={colors.textMuted}
                     autoCapitalize="characters"
+                  />
+                  <Text style={[styles.label, styles.optional]}>Farmer ID (optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={farmerId}
+                    onChangeText={setFarmerId}
+                    placeholder="From your Kisan Pehchaan Patra"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
                   />
                 </>
               ) : null}

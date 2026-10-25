@@ -660,6 +660,7 @@ const sellerApplicationSchema = z.object({
   // Required by the service, which owns the rule and the message; zod only
   // bounds the length so an essay never reaches it.
   pan: z.string().max(20).optional(),
+  farmerId: z.string().max(30).optional(),
   minOrderValue: z.number().positive().optional(),
   leadTimeDays: z.number().int().min(0).max(60).optional(),
   // Payout details. Optional everywhere: see payoutDetails.ts for why a blank

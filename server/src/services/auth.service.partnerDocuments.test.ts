@@ -62,6 +62,23 @@ describe('seller application', () => {
     expect(db.farmerProfile.create.mock.calls[0][0].data).toMatchObject({ pan: PAN, gstin: null, fssaiLicense: null });
   });
 
+  it('takes an optional Farmer ID from a farm, digits only', async () => {
+    await completeFarmerOnboarding('u-1', { ...farm, pan: PAN });
+    expect(db.farmerProfile.create.mock.calls[0][0].data.farmerId).toBeNull();
+    await completeFarmerOnboarding('u-1', { ...farm, pan: PAN, farmerId: '1234 5678 901' });
+    expect(db.farmerProfile.create.mock.calls[1][0].data.farmerId).toBe('12345678901');
+  });
+
+  it('refuses a malformed Farmer ID', async () => {
+    await expect(completeFarmerOnboarding('u-1', { ...farm, pan: PAN, farmerId: '12345' })).rejects.toMatchObject({ statusCode: 400, message: expect.stringContaining('Farmer ID') });
+    await expect(completeFarmerOnboarding('u-1', { ...farm, pan: PAN, farmerId: 'MH1234567890' })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('drops a Farmer ID sent by a shop, which is not a farm', async () => {
+    await completeFarmerOnboarding('u-1', { ...shop, pan: PAN, fssaiLicense: '11523020001234', farmerId: '12345678901' });
+    expect(db.farmerProfile.create.mock.calls[0][0].data.farmerId).toBeNull();
+  });
+
   it('refuses a malformed PAN', async () => {
     await expect(completeFarmerOnboarding('u-1', { ...farm, pan: 'ABCD1234F' })).rejects.toMatchObject({ statusCode: 400 });
   });

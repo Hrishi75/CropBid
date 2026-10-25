@@ -66,6 +66,8 @@ export interface User {
     hasPayoutDetails?: boolean;
     /** Required on applications since 2026-10-07; null on older ones. */
     pan?: string | null;
+    /** A farm's AgriStack Farmer ID, optional (2026-10-25). */
+    farmerId?: string | null;
   } | null;
   buyerProfile?: {
     companyName?: string;

@@ -43,6 +43,7 @@ interface ApplicationRow {
   fssaiLicense?: string | null;
   gstin?: string | null;
   pan?: string | null;
+  farmerId?: string | null;
   minOrderValue?: number | null;
   leadTimeDays?: number | null;
   fpoName?: string | null;
@@ -150,6 +151,15 @@ const GOVT_CHECK = {
     url: 'https://www.dgft.gov.in/CP/?opt=view-any-ice',
     site: 'DGFT',
     note: 'View Any IEC: needs the first three letters of the firm name too.',
+  },
+  // Same loose shape as the server's FARMER_ID: the official length is not
+  // confirmed, so 11 to 14 digits.
+  'FARMER ID': {
+    shape: /^[0-9]{11,14}$/,
+    url: 'https://agristack.gov.in/',
+    site: 'AgriStack',
+    // There is no public lookup by number; each state runs its own registry.
+    note: 'No public lookup: ask the farmer for their Farmer ID card, or check the state registry.',
   },
 } as const;
 
@@ -369,6 +379,7 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
                     <Field label="FARM SIZE" value={app.farmSizeAcres ? `${app.farmSizeAcres} acres` : null} />
                     <Field label="ORGANIC" value={app.organicCertified ? 'Certified' : null} />
                     <Field label="FPO" value={app.fpoName} />
+                    <IdField label="FARMER ID" value={app.farmerId} />
                   </>
                 )}
                 {app.sellerType === 'LOCAL_SHOP' && <Field label="SHOP TYPE" value={shopTypeLabel} />}
@@ -399,7 +410,7 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
             )}
           </div>
 
-          {(app.pan || app.gstin || app.taxId || app.fssaiLicense || app.iecCode) && (
+          {(app.pan || app.gstin || app.taxId || app.fssaiLicense || app.iecCode || app.farmerId) && (
             <p className="cb-tiny" style={{ marginTop: 12, color: 'var(--cb-ink-3)' }}>
               Numbers filed since 7 October 2026 are checked for format only, and older ones not at all.
               Confirm them on the government site before approving.

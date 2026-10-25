@@ -284,6 +284,7 @@ export function OnboardingPage() {
   const [fssai, setFssai] = useState(existingSeller?.fssaiLicense || '');
   const [gstin, setGstin] = useState(existingSeller?.gstin || '');
   const [pan, setPan] = useState(existingSeller?.pan || '');
+  const [farmerId, setFarmerId] = useState(existingSeller?.farmerId || '');
   const [minOrderValue, setMinOrderValue] = useState(existingSeller?.minOrderValue?.toString() || '');
   const [leadTimeDays, setLeadTimeDays] = useState(existingSeller?.leadTimeDays?.toString() || '');
 
@@ -339,6 +340,7 @@ export function OnboardingPage() {
             organicCertified: organic,
             fpoName: fpoName || undefined,
             apmcLicense: apmcLicense || undefined,
+            farmerId: farmerId || undefined,
           } : {}),
           ...(sellerType === 'LOCAL_SHOP' ? {
             businessName,
@@ -557,6 +559,17 @@ export function OnboardingPage() {
                     value={apmcLicense}
                     onChange={(e) => setApmcLicense(e.target.value)}
                   />
+                  <Input
+                    label="Farmer ID"
+                    placeholder="From your state's farmer registry (AgriStack)"
+                    inputMode="numeric"
+                    value={farmerId}
+                    onChange={(e) => setFarmerId(e.target.value)}
+                  />
+                  <p className="cb-field-hint">
+                    The number on your Farmer ID (Kisan Pehchaan Patra). It helps our reviewers
+                    match you to your land records. Skip it if you do not have one yet.
+                  </p>
                 </SectionCard>
               )}
             </>
