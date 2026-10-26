@@ -1,5 +1,6 @@
 // =============================================================================
-// Credit Service — business buyers applying for credit to buy produce
+// Credit Service — partners applying for credit: a buyer to stock up, a seller
+// (a farm, a shop, a wholesaler) to grow a crop or the business
 // =============================================================================
 // CROPBID DOES NOT LEND, and nothing in this file puts a rupee or a credit
 // anywhere. A buyer tells us about their business; a person reads it and, with
@@ -18,16 +19,37 @@ import { ApiError } from '../utils/ApiError';
 import { GSTIN } from '../utils/businessIds';
 import { createNotification } from './notification.service';
 import { recordAudit } from './audit.service';
-import type { CreditApplicationStatus } from '../generated/prisma/client';
+import type { CreditApplicationStatus, CreditSide, CreditUse } from '../generated/prisma/client';
 
-/** The asks a buyer can make, in rupees. Served to the app so it keeps no copy. */
+/**
+ * What each side may ask the money for. A farm grows crops and buys inputs; a
+ * buyer stocks up. Equipment and growing the business are open to both, and a
+ * shop restocking is STOCK on the seller side.
+ */
+export const CREDIT_USES: Record<CreditSide, CreditUse[]> = {
+  BUYER: ['STOCK', 'EQUIPMENT', 'GROW_BUSINESS'],
+  SELLER: ['CROP', 'INPUTS', 'EQUIPMENT', 'STOCK', 'GROW_BUSINESS'],
+};
+
+/**
+ * The asks anyone can make, in rupees. Served to both clients so they keep no
+ * copy. 180 days is there for a crop, which is repaid after the harvest, not
+ * in a month.
+ */
 export const CREDIT_RULES = {
   minAmount: 10_000,
   maxAmount: 10_00_000,
-  repaymentDays: [30, 60, 90] as const,
+  repaymentDays: [30, 60, 90, 180] as const,
+  uses: CREDIT_USES,
 };
 
+/** The side an account applies from: its role in this session. */
+export function creditSide(role: string): CreditSide {
+  return role === 'FARMER' ? 'SELLER' : 'BUYER';
+}
+
 export interface CreditApplicationInput {
+  useFor?: CreditUse | null;
   businessName: string;
   gstin?: string | null;
   yearsInBusiness: number;
@@ -40,9 +62,13 @@ export interface CreditApplicationInput {
 }
 
 /** Checks and tidies an application. Throws 400 with the first problem. */
-export function parseApplication(input: CreditApplicationInput) {
+export function parseApplication(input: CreditApplicationInput, side: CreditSide = 'BUYER') {
+  // An old app build sends no use; it was a buyer's stock credit then.
+  const useFor: CreditUse = input.useFor ?? (side === 'BUYER' ? 'STOCK' : 'GROW_BUSINESS');
+  if (!CREDIT_USES[side].includes(useFor)) throw new ApiError(400, 'Choose what the money is for');
+
   const businessName = input.businessName?.trim() ?? '';
-  if (businessName.length < 2) throw new ApiError(400, 'Enter your business name');
+  if (businessName.length < 2) throw new ApiError(400, side === 'SELLER' ? 'Enter your farm or business name' : 'Enter your business name');
 
   const gstin = input.gstin?.trim().toUpperCase() || null;
   if (gstin && !GSTIN.test(gstin)) throw new ApiError(400, 'That GSTIN does not look right: it is 15 characters, like 27ABCDE1234F1Z5');
@@ -51,7 +77,9 @@ export function parseApplication(input: CreditApplicationInput) {
   if (!Number.isInteger(years) || years < 0 || years > 100) throw new ApiError(400, 'Enter how many years you have been in business');
 
   const monthly = Number(input.monthlyPurchase);
-  if (!Number.isFinite(monthly) || monthly <= 0) throw new ApiError(400, 'Enter roughly how much produce you buy in a month');
+  if (!Number.isFinite(monthly) || monthly <= 0) {
+    throw new ApiError(400, side === 'SELLER' ? 'Enter roughly how much you sell in a month' : 'Enter roughly how much produce you buy in a month');
+  }
 
   const amount = Number(input.amountWanted);
   if (!Number.isFinite(amount) || amount < CREDIT_RULES.minAmount || amount > CREDIT_RULES.maxAmount) {
@@ -60,7 +88,7 @@ export function parseApplication(input: CreditApplicationInput) {
 
   const days = Number(input.repaymentDays);
   if (!(CREDIT_RULES.repaymentDays as readonly number[]).includes(days)) {
-    throw new ApiError(400, 'Choose 30, 60 or 90 days to repay');
+    throw new ApiError(400, 'Choose 30, 60, 90 or 180 days to repay');
   }
 
   const contactPhone = (input.contactPhone ?? '').replace(/[\s-]/g, '');
@@ -73,6 +101,8 @@ export function parseApplication(input: CreditApplicationInput) {
   const purpose = input.purpose?.trim().slice(0, 500) || null;
 
   return {
+    side,
+    useFor,
     businessName,
     gstin,
     yearsInBusiness: years,
@@ -96,8 +126,8 @@ export function getMyApplication(userId: string) {
  * applied for again, back to SUBMITTED with the old decision cleared.
  * IN_REVIEW or APPROVED: refused, because a person is working on it.
  */
-export async function submitApplication(userId: string, input: CreditApplicationInput) {
-  const data = parseApplication(input);
+export async function submitApplication(userId: string, input: CreditApplicationInput, side: CreditSide = 'BUYER') {
+  const data = parseApplication(input, side);
   const consentAt = new Date();
 
   const existing = await prisma.creditApplication.findUnique({ where: { userId } });
@@ -138,19 +168,19 @@ export async function submitApplication(userId: string, input: CreditApplication
   // it. An edit to one already waiting is not news. Not awaited, and failures
   // swallowed: a missed ping must not fail the buyer's submission, and the
   // admin list is read from the table rather than from these rows.
-  if (isNew) void notifyAdminsNewApplication(application.businessName, application.amountWanted, application.id);
+  if (isNew) void notifyAdminsNewApplication(application.businessName, application.amountWanted, application.id, application.side);
 
   return application;
 }
 
-async function notifyAdminsNewApplication(businessName: string, amount: number, applicationId: string) {
+async function notifyAdminsNewApplication(businessName: string, amount: number, applicationId: string, side: CreditSide) {
   try {
     const admins = await prisma.user.findMany({ where: { role: 'ADMIN' }, select: { id: true } });
     await Promise.all(admins.map((a) =>
       createNotification({
         userId: a.id,
         type: 'CREDIT_APPLICATION',
-        title: 'New business credit application',
+        title: side === 'SELLER' ? 'New credit application from a seller' : 'New credit application from a buyer',
         message: `${businessName} asked for ₹${amount.toLocaleString('en-IN')}.`,
         data: { creditApplicationId: applicationId },
       }).catch(() => {}),
@@ -231,8 +261,8 @@ export async function reviewApplication(adminId: string, id: string, input: Revi
     }
     approvedLimit = Math.round(limit);
   }
-  // The buyer is shown why, as a shop or an admin cancelling an order must say why.
-  if (input.status === 'DECLINED' && !note) throw new ApiError(400, 'Say why, so the buyer knows');
+  // The applicant is shown why, as a shop or an admin cancelling an order must say why.
+  if (input.status === 'DECLINED' && !note) throw new ApiError(400, 'Say why, so the applicant knows');
 
   const decided = input.status === 'APPROVED' || input.status === 'DECLINED';
   const { count } = await prisma.creditApplication.updateMany({
@@ -264,7 +294,7 @@ export async function reviewApplication(adminId: string, id: string, input: Revi
   await createNotification({
     userId: existing.userId,
     type: 'CREDIT_APPLICATION',
-    title: input.status === 'APPROVED' ? 'Business credit approved' : input.status === 'DECLINED' ? 'Business credit not approved' : 'Business credit in review',
+    title: input.status === 'APPROVED' ? 'Credit approved' : input.status === 'DECLINED' ? 'Credit not approved' : 'Credit application in review',
     message,
     data: { creditApplicationId: id },
   }).catch(() => {});
