@@ -23,6 +23,12 @@ export const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 export const FSSAI = /^[0-9]{14}$/;
 // DGFT's Importer-Exporter Code: 10 characters, and since 2018 usually the PAN.
 export const IEC = /^[0-9A-Z]{10}$/;
+// AgriStack Farmer ID. Published descriptions disagree on its length (11
+// digits, a 10-digit number and a check digit, in most; 14 in some), and each
+// state runs its own registry, so this accepts digits only, 11 to 14 of them,
+// rather than refuse a real ID. Tighten it once the official format is
+// confirmed.
+export const FARMER_ID = /^[0-9]{11,14}$/;
 
 interface Rule { pattern: RegExp; example: string; name: string }
 const RULES = {
@@ -30,6 +36,7 @@ const RULES = {
   gstin: { pattern: GSTIN, name: 'GSTIN', example: '15 characters, like 27ABCDE1234F1Z5' },
   fssai: { pattern: FSSAI, name: 'FSSAI number', example: '14 digits' },
   iec: { pattern: IEC, name: 'IEC', example: '10 characters' },
+  farmerId: { pattern: FARMER_ID, name: 'Farmer ID', example: 'digits only, 11 to 14 of them' },
 } satisfies Record<string, Rule>;
 
 // The normalised number, null when blank and not required, or a 400 naming

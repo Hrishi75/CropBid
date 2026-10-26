@@ -80,6 +80,8 @@ export interface FarmerProfile {
   gstin: string | null;
   // Required on applications since 2026-10-07; null on older ones.
   pan: string | null;
+  // A farm's AgriStack Farmer ID, optional (2026-10-25).
+  farmerId: string | null;
   minOrderValue: number | null;
   leadTimeDays: number | null;
   country: string;

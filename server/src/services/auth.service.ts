@@ -1087,6 +1087,7 @@ export async function deleteAccount(userId: string, password: string) {
             fssaiLicense: null,
             gstin: null,
             pan: null,
+            farmerId: null,
             certificationBody: null,
             statusNote: null,
           },
@@ -1277,6 +1278,7 @@ interface FarmerOnboardingInput {
   fssaiLicense?: string;
   gstin?: string;
   pan?: string;
+  farmerId?: string;
   minOrderValue?: number;
   leadTimeDays?: number;
   // Optional on purpose: a blank payout field is a bad reason to hold up a
@@ -1339,7 +1341,11 @@ function validateSellerApplication(input: FarmerOnboardingInput) {
     type === 'WHOLESALER' ? 'GSTIN is required for a wholesale application' : undefined,
   );
   assertPanMatchesGstin(pan, gstin);
-  return { pan, fssaiLicense, gstin };
+  // A farm's AgriStack Farmer ID, optional. Only a farm has one: a shop or a
+  // wholesaler that sends one has it dropped rather than filed against a
+  // business it does not describe.
+  const farmerId = type === 'FARMER' ? parseId('farmerId', input.farmerId) : null;
+  return { pan, fssaiLicense, gstin, farmerId };
 }
 
 // A buyer is a business, so every one gives a PAN; what else depends on what

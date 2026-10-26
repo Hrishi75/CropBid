@@ -25,7 +25,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '9 October 2026';
+const UPDATED = '25 October 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -141,10 +141,13 @@ export function PrivacyPolicyPage() {
             what your trade requires: whether you are a farmer, a local shop or a wholesaler,
             your business or shop name and type, your address, your state, farm size and crops
             grown, your PAN, an FSSAI licence number for a shop, a GSTIN, an APMC licence, an
-            FPO name, organic certification details, and minimum order value and lead time for
-            a wholesaler. We keep the outcome of the review and any note the reviewer wrote.
-            We ask every seller for a PAN because tax law requires the tax on sales made
-            through a marketplace to be reported against the seller&rsquo;s PAN.
+            FPO name, organic certification details, a farm&rsquo;s Farmer ID from the
+            government farmer registry (AgriStack) if you choose to give it, and minimum order
+            value and lead time for a wholesaler. We keep the outcome of the review and any note
+            the reviewer wrote. We ask every seller for a PAN because tax law requires the tax
+            on sales made through a marketplace to be reported against the seller&rsquo;s PAN.
+            A Farmer ID is optional: our reviewers use it to match a farm to its land records,
+            by hand. We do not ask for your Aadhaar number.
           </p>
           <p>
             <strong>If you sell, we ask where to pay you:</strong> a UPI id, or the name on your

@@ -411,6 +411,12 @@ model FarmerProfile {
   // payout through Razorpay Route will need it too. utils/businessIds checks
   // its shape; nothing checks it belongs to them.
   pan           String?
+  // A farm's AgriStack Farmer ID (Kisan Pehchaan Patra), issued by the state
+  // farmer registry and tied to the farmer's land records. Optional: many
+  // states are still enrolling, and a farm without one is still a farm.
+  // FARMER sellers only. utils/businessIds checks its shape; a reviewer
+  // checks it against the registry by hand.
+  farmerId      String?
   minOrderValue Float? // WHOLESALER: minimum order value in account currency
   leadTimeDays  Int? // WHOLESALER: days from order to dispatch
 
