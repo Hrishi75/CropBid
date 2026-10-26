@@ -346,6 +346,7 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 `/terms`, `/privacy`, `/faq` and `/how-it-works`, all linked from the footer. **Every claim in them must be true of the code today.** They are written to that rule and it has been broken before:
 
 - The FAQ structured data lived on `/how-it-works` with no matching visible content for months, which is a Google policy violation. FAQ questions and their JSON-LD are now both generated from `client/src/content/faq.ts`, so a question cannot exist in the markup without appearing on the page.
+- **The FAQ is written in plain words (rewritten 2026-10-23)**: short sentences a farmer reading in a second language can follow. That pass also added what applicants and buyers kept having to ask: which documents each trade needs (§4), that the seller pays for transport (§2a), and that nothing checks a lot's quality (§2b). It dropped the claim that an AI agent negotiates for a farmer, which is only true when both sides have one switched on. The WhatsApp help card picks six questions by their exact wording, so a renamed question needs `PICKED` in `WhatsAppButton.tsx` changed with it.
 - Accordion answers use native `<details>`, **not `hidden`**. `hidden` is as invisible to Ctrl-F as it is to a reader.
 - Privacy must disclose Cloudflare Web Analytics, browser storage, and that a seller gets the buyer's contact details **when payment clears**, not at checkout (`contactVisibility.ts`).
 
