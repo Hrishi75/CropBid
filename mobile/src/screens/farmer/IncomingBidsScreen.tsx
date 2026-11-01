@@ -4,7 +4,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,6 +18,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Eyebrow, Mono, StatusPill } from '../../components/buyerKit';
 import { colors, design, font } from '../../theme';
 import { acceptBid, counterBid, incomingBids, rejectBid } from '../../api/endpoints';
+import { buyerPaysFreight, freightLabel, markDealMadeSeen } from '../../lib/freight';
+import { CROPBID_CONTACT_DISPLAY, callCropBid, whatsAppCropBid } from '../../lib/support';
+import { useAuth } from '../../context/AuthContext';
 import { errorMessage } from '../../api/client';
 import type { Bid, BidStatus } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
@@ -163,6 +165,8 @@ export default function IncomingBidsScreen() {
 }
 
 function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: boolean; onChanged: () => Promise<void> }) {
+  const { user } = useAuth();
+  const userId = user?.id;
   const [busy, setBusy] = useState<string | null>(null);
   const [showCounter, setShowCounter] = useState(false);
   const [counter, setCounter] = useState('');
@@ -184,15 +188,54 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
       }
       return;
     }
+    if (kind === 'accept') {
+      confirmAccept();
+      return;
+    }
     setBusy(kind);
     try {
-      if (kind === 'accept') await acceptBid(bid.id);
-      else await rejectBid(bid.id);
+      await rejectBid(bid.id);
       await onChanged();
     } catch (e) {
       setBusy(null);
-      Alert.alert(kind === 'accept' ? 'Could not accept bid' : 'Could not reject bid', errorMessage(e));
+      Alert.alert('Could not reject bid', errorMessage(e));
     }
+  }
+
+  // Accepting fixes the price and who pays for delivery, so both are shown
+  // first. Then the seller's "deal made" note: what happens next.
+  const freight = bid.freightPaidBy ?? 'FARMER';
+  const lotFreight = bid.listing?.freightPaidBy;
+  function confirmAccept() {
+    Alert.alert(
+      'Accept this bid?',
+      `${bid.quantity.toLocaleString('en-IN')} ${unit} at ${money(bid.bidPricePerUnit, currency)}/${unit}, ${money(bid.totalAmount, currency)} in all.\n\nDelivery: ${freightLabel(freight).toLowerCase()}. CropBid books the truck.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Accept',
+          onPress: async () => {
+            setBusy('accept');
+            try {
+              const accepted = await acceptBid(bid.id, { bidPricePerUnit: bid.bidPricePerUnit, freightPaidBy: bid.freightPaidBy });
+              if (accepted.transaction?.id && userId) await markDealMadeSeen(accepted.transaction.id, userId);
+              Alert.alert(
+                'Deal made',
+                freight === 'FARMER'
+                  ? 'The buyer pays into escrow. The delivery charge comes out of your payout once CropBid books the truck. Find it under Your sales.'
+                  : freight === 'SPLIT'
+                    ? 'CropBid prices the delivery; you and the buyer pay half each, yours from your payout. The buyer pays once it is quoted. Find it under Your sales.'
+                    : 'CropBid prices the delivery and the buyer pays all of it with the goods. Find it under Your sales.',
+              );
+              await onChanged();
+            } catch (e) {
+              setBusy(null);
+              Alert.alert('Could not accept bid', errorMessage(e));
+            }
+          },
+        },
+      ],
+    );
   }
 
   const isPending = bid.status === 'PENDING';
@@ -206,7 +249,6 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
         ? { text: 'In your price range', tone: 'ok' as const }
         : { text: `Below your ${money(l.pricePerUnitMin, currency)} floor`, tone: 'low' as const }
     : null;
-  const phone = bid.contactPhone || bid.buyer?.phone;
 
   return (
     <View style={[styles.card, isPending && styles.cardPending]}>
@@ -259,23 +301,33 @@ function BidRow({ bid, showExplainer, onChanged }: { bid: Bid; showExplainer: bo
         </View>
       ) : null}
 
+      <View style={styles.orderInfo}>
+        <Text style={styles.orderInfoLine}>
+          <Text style={styles.orderInfoLabel}>DELIVERY  </Text>
+          {freightLabel(freight)}
+          {lotFreight && lotFreight !== freight ? ` · buyer's proposal (your lot says ${freightLabel(lotFreight).toLowerCase()})` : ''}
+          {buyerPaysFreight(freight) ? ' · CropBid quotes it first' : ''}
+        </Text>
+      </View>
+
       {bid.message ? <Text style={styles.message}>“{bid.message}”</Text> : null}
 
-      {(bid.deliveryAddress || phone) ? (
-        <View style={styles.orderInfo}>
-          {bid.deliveryAddress ? (
-            <Text style={styles.orderInfoLine}>
-              <Text style={styles.orderInfoLabel}>DELIVER TO  </Text>
-              {bid.deliveryAddress}
-            </Text>
-          ) : null}
-          {phone ? (
-            <Pressable onPress={() => Linking.openURL(`tel:${phone}`)} style={styles.callBtn}>
-              <Text style={styles.callText}>☎ Call buyer · {phone}</Text>
-            </Pressable>
-          ) : null}
+      {/* Names only: the buyer's phone and address never reach the seller.
+          CropBid is the point of contact and does the delivery. */}
+      <View style={styles.orderInfo}>
+        <Text style={styles.orderInfoLine}>
+          <Text style={styles.orderInfoLabel}>NEED THE BUYER?  </Text>
+          CropBid handles it, on {CROPBID_CONTACT_DISPLAY}.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Pressable onPress={callCropBid} style={styles.callBtn}>
+            <Text style={styles.callText}>☎ Call CropBid</Text>
+          </Pressable>
+          <Pressable onPress={() => whatsAppCropBid(`bid #${bid.id.slice(-6).toUpperCase()}`)} style={styles.callBtn}>
+            <Text style={styles.callText}>WhatsApp CropBid</Text>
+          </Pressable>
         </View>
-      ) : null}
+      </View>
 
       {isPending ? (
         <>

@@ -1,6 +1,7 @@
 // Typed wrappers around the API endpoints the app uses.
 import api, { setAccessToken, setRefreshToken } from './client';
 import type {
+  FreightPayer,
   CreditApplication, CreditApplicationInput, CreditRules, ExportOptions, ProposeContractInput, SupplyContract,
   Address,
   AddressInput,
@@ -374,14 +375,16 @@ export async function placeBid(input: {
   message?: string;
   deliveryAddress?: string;
   contactPhone?: string;
+  /** Who pays for delivery if accepted. Omitted means the lot's own terms. */
+  freightPaidBy?: FreightPayer;
 }): Promise<Bid> {
   const { data } = await api.post<Bid>('/bids', input);
   return data;
 }
 
 /** Change the price of a bid that is still open. Puts it back to PENDING. */
-export async function updateBid(id: string, bidPricePerUnit: number): Promise<Bid> {
-  const { data } = await api.put<Bid>(`/bids/${id}/update`, { bidPricePerUnit });
+export async function updateBid(id: string, bidPricePerUnit: number, freightPaidBy?: FreightPayer): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/update`, { bidPricePerUnit, ...(freightPaidBy && { freightPaidBy }) });
   return data;
 }
 
@@ -632,8 +635,15 @@ export async function rejectRequirementOffer(offerId: string): Promise<Requireme
 }
 
 // --- Farmer bid actions ---
-export async function acceptBid(id: string): Promise<Bid> {
-  const { data } = await api.put<Bid>(`/bids/${id}/accept`);
+/**
+ * Accept on the terms the seller was shown. If the buyer has changed the
+ * price or delivery terms since, the server refuses (409 BID_CHANGED).
+ */
+export async function acceptBid(
+  id: string,
+  shown: { bidPricePerUnit?: number; freightPaidBy?: FreightPayer } = {},
+): Promise<Bid> {
+  const { data } = await api.put<Bid>(`/bids/${id}/accept`, shown);
   return data;
 }
 

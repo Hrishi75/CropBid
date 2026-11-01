@@ -5,6 +5,7 @@
 // like viewing all users, suspending accounts, and overseeing transactions.
 // =============================================================================
 
+import { buyerPaysFreight } from '../utils/freight';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
@@ -1164,7 +1165,8 @@ export async function reviewPartnerApplication(input: ReviewInput) {
 // "open" after the underlying thing was handled, and it cannot be lost if the
 // notification that announced it failed to send.
 //
-// One source today: deals with no shipment. CropBid arranges the freight on
+// One source today: deals with no shipment, which on a deal where the buyer
+// pays towards delivery starts as a quote to send (utils/freight.ts). CropBid arranges the freight on
 // every deal (CLAUDE.md §2a), so an unbooked deal is unstarted work. Disputes
 // and KYC failures belong here too when those states exist; add them as more
 // queries into the same shape rather than inventing a triage table.
@@ -1189,15 +1191,18 @@ export async function getAttentionItems(limit = 20) {
 
   return awaitingTransport.map((tx) => {
     const ageHours = Math.floor((now - tx.createdAt.getTime()) / 3_600_000);
+    // A deal where the buyer pays towards delivery needs pricing before the
+    // buyer can pay at all, so it is a quote, not yet a booking. Same page.
+    const needsQuote = !tx.retailOrderId && buyerPaysFreight(tx.freightPaidBy) && tx.freightQuote == null;
     return {
-      type: 'NEEDS TRANSPORT',
+      type: needsQuote ? 'NEEDS DELIVERY QUOTE' : 'NEEDS TRANSPORT',
       id: `#T-${tx.id.slice(-6).toUpperCase()}`,
       desc: `${tx.listing.cropName} · ${tx.bid?.quantity ?? '—'} ${tx.listing.unit.toLowerCase()} · ${tx.farmer.name} → ${tx.buyer.name}`,
       // Real elapsed time, not an invented SLA target. We have not committed to
       // a booking window anywhere, so claiming one on an ops screen would be
       // making up a promise the business has not made.
       sla: ageHours < 1 ? 'just now' : ageHours < 24 ? `${ageHours}h ago` : `${Math.floor(ageHours / 24)}d ago`,
-      cta: 'Book transport',
+      cta: needsQuote ? 'Quote delivery' : 'Book transport',
       href: `/admin/logistics/book/${tx.id}`,
       transactionId: tx.id,
       createdAt: tx.createdAt,

@@ -42,6 +42,7 @@ router.use(authenticate);
 router.get('/partners/:transactionId', requireRole('ADMIN'), ctrl.getMatchingPartners);
 router.post('/quote', requireRole('ADMIN'), ctrl.getTransportQuote);
 router.post('/book', requireRole('ADMIN'), ctrl.bookShipment);
+router.put('/freight-quote/:transactionId', requireRole('ADMIN'), ctrl.setFreightQuote);
 router.put('/shipment/:id/status', requireRole('ADMIN'), ctrl.updateShipmentStatus);
 router.put('/shipment/:id/driver', requireRole('ADMIN'), ctrl.updateDriverInfo);
 

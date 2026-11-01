@@ -271,7 +271,7 @@ export default function JoinScreen() {
         <Perk text={t('List in two minutes, from the field')} />
         <Perk text={t('Priced against today\'s live mandi rates')} />
         <Perk text={t('Money held in escrow until delivery is confirmed')} />
-        <Perk text={t('We book and pay for the freight')} />
+        <Perk text={t('We book the truck on every deal')} />
       </View>
 
       <Mono style={styles.pick}>{t('WHICH ONE ARE YOU?')}</Mono>

@@ -26,7 +26,8 @@ import { IconCheck, IconChevR, IconClock } from './icons';
 import { useAuth } from '../context/AuthContext';
 import { myBids, placeBid, updateBid, withdrawBid } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { Bid, Listing } from '../api/types';
+import type { Bid, FreightPayer, Listing } from '../api/types';
+import { FREIGHT_OPTIONS, buyerPaysFreight, freightLabel } from '../lib/freight';
 import { money, timeAgo, unitLabel } from '../lib/format';
 import { mspForCrop } from '../lib/msp';
 import { buysSmall, SMALL_START, SMALL_STEPS } from '../lib/smallBuyer';
@@ -79,6 +80,9 @@ function NewBid({ listing, onPlaced }: { listing: Listing; onPlaced: () => void 
   const [more, setMore] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Who pays for delivery: the seller's terms, or a proposal they see first.
+  const lotFreight: FreightPayer = listing.freightPaidBy ?? 'FARMER';
+  const [freight, setFreight] = useState<FreightPayer>(lotFreight);
 
   const p = Number(price);
   const q = Number(qty);
@@ -112,6 +116,7 @@ function NewBid({ listing, onPlaced }: { listing: Listing; onPlaced: () => void 
         message: message.trim() || undefined,
         deliveryAddress: address.trim() || undefined,
         contactPhone: phone.trim() || undefined,
+        freightPaidBy: freight,
       });
       glide();
       onPlaced();
@@ -189,6 +194,20 @@ function NewBid({ listing, onPlaced }: { listing: Listing; onPlaced: () => void 
           ))}
         </View>
       ) : null}
+
+      <Mono style={styles.label}>DELIVERY · WHO PAYS</Mono>
+      <View style={styles.steps}>
+        {FREIGHT_OPTIONS.map((o) => (
+          <Pressable key={o.value} onPress={() => setFreight(o.value)} style={[styles.step, freight === o.value && styles.chipOn]}>
+            <Text style={[styles.stepText, freight === o.value && styles.chipTextOn]}>{o.short}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.sub}>
+        The seller's terms: {freightLabel(lotFreight).toLowerCase()}.
+        {freight !== lotFreight ? ' You are proposing different terms; the seller sees them before accepting.' : ''}
+        {buyerPaysFreight(freight) ? ' CropBid quotes the delivery after the deal; you pay the goods and your share together.' : ''}
+      </Text>
 
       {/* Delivery details are prefilled; folded so the price stays the focus. */}
       <Pressable onPress={() => { glide(); setMore((m) => !m); }} style={styles.moreRow}>
@@ -279,6 +298,7 @@ function OpenBid({ bid, listing, onChanged }: { bid: Bid; listing: Listing; onCh
         </Mono>
         <Mono style={styles.ago}>{timeAgo(bid.createdAt).toUpperCase()}</Mono>
       </View>
+      <Text style={styles.sub}>Delivery: {freightLabel(bid.freightPaidBy).toLowerCase()}.</Text>
 
       <View style={styles.compare}>
         <View style={styles.cmpCell}>

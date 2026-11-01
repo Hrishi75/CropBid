@@ -10,6 +10,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as logisticsService from '../services/logistics.service';
+import { auditFromRequest } from '../services/audit.service';
+import { MAX_FREIGHT_QUOTE } from '../utils/freight';
 
 // The service needs the role as well as the id: an admin is neither the farmer
 // nor the buyer on a transaction, so an ownership check that only sees a userId
@@ -35,8 +37,12 @@ const bookSchema = z.object({
   distanceKm: z.number().positive().max(50000),
   totalWeightKg: z.number().positive().max(1_000_000),
   vehicleType: z.string().min(1).max(100),
-  // No paidBy. The seller carries the freight cost, so there is no request
-  // shape that can put it on the buyer. bookShipment writes FARMER itself.
+  // No paidBy. Who pays is a term of the deal, so bookShipment copies it from
+  // the Transaction and there is no request shape that can change it.
+});
+
+const freightQuoteSchema = z.object({
+  amount: z.number().positive().max(MAX_FREIGHT_QUOTE),
 });
 
 const shipmentStatusSchema = z.object({
@@ -278,6 +284,28 @@ export async function togglePartner(req: Request, res: Response, next: NextFunct
     if (!params) return;
     const partner = await logisticsService.togglePartner(params.id);
     res.json(partner);
+  } catch (error) {
+    next(error);
+  }
+}
+
+// PUT /api/logistics/freight-quote/:transactionId: ops price delivery for a
+// deal where the buyer pays some of it (ADMIN)
+export async function setFreightQuote(req: Request, res: Response, next: NextFunction) {
+  try {
+    const transactionId = uuid.safeParse(req.params.transactionId);
+    const body = freightQuoteSchema.safeParse({ amount: Number(req.body?.amount) });
+    if (!transactionId.success || !body.success) {
+      return res.status(400).json({ message: body.success ? 'Invalid transaction id' : body.error.issues[0]?.message || 'Invalid input' });
+    }
+    const result = await logisticsService.setFreightQuote(transactionId.data, body.data.amount, actorOf(req));
+    await auditFromRequest(req, {
+      action: 'transaction.freight_quote',
+      entityType: 'Transaction',
+      entityId: transactionId.data,
+      metadata: { freightQuote: result.freightQuote, previousQuote: result.previousQuote, freightPaidBy: result.freightPaidBy },
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }

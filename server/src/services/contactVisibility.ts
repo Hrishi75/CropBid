@@ -1,26 +1,22 @@
 // =============================================================================
-// Contact visibility — when the two sides of a deal are allowed to see each other
+// Contact visibility: what the two sides of a deal may see of each other
 // =============================================================================
-// CropBid stands between a farmer and a buyer and takes a fee for it. The whole
-// position collapses if either side can read the other's phone number before
-// money has moved: a farmer looking at ten PENDING bids would be looking at ten
-// buyers' direct numbers, and the obvious next step is to call them and settle
-// off-platform. That isn't a hypothetical — it is the normal failure mode of
-// every agri marketplace, and it is why the buyer-side comparables (see
-// madoverbuildings.com) never name the supplier at all.
+// THE RULE (2026-11-02, the user's call): each side sees the other's NAME and
+// nothing else. No phone, no email, no delivery address, no company or firm
+// name, before payment or after. CropBid is the point of contact for both
+// sides (call or WhatsApp CROPBID_CONTACT_PHONE, utils/contactDetails.ts) and
+// CropBid does the delivery, household orders included, so neither side needs
+// the other's details to finish a deal.
 //
-// The rule, in one line: identity is public, contact is not, and contact is
-// released only once the platform has actually been paid.
+// It used to release the buyer's phone and delivery address to the seller once
+// the money reached escrow, because the seller then arranged delivery. Since
+// CropBid books every truck (CLAUDE.md §2a) that release only served one
+// purpose, taking the next deal off-platform.
 //
-// The farmer side was already protected — PUBLIC_FARMER_SELECT in the listing,
-// browse, bid and negotiation services never carries phone or email, and
-// transaction.service says so in as many words. This module is the missing
-// mirror for the BUYER side, plus the payment gate that both sides now sit
-// behind.
-//
-// Deliberately NOT covered here: admin endpoints (the platform must be able to
-// see both parties to run support and settle disputes) and orderAlert.service
-// (which mails the ops inbox, i.e. the platform itself, not a counterparty).
+// Deliberately NOT covered here: admin endpoints (ops must see both parties
+// to deliver, run support and settle disputes) and orderAlert.service (which
+// mails the ops inbox, i.e. the platform itself, not a counterparty).
+// A viewer reading their OWN row sees their own details as always.
 
 import type { PaymentStatus } from '../generated/prisma/client';
 
@@ -39,16 +35,8 @@ export const PUBLIC_BUYER_USER_SELECT = {
   avatar: true,
 } as const;
 
-// Money is captured (ESCROW) or already paid out (RELEASED). At that point the
-// platform has its fee and the deal cannot be quietly taken off-platform, so
-// the seller gets what they need in order to actually deliver.
-//
-// AWAITING_PAYMENT is NOT enough. A transaction row exists from the moment a
-// bid is accepted, before the buyer has paid a rupee — releasing contact there
-// would just move the leak one click later.
-//
-// REFUNDED is not enough either: the deal unwound, and there is no delivery
-// left to arrange.
+// Kept for callers that ask whether a deal is paid; it no longer decides
+// whether contact details reach the other side. Nothing does: they never do.
 export function isContactReleased(paymentStatus?: PaymentStatus | null): boolean {
   return paymentStatus === 'ESCROW' || paymentStatus === 'RELEASED';
 }
@@ -67,9 +55,15 @@ export interface BidContactFields {
 //
 // `contactReleased` is returned so the UI can say "shared once payment clears"
 // instead of silently rendering an empty block that looks like a bug.
+// Bid.contactPhone / Bid.deliveryAddress are snapshotted off the buyer's
+// profile at bid time (see orderContactDefaults in bid.service). That snapshot
+// is the real leak: stripping buyer.phone from the Prisma select alone would
+// have changed nothing, because BidCard falls back to bid.contactPhone.
+//
+// Every caller is the seller reading bids on their own lots, so both are
+// always withheld. `contactReleased: false` tells the UI to point at CropBid
+// rather than render an empty block that looks like a bug.
 export function redactBidContact<T extends BidContactFields>(bid: T) {
-  const released = isContactReleased(bid.transaction?.paymentStatus);
-  if (released) return { ...bid, contactReleased: true as const };
   return {
     ...bid,
     deliveryAddress: null,
@@ -89,13 +83,10 @@ export interface TransactionBuyerShape {
   buyer: { id: string; name: string; trustScore: number; phone?: string | null };
 }
 
-// A farmer reading their own deal sees the buyer's phone only after payment.
-// Everyone else reading this row is either the buyer themselves (their own
-// number) or an admin, and neither needs redacting.
-//
-// Email is never released to a counterparty at all, in either direction: a
-// phone number is what a delivery actually needs, an email address is what a
-// direct-sourcing relationship starts with.
+// The buyer reading their own deal, or an admin, sees everything. The seller
+// never sees the buyer's phone, and the bid's snapshotted address and phone
+// are stripped by the caller on `contactReleased: false` (transaction.service).
+// Email is never selected for a counterparty at all.
 export function redactTransactionContact<T extends TransactionBuyerShape>(
   transaction: T,
   viewer: { userId: string; role: string },
@@ -104,10 +95,6 @@ export function redactTransactionContact<T extends TransactionBuyerShape>(
   if (viewer.role === 'ADMIN' || isOwnRow) {
     return { ...transaction, contactReleased: true as const };
   }
-
-  const released = isContactReleased(transaction.paymentStatus);
-  if (released) return { ...transaction, contactReleased: true as const };
-
   return {
     ...transaction,
     buyer: { ...transaction.buyer, phone: null },

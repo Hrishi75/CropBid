@@ -33,3 +33,35 @@ export const PUBLIC_SELLER_SELECT = {
   shopType: true,
   user: { select: { id: true, name: true, trustScore: true, avatar: true, location: true } },
 } as const;
+
+// =============================================================================
+// Names only, outside the household storefront (2026-11-02)
+// =============================================================================
+// On the trade side the two parties see each other's own name and nothing
+// else, CropBid being the point of contact (contactVisibility.ts). A
+// wholesaler's firm name is the company name the rule hides, and the account's
+// free-text `location` often holds a street address. A LOCAL_SHOP keeps both:
+// households choose a shop by its name, which is the shop-first model
+// (CLAUDE.md §3), and a shop's name is a storefront, not a way to reach it.
+//
+// Applied to whole responses rather than at each select, because the same
+// select feeds both the storefront and the trade market. It walks the value
+// and blanks the two fields on any seller profile that is not a shop.
+export function nameOnlySellers<T>(value: T): T {
+  return walk(value) as T;
+}
+
+function walk(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(walk);
+  if (!v || typeof v !== 'object' || v instanceof Date) return v;
+  const o = v as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(o)) out[k] = walk(val);
+  if ('sellerType' in o && 'businessName' in o && o.sellerType !== 'LOCAL_SHOP') {
+    out.businessName = null;
+    if ('shopType' in o) out.shopType = null;
+    const user = out.user as Record<string, unknown> | undefined;
+    if (user && typeof user === 'object' && 'location' in user) out.user = { ...user, location: null };
+  }
+  return out;
+}

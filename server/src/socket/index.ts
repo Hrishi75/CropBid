@@ -488,6 +488,8 @@ async function endAuction(listingId: string) {
             totalAmount: auction.currentPrice * listing.quantity,
             currency: auction.currency as any,
             message: `Won via live auction (${auction.bids.length} bids)`,
+            // An auction bids on price alone, so delivery is on the lot's terms.
+            freightPaidBy: listing.freightPaidBy,
             isAgentBid: false,
             status: 'ACCEPTED',
           },

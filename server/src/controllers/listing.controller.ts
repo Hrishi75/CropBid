@@ -14,6 +14,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as listingService from '../services/listing.service';
 import { queueListingTranslation } from '../services/translation.service';
+import { FREIGHT_PAYERS } from '../utils/freight';
 
 // Express 5 types params as string | string[]. Our routes use single :id params.
 function paramId(req: Request): string {
@@ -45,6 +46,7 @@ const updateListingSchema = z.object({
   state: z.string().min(1).max(100).optional(),
   directSaleEnabled: z.coerce.boolean().optional(),
   retailPricePerUnit: z.coerce.number().positive().optional(),
+  freightPaidBy: z.enum(FREIGHT_PAYERS).optional(),
 });
 
 // POST /api/listings — Create a new listing

@@ -11,9 +11,11 @@
 // Without duplicating code.
 // =============================================================================
 
+import { assertNoContactDetails } from '../utils/contactDetails';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
-import { PUBLIC_SELLER_SELECT } from './publicSeller';
+import { PUBLIC_SELLER_SELECT, nameOnlySellers } from './publicSeller';
+import { parseFreightPayer } from '../utils/freight';
 
 // --- Types for service inputs ---
 interface CreateListingInput {
@@ -37,6 +39,7 @@ interface CreateListingInput {
   state: string;
   directSaleEnabled?: boolean;
   retailPricePerUnit?: number;
+  freightPaidBy?: string;
 }
 
 interface UpdateListingInput {
@@ -59,6 +62,8 @@ interface UpdateListingInput {
   state?: string;
   directSaleEnabled?: boolean;
   retailPricePerUnit?: number;
+  // Changing it moves only bids made from now on: each bid carries its own copy.
+  freightPaidBy?: string;
   // NOTE: `status` is deliberately NOT editable here. Listing status is owned by
   // the bid/auction/expiry flows; allowing a direct write would bypass the sale
   // state machine (e.g. flipping a live IN_AUCTION listing to SOLD).
@@ -77,6 +82,9 @@ interface ListingsQuery {
 // CREATE — Farmer posts a new crop listing
 // =============================================================================
 export async function createListing(userId: string, input: CreateListingInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.description, 'The description');
   // First, verify the user has a farmer profile
   const farmerProfile = await prisma.farmerProfile.findUnique({
     where: { userId },
@@ -128,6 +136,7 @@ export async function createListing(userId: string, input: CreateListingInput) {
       state: input.state,
       directSaleEnabled: input.directSaleEnabled || false,
       retailPricePerUnit: input.directSaleEnabled ? input.retailPricePerUnit : null,
+      freightPaidBy: parseFreightPayer(input.freightPaidBy) ?? 'FARMER',
     },
     include: {
       farmer: {
@@ -189,7 +198,7 @@ export async function getListings(query: ListingsQuery) {
   ]);
 
   return {
-    listings,
+    listings: nameOnlySellers(listings),
     pagination: {
       page,
       limit,
@@ -231,13 +240,16 @@ export async function getListingById(id: string) {
     throw new ApiError(404, 'Listing not found');
   }
 
-  return listing;
+  return nameOnlySellers(listing);
 }
 
 // =============================================================================
 // UPDATE — Farmer edits their own listing
 // =============================================================================
 export async function updateListing(listingId: string, userId: string, input: UpdateListingInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.description, 'The description');
   // Find the listing and verify ownership
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
@@ -281,9 +293,12 @@ export async function updateListing(listingId: string, userId: string, input: Up
   const reconciledRemaining =
     input.quantity !== undefined ? Math.max(0, input.quantity - soldQuantity) : undefined;
 
+  const freightPaidBy = parseFreightPayer(input.freightPaidBy);
+
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
+      ...(freightPaidBy && { freightPaidBy }),
       ...(input.cropName && { cropName: input.cropName }),
       ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
       ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),

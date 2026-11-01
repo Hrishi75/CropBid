@@ -18,6 +18,8 @@ import { Input } from '../../components/ui/Input';
 import { ArrowIcon } from '../../components/ui/Brand';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/currency';
+import { buyerPaysFreight, freightLabel } from '../../utils/freight';
+import type { PaidBy } from '../../types';
 import { getSocket, disconnectSocket } from '../../lib/socket';
 import api from '../../lib/axios';
 
@@ -68,6 +70,8 @@ export function AuctionRoom() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [lotQuantity, setLotQuantity] = useState<number | null>(null);
+  // An auction bids on price alone, so the winner takes the lot's delivery terms.
+  const [lotFreight, setLotFreight] = useState<PaidBy | null>(null);
   const endsAtRef = useRef<Date | null>(null);
 
   const formatTime = useCallback((ms: number) => {
@@ -98,6 +102,7 @@ export function AuctionRoom() {
     api.get(`/listings/${listingId}`)
       .then(({ data }) => {
         if (data?.quantity) setLotQuantity(data.quantity);
+        if (data?.freightPaidBy) setLotFreight(data.freightPaidBy);
       })
       .catch(() => {
         // Non-fatal: the bid total preview will hide itself when quantity is null.
@@ -284,6 +289,12 @@ export function AuctionRoom() {
                 : ''}
             </div>
           </div>
+          {lotFreight && (
+            <div className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
+              Delivery: {freightLabel(lotFreight).toLowerCase()}, as the seller set on this lot.
+              {buyerPaysFreight(lotFreight) && ' CropBid quotes it after the auction; the winner pays goods and their share together.'}
+            </div>
+          )}
           <div className="cb-pill-group" style={{ marginTop: 10 }}>
             {[5, 10, 20].map((pct) => (
               <button

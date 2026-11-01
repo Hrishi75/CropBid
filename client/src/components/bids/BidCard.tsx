@@ -11,13 +11,15 @@
 // =============================================================================
 
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { ContactCropBid } from '../deals/ContactCropBid';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
+import { freightLabel, buyerPaysFreight } from '../../utils/freight';
 import type { Bid, Listing, User } from '../../types';
 
 interface BidCardProps {
@@ -36,22 +38,41 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 };
 
 export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
+  const navigate = useNavigate();
   const [showCounter, setShowCounter] = useState(false);
   const [counterPrice, setCounterPrice] = useState('');
   const [showUpdate, setShowUpdate] = useState(false);
   const [newPrice, setNewPrice] = useState('');
   const [loading, setLoading] = useState('');
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  // Accepting fixes the price AND who pays for delivery, so the seller is
+  // shown both before the deal is made.
+  const [confirmAccept, setConfirmAccept] = useState(false);
 
   const currency = bid.currency || bid.listing?.currency || 'INR';
+  const freight = bid.freightPaidBy ?? 'FARMER';
+  const lotFreight = bid.listing?.freightPaidBy;
+  // A buyer revising their bid can change the delivery terms with the price.
+  const [newFreight, setNewFreight] = useState(freight);
   const status = STATUS_META[bid.status] || { label: bid.status.slice(0, 4).toUpperCase(), color: 'var(--cb-ink-3)' };
 
   async function handleAction(action: string) {
     setLoading(action);
     try {
       if (action === 'accept') {
-        await api.put(`/bids/${bid.id}/accept`);
-        toast.success('Bid accepted');
+        // What the seller was shown. If the buyer revised the bid meanwhile the
+        // server refuses (409) rather than accept terms nobody showed them.
+        const { data: accepted } = await api.put(`/bids/${bid.id}/accept`, {
+          bidPricePerUnit: bid.bidPricePerUnit,
+          ...(bid.freightPaidBy && { freightPaidBy: bid.freightPaidBy }),
+        });
+        toast.success('Deal made. CropBid books the delivery.');
+        setConfirmAccept(false);
+        // The deal page opens with the "Deal made" popup: what happens next.
+        if (accepted?.transaction?.id) {
+          navigate(`/transactions/${accepted.transaction.id}`);
+          return;
+        }
       } else if (action === 'reject') {
         await api.put(`/bids/${bid.id}/reject`);
         toast.success('Bid rejected');
@@ -70,7 +91,7 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           setLoading('');
           return;
         }
-        await api.put(`/bids/${bid.id}/update`, { bidPricePerUnit: Number(newPrice) });
+        await api.put(`/bids/${bid.id}/update`, { bidPricePerUnit: Number(newPrice), freightPaidBy: newFreight });
         toast.success('Bid updated');
         setShowUpdate(false);
       } else if (action === 'withdraw') {
@@ -137,35 +158,30 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           </div>
         </div>
 
-        {viewAs === 'farmer' && bid.contactReleased === false && (
-          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, color: 'var(--cb-ink-3)' }}>
-            <span className="cb-mono cb-tiny" style={{ marginRight: 6 }}>CONTACT</span>
-            Delivery address and phone are shared once the buyer's payment clears.
+        <div className="cb-small" style={{ marginBottom: 12 }}>
+          <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>DELIVERY</span>
+          {freightLabel(freight)}
+          {lotFreight && lotFreight !== freight && (
+            <span style={{ color: 'var(--cb-ember)' }}>
+              {viewAs === 'farmer'
+                ? ` · buyer's proposal (your lot says ${freightLabel(lotFreight).toLowerCase()})`
+                : ` · your proposal (the lot says ${freightLabel(lotFreight).toLowerCase()})`}
+            </span>
+          )}
+        </div>
+
+        {/* Names only: the buyer's phone and address never reach the seller,
+            paid or not. CropBid is the point of contact and does the delivery. */}
+        {viewAs === 'farmer' && (
+          <div style={{ marginBottom: 12 }}>
+            <ContactCropBid other="the buyer" about={`bid #${bid.id.slice(-6).toUpperCase()}`} />
           </div>
         )}
 
-        {viewAs === 'farmer' && (bid.deliveryAddress || bid.contactPhone || bid.paymentTerms || bid.deliveryTerms) && (
-          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {bid.deliveryAddress && (
-              <div>
-                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>DELIVER TO</span>
-                {bid.deliveryAddress}
-              </div>
-            )}
-            {bid.contactPhone && (
-              <div>
-                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>CONTACT</span>
-                <a href={`tel:${bid.contactPhone}`} style={{ color: 'var(--cb-ink)' }}>
-                  {bid.contactPhone}
-                </a>
-              </div>
-            )}
-            {(bid.paymentTerms || bid.deliveryTerms) && (
-              <div>
-                <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>TERMS</span>
-                {[bid.paymentTerms, bid.deliveryTerms].filter(Boolean).join(' · ')}
-              </div>
-            )}
+        {viewAs === 'farmer' && (bid.paymentTerms || bid.deliveryTerms) && (
+          <div className="cb-small" style={{ padding: 10, background: 'var(--cb-paper-2)', borderRadius: 6, marginBottom: 12 }}>
+            <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 6 }}>TERMS</span>
+            {[bid.paymentTerms, bid.deliveryTerms].filter(Boolean).join(' · ')}
           </div>
         )}
 
@@ -177,7 +193,7 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
 
         {viewAs === 'farmer' && bid.status === 'PENDING' && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button size="sm" onClick={() => handleAction('accept')} loading={loading === 'accept'}>
+            <Button size="sm" onClick={() => setConfirmAccept(true)} loading={loading === 'accept'}>
               Accept {formatCurrency(bid.bidPricePerUnit, currency)}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setShowCounter(!showCounter)}>
@@ -233,6 +249,17 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
               value={newPrice}
               onChange={(e) => setNewPrice(e.target.value)}
             />
+            <select
+              aria-label="Who pays for delivery"
+              className="cb-input"
+              style={{ width: 'auto' }}
+              value={newFreight}
+              onChange={(e) => setNewFreight(e.target.value as typeof newFreight)}
+            >
+              <option value="FARMER">Seller pays delivery</option>
+              <option value="SPLIT">Split delivery 50/50</option>
+              <option value="BUYER">Buyer pays delivery</option>
+            </select>
             <Button
               size="md"
               onClick={() => handleAction('update')}
@@ -244,6 +271,26 @@ export function BidCard({ bid, viewAs, onUpdate }: BidCardProps) {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmAccept}
+        title="Accept this bid?"
+        message={
+          `${bid.quantity} ${bid.listing?.unit?.toLowerCase() || ''} at ${formatCurrency(bid.bidPricePerUnit, currency)} each, ${formatCurrency(bid.totalAmount, currency)} in all. ` +
+          `Delivery: ${freightLabel(freight).toLowerCase()}. CropBid books the truck. ` +
+          (freight === 'FARMER'
+            ? 'The delivery charge comes out of your payout once it is booked.'
+            : freight === 'SPLIT'
+              ? 'We quote the delivery first; half is added to what the buyer pays and half comes out of your payout.'
+              : 'We quote the delivery first; the buyer pays all of it on top of the goods.') +
+          (buyerPaysFreight(freight) ? ' The buyer can pay once the quote is in.' : '')
+        }
+        confirmLabel="Accept and make the deal"
+        variant="info"
+        loading={loading === 'accept'}
+        onConfirm={() => handleAction('accept')}
+        onCancel={() => setConfirmAccept(false)}
+      />
 
       <ConfirmModal
         open={confirmWithdraw}

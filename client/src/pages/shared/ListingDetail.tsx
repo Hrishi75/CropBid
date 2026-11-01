@@ -14,6 +14,7 @@ import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { ArrowIcon, MiniChart } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
+import { freightLabel } from '../../utils/freight';
 import { mspForCrop } from '../../utils/msp';
 import { cropImageFor } from '../../utils/cropImages';
 import { localizedDescription } from '../../utils/localized';
@@ -205,6 +206,9 @@ export function ListingDetail() {
               <SpecRow label="Country" value={listing.country} />
               <SpecRow label="State" value={listing.state} />
               <SpecRow label="City" value={listing.location} />
+              {/* A term of any deal off this lot, shown before anyone bids. A
+                  bid can propose otherwise; the seller sees that first. */}
+              <SpecRow label="Delivery" value={freightLabel(listing.freightPaidBy)} />
             </div>
 
             {listing.organic && (

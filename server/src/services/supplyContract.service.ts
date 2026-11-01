@@ -20,6 +20,7 @@
 // both win.
 // =============================================================================
 
+import { assertNoContactDetails } from '../utils/contactDetails';
 import type { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
@@ -58,6 +59,9 @@ export interface ProposeInput {
 }
 
 export async function proposeContract(buyerId: string, input: ProposeInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.message);
   await assertCanPropose(buyerId);
 
   const listing = await prisma.listing.findUnique({
@@ -129,12 +133,14 @@ export async function proposeContract(buyerId: string, input: ProposeInput) {
     },
   });
 
-  const buyer = await prisma.buyerProfile.findUnique({ where: { userId: buyerId }, select: { companyName: true } });
+  // Named by the person, never the company: the two sides see names only and
+  // CropBid is the point of contact (contactVisibility.ts).
+  const buyer = await prisma.user.findUnique({ where: { id: buyerId }, select: { name: true } });
   void createNotification({
     userId: contract.farmerId,
     type: 'SUPPLY_CONTRACT_PROPOSED',
     title: `Supply contract offered: ${contract.cropName}`,
-    message: `${buyer?.companyName ?? 'A buyer'} wants ${total} ${contract.unit.toLowerCase()} at ${contract.currency} ${contract.pricePerUnit}, ${batch} every ${contract.everyDays} days.`,
+    message: `${buyer?.name ?? 'A buyer'} wants ${total} ${contract.unit.toLowerCase()} at ${contract.currency} ${contract.pricePerUnit}, ${batch} every ${contract.everyDays} days.`,
     data: { supplyContractId: contract.id },
   }).catch(() => {});
 
@@ -178,7 +184,7 @@ export async function respondToContract(id: string, farmerUserId: string, accept
   // at the next timer tick.
   if (accept) await createDueBatches(now, id).catch((err) => console.error('[contracts] first batch', id, err));
 
-  return prisma.supplyContract.findUniqueOrThrow({ where: { id } });
+  return forViewer(await prisma.supplyContract.findUniqueOrThrow({ where: { id } }), farmerUserId);
 }
 
 /**
@@ -208,7 +214,7 @@ export async function cancelContract(id: string, userId: string) {
     data: { supplyContractId: id },
   }).catch(() => {});
 
-  return prisma.supplyContract.findUniqueOrThrow({ where: { id } });
+  return forViewer(await prisma.supplyContract.findUniqueOrThrow({ where: { id } }), userId);
 }
 
 /**
@@ -295,7 +301,9 @@ async function makeBatch(tx: Prisma.TransactionClient, c: ContractRow, now: Date
       pricePerUnitMax: c.pricePerUnit,
       currency: c.currency,
       directSaleEnabled: false,
-      description: `Supply contract #${c.id.slice(-6).toUpperCase()}: ${c.cropName}, batch for ${c.deliveryAddress}.`,
+      // No delivery address: the seller reads this on the deal, and CropBid,
+      // not the seller, takes the batch to the buyer.
+      description: `Supply contract #${c.id.slice(-6).toUpperCase()}: ${c.cropName}, scheduled batch.`,
       images: [],
       organic: c.organic,
       // ORIGIN, not destination: transport picks up from here.
@@ -327,15 +335,23 @@ async function makeBatch(tx: Prisma.TransactionClient, c: ContractRow, now: Date
   return { quantity, scheduledAfter, transactionId: transaction.id, bidId: bid.id };
 }
 
+// The buyer's delivery address and phone are on the contract so batches can be
+// made from it; only the buyer, who typed them, gets them back. The seller sees
+// names only and CropBid delivers (contactVisibility.ts).
+function forViewer<T extends { buyerId: string; deliveryAddress: string | null; contactPhone: string | null }>(c: T, userId: string): T {
+  return c.buyerId === userId ? c : { ...c, deliveryAddress: null, contactPhone: null };
+}
+
 /** The caller's contracts, either side, each with its batches' deal states. */
 export async function getMyContracts(userId: string) {
-  return prisma.supplyContract.findMany({
+  const contracts = await prisma.supplyContract.findMany({
     where: { OR: [{ buyerId: userId }, { farmerId: userId }] },
     orderBy: { createdAt: 'desc' },
     take: 50,
     include: {
-      buyer: { select: { id: true, name: true, buyerProfile: { select: { companyName: true, companyType: true } } } },
-      farmer: { select: { id: true, name: true, trustScore: true, farmerProfile: { select: { state: true, businessName: true } } } },
+      // Names only, on both sides (contactVisibility.ts).
+      buyer: { select: { id: true, name: true, buyerProfile: { select: { companyType: true } } } },
+      farmer: { select: { id: true, name: true, trustScore: true, farmerProfile: { select: { state: true } } } },
       batches: {
         orderBy: { createdAt: 'asc' },
         select: {
@@ -347,4 +363,5 @@ export async function getMyContracts(userId: string) {
       },
     },
   });
+  return contracts.map((c) => forViewer(c, userId));
 }

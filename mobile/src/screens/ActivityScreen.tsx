@@ -29,6 +29,7 @@ function toneFor(type: string): string {
       return colors.error;
     case 'NEW_BID':
     case 'BID_COUNTERED':
+    case 'FREIGHT_QUOTED': // delivery priced: the buyer can pay now
       return colors.ember;
     default: // DELIVERY_UPDATE, SHIPMENT_BOOKED, SHIPMENT_UPDATE, …
       return colors.info;

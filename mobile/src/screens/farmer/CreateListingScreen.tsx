@@ -29,6 +29,8 @@ import { colors, design, font } from '../../theme';
 import { useAuth } from '../../context/AuthContext';
 import { createListing, fetchListing, updateListing } from '../../api/endpoints';
 import { errorMessage, mediaUrl } from '../../api/client';
+import type { FreightPayer } from '../../api/types';
+import { FREIGHT_OPTIONS } from '../../lib/freight';
 import type { FarmerStackParamList } from '../../navigation/types';
 import { money, unitLabel } from '../../lib/format';
 import { mspForCrop } from '../../lib/msp';
@@ -83,6 +85,8 @@ function FarmListingScreen({ route, navigation }: Props) {
   const [harvestDate, setHarvestDate] = useState('');
   const [description, setDescription] = useState('');
   const [organic, setOrganic] = useState(false);
+  // Who pays for delivery on a deal off this lot. A bid can propose otherwise.
+  const [freightPaidBy, setFreightPaidBy] = useState<FreightPayer>('FARMER');
   const [location, setLocation] = useState('');
   const [stateName, setStateName] = useState('');
   const [picked, setPicked] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -110,6 +114,7 @@ function FarmListingScreen({ route, navigation }: Props) {
         setHarvestDate(l.harvestDate ? l.harvestDate.split('T')[0] : '');
         setDescription(l.description || '');
         setOrganic(l.organic || false);
+        setFreightPaidBy(l.freightPaidBy ?? 'FARMER');
         setLocation(l.location || '');
         setStateName(l.state || '');
         setExistingImages(l.images ?? []);
@@ -212,6 +217,7 @@ function FarmListingScreen({ route, navigation }: Props) {
           state: stateName,
           directSaleEnabled,
           retailPricePerUnit: directSaleEnabled ? Number(retailPrice) : undefined,
+          freightPaidBy,
         });
       } else {
         const form = new FormData();
@@ -231,6 +237,7 @@ function FarmListingScreen({ route, navigation }: Props) {
         form.append('state', stateName);
         form.append('directSaleEnabled', String(directSaleEnabled));
         if (directSaleEnabled) form.append('retailPricePerUnit', retailPrice);
+        form.append('freightPaidBy', freightPaidBy);
         picked.forEach((asset, i) => {
           form.append('images', {
             uri: asset.uri,
@@ -352,6 +359,25 @@ function FarmListingScreen({ route, navigation }: Props) {
               {money(minN, currency)} – {money(maxN, currency)} / {unit.toLowerCase()}
             </Text>
           ) : null}
+        </Section>
+
+        {/* Delivery terms: part of any deal off this lot, seen before bidding. */}
+        <Section title="Delivery · who pays">
+          <Text style={styles.hint}>
+            CropBid books the truck on every deal. A buyer can propose different terms in their bid; you see them before accepting.
+          </Text>
+          <View style={styles.pillRow}>
+            {FREIGHT_OPTIONS.map((o) => (
+              <Pill key={o.value} active={freightPaidBy === o.value} label={o.short} onPress={() => setFreightPaidBy(o.value)} />
+            ))}
+          </View>
+          <Text style={styles.hint}>
+            {freightPaidBy === 'FARMER'
+              ? 'Taken from your payout once the truck is booked.'
+              : freightPaidBy === 'SPLIT'
+                ? 'Half added to what the buyer pays, half from your payout. The buyer pays once CropBid quotes it.'
+                : 'Added to what the buyer pays. The buyer pays once CropBid quotes it.'}
+          </Text>
         </Section>
 
         {/* Direct-to-consumer */}

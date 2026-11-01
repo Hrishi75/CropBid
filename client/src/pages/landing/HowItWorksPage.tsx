@@ -83,7 +83,7 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🤝', 'Counter-offers', 'Not happy with a bid? Counter it. The whole conversation stays on the record.'],
   ['📋', 'Demand board', 'Buyers post what they need and at what price. Farmers fill it outright or come back with an offer.'],
   ['🤖', 'Agents that haggle for you', 'Set your floor, your ceiling and how hard to push. When both sides have an agent switched on, either can hand a bid over and let the two of them settle it, every round written down.'],
-  ['🚚', 'We book the truck, not you', 'One less thing for a farmer to arrange, and a delivery the platform answers for instead of a number the seller gave you. The seller pays the freight, and both sides follow the deal: paid → shipped → delivered.'],
+  ['🚚', 'We book the truck, not you', 'One less thing for a farmer to arrange, and a delivery the platform answers for instead of a number the seller gave you. Who pays the freight is agreed with the bid: the seller, half each, or the buyer. Both sides follow the deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
   ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place, and the licence their trade needs: FSSAI for a food shop, GSTIN for a wholesale firm.'],
   ['📱', 'Sign up in a minute', 'Your name, an email or phone number, and a password. English, Hindi or Marathi, on the site or the app.'],
@@ -650,8 +650,10 @@ function Partner() {
           ))}
         </div>
 
-        {/* Freight is billed to the seller, and an applicant should read that
-            here rather than discover it on their first settlement. It is on
+        {/* Who pays the freight is a term of each deal (the seller's default
+            on the listing, a buyer's bid can propose otherwise), and an
+            applicant should read that here rather than discover it on their
+            first settlement. It is on
             TransactionDetail and the Deliveries lede in the app, both of which
             are behind the approval they have not got yet.
 
@@ -664,9 +666,10 @@ function Partner() {
           <strong>Two things to know before you apply.</strong> You keep your own
           prices: we never set them, and every listing shows the day's government
           mandi rate beside yours so the buyer is arguing with the market and not
-          with you. And we book the transport rather than you, which means
-          <strong> the freight is billed to the seller</strong> and shows as its own
-          line on the settlement.
+          with you. And we book the transport rather than you. <strong>Who pays the
+          freight is part of the deal</strong>: you choose on each listing whether you pay
+          it, split it 50/50 or the buyer pays, a buyer can propose different terms in their
+          bid, and your share shows as its own line on the settlement.
         </p>
 
         <div className="hiw-cta-row">
@@ -703,14 +706,16 @@ function Pricing() {
         </div>
 
         {/* "No hidden charges" used to sit in the 2% card. It cannot, now that
-            freight is billed to the seller: a charge is not hidden only if it
-            is written down somewhere the payer reads. */}
+            freight is billed to whoever the deal says: a charge is not hidden
+            only if it is written down somewhere the payer reads. */}
         {/* PER SHOP: a retail basket is one order per shop, because each shop is
             one delivery run. Two ₹120 items from the same shop are one ₹240
             order and travel free. See RETAIL_DELIVERY in retailOrder.service. */}
         <p className="hiw-note" style={{ maxWidth: 780, margin: '18px auto 0' }}>
           <strong>What is not in the 2%.</strong> Transport is charged separately and
-          on top, at what the carrier quotes, and it is billed to the seller. Households
+          on top, at what CropBid quotes, and split the way the deal says: the seller pays
+          it, the two sides pay half each, or the buyer pays it. A buyer with a share pays
+          it with the goods, once it is quoted. The 2% is never taken on it. Households
           pay ₹30 for delivery when a shop's items in their order come to less than ₹200,
           and nothing from ₹200 up; that charge is CropBid's, not the seller's. Those two
           are the only other numbers there are.

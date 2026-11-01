@@ -15,10 +15,11 @@
 // origin), lets ops pick a partner, fetch a price quote, set pickup/delivery
 // details, then books the shipment.
 //
-// There is no "who pays" control. The seller carries the freight cost on every
-// deal, so the server writes paidBy: FARMER itself and the request schema has
-// no field for it. Restoring a picker here means changing the rule, not just
-// this form.
+// There is no "who pays" control. Who pays is a term the two sides agreed
+// before the deal (seller, 50/50 or buyer; utils/freight), and the server
+// copies it onto the shipment itself. When the buyer pays some of it, ops
+// send a quote first (PUT /logistics/freight-quote/:id): the buyer cannot pay
+// until it is in, and the booking then costs exactly that quote.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -30,7 +31,8 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
-import type { LogisticsPartner, TransportQuote } from '../../types';
+import { freightLabel } from '../../utils/freight';
+import type { LogisticsPartner, PaidBy, TransportQuote } from '../../types';
 
 interface TransactionInfo {
   cropName: string;
@@ -40,6 +42,14 @@ interface TransactionInfo {
   isPerishable: boolean;
   origin: string;
   country: string;
+  freightPaidBy: PaidBy;
+  freightQuote: number | null;
+  /** The buyer pays some of the delivery, so they need a quote before paying. */
+  buyerPaysFreight: boolean;
+  /** The buyer opened the payment or has paid: the quote can no longer move. */
+  quoteLocked: boolean;
+  paymentStatus: string;
+  currency: string;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -68,6 +78,8 @@ export function BookTransport() {
   const [distanceKm, setDistanceKm] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [booking, setBooking] = useState(false);
+  const [quoteAmount, setQuoteAmount] = useState('');
+  const [sendingQuote, setSendingQuote] = useState(false);
 
   useEffect(() => {
     async function fetch() {
@@ -77,6 +89,7 @@ export function BookTransport() {
         setTxInfo(res.data.transactionInfo);
         if (res.data.transactionInfo) {
           setPickupLocation(res.data.transactionInfo.origin);
+          if (res.data.transactionInfo.freightQuote != null) setQuoteAmount(String(res.data.transactionInfo.freightQuote));
         }
       } catch (err: any) {
         toast.error(err.response?.data?.message || 'Failed to load partners');
@@ -108,6 +121,24 @@ export function BookTransport() {
       setVehicleType(partner.vehicleTypes[0]);
     }
     if (distanceKm) fetchQuote(partnerId);
+  }
+
+  async function sendQuote() {
+    const amount = Number(quoteAmount);
+    if (!(amount > 0)) {
+      toast.error('Enter the delivery charge');
+      return;
+    }
+    setSendingQuote(true);
+    try {
+      const { data } = await api.put(`/logistics/freight-quote/${transactionId}`, { amount });
+      setTxInfo((info) => (info ? { ...info, freightQuote: data.freightQuote } : info));
+      toast.success(`Quote sent. Buyer's share ${formatCurrency(data.buyerShare, txInfo?.currency ?? 'INR')}; both sides told.`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Could not send the quote');
+    } finally {
+      setSendingQuote(false);
+    }
   }
 
   async function handleBook() {
@@ -163,6 +194,58 @@ export function BookTransport() {
             {txInfo.isPerishable && <span className="cb-chip cb-chip-ember" style={{ marginLeft: 8 }}>perishable</span>}
           </div>
           <div className="cb-tiny" style={{ marginTop: 4 }}>Origin: {txInfo.origin}, {txInfo.country}</div>
+        </div>
+      )}
+
+      {txInfo && (
+        <div className="cb-card" style={{ marginBottom: 18 }}>
+          <div className="cb-eyebrow" style={{ marginBottom: 8 }}>Delivery terms · agreed with the bid</div>
+          <div style={{ fontWeight: 500 }}>{freightLabel(txInfo.freightPaidBy)}</div>
+          {!txInfo.buyerPaysFreight ? (
+            <p className="cb-tiny" style={{ marginTop: 4 }}>
+              Book directly. The charge comes out of the seller's payout.
+            </p>
+          ) : (
+            <>
+              <p className="cb-tiny" style={{ marginTop: 4 }}>
+                {txInfo.freightQuote == null
+                  ? 'Not quoted yet. The buyer cannot pay until you send a quote, and the booking costs exactly what you quote.'
+                  : `Quoted ${formatCurrency(txInfo.freightQuote, txInfo.currency)}. The booking costs exactly this.`}
+                {' '}Pick a carrier and distance below to calculate one, or enter the figure the carrier gave you.
+              </p>
+              {txInfo.quoteLocked ? (
+                <p className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
+                  The buyer has opened the payment, so the quote is fixed.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end', marginTop: 10 }}>
+                  <Input
+                    label={`Delivery charge (${txInfo.currency})`}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={quoteAmount}
+                    onChange={(e) => setQuoteAmount(e.target.value)}
+                  />
+                  {quote && (
+                    <Button variant="ghost" onClick={() => setQuoteAmount(String(quote.transportCost))}>
+                      Use {formatCurrency(quote.transportCost, 'INR')}
+                    </Button>
+                  )}
+                  <Button onClick={sendQuote} loading={sendingQuote} disabled={!(Number(quoteAmount) > 0)}>
+                    {txInfo.freightQuote == null ? 'Send quote to buyer' : 'Update quote'}
+                  </Button>
+                </div>
+              )}
+              {Number(quoteAmount) > 0 && (
+                <p className="cb-tiny" style={{ marginTop: 8 }}>
+                  {txInfo.freightPaidBy === 'SPLIT'
+                    ? `Buyer pays ${formatCurrency(Math.round(Number(quoteAmount) * 50) / 100, txInfo.currency)}, seller pays the rest.`
+                    : `Buyer pays all ${formatCurrency(Number(quoteAmount), txInfo.currency)}.`}
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -245,12 +328,15 @@ export function BookTransport() {
               </div>
             </Section>
 
-            {/* Was a Buyer/Farmer/Split picker. The seller pays the freight on
-                every deal now, so this states the rule instead of offering a
-                choice the server would ignore. */}
+            {/* No Buyer/Farmer/Split picker: who pays was agreed with the bid,
+                and the server copies it onto the shipment. */}
             <Section title="Cost">
               <p className="cb-small" style={{ margin: 0 }}>
-                Billed to the seller and deducted from their settlement.
+                {txInfo?.buyerPaysFreight
+                  ? txInfo.freightQuote != null
+                    ? `Costs the quoted ${formatCurrency(txInfo.freightQuote, txInfo.currency)}, ${txInfo.freightPaidBy === 'SPLIT' ? 'split 50/50 between buyer and seller' : 'paid by the buyer'}.`
+                    : 'Send the buyer a quote above before booking.'
+                  : 'Billed to the seller and deducted from their settlement.'}
               </p>
             </Section>
 
@@ -275,7 +361,7 @@ export function BookTransport() {
             )}
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '18px 0' }}>
-              <Button onClick={handleBook} loading={booking} size="lg">
+              <Button onClick={handleBook} loading={booking} size="lg" disabled={txInfo?.buyerPaysFreight && txInfo.freightQuote == null}>
                 Confirm & book
                 <ArrowIcon />
               </Button>

@@ -35,6 +35,7 @@
 // against each other.
 // =============================================================================
 
+import { assertNoContactDetails } from '../utils/contactDetails';
 import { randomUUID } from 'crypto';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
@@ -117,13 +118,16 @@ export interface RequirementFeedQuery {
 // Transactions page, which already exposes the buyer's phone to the seller and
 // never the farmer's to the buyer. Mirrors PUBLIC_FARMER_SELECT in the
 // listing/browse/bid services.
+// No companyName: a seller sees the buyer's own name only, and CropBid is
+// the point of contact (contactVisibility.ts). The type stays, because it
+// decides what a seller may do (a restaurant's request takes offers only).
 const PUBLIC_BUYER_SELECT = {
   id: true,
   name: true,
   trustScore: true,
   avatar: true,
   buyerProfile: {
-    select: { companyName: true, companyType: true, country: true, verified: true },
+    select: { companyType: true, country: true, verified: true },
   },
 } as const;
 
@@ -146,7 +150,7 @@ type FeedBuyer = {
   trustScore: number;
   avatar: string | null;
   buyerProfile: {
-    companyName: string;
+    companyName?: string;
     companyType: string;
     country: string;
     verified: boolean;
@@ -465,6 +469,9 @@ function notifyExpiredOffers(
 // CREATE REQUIREMENT — Buyer posts what they need
 // =============================================================================
 export async function createRequirement(buyerId: string, input: CreateRequirementInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.description, 'The description');
   const buyerProfile = await prisma.buyerProfile.findUnique({ where: { userId: buyerId } });
   if (!buyerProfile) {
     throw new ApiError(400, 'Complete your buyer profile before posting a requirement');
@@ -529,7 +536,8 @@ export async function createRequirement(buyerId: string, input: CreateRequiremen
 
   // Fire-and-forget: the requirement is already posted, and a notification
   // fan-out that fails must not turn a successful post into a 500.
-  void announceRequirement(requirement, buyerProfile.companyName);
+  // Announced under the person's name, never the company (contactVisibility.ts).
+  void announceRequirement(requirement, (await prisma.user.findUnique({ where: { id: buyerId }, select: { name: true } }))?.name ?? 'A buyer');
 
   return requirement;
 }
@@ -850,6 +858,9 @@ export async function acceptRequirementNow(
   farmerUserId: string,
   input: { quantity: number; message?: string },
 ) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.message);
   const { requirement, farmerProfile } = await assertFarmerCanRespond(
     requirementId,
     farmerUserId,
@@ -976,6 +987,9 @@ export async function createOffer(
   farmerUserId: string,
   input: { quantity: number; pricePerUnit: number; message?: string },
 ) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.message);
   // Same gate as the instant path, deliberately: fail here rather than hand the
   // buyer an offer that turns out to be unfillable when they accept it.
   const { requirement, farmerProfile } = await assertFarmerCanRespond(
@@ -1289,6 +1303,9 @@ export interface RequirementListInput {
 }
 
 export async function createRequirementList(buyerId: string, input: RequirementListInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.description, 'The description');
   const buyerProfile = await prisma.buyerProfile.findUnique({ where: { userId: buyerId } });
   if (!buyerProfile) throw new ApiError(400, 'Complete your buyer profile before posting a requirement');
   const buyer = await prisma.user.findUnique({ where: { id: buyerId }, select: { phone: true } });
@@ -1359,7 +1376,8 @@ export async function createRequirementList(buyerId: string, input: RequirementL
   });
 
   // Sellers hear about each crop as they would a single request.
-  for (const r of created) void announceRequirement(r, buyerProfile.companyName ?? '');
+  const poster = await prisma.user.findUnique({ where: { id: buyerId }, select: { name: true } });
+  for (const r of created) void announceRequirement(r, poster?.name ?? 'A buyer');
 
   return { listId, listName, requirements: created };
 }
@@ -1557,8 +1575,8 @@ export async function repostDueRequirements(now = new Date()): Promise<number> {
       posted += 1;
       notifyExpiredOffers(out.expired, old.cropName, old.id);
       notifyRequirementReposted(old.buyerId, old.cropName, old.repeatEveryDays!, out.copy.id).catch(() => {});
-      const profile = await prisma.buyerProfile.findUnique({ where: { userId: old.buyerId }, select: { companyName: true } });
-      void announceRequirement(out.copy, profile?.companyName ?? '');
+      const poster = await prisma.user.findUnique({ where: { id: old.buyerId }, select: { name: true } });
+      void announceRequirement(out.copy, poster?.name ?? 'A buyer');
     } catch (err) {
       // One bad row must not stop the rest; it stays due and is retried.
       console.error('[repeat] could not repost', old.id, err);
@@ -1575,6 +1593,9 @@ export async function updateRequirement(
   buyerId: string,
   input: UpdateRequirementInput,
 ) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.description, 'The description');
   const existing = await prisma.buyerRequirement.findUnique({ where: { id } });
   if (!existing) throw new ApiError(404, 'Requirement not found');
   if (existing.buyerId !== buyerId) {

@@ -14,7 +14,7 @@
 import { prisma } from '../lib/prisma';
 import { KG_PER_UNIT } from '../utils/units';
 import { isRetailCity, retailCityFilter } from '../utils/retailCities';
-import { PUBLIC_SELLER_SELECT } from './publicSeller';
+import { PUBLIC_SELLER_SELECT, nameOnlySellers } from './publicSeller';
 
 
 interface BrowseQuery {
@@ -171,7 +171,7 @@ export async function browseListings(query: BrowseQuery) {
   ]);
 
   return {
-    listings,
+    listings: nameOnlySellers(listings),
     pagination: {
       page,
       limit,
@@ -264,7 +264,7 @@ export async function smartMatch(context: SmartMatchContext, limitResults: numbe
 
   // Sort by score descending, return top N
   scored.sort((a, b) => b.matchScore - a.matchScore);
-  return scored.slice(0, limitResults);
+  return nameOnlySellers(scored.slice(0, limitResults));
 }
 
 // =============================================================================

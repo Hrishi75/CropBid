@@ -20,7 +20,7 @@ vi.mock('./orderAlert.service', () => ({ alertNewOrder: vi.fn(() => Promise.reso
 import { prisma } from '../lib/prisma';
 import { alertNewOrder } from './orderAlert.service';
 import { deleteUser } from './admin.service';
-import { cancelContract, createDueBatches, proposeContract, respondToContract } from './supplyContract.service';
+import { cancelContract, createDueBatches, getMyContracts, proposeContract, respondToContract } from './supplyContract.service';
 
 const FMCG = 'sc-fmcg';
 const PROC = 'sc-proc';
@@ -83,6 +83,28 @@ describe('proposing', () => {
   it('refuses a price under the floor and an interval that is not offered', async () => {
     await expect(proposeContract(FMCG, { listingId: lotId, ...terms, pricePerUnit: 20000 })).rejects.toThrow(/floor/);
     await expect(proposeContract(FMCG, { listingId: lotId, ...terms, everyDays: 10 })).rejects.toThrow(/7, 14 or 30/);
+  });
+});
+
+describe('what each side sees', () => {
+  // Names only, CropBid in the middle (contactVisibility.ts): the buyer's
+  // address and phone are on the contract for batches, never for the seller.
+  it("never hands the seller the buyer's address, phone or company name", async () => {
+    const c = await proposeContract(FMCG, { listingId: lotId, ...terms });
+    const answered = await respondToContract(c.id, FARM, true);
+    expect(answered.deliveryAddress).toBeNull();
+    expect(answered.contactPhone).toBeNull();
+
+    const [seen] = await getMyContracts(FARM);
+    expect(seen.deliveryAddress).toBeNull();
+    expect(seen.contactPhone).toBeNull();
+    expect(seen.buyer.buyerProfile).not.toHaveProperty('companyName');
+
+    const [own] = await getMyContracts(FMCG);
+    expect(own.deliveryAddress).not.toBeNull();
+
+    const batch = await prisma.listing.findFirstOrThrow({ where: { supplyContractId: c.id } });
+    expect(batch.description).not.toContain(own.deliveryAddress!);
   });
 });
 

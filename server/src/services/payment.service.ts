@@ -33,6 +33,7 @@ import { prisma } from '../lib/prisma';
 import { config } from '../config';
 import { ApiError } from '../utils/ApiError';
 import { notifyAdminsRetailOverpaid, notifySellersMissingPayoutDetails } from './notification.helpers';
+import { buyerPayable, buyerPaysFreight } from '../utils/freight';
 
 // Single shared client. Null when keys are not configured so the rest of the app
 // still boots (payments simply return 503).
@@ -68,7 +69,12 @@ export async function createOrder(transactionId: string, userId: string) {
     throw new ApiError(400, `Transaction is not awaiting payment (status: ${transaction.paymentStatus})`);
   }
 
-  const amountInSubunits = Math.round(transaction.totalAmount * 100);
+  // The buyer pays the goods and their share of delivery together, so a deal
+  // where they owe a share cannot be paid before ops have quoted it.
+  if (buyerPaysFreight(transaction.freightPaidBy) && transaction.freightQuote == null) {
+    throw new ApiError(409, 'CropBid is pricing the delivery for this deal. You can pay once the quote is in; we will notify you.', 'FREIGHT_QUOTE_PENDING');
+  }
+  const amountInSubunits = Math.round(buyerPayable(transaction) * 100);
 
   // Idempotency: if an order was already created (e.g. buyer dismissed the modal
   // and clicked Pay again), reuse it. Minting a fresh order would orphan the first
@@ -90,10 +96,34 @@ export async function createOrder(transactionId: string, userId: string) {
     notes: { transactionId: transaction.id, buyerId: transaction.buyerId },
   });
 
-  await prisma.transaction.update({
-    where: { id: transaction.id },
+  // Conditional on the quote this order was priced with: ops correcting the
+  // quote while the order was being created must not leave the buyer paying
+  // the old figure. A miss leaves an unpaid Razorpay order behind, which is
+  // harmless, and the buyer is asked to try again at the new amount.
+  const stored = await prisma.transaction.updateMany({
+    where: {
+      id: transaction.id,
+      razorpayOrderId: null,
+      paymentStatus: 'AWAITING_PAYMENT',
+      freightQuote: transaction.freightQuote,
+    },
     data: { razorpayOrderId: order.id },
   });
+  if (stored.count === 0) {
+    // A second Pay pressed at the same moment got its order stored first: hand
+    // that one back, as the reuse branch above would have.
+    const now = await prisma.transaction.findUnique({ where: { id: transaction.id } });
+    if (now?.razorpayOrderId && now.paymentStatus === 'AWAITING_PAYMENT' && now.freightQuote === transaction.freightQuote) {
+      return {
+        orderId: now.razorpayOrderId,
+        amount: amountInSubunits,
+        currency: now.currency,
+        keyId: config.razorpay.keyId,
+        transactionId: now.id,
+      };
+    }
+    throw new ApiError(409, 'The amount for this deal just changed. Open the payment again to see the new total.', 'PAYMENT_AMOUNT_CHANGED');
+  }
 
   // keyId is returned so the client can open Checkout without hardcoding it.
   return {
