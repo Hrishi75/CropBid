@@ -154,6 +154,119 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
 }
 
 // =============================================================================
+// ONE USER — what support needs on screen when somebody rings
+// =============================================================================
+// The row in the list carries name, contact and trust score; this adds how
+// they sign in, what they applied to be and where it stands, and how much they
+// have done. It deliberately leaves out PAN, licence numbers and payout
+// details: those are read in Admin -> Partners, and payout reads are audited
+// there (§4a). Only a boolean says whether payout details are on file.
+export async function getUserDetail(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      role: true,
+      location: true,
+      country: true,
+      language: true,
+      trustScore: true,
+      suspended: true,
+      createdAt: true,
+      updatedAt: true,
+      consentAt: true,
+      consentVersion: true,
+      mustChangePassword: true,
+      password: true,
+      googleId: true,
+      farmerProfile: {
+        select: {
+          sellerType: true,
+          businessName: true,
+          shopType: true,
+          state: true,
+          status: true,
+          statusNote: true,
+          submittedAt: true,
+          reviewedAt: true,
+          organicCertified: true,
+          cropsGrown: true,
+          payoutUpiId: true,
+          payoutAccountName: true,
+          payoutAccountNumber: true,
+          payoutIfsc: true,
+          _count: { select: { listings: true } },
+        },
+      },
+      buyerProfile: {
+        select: {
+          companyName: true,
+          companyType: true,
+          status: true,
+          statusNote: true,
+          submittedAt: true,
+          reviewedAt: true,
+        },
+      },
+      // Merged with DELETE_BLOCKER_SELECT by hand: spreading it would replace
+      // these two keys whole.
+      wallet: { select: { balance: true, ...DELETE_BLOCKER_SELECT.wallet.select } },
+      _count: {
+        select: {
+          ...DELETE_BLOCKER_SELECT._count.select,
+          bids: true,
+          farmerTransactions: true,
+          buyerTransactions: true,
+          retailOrdersPlaced: true,
+          retailOrdersTaken: true,
+          buyerRequirements: true,
+          requirementOffers: true,
+          addresses: true,
+        },
+      },
+    },
+  });
+  if (!user) throw new ApiError(404, 'User not found');
+
+  const { password, googleId, farmerProfile, wallet, _count, ...rest } = user;
+
+  let seller = null;
+  if (farmerProfile) {
+    const {
+      payoutUpiId, payoutAccountName, payoutAccountNumber, payoutIfsc,
+      _count: profileCount, ...profile
+    } = farmerProfile;
+    seller = {
+      ...profile,
+      listings: profileCount.listings,
+      hasPayoutDetails: hasPayoutDetails({ payoutUpiId, payoutAccountName, payoutAccountNumber, payoutIfsc }),
+    };
+  }
+
+  return {
+    ...rest,
+    hasPassword: password !== null,
+    googleLinked: googleId !== null,
+    seller,
+    walletBalance: wallet?.balance ?? null,
+    counts: {
+      bids: _count.bids,
+      dealsAsSeller: _count.farmerTransactions,
+      dealsAsBuyer: _count.buyerTransactions,
+      shopOrdersPlaced: _count.retailOrdersPlaced,
+      shopOrdersTaken: _count.retailOrdersTaken,
+      requests: _count.buyerRequirements,
+      offers: _count.requirementOffers,
+      addresses: _count.addresses,
+    },
+    deleteBlocker: userDeleteBlocker({ role: user.role, _count, wallet: user.wallet }),
+  };
+}
+
+// =============================================================================
 // LIST ALL LISTINGS — Admin view with filters
 // =============================================================================
 export async function getAllListings(status?: string, limit = 20, offset = 0) {
