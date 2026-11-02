@@ -238,7 +238,9 @@ export async function notifyShipmentBooked(userId: string, cropName: string, pic
   });
 }
 
-export async function notifyShipmentUpdate(userId: string, cropName: string, status: string, location: string, shipmentId: string) {
+// `location` is null for the two sides of a deal: the place ops typed can be
+// the other party's address (contactVisibility.ts).
+export async function notifyShipmentUpdate(userId: string, cropName: string, status: string, location: string | null, shipmentId: string) {
   const labels: Record<string, string> = {
     PICKED_UP: 'picked up',
     IN_TRANSIT: 'in transit',
@@ -251,7 +253,7 @@ export async function notifyShipmentUpdate(userId: string, cropName: string, sta
     userId,
     type: 'SHIPMENT_UPDATE',
     title: `${cropName} — ${labels[status] || status}`,
-    message: `Shipment ${labels[status] || status} at ${location}`,
+    message: location ? `Shipment ${labels[status] || status} at ${location}` : `Shipment ${labels[status] || status}`,
     data: { shipmentId, status },
   });
 }

@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -62,6 +62,10 @@ export function TransactionDetail() {
   // happens next.
   const [showDealMade, setShowDealMade] = useState(false);
 
+  // Refetched on every navigation to this page, not only when the id changes:
+  // opening the "delivery priced" notification while already on the deal
+  // navigates to the same URL, and the Pay button must appear without a reload.
+  const { key: navKey } = useLocation();
   useEffect(() => {
     async function fetch() {
       try {
@@ -74,7 +78,19 @@ export function TransactionDetail() {
       }
     }
     fetch();
-  }, [id]);
+  }, [id, navKey]);
+
+  // While the buyer waits on a delivery quote, coming back to the tab checks
+  // again, so a quote sent meanwhile shows the Pay button.
+  const waitingOnQuote = !!transaction?.freight?.awaitingQuote;
+  useEffect(() => {
+    if (!waitingOnQuote) return;
+    const onFocus = () => {
+      api.get(`/transactions/${id}`).then((res) => setTransaction(res.data)).catch(() => {});
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [waitingOnQuote, id]);
 
   // Its own effect, because the session may still be restoring when the deal
   // loads: deciding inside the fetch would miss the popup on a fresh tab.

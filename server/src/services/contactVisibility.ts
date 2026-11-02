@@ -45,7 +45,8 @@ export function isContactReleased(paymentStatus?: PaymentStatus | null): boolean
 export interface BidContactFields {
   deliveryAddress: string | null;
   contactPhone: string | null;
-  transaction?: { paymentStatus: PaymentStatus } | null;
+  // No longer read: the snapshot is withheld whatever the deal's state.
+  transaction?: unknown;
 }
 
 // Bid.contactPhone / Bid.deliveryAddress are snapshotted off the buyer's

@@ -20,7 +20,7 @@ vi.mock('./orderAlert.service', () => ({ alertNewOrder: vi.fn(() => Promise.reso
 
 import { prisma } from '../lib/prisma';
 import { freightShares, parseFreightPayer } from '../utils/freight';
-import { acceptBid, placeBid, updateBid } from './bid.service';
+import { acceptBid, counterBid, placeBid, rejectBid, updateBid } from './bid.service';
 import { updateListing } from './listing.service';
 import { bookShipment, setFreightQuote } from './logistics.service';
 import { freightSummary, getTransaction } from './transaction.service';
@@ -193,5 +193,51 @@ describe('what each side sees', () => {
   it('on a seller-pays deal, waits for a booking before naming an amount', () => {
     expect(freightSummary({ totalAmount: 1000, platformFeeAmount: 20, freightPaidBy: 'FARMER', freightQuote: null, shipment: null }))
       .toMatchObject({ amount: null, awaitingQuote: false, buyerPays: 1000, sellerReceives: null });
+  });
+});
+
+describe('review fixes', () => {
+  // A real race, ten rounds, asserting the deal and the bid agree whoever won.
+  // Without the conditional write, an update reading PENDING just before the
+  // accept committed reset the accepted bid to PENDING with new terms.
+  it('never leaves an accepted bid disagreeing with its deal when an update races the accept', async () => {
+    for (let round = 0; round < 10; round++) {
+      const lot = await prisma.listing.create({
+        data: {
+          farmerId: `${FARM}-profile`, cropName: 'FT Race', quantity: 10, remainingQuantity: 10, unit: 'QUINTAL',
+          qualityGrade: 'A', pricePerUnitMin: 4000, pricePerUnitMax: 5000, location: 'Wardha', state: 'Maharashtra',
+          freightPaidBy: 'SPLIT',
+        },
+      });
+      const bid = await placeBid(BUYER, { listingId: lot.id, bidPricePerUnit: 4500, quantity: 10 });
+      await Promise.allSettled([acceptBid(bid.id, FARM), updateBid(bid.id, BUYER, 4600, 'BUYER')]);
+
+      const after = await prisma.bid.findUniqueOrThrow({ where: { id: bid.id }, include: { transaction: true } });
+      if (after.transaction) {
+        expect(after.status).toBe('ACCEPTED');
+        expect(after.transaction.freightPaidBy).toBe(after.freightPaidBy);
+        expect(after.transaction.finalPricePerUnit).toBe(after.bidPricePerUnit);
+      } else {
+        expect(after).toMatchObject({ status: 'PENDING', freightPaidBy: 'BUYER', bidPricePerUnit: 4600 });
+      }
+    }
+  });
+
+  it("never returns the buyer's phone or address to the seller from accept, reject or counter", async () => {
+    const one = await placeBid(BUYER, { listingId: lotId, bidPricePerUnit: 4500, quantity: 100, contactPhone: '9800000301', deliveryAddress: '1 Mill Road' });
+    const countered = await counterBid(one.id, FARM, 4800);
+    expect(countered).toMatchObject({ contactPhone: null, deliveryAddress: null });
+    const rejected = await rejectBid(one.id, FARM);
+    expect(rejected).toMatchObject({ contactPhone: null, deliveryAddress: null });
+
+    const two = await placeBid(BUYER, { listingId: lotId, bidPricePerUnit: 4500, quantity: 100, contactPhone: '9800000301', deliveryAddress: '1 Mill Road' });
+    const accepted = await acceptBid(two.id, FARM);
+    expect(accepted).toMatchObject({ contactPhone: null, deliveryAddress: null });
+  });
+
+  it('locks delivery terms while the lot is in a live auction', async () => {
+    await prisma.listing.update({ where: { id: lotId }, data: { status: 'IN_AUCTION' } });
+    await expect(updateListing(lotId, FARM, { freightPaidBy: 'BUYER' })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await prisma.listing.findUniqueOrThrow({ where: { id: lotId } })).freightPaidBy).toBe('SPLIT');
   });
 });

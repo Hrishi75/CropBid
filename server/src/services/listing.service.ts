@@ -294,11 +294,26 @@ export async function updateListing(listingId: string, userId: string, input: Up
     input.quantity !== undefined ? Math.max(0, input.quantity - soldQuantity) : undefined;
 
   const freightPaidBy = parseFreightPayer(input.freightPaidBy);
+  // Bidders in a live auction bid on the terms shown when it opened, and the
+  // winner takes the lot's terms at settlement, so they cannot move mid-auction.
+  if (freightPaidBy && freightPaidBy !== listing.freightPaidBy && listing.status === 'IN_AUCTION') {
+    throw new ApiError(409, 'Delivery terms cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
+  }
+  // Written on its own, conditional on the lot not being in an auction, so an
+  // auction starting between the check above and this write cannot be missed.
+  if (freightPaidBy && freightPaidBy !== listing.freightPaidBy) {
+    const moved = await prisma.listing.updateMany({
+      where: { id: listingId, status: { notIn: ['IN_AUCTION', 'SOLD', 'EXPIRED'] } },
+      data: { freightPaidBy },
+    });
+    if (moved.count === 0) {
+      throw new ApiError(409, 'Delivery terms cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
+    }
+  }
 
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
-      ...(freightPaidBy && { freightPaidBy }),
       ...(input.cropName && { cropName: input.cropName }),
       ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
       ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),

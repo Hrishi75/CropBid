@@ -423,8 +423,11 @@ export async function updateShipmentStatus(
 
   // Notify both parties
   const cropName = tx.listing.cropName;
-  notifyShipmentUpdate(tx.farmerId, cropName, newStatus, update.location, shipmentId).catch(() => {});
-  notifyShipmentUpdate(tx.buyerId, cropName, newStatus, update.location, shipmentId).catch(() => {});
+  // Neither the notification nor the live event carries the place ops typed:
+  // it can be either party's address, and the two sides see names only
+  // (contactVisibility.ts), the same rule forShipmentViewer applies to reads.
+  notifyShipmentUpdate(tx.farmerId, cropName, newStatus, null, shipmentId).catch(() => {});
+  notifyShipmentUpdate(tx.buyerId, cropName, newStatus, null, shipmentId).catch(() => {});
 
   // Socket.io real-time push
   const io = getIO();
@@ -432,7 +435,7 @@ export async function updateShipmentStatus(
     io.to(`user:${tx.farmerId}`).to(`user:${tx.buyerId}`).emit('shipment:status_update', {
       shipmentId,
       status: newStatus,
-      trackingUpdate: trackingUpdates[trackingUpdates.length - 1],
+      trackingUpdate: { ...trackingUpdates[trackingUpdates.length - 1], location: null },
     });
   }
 

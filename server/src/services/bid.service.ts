@@ -24,7 +24,7 @@ import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered 
 import { createTransaction } from './transaction.service';
 import type { FreightPayer } from '../utils/freight';
 import { alertNewOrder } from './orderAlert.service';
-import { PUBLIC_BUYER_USER_SELECT, redactBidContacts } from './contactVisibility';
+import { PUBLIC_BUYER_USER_SELECT, redactBidContact, redactBidContacts } from './contactVisibility';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -380,7 +380,9 @@ export async function acceptBid(
   ).catch(() => {});
   void alertNewOrder(bidId, 'BID_ACCEPTED');
 
-  return accepted;
+  // The seller gets names only: the bid's snapshotted phone and address stay
+  // with CropBid (contactVisibility.ts).
+  return redactBidContact(accepted);
 }
 
 // =============================================================================
@@ -410,7 +412,7 @@ export async function rejectBid(bidId: string, farmerId: string) {
 
   notifyBidRejected(bid.buyerId, bid.listing.cropName, bid.listingId, bidId).catch(() => {});
 
-  return rejected;
+  return redactBidContact(rejected);
 }
 
 // =============================================================================
@@ -451,7 +453,7 @@ export async function counterBid(bidId: string, farmerId: string, counterPrice: 
     bid.listing.currency, bid.listing.unit, bid.listingId, bidId
   ).catch(() => {});
 
-  return countered;
+  return redactBidContact(countered);
 }
 
 // =============================================================================
@@ -475,8 +477,11 @@ export async function updateBid(bidId: string, buyerId: string, newPrice: number
     throw new ApiError(400, `Bid must be at least ${bid.listing.pricePerUnitMin} (floor price)`);
   }
 
-  const updated = await prisma.bid.update({
-    where: { id: bidId },
+  // Conditional on the bid still being open. An accept committing between the
+  // read above and this write would otherwise be undone: the bid back to
+  // PENDING with new terms, while the deal keeps the terms it was accepted on.
+  const claimed = await prisma.bid.updateMany({
+    where: { id: bidId, status: { in: ['PENDING', 'COUNTERED'] } },
     data: {
       bidPricePerUnit: newPrice,
       totalAmount: newPrice * bid.quantity,
@@ -484,13 +489,18 @@ export async function updateBid(bidId: string, buyerId: string, newPrice: number
       status: 'PENDING', // Reset to pending after buyer revises
       counterPrice: null, // Clear the counter
     },
+  });
+  if (claimed.count === 0) {
+    throw new ApiError(409, 'The seller has just answered this bid. Refresh to see where it stands.', 'BID_CHANGED');
+  }
+
+  return prisma.bid.findUniqueOrThrow({
+    where: { id: bidId },
     include: {
       listing: true,
       buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
     },
   });
-
-  return updated;
 }
 
 // =============================================================================
