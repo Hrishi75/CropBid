@@ -407,16 +407,19 @@ export async function updateProfileHandler(req: Request, res: Response) {
 // ---------------------------------------------------------------------------
 // POST /api/auth/me/phone — add a number to an account with none
 // ---------------------------------------------------------------------------
-// An Indian mobile: ten digits starting 6 to 9, with or without +91 or a
-// leading 0. Stored as the ten digits, so it matches what a person types at
-// the sign-in box without a country code, which is the common case.
+// An Indian mobile: ten digits starting 6 to 9, optionally after +91, 91 or a
+// leading 0, with spaces, dashes and brackets allowed. Only checked here: the
+// service stores it through normalizePhone, as sign-up does, so the form they
+// typed is the form sign-in finds.
 export const addPhoneSchema = z.object({
   phone: z
     .string()
     .trim()
     .max(20)
-    .transform((v) => v.replace(/[\s\-()]/g, '').replace(/^(\+91|91|0)(?=\d{10}$)/, ''))
-    .refine((v) => /^[6-9]\d{9}$/.test(v), 'Enter a 10-digit mobile number'),
+    .refine(
+      (v) => /^[0-9+\s\-()]+$/.test(v) && /^(\+?91|0)?[6-9]\d{9}$/.test(v.replace(/[\s\-()]/g, '')),
+      'Enter a 10-digit mobile number',
+    ),
 });
 
 export async function addPhoneHandler(req: Request, res: Response) {

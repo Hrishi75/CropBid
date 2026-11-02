@@ -76,6 +76,21 @@ describe('a new person', () => {
 
 // The sign-up tickbox (utils/consent.ts): asked of a new account only, and
 // required, because no Google sign-in client predates it.
+// The website asks a Google account for a phone on this flag, so every path
+// in must report it, the first link most of all: that response is built from
+// the row as read before the link was written. Review caught it reporting false.
+describe('googleLinked', () => {
+  it('is true for a new account, a first link and a returning one', async () => {
+    googleSays(`asha${DOMAIN}`);
+    expect((await signInWithGoogle('token', true)).user).toMatchObject({ googleLinked: true });
+    expect((await signInWithGoogle('token')).user).toMatchObject({ googleLinked: true });
+
+    await prisma.user.create({ data: { name: 'Ravi', email: `ravi${DOMAIN}`, password: 'hash', role: 'CONSUMER' } });
+    googleSays(`ravi${DOMAIN}`, 'google-sub-ravi');
+    expect((await signInWithGoogle('token')).user).toMatchObject({ googleLinked: true });
+  });
+});
+
 describe('consent', () => {
   it('refuses a new account without the tickbox, and makes nothing', async () => {
     googleSays(`asha${DOMAIN}`);

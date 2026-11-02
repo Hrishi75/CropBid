@@ -1667,14 +1667,29 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
 // It only FILLS an empty phone. Changing a number already on file is the
 // profile editor's job, and keeping this narrow means it cannot be used to
 // swap the number a phone-code sign-in would reach.
+//
+// Stored through normalizePhone like sign-up, so it is found by the same
+// lookup when they type it the same way at sign-in. Numbers are stored in
+// whatever form people typed (CLAUDE.md section 4), so "taken" is decided on
+// the last ten digits: +919876543210 on one account and 9876543210 on another
+// would be one person's phone reaching two accounts.
+const phoneTaken = () =>
+  new ApiError(409, 'That number is already on another CropBid account. Sign in with it, or use a different number.', 'PHONE_TAKEN');
+
 export async function addPhone(userId: string, rawPhone: string) {
   const phone = normalizePhone(rawPhone);
+  const ten = phone.replace(/[^0-9]/g, '').slice(-10);
+  const clash = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "User"
+    WHERE id <> ${userId} AND phone IS NOT NULL
+      AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
+    LIMIT 1`;
+  if (clash.length > 0) throw phoneTaken();
   const written = await prisma.user
     .updateMany({ where: { id: userId, phone: null }, data: { phone } })
     .catch((err) => {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ApiError(409, 'That number is already on another CropBid account. Sign in with it, or use a different number.', 'PHONE_TAKEN');
-      }
+      // The same number in the same form, written in the meantime.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw phoneTaken();
       throw err;
     });
   if (written.count === 0) {
@@ -2141,7 +2156,12 @@ export async function signInWithGoogle(credential: string, consent?: boolean) {
       });
     }
 
-    const signedIn = linking ? { ...user, password: null, mustChangePassword: false, passwordResetAt: null } : user;
+    // googleId is set too, so the response reports the account as linked:
+    // the website asks a Google account for a phone on that flag, and the row
+    // read above still has the old null. Review caught a first link skipping it.
+    const signedIn = linking
+      ? { ...user, googleId: identity.sub, password: null, mustChangePassword: false, passwordResetAt: null }
+      : user;
     return {
       user: safeUser(signedIn),
       accessToken: tokens.accessToken,
