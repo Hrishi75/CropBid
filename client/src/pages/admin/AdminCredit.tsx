@@ -19,12 +19,15 @@ import { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
+import { USE_LABEL, type CreditUse } from '../../utils/credit';
 
 type Status = 'SUBMITTED' | 'IN_REVIEW' | 'APPROVED' | 'DECLINED';
 
 interface Application {
   id: string;
   businessName: string;
+  side?: 'BUYER' | 'SELLER';
+  useFor?: CreditUse;
   gstin: string | null;
   yearsInBusiness: number;
   monthlyPurchase: number;
@@ -118,7 +121,7 @@ export function AdminCredit() {
     <DashboardLayout>
       <div className="cb-section-head">
         <div>
-          <div className="cb-page-eyebrow">Business credit · {failed ? '—' : total} {total === 1 ? 'application' : 'applications'}</div>
+          <div className="cb-page-eyebrow">Credit · {failed ? '—' : total} {total === 1 ? 'application' : 'applications'}</div>
           <h1 className="cb-page-title" style={{ marginTop: 12 }}>
             Credit asked for,<br />
             <span className="cb-italic">waiting on a call.</span>
@@ -194,7 +197,8 @@ function Row({ app: a, last, onMove }: {
     ? who.buyerProfile.companyType.replace(/_/g, ' ').toLowerCase()
     : null;
   // A seller in buying mode is still a FARMER account; worth knowing on a call.
-  const seller = who?.role === 'FARMER' && who.farmerProfile?.sellerType
+  // Only on a buyer-side application: on a seller's own it says nothing new.
+  const seller = a.side !== 'SELLER' && who?.role === 'FARMER' && who.farmerProfile?.sellerType
     ? `also sells (${who.farmerProfile.sellerType.replace('_', ' ').toLowerCase()})`
     : null;
 
@@ -204,6 +208,10 @@ function Row({ app: a, last, onMove }: {
         <div>
           <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)', marginRight: 8 }}>#C-{a.id.slice(-6).toUpperCase()}</span>
           <span style={{ fontWeight: 500 }}>{a.businessName}</span>
+          {/* Which side asked, and for what: a farm's crop loan and a buyer's
+              stock credit go to different lenders. */}
+          <span className="cb-chip" style={{ marginLeft: 8 }}>{a.side === 'SELLER' ? 'Seller' : 'Buyer'}</span>
+          {a.useFor && <span className="cb-chip cb-chip-sage" style={{ marginLeft: 6 }}>{USE_LABEL[a.useFor]}</span>}
         </div>
         <span className="cb-mono cb-tiny" style={{ color: meta.color }}>● {meta.label}</span>
       </div>
@@ -216,7 +224,7 @@ function Row({ app: a, last, onMove }: {
       </div>
 
       <div className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-2)', marginBottom: 8 }}>
-        asks {rupees(a.amountWanted)} over {a.repaymentDays} days · buys {rupees(a.monthlyPurchase)}/month · {a.yearsInBusiness} {a.yearsInBusiness === 1 ? 'year' : 'years'} running
+        asks {rupees(a.amountWanted)} over {a.repaymentDays} days · {a.side === 'SELLER' ? 'sells' : 'buys'} {rupees(a.monthlyPurchase)}/month · {a.yearsInBusiness} {a.yearsInBusiness === 1 ? 'year' : 'years'} running
         {a.gstin ? ` · GSTIN ${a.gstin}` : ' · no GSTIN given'}
       </div>
 

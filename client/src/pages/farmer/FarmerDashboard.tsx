@@ -24,6 +24,7 @@ import { ArrowIcon } from '../../components/ui/Brand';
 import { Section, EmptyState, AgentCard, MarketRates } from '../../components/dashboard/DashboardPieces';
 import { PayoutCard } from '../../components/PayoutCard';
 import { BuyStockCard } from '../../components/BuyStockCard';
+import { CreditCard } from '../../components/credit/CreditCard';
 import { ContractsPanel } from '../../components/contracts/ContractsPanel';
 import { UNIT_LABEL, type UnitCode } from '../landing/shared';
 import { formatCurrency } from '../../utils/currency';
@@ -299,6 +300,7 @@ export function FarmerDashboard() {
         </aside>
 
         <div className="cb-bd-late">
+          <CreditCard />
           <BuyStockCard />
           {!shop && <AgentCard role="FARMER" watching={activeListings} />}
         </div>

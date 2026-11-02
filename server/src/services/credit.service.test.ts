@@ -14,7 +14,7 @@ vi.mock('./notification.service', () => ({ createNotification: vi.fn(() => Promi
 
 import { prisma } from '../lib/prisma';
 import { createNotification } from './notification.service';
-import { reviewApplication, submitApplication, parseApplication } from './credit.service';
+import { CREDIT_RULES, creditSide, reviewApplication, submitApplication, parseApplication } from './credit.service';
 
 const BUYER = 'credit-buyer-1';
 const ADMIN = 'credit-admin-1';
@@ -67,12 +67,47 @@ describe('what an application must contain', () => {
   });
 
   it('refuses a repayment period that is not offered', () => {
-    expect(() => parseApplication(input({ repaymentDays: 45 }))).toThrow(/30, 60 or 90/);
+    expect(() => parseApplication(input({ repaymentDays: 45 }))).toThrow(/30, 60, 90 or 180/);
   });
 
   it('refuses a malformed GSTIN but takes none at all', () => {
     expect(() => parseApplication(input({ gstin: '27ABC' }))).toThrow(/GSTIN/);
     expect(parseApplication(input({ gstin: '' })).gstin).toBeNull();
+  });
+});
+
+describe('who applies, and for what', () => {
+  it('reads the side off the role', () => {
+    expect(creditSide('FARMER')).toBe('SELLER');
+    expect(creditSide('BUYER')).toBe('BUYER');
+  });
+
+  it('lets a seller ask for a crop, repaid after the harvest', () => {
+    const d = parseApplication(input({ useFor: 'CROP', repaymentDays: 180 }), 'SELLER');
+    expect(d.side).toBe('SELLER');
+    expect(d.useFor).toBe('CROP');
+    expect(d.repaymentDays).toBe(180);
+  });
+
+  it('keeps each side to its own uses', () => {
+    // A buyer does not grow crops; a farm can still buy equipment.
+    expect(() => parseApplication(input({ useFor: 'CROP' }), 'BUYER')).toThrow(/what the money is for/);
+    expect(parseApplication(input({ useFor: 'EQUIPMENT' }), 'SELLER').useFor).toBe('EQUIPMENT');
+  });
+
+  it('reads an old app build, which sends no use, as a buyer stocking up', () => {
+    expect(parseApplication(input(), 'BUYER').useFor).toBe('STOCK');
+  });
+
+  it('serves the uses for each side with the rules, so no client keeps a copy', () => {
+    expect(CREDIT_RULES.uses.SELLER).toContain('CROP');
+    expect(CREDIT_RULES.uses.BUYER).not.toContain('CROP');
+  });
+
+  it('stores a seller application with its side and use', async () => {
+    const a = await submitApplication(BUYER, input({ useFor: 'INPUTS', businessName: 'Patil Farms' }), 'SELLER');
+    expect(a.side).toBe('SELLER');
+    expect(a.useFor).toBe('INPUTS');
   });
 });
 
@@ -136,12 +171,12 @@ describe('reviewing', () => {
     await expect(reviewApplication(ADMIN, a.id, { status: 'APPROVED', approvedLimit: 1 })).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('tells the buyer the outcome and audits it', async () => {
+  it('tells the applicant the outcome and audits it', async () => {
     const a = await submitApplication(BUYER, input());
     await reviewApplication(ADMIN, a.id, { status: 'IN_REVIEW' });
     await reviewApplication(ADMIN, a.id, { status: 'APPROVED', approvedLimit: 150000 });
     expect(vi.mocked(createNotification)).toHaveBeenCalledWith(expect.objectContaining({
-      userId: BUYER, title: 'Business credit approved',
+      userId: BUYER, title: 'Credit approved',
     }));
     const audits = await prisma.auditLog.count({ where: { actorId: ADMIN, entityId: a.id } });
     expect(audits).toBe(2);

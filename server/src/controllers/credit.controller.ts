@@ -14,7 +14,7 @@ import * as creditService from '../services/credit.service';
 export async function getMine(req: Request, res: Response, next: NextFunction) {
   try {
     const application = await creditService.getMyApplication(req.user!.userId);
-    res.json({ rules: creditService.CREDIT_RULES, application });
+    res.json({ rules: creditService.CREDIT_RULES, side: creditService.creditSide(req.user!.role), application });
   } catch (error) {
     next(error);
   }
@@ -23,6 +23,7 @@ export async function getMine(req: Request, res: Response, next: NextFunction) {
 // Coerced because a phone sends numbers from text fields. The service owns the
 // real rules, so they live in one place.
 const applySchema = z.object({
+  useFor: z.enum(['STOCK', 'CROP', 'INPUTS', 'EQUIPMENT', 'GROW_BUSINESS']).optional().nullable(),
   businessName: z.string(),
   gstin: z.string().optional().nullable(),
   yearsInBusiness: z.coerce.number(),
@@ -41,7 +42,10 @@ export async function apply(req: Request, res: Response, next: NextFunction) {
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
     }
-    const application = await creditService.submitApplication(req.user!.userId, parsed.data);
+    // The side is the session's, never the request's: a seller in buying mode
+    // applies as a buyer, and in selling mode as a seller.
+    const side = creditService.creditSide(req.user!.role);
+    const application = await creditService.submitApplication(req.user!.userId, parsed.data, side);
     res.json({ application });
   } catch (error) {
     next(error);

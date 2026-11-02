@@ -166,6 +166,16 @@ export function PrivacyPolicyPage() {
             export, and annual procurement volume, and the outcome of that review.
           </p>
           <p>
+            <strong>If you apply for credit,</strong> whether you buy or sell, we collect what
+            the form asks: what the money is for, your business or farm name, a GSTIN if you
+            give one, how long you have been trading, roughly how much you buy or sell in a
+            month, how much you want and over how long, anything you add about what it is
+            for, a phone number to call, and when you agreed to it being shared with lending
+            partners. We do not ask for your PAN, Aadhaar or bank statements on this form;
+            a lender collects what it needs under its own checks. We keep the outcome a
+            person reaches on it.
+          </p>
+          <p>
             <strong>Trading activity.</strong> The listings you create, the photographs on
             them, bids you place or receive, counter-offers and negotiation messages, auctions
             you take part in, the limits you set for an AI negotiating agent, buyer
@@ -286,6 +296,12 @@ export function PrivacyPolicyPage() {
           <p>
             <strong>Logistics partners</strong> — where you book delivery through the platform,
             the pickup and delivery details needed for that shipment.
+          </p>
+          <p>
+            <strong>Lending partners</strong>: only if you apply for credit and tick the box
+            agreeing to it, the details on your credit application, so a lender can decide on
+            it. CropBid does not lend money; the lender sets the terms and tells you them
+            before you agree to anything.
           </p>
           <p>
             <strong>Google (sign-in)</strong>: only if you choose to continue with Google,

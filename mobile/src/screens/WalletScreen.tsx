@@ -43,7 +43,7 @@ import {
   walletEntries,
 } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import type { CreditApplication, Wallet, WalletEntry } from '../api/types';
+import type { CreditApplication, Wallet, WalletEntry, CreditSide } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { money, timeAgo } from '../lib/format';
 import { colors, design, font, radius, spacing } from '../theme';
@@ -70,11 +70,12 @@ export default function WalletScreen() {
   const [error, setError] = useState<string | null>(null);
   const [custom, setCustom] = useState('');
   const [starting, setStarting] = useState(false);
-  // Business credit is for a business buyer (or a seller in buying mode, who
-  // is a BUYER here). Undefined until it loads, so the card does not flash the
-  // pitch at somebody whose application is already in.
-  const isBuyer = user?.role === 'BUYER';
+  // Credit is for any approved partner, buyer or seller; not a household
+  // shopper. Undefined until it loads, so the card does not flash the pitch at
+  // somebody whose application is already in.
+  const isBuyer = user?.role === 'BUYER' || user?.role === 'FARMER';
   const [credit, setCredit] = useState<CreditApplication | null | undefined>(undefined);
+  const [creditSide, setCreditSide] = useState<CreditSide>('BUYER');
   // Non-null opens the Razorpay modal.
   const [order, setOrder] = useState<CheckoutOrder | null>(null);
 
@@ -88,7 +89,7 @@ export default function WalletScreen() {
       setEntries(page.entries);
       // Its own catch: a failed credit fetch must not take the balance with it.
       if (isBuyer) {
-        fetchCredit().then((c) => setCredit(c.application)).catch(() => {});
+        fetchCredit().then((c) => { setCredit(c.application); if (c.side) setCreditSide(c.side); }).catch(() => {});
       }
     } catch (e) {
       setError(errorMessage(e, 'Could not load your wallet.'));
@@ -180,7 +181,7 @@ export default function WalletScreen() {
             </View>
 
             {isBuyer && credit !== undefined ? (
-              <CreditCard application={credit} onApply={() => nav.navigate('CreditApply')} />
+              <CreditCard application={credit} side={creditSide} onApply={() => nav.navigate('CreditApply')} />
             ) : null}
 
             {error ? (

@@ -1055,6 +1055,46 @@ function SellCTA({ user }: { user: User | null }) {
 }
 
 // -----------------------------------------------------------------------------
+// Credit for anyone who trades here: a farm growing a crop, a shop or a
+// wholesaler growing the business, a buyer stocking up. CROPBID DOES NOT LEND
+// (CLAUDE.md §9): a person reads each application and, with consent, takes it
+// to a lending partner, so nothing here says instant, guaranteed or "our loan".
+// A partner goes straight to the form; anyone else applies to trade first,
+// because credit is for approved partners. Not shown to a household shopper.
+// -----------------------------------------------------------------------------
+const CREDIT_USES = ['Grow a new crop', 'Seeds and fertiliser', 'Equipment', 'Stock up', 'Grow your business'];
+
+function CreditCTA({ user }: { user: User | null }) {
+  const { t } = useTranslation();
+  const ref = useReveal<HTMLElement>();
+  if (user?.role === 'CONSUMER' || user?.role === 'ADMIN') return null;
+  const partner = user?.role === 'FARMER' || user?.role === 'BUYER';
+  return (
+    <section className="st-credit st-reveal" ref={ref} aria-labelledby="st-credit-title">
+      <div className="st-credit-text">
+        <div className="st-credit-kicker">{t('Credit')}</div>
+        <h2 id="st-credit-title" className="cb-h1">{t('Need money')} <span className="italic">{t('to grow?')}</span></h2>
+        <p className="cb-body">
+          {t('Farmers, shops, wholesalers and buyers can ask for credit, repaid over 30 days to a season. Tell us what you need; a person reads it and takes it to a lending partner, who sets the terms.')}
+        </p>
+        <div className="st-credit-uses">
+          {CREDIT_USES.map((u) => <span key={u}>{t(u)}</span>)}
+        </div>
+      </div>
+      <div className="st-credit-act">
+        <Link to={partner ? '/credit' : '/partner#credit'} className="cb-btn cb-btn-primary">
+          {t(partner ? 'Apply for credit' : 'Find out more')} <ArrowIcon />
+        </Link>
+        <span className="st-credit-note">
+          {t(partner ? 'Two minutes. Not instant.' : 'For approved partners. Apply to trade first, it is free.')}
+        </span>
+        <span className="st-credit-note">{t('CropBid does not lend money.')}</span>
+      </div>
+    </section>
+  );
+}
+
+// -----------------------------------------------------------------------------
 // Incubation credit — last thing on the page before the footer. Three backers
 // share the row: India 2047 Ventures tries the real logo at
 // /india-2047-ventures.png (drop it in client/public) and falls back to the SVG
@@ -1277,6 +1317,7 @@ export function LandingPage() {
                 <ForecastStrip />
                 <PromoTrio shopHref={shopHref} user={user} />
                 <SellCTA user={user} />
+                <CreditCTA user={user} />
                 <IncubatedBy />
               </>
             )}
