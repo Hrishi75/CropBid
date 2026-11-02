@@ -1679,16 +1679,22 @@ const phoneTaken = () =>
 export async function addPhone(userId: string, rawPhone: string) {
   const phone = normalizePhone(rawPhone);
   const ten = phone.replace(/[^0-9]/g, '').slice(-10);
-  const clash = await prisma.$queryRaw<{ id: string }[]>`
-    SELECT id FROM "User"
-    WHERE id <> ${userId} AND phone IS NOT NULL
-      AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
-    LIMIT 1`;
-  if (clash.length > 0) throw phoneTaken();
-  const written = await prisma.user
-    .updateMany({ where: { id: userId, phone: null }, data: { phone } })
+  // Check and write under one lock on the ten digits, or two accounts saving
+  // +919876543210 and 9876543210 at once both pass the check: the unique
+  // index only sees two different strings.
+  const written = await prisma
+    .$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`phone:${ten}`}))`;
+      const clash = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User"
+        WHERE id <> ${userId} AND phone IS NOT NULL
+          AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
+        LIMIT 1`;
+      if (clash.length > 0) throw phoneTaken();
+      return tx.user.updateMany({ where: { id: userId, phone: null }, data: { phone } });
+    })
     .catch((err) => {
-      // The same number in the same form, written in the meantime.
+      // The same number in the same form, written by a path that takes no lock.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw phoneTaken();
       throw err;
     });

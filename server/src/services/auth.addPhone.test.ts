@@ -50,4 +50,20 @@ describe('addPhone', () => {
     await expect(addPhone(me.id, '9123456789')).rejects.toMatchObject({ statusCode: 409 });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: me.id } })).phone).toBe('9876543210');
   });
+
+  // Ten rounds, naming the winner: one round alone can pass by accident while
+  // connections are still being opened (CLAUDE.md section 9, address book).
+  it('gives one number to one account when two save it at once in different forms', async () => {
+    for (let round = 0; round < 10; round++) {
+      await cleanUp();
+      const a = await prisma.user.create({ data: { name: NAME, email: `a${DOMAIN}`, googleId: 'sub-a', role: 'CONSUMER' } });
+      const b = await prisma.user.create({ data: { name: NAME, email: `b${DOMAIN}`, googleId: 'sub-b', role: 'CONSUMER' } });
+      const results = await Promise.allSettled([addPhone(a.id, '+919876543210'), addPhone(b.id, '9876543210')]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const holders = await prisma.user.findMany({ where: { id: { in: [a.id, b.id] }, phone: { not: null } } });
+      expect(holders).toHaveLength(1);
+      const winner = results[0].status === 'fulfilled' ? a.id : b.id;
+      expect(holders[0].id).toBe(winner);
+    }
+  });
 });
