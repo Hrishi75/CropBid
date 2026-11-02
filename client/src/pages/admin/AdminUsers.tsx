@@ -14,6 +14,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -67,6 +68,8 @@ export function AdminUsers() {
   // The one temporary password on screen, if any. Cleared when the admin
   // dismisses it, and never re-fetchable.
   const [issued, setIssued] = useState<{ id: string; name: string; password: string } | null>(null);
+  // The row whose details panel is open, if any.
+  const [viewingId, setViewingId] = useState<string | null>(null);
   const [editScore, setEditScore] = useState('');
   const [page, setPage] = useState(0);
   const LIMIT = 15;
@@ -290,7 +293,15 @@ export function AdminUsers() {
                             >
                               ✎ Edit
                             </button>
-                            <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View</button>
+                            <button
+                              type="button"
+                              onClick={() => setViewingId(viewingId === u.id ? null : u.id)}
+                              className="cb-btn cb-btn-link"
+                              style={{ fontSize: 12 }}
+                              aria-expanded={viewingId === u.id}
+                            >
+                              {viewingId === u.id ? 'Hide' : 'View'}
+                            </button>
                             {u.role !== 'ADMIN' && (
                               <button
                                 type="button"
@@ -322,6 +333,8 @@ export function AdminUsers() {
                           </>
                         )}
                       </div>
+
+                      {viewingId === u.id && <UserDetailPanel key={u.id} userId={u.id} />}
 
                       {issued?.id === u.id && (
                         <TempPasswordPanel
@@ -388,6 +401,158 @@ function TempPasswordPanel({ name, password, onDone }: {
           Done
         </button>
       </div>
+    </div>
+  );
+}
+
+interface UserDetail {
+  id: string;
+  language: string;
+  updatedAt: string;
+  consentAt: string | null;
+  consentVersion: string | null;
+  mustChangePassword: boolean;
+  hasPassword: boolean;
+  googleLinked: boolean;
+  seller: {
+    sellerType: string;
+    businessName: string | null;
+    shopType: string | null;
+    state: string;
+    status: string;
+    statusNote: string | null;
+    submittedAt: string;
+    reviewedAt: string | null;
+    organicCertified: boolean;
+    cropsGrown: string[];
+    listings: number;
+    hasPayoutDetails: boolean;
+  } | null;
+  buyerProfile: {
+    companyName: string;
+    companyType: string;
+    status: string;
+    statusNote: string | null;
+    submittedAt: string;
+    reviewedAt: string | null;
+  } | null;
+  walletBalance: number | null;
+  counts: {
+    bids: number;
+    dealsAsSeller: number;
+    dealsAsBuyer: number;
+    shopOrdersPlaced: number;
+    shopOrdersTaken: number;
+    requests: number;
+    offers: number;
+    addresses: number;
+  };
+}
+
+const words = (v: string) => v.toLowerCase().replace(/_/g, ' ');
+const day = (v: string | null) => (v ? new Date(v).toLocaleDateString() : '—');
+
+// Opened by View. Fetched on open rather than with the list, so a page of
+// fifteen rows does not pay for fifteen sets of counts nobody looks at. PAN,
+// licence numbers and payout details are not here: they are read in
+// Admin -> Partners, where payout reads are logged.
+function UserDetailPanel({ userId }: { userId: string }) {
+  const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.get<UserDetail>(`/admin/users/${userId}`)
+      .then((res) => { if (live) setDetail(res.data); })
+      .catch((err: any) => { if (live) setError(err.response?.data?.message || 'Could not load this user'); });
+    return () => { live = false; };
+  }, [userId]);
+
+  const box = { marginTop: 12, padding: 14, borderRadius: 8, background: 'var(--cb-paper-2)' } as const;
+
+  if (error) return <div style={box}><span className="cb-tiny" style={{ color: 'var(--cb-ember)' }}>{error}</span></div>;
+  if (!detail) return <div style={box}><span className="cb-tiny">Loading details…</span></div>;
+
+  const signIn = [
+    detail.hasPassword && 'password',
+    detail.googleLinked && 'Google',
+    !detail.hasPassword && !detail.googleLinked && 'phone code only',
+  ].filter(Boolean).join(', ');
+
+  const c = detail.counts;
+  const activity: [string, number][] = [
+    ['Deals as seller', c.dealsAsSeller],
+    ['Deals as buyer', c.dealsAsBuyer],
+    ['Bids', c.bids],
+    ['Shop orders placed', c.shopOrdersPlaced],
+    ['Shop orders taken', c.shopOrdersTaken],
+    ['Requests posted', c.requests],
+    ['Offers sent', c.offers],
+    ['Saved addresses', c.addresses],
+  ];
+
+  return (
+    <div style={box}>
+      <Section title="Account">
+        <Row label="Signs in with" value={signIn} />
+        {detail.mustChangePassword && <Row label="Password" value="temporary, must change at next sign-in" />}
+        <Row label="Language" value={detail.language} />
+        <Row label="Consent" value={detail.consentAt ? `${day(detail.consentAt)} (policy ${detail.consentVersion ?? '?'})` : 'none recorded'} />
+        <Row label="Wallet" value={detail.walletBalance === null ? 'never opened' : `${detail.walletBalance.toLocaleString('en-IN')} credits`} />
+        <Row label="Last updated" value={day(detail.updatedAt)} />
+      </Section>
+
+      {detail.seller && (
+        <Section title="Seller application">
+          <Row label="Kind" value={words(detail.seller.sellerType)} />
+          {detail.seller.businessName && <Row label="Business" value={detail.seller.businessName} />}
+          {detail.seller.shopType && <Row label="Shop type" value={detail.seller.shopType} />}
+          <Row label="State" value={detail.seller.state} />
+          <Row label="Status" value={`${words(detail.seller.status)} · filed ${day(detail.seller.submittedAt)}${detail.seller.reviewedAt ? ` · reviewed ${day(detail.seller.reviewedAt)}` : ''}`} />
+          {detail.seller.statusNote && <Row label="Note to them" value={detail.seller.statusNote} />}
+          {detail.seller.cropsGrown.length > 0 && <Row label="Crops" value={detail.seller.cropsGrown.join(', ')} />}
+          <Row label="Organic" value={detail.seller.organicCertified ? 'yes' : 'no'} />
+          <Row label="Listings" value={String(detail.seller.listings)} />
+          <Row label="Payout details" value={detail.seller.hasPayoutDetails ? 'on file' : 'missing'} />
+        </Section>
+      )}
+
+      {detail.buyerProfile && (
+        <Section title="Buyer application">
+          <Row label="Company" value={detail.buyerProfile.companyName} />
+          <Row label="Type" value={words(detail.buyerProfile.companyType)} />
+          <Row label="Status" value={`${words(detail.buyerProfile.status)} · filed ${day(detail.buyerProfile.submittedAt)}${detail.buyerProfile.reviewedAt ? ` · reviewed ${day(detail.buyerProfile.reviewedAt)}` : ''}`} />
+          {detail.buyerProfile.statusNote && <Row label="Note to them" value={detail.buyerProfile.statusNote} />}
+        </Section>
+      )}
+
+      {(detail.seller || detail.buyerProfile) && (
+        <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', margin: '0 0 12px' }}>
+          PAN, licence numbers and payout details are in <Link to="/admin/partners">Partners</Link>.
+        </p>
+      )}
+
+      <Section title="Activity" last>
+        {activity.map(([label, n]) => <Row key={label} label={label} value={String(n)} />)}
+      </Section>
+    </div>
+  );
+}
+
+function Section({ title, last, children }: { title: string; last?: boolean; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: last ? 0 : 14 }}>
+      <div className="cb-eyebrow" style={{ marginBottom: 6 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="cb-tiny" style={{ display: 'flex', gap: 12, padding: '2px 0', flexWrap: 'wrap' }}>
+      <span style={{ color: 'var(--cb-ink-3)', minWidth: 140 }}>{label}</span>
+      <span style={{ color: 'var(--cb-ink)', flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{value}</span>
     </div>
   );
 }

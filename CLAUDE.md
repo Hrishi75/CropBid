@@ -234,6 +234,8 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 
 **Admin → Users shows each account's phone and searches by it** (2026-10-03), because support is rung by people and a phone-only account has no email to look up. The search works around the problem above rather than fixing it: both sides are compared as digits only: `phoneSearchDigits` in `admin.service.ts` strips the search and drops a leading `91`, the query strips the stored number, and they match as a substring, so `+91 98220 55667` finds `9822055667`, `+919822055667` and `98220-55667` (the profile editor keeps punctuation). Only text with no letters (any script) and no `@`, holding four or more digits, is a phone search; any other punctuation is let through, since the profile editor stores `98220.55667` as readily as a dash, so "Ward 2026" is a name and does not pull in every number containing 2026.
 
+**View on a user's row opens their details** (2026-11-02, `GET /admin/users/:id`): how they sign in (password, Google, or phone code only), consent, wallet, each application and its status, whether payout details are on file, and counts of their deals, bids, orders, requests and offers. The button had been on every row with nothing behind it. It leaves out PAN, licence numbers and payout details on purpose: those are read in Admin → Partners, where payout reads are logged (§4a).
+
 **A business buyer may have no email on file.** Sign-up no longer asks a would-be buyer for one, and the buyer application (`completeBuyerOnboarding`) never did. The FAQ and privacy page used to say business buyers give an email; both are corrected. If order paperwork is to be emailed, the application form is where to ask.
 
 ### Everyone arrives as a shopper (fixed 2026-09-06)

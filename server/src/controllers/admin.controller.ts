@@ -65,6 +65,19 @@ export async function getUsers(req: Request, res: Response, next: NextFunction) 
   }
 }
 
+// GET /api/admin/users/:id — One user's details for support
+export async function getUser(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = userIdParamSchema.safeParse(req.params);
+    if (!params.success) {
+      return res.status(400).json({ message: params.error.issues[0]?.message || 'Invalid id' });
+    }
+    res.json(await adminService.getUserDetail(params.data.id));
+  } catch (error) {
+    next(error);
+  }
+}
+
 // GET /api/admin/listings — List all listings
 export async function getAllListings(req: Request, res: Response, next: NextFunction) {
   try {
