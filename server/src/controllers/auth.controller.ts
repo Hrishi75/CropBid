@@ -405,6 +405,31 @@ export async function updateProfileHandler(req: Request, res: Response) {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/auth/me/phone — add a number to an account with none
+// ---------------------------------------------------------------------------
+// An Indian mobile: ten digits starting 6 to 9, with or without +91 or a
+// leading 0. Stored as the ten digits, so it matches what a person types at
+// the sign-in box without a country code, which is the common case.
+export const addPhoneSchema = z.object({
+  phone: z
+    .string()
+    .trim()
+    .max(20)
+    .transform((v) => v.replace(/[\s\-()]/g, '').replace(/^(\+91|91|0)(?=\d{10}$)/, ''))
+    .refine((v) => /^[6-9]\d{9}$/.test(v), 'Enter a 10-digit mobile number'),
+});
+
+export async function addPhoneHandler(req: Request, res: Response) {
+  const parsed = addPhoneSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: true, message: parsed.error.issues[0]?.message || 'Invalid input' });
+    return;
+  }
+  const user = await authService.addPhone(req.user!.userId, parsed.data.phone);
+  res.json({ user });
+}
+
+// ---------------------------------------------------------------------------
 // POST /api/auth/me/avatar
 // ---------------------------------------------------------------------------
 // Multer + Sharp (middleware/upload.ts) have already validated, squared, and

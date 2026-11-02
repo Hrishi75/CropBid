@@ -98,7 +98,12 @@ function safeUser<T extends Record<string, any>>(user: T) {
     googleId: _____,
     ...rest
   } = user;
-  return maskUserPayoutDetails(rest);
+  // Whether Google signs this account in, as a boolean: the id itself stays
+  // here. The website reads it to ask a Google account for a phone number.
+  // Only when the row was read with the column, so a narrow select never
+  // reports false for an account that is linked.
+  const google = 'googleId' in user ? { googleLinked: user.googleId != null } : {};
+  return { ...maskUserPayoutDetails(rest), ...google };
 }
 
 // What a seller typed, checked and normalised, then encrypted for the
@@ -1649,6 +1654,37 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
     await prisma.user.update({ where: { id: userId }, data: userData });
   }
 
+  return getCurrentUser(userId);
+}
+
+// ---------------------------------------------------------------------------
+// Add a phone number to an account that has none
+// ---------------------------------------------------------------------------
+// Google sign-in gives us a name and an email and no phone, so the website
+// asks for one before letting a Google account carry on. Unverified, exactly
+// like the sign-up form's ("Knowingly unverified", CLAUDE.md section 4).
+//
+// It only FILLS an empty phone. Changing a number already on file is the
+// profile editor's job, and keeping this narrow means it cannot be used to
+// swap the number a phone-code sign-in would reach.
+export async function addPhone(userId: string, rawPhone: string) {
+  const phone = normalizePhone(rawPhone);
+  const written = await prisma.user
+    .updateMany({ where: { id: userId, phone: null }, data: { phone } })
+    .catch((err) => {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ApiError(409, 'That number is already on another CropBid account. Sign in with it, or use a different number.', 'PHONE_TAKEN');
+      }
+      throw err;
+    });
+  if (written.count === 0) {
+    const current = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    if (!current) throw new ApiError(404, 'User not found');
+    // Already the same number: a double submit, not an error.
+    if (current.phone !== phone) {
+      throw new ApiError(409, 'This account already has a phone number. Change it from your profile.');
+    }
+  }
   return getCurrentUser(userId);
 }
 
