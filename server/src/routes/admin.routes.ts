@@ -21,6 +21,9 @@ router.get('/stats', adminController.getPlatformStats);
 // GET /api/admin/users — User management
 router.get('/users', adminController.getUsers);
 
+// GET /api/admin/users/:id — One user's details
+router.get('/users/:id', adminController.getUser);
+
 // PATCH /api/admin/users/:id — Update user
 router.patch('/users/:id', adminController.updateUser);
 
