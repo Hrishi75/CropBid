@@ -48,6 +48,7 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   SUPPLY_CONTRACT_BATCH: Package,
   CREDIT_APPLICATION: Landmark,
   DEAL_NEEDS_TRANSPORT: Truck,
+  FREIGHT_QUOTED: Truck,
   PAYOUT_DETAILS_MISSING: Wallet,
   RETAIL_REFUND_DUE: AlertTriangle,
   RETAIL_OVERPAID: AlertTriangle,
@@ -58,6 +59,8 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
 const ACTION_TYPES = new Set([
   'NEW_BID', 'BID_COUNTERED', 'REQUIREMENT_OFFER', 'REQUIREMENT_OFFER_COUNTERED',
   'SUPPLY_CONTRACT_PROPOSED', 'SUPPLY_CONTRACT_BATCH', 'DEAL_NEEDS_TRANSPORT', 'PAYOUT_DETAILS_MISSING',
+  // Delivery priced: the buyer can now pay.
+  'FREIGHT_QUOTED',
 ]);
 
 type Filter = 'all' | 'unread';

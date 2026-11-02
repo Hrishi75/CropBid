@@ -21,13 +21,25 @@ export async function notifyNewBid(farmerId: string, bidderName: string, cropNam
   });
 }
 
-export async function notifyBidAccepted(buyerId: string, cropName: string, price: number, currency: string, unit: string, listingId: string, bidId: string) {
+export async function notifyBidAccepted(
+  buyerId: string, cropName: string, price: number, currency: string, unit: string, listingId: string, bidId: string,
+  deal: { transactionId?: string; freightPaidBy?: string } = {},
+) {
+  // What happens next depends on who pays for delivery: on a seller-pays deal
+  // the buyer can pay now; otherwise they wait for CropBid's delivery quote.
+  const next = deal.freightPaidBy === 'SPLIT'
+    ? ' Delivery is split 50/50: we will quote it, then you pay the goods and your half together.'
+    : deal.freightPaidBy === 'BUYER'
+      ? ' You pay the delivery: we will quote it, then you pay the goods and delivery together.'
+      : deal.freightPaidBy === 'FARMER'
+        ? ' The seller pays the delivery. You can pay now.'
+        : '';
   await createNotification({
     userId: buyerId,
     type: 'BID_ACCEPTED',
     title: `Bid accepted!`,
-    message: `Your bid on ${cropName} at ${currency} ${price}/${unit} was accepted`,
-    data: { listingId, bidId },
+    message: `Your bid on ${cropName} at ${currency} ${price}/${unit} was accepted.${next}`,
+    data: { listingId, bidId, ...(deal.transactionId && { transactionId: deal.transactionId }) },
   });
 }
 
@@ -190,6 +202,32 @@ export async function notifyPaymentReleased(farmerId: string, amount: number, cu
 // No carrier name in the message. CropBid arranges the freight and the read
 // endpoints strip the haulier's identity for both sides of the deal, so naming
 // it here would leak it straight to a lock screen.
+// Delivery has been priced on a deal where the buyer pays some of it. The
+// buyer is told what to pay (goods plus their share), the seller what comes
+// out of their payout. Both open the deal page.
+export async function notifyFreightQuoted(
+  userId: string,
+  side: 'BUYER' | 'SELLER',
+  cropName: string,
+  share: number,
+  buyerTotal: number | null,
+  currency: string,
+  transactionId: string,
+) {
+  const money = (n: number) => `${currency} ${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+  await createNotification({
+    userId,
+    type: 'FREIGHT_QUOTED',
+    title: side === 'BUYER' ? `Delivery priced for ${cropName}: ready to pay` : `Delivery priced for ${cropName}`,
+    message: side === 'BUYER'
+      ? `Your share of delivery is ${money(share)}. Pay ${money(buyerTotal ?? share)} for the goods and delivery together.`
+      : share > 0
+        ? `Your share of delivery is ${money(share)}, taken from your payout.`
+        : 'The buyer pays the delivery on this deal.',
+    data: { transactionId },
+  });
+}
+
 export async function notifyShipmentBooked(userId: string, cropName: string, pickupDate: string, transactionId: string, shipmentId: string) {
   await createNotification({
     userId,
@@ -200,7 +238,9 @@ export async function notifyShipmentBooked(userId: string, cropName: string, pic
   });
 }
 
-export async function notifyShipmentUpdate(userId: string, cropName: string, status: string, location: string, shipmentId: string) {
+// `location` is null for the two sides of a deal: the place ops typed can be
+// the other party's address (contactVisibility.ts).
+export async function notifyShipmentUpdate(userId: string, cropName: string, status: string, location: string | null, shipmentId: string) {
   const labels: Record<string, string> = {
     PICKED_UP: 'picked up',
     IN_TRANSIT: 'in transit',
@@ -213,7 +253,7 @@ export async function notifyShipmentUpdate(userId: string, cropName: string, sta
     userId,
     type: 'SHIPMENT_UPDATE',
     title: `${cropName} — ${labels[status] || status}`,
-    message: `Shipment ${labels[status] || status} at ${location}`,
+    message: location ? `Shipment ${labels[status] || status} at ${location}` : `Shipment ${labels[status] || status}`,
     data: { shipmentId, status },
   });
 }

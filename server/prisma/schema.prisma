@@ -542,6 +542,11 @@ model Listing {
   directSaleEnabled  Boolean @default(false)
   retailPricePerUnit Float?
 
+  // Who pays for delivery on a trade deal off this lot (utils/freight.ts).
+  // The seller's opening terms: a bid can propose others. Retail purchases
+  // ignore it, since household delivery is priced per shop order (§3b).
+  freightPaidBy PaidBy @default(FARMER)
+
   // True when this row exists only to carry a buyer-requirement fill into the
   // Transaction pipeline — Transaction.listingId and .bidId are both NOT NULL,
   // so a fill needs a Listing to hang off. Born SOLD with remainingQuantity 0;
@@ -824,6 +829,12 @@ model Bid {
   paymentTerms    String? // LC | NET7 | NET15 — validated at the API boundary
   deliveryTerms   String? // FOB | CIF — validated at the API boundary
 
+  // Who pays for delivery if this bid is accepted. Always written when the bid
+  // is made (the buyer's proposal, else the listing's terms at that moment), so
+  // editing the listing later cannot change what a pending bid offered.
+  // Defaults to the seller, which is what every bid before this column meant.
+  freightPaidBy PaidBy @default(FARMER)
+
   // Was this bid placed by the AI agent or manually by the user?
   isAgentBid Boolean @default(false)
 
@@ -886,6 +897,14 @@ model Transaction {
   // status for new deals is set explicitly to AWAITING_PAYMENT in transaction.service.ts.
   paymentStatus  PaymentStatus  @default(ESCROW)
   deliveryStatus DeliveryStatus @default(PENDING)
+
+  // Delivery terms, copied from the accepted bid. When the buyer has a share,
+  // ops quote the delivery first and the buyer pays goods plus share in one
+  // payment (utils/freight.ts). The quote is locked once the buyer opens that
+  // payment or a carrier is booked, and it is what the shipment costs.
+  freightPaidBy   PaidBy    @default(FARMER)
+  freightQuote    Float?
+  freightQuotedAt DateTime?
 
   // Razorpay (capture-only). Order is created when buyer initiates payment;
   // paymentId is set once the payment is verified/captured into the platform account.

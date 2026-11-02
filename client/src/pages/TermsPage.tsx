@@ -32,13 +32,14 @@
 // go looking for. If cancellation gets built, rewrite the clause with it.
 // =============================================================================
 
+import { CROPBID_CONTACT_DISPLAY } from '../content/support';
 import { Link } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
 import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '7 October 2026';
+const UPDATED = '2 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -247,21 +248,26 @@ export function TermsPage() {
             delivery promises applies before you add anything to your basket:
           </p>
           <p>
-            <strong>Local shops</strong> already hold the stock near you and deliver the same
+            <strong>Local shops</strong> already hold the stock near you, so their orders arrive the same
             day. <strong>Farms</strong> pick your order after you place it and send it in
             overnight, for delivery the next morning. Each shop in your basket is a separate
             order and a separate delivery, and the basket says so before you pay.
           </p>
           <p>
-            These are the seller's commitments, and delivery is arranged between you and them
-            or through a logistics partner. Weather, transport and market conditions can delay
-            fresh produce. If an order is going to be late, contact the seller first; if that
-            does not resolve it, write to us.
+            CropBid delivers your order, and the seller never sees your phone, email or
+            address. Weather, transport and market conditions can delay fresh produce. If an
+            order is going to be late, or you need to reach the seller about anything, call or
+            WhatsApp CropBid on {CROPBID_CONTACT_DISPLAY}; we are the point of contact for both
+            sides.
           </p>
           <p>
-            Wholesale lots are shipped by arrangement between the seller and buyer, or through
-            a logistics partner booked on the platform, and are not covered by the two delivery
-            promises above.
+            Wholesale lots are shipped by a carrier CropBid books, and are not covered by the
+            two delivery promises above. Who pays for that delivery is a term of each deal,
+            agreed before the seller accepts: the seller, the two sides half each, or the
+            buyer. The seller sets it on the listing and a buyer may propose different terms
+            in their bid. Where the buyer pays some of it, CropBid quotes the delivery first
+            and the buyer pays the goods and their share together; the seller's share is
+            deducted from their settlement. The platform fee is never charged on delivery.
           </p>
         </Section>
 

@@ -12,6 +12,7 @@ import { z } from 'zod';
 import * as bidService from '../services/bid.service';
 import { createDirectPurchase as buyOneLot } from '../services/retailOrder.service';
 import { auditFromRequest } from '../services/audit.service';
+import { FREIGHT_PAYERS } from '../utils/freight';
 
 function paramId(req: Request): string {
   return req.params.id as string;
@@ -29,6 +30,8 @@ const placeBidSchema = z.object({
   contactPhone: z.string().max(20).optional(),
   paymentTerms: z.enum(['LC', 'NET7', 'NET15']).optional(),
   deliveryTerms: z.enum(['FOB', 'CIF']).optional(),
+  // Who pays for delivery if accepted. Absent means the listing's own terms.
+  freightPaidBy: z.enum(FREIGHT_PAYERS).optional(),
   agentMode: z.boolean().optional(),
   walkAwayPrice: z.number().positive().optional(),
 });
@@ -39,6 +42,16 @@ const counterBidSchema = z.object({
 
 const updateBidSchema = z.object({
   bidPricePerUnit: z.number().positive('bidPricePerUnit must be positive'),
+  // Absent keeps the bid's current delivery terms.
+  freightPaidBy: z.enum(FREIGHT_PAYERS).optional(),
+});
+
+// What the seller saw when they pressed Accept. Optional, because older app
+// builds send no body; when present, a bid whose terms have moved since is
+// refused rather than accepted on terms nobody showed the seller.
+const acceptBidSchema = z.object({
+  freightPaidBy: z.enum(FREIGHT_PAYERS).optional(),
+  bidPricePerUnit: z.number().positive().optional(),
 });
 
 const directPurchaseSchema = z.object({
@@ -150,7 +163,11 @@ export async function getBidsForListing(req: Request, res: Response, next: NextF
 export async function acceptBid(req: Request, res: Response, next: NextFunction) {
   try {
     const bidId = paramId(req);
-    const bid = await bidService.acceptBid(bidId, req.user!.userId);
+    const expected = acceptBidSchema.safeParse(req.body ?? {});
+    if (!expected.success) {
+      return res.status(400).json({ message: expected.error.issues[0]?.message || 'Invalid input' });
+    }
+    const bid = await bidService.acceptBid(bidId, req.user!.userId, expected.data);
     await auditFromRequest(req, {
       action: 'bid.accept',
       entityType: 'Bid',
@@ -160,6 +177,7 @@ export async function acceptBid(req: Request, res: Response, next: NextFunction)
         buyerId: (bid as any)?.buyerId ?? null,
         bidPricePerUnit: (bid as any)?.bidPricePerUnit ?? null,
         totalAmount: (bid as any)?.totalAmount ?? null,
+        freightPaidBy: (bid as any)?.freightPaidBy ?? null,
       },
     });
     res.json(bid);
@@ -221,6 +239,7 @@ export async function updateBid(req: Request, res: Response, next: NextFunction)
   try {
     const parsed = updateBidSchema.safeParse({
       bidPricePerUnit: Number(req.body?.bidPricePerUnit),
+      freightPaidBy: req.body?.freightPaidBy,
     });
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
@@ -228,7 +247,8 @@ export async function updateBid(req: Request, res: Response, next: NextFunction)
     const bid = await bidService.updateBid(
       paramId(req),
       req.user!.userId,
-      parsed.data.bidPricePerUnit
+      parsed.data.bidPricePerUnit,
+      parsed.data.freightPaidBy,
     );
     res.json(bid);
   } catch (error) {

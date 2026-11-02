@@ -17,12 +17,14 @@
 //   PENDING → EXPIRED (time ran out, if expiresAt was set)
 // =============================================================================
 
+import { assertNoContactDetails } from '../utils/contactDetails';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered } from './notification.helpers';
 import { createTransaction } from './transaction.service';
+import type { FreightPayer } from '../utils/freight';
 import { alertNewOrder } from './orderAlert.service';
-import { PUBLIC_BUYER_USER_SELECT, redactBidContacts } from './contactVisibility';
+import { PUBLIC_BUYER_USER_SELECT, redactBidContact, redactBidContacts } from './contactVisibility';
 
 // --- Input types ---
 interface PlaceBidInput {
@@ -34,6 +36,7 @@ interface PlaceBidInput {
   contactPhone?: string;
   paymentTerms?: string;
   deliveryTerms?: string;
+  freightPaidBy?: FreightPayer;
 }
 
 // Counterparty-safe farmer shape: public display fields only — never the
@@ -97,6 +100,9 @@ export async function bidsOnMarket(userId: string): Promise<boolean> {
 // PLACE BID — Buyer submits a bid on a listing
 // =============================================================================
 export async function placeBid(buyerId: string, input: PlaceBidInput) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(input.message);
   // Get the listing with farmer info
   const listing = await prisma.listing.findUnique({
     where: { id: input.listingId },
@@ -163,6 +169,9 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
       contactPhone: contact.contactPhone,
       paymentTerms: input.paymentTerms || null,
       deliveryTerms: input.deliveryTerms || null,
+      // Always written, never left to mean "whatever the listing says at
+      // accept": a seller editing the listing must not change a pending bid.
+      freightPaidBy: input.freightPaidBy ?? listing.freightPaidBy,
       isAgentBid: false,
       status: 'PENDING',
     },
@@ -269,7 +278,12 @@ export async function getIncomingBids(farmerId: string, status?: string) {
 // =============================================================================
 // ACCEPT BID — Farmer accepts a buyer's bid
 // =============================================================================
-export async function acceptBid(bidId: string, farmerId: string) {
+export async function acceptBid(
+  bidId: string,
+  farmerId: string,
+  // What the seller was shown. A bid revised since then is refused (409).
+  expected: { freightPaidBy?: FreightPayer; bidPricePerUnit?: number } = {},
+) {
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
     include: {
@@ -283,6 +297,12 @@ export async function acceptBid(bidId: string, farmerId: string) {
   }
   if (bid.status !== 'PENDING') {
     throw new ApiError(400, `Cannot accept a ${bid.status.toLowerCase()} bid`);
+  }
+  if (
+    (expected.freightPaidBy !== undefined && expected.freightPaidBy !== bid.freightPaidBy) ||
+    (expected.bidPricePerUnit !== undefined && expected.bidPricePerUnit !== bid.bidPricePerUnit)
+  ) {
+    throw new ApiError(409, 'The buyer has changed this bid. Check the new price and delivery terms, then accept again.', 'BID_CHANGED');
   }
 
   // Accept this bid and reject all other pending bids on the same listing.
@@ -310,12 +330,20 @@ export async function acceptBid(bidId: string, farmerId: string) {
       throw new ApiError(409, 'This listing is no longer available — its stock was reduced or another sale just went through.');
     }
 
+    // Conditional on the price and delivery terms as read, so a buyer revising
+    // the bid while this runs makes the accept miss instead of accepting terms
+    // the check above never saw.
     const claimedBid = await tx.bid.updateMany({
-      where: { id: bidId, status: 'PENDING' },
+      where: {
+        id: bidId,
+        status: 'PENDING',
+        bidPricePerUnit: bid.bidPricePerUnit,
+        freightPaidBy: bid.freightPaidBy,
+      },
       data: { status: 'ACCEPTED' },
     });
     if (claimedBid.count === 0) {
-      throw new ApiError(409, 'This bid is no longer pending.');
+      throw new ApiError(409, 'This bid changed or is no longer pending. Refresh and check it again.', 'BID_CHANGED');
     }
 
     // Reject competing bids
@@ -337,18 +365,24 @@ export async function acceptBid(bidId: string, farmerId: string) {
       include: {
         listing: true,
         buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
+        // So the seller's screen can open the deal it just made.
+        transaction: { select: { id: true } },
       },
     });
   });
 
-  // Notify buyer (best-effort — the sale is already committed above)
+  // Notify buyer (best-effort: the sale is already committed above). It
+  // carries the deal, so the bell opens the page that says what happens next.
   notifyBidAccepted(
     bid.buyerId, bid.listing.cropName, bid.bidPricePerUnit,
-    bid.currency, bid.listing.unit, bid.listingId, bidId
+    bid.currency, bid.listing.unit, bid.listingId, bidId,
+    { transactionId: accepted.transaction?.id, freightPaidBy: bid.freightPaidBy },
   ).catch(() => {});
   void alertNewOrder(bidId, 'BID_ACCEPTED');
 
-  return accepted;
+  // The seller gets names only: the bid's snapshotted phone and address stay
+  // with CropBid (contactVisibility.ts).
+  return redactBidContact(accepted);
 }
 
 // =============================================================================
@@ -378,7 +412,7 @@ export async function rejectBid(bidId: string, farmerId: string) {
 
   notifyBidRejected(bid.buyerId, bid.listing.cropName, bid.listingId, bidId).catch(() => {});
 
-  return rejected;
+  return redactBidContact(rejected);
 }
 
 // =============================================================================
@@ -419,13 +453,13 @@ export async function counterBid(bidId: string, farmerId: string, counterPrice: 
     bid.listing.currency, bid.listing.unit, bid.listingId, bidId
   ).catch(() => {});
 
-  return countered;
+  return redactBidContact(countered);
 }
 
 // =============================================================================
 // UPDATE BID — Buyer updates their bid (e.g., after a counter-offer)
 // =============================================================================
-export async function updateBid(bidId: string, buyerId: string, newPrice: number) {
+export async function updateBid(bidId: string, buyerId: string, newPrice: number, freightPaidBy?: FreightPayer) {
   const bid = await prisma.bid.findUnique({
     where: { id: bidId },
     include: { listing: true },
@@ -443,21 +477,30 @@ export async function updateBid(bidId: string, buyerId: string, newPrice: number
     throw new ApiError(400, `Bid must be at least ${bid.listing.pricePerUnitMin} (floor price)`);
   }
 
-  const updated = await prisma.bid.update({
-    where: { id: bidId },
+  // Conditional on the bid still being open. An accept committing between the
+  // read above and this write would otherwise be undone: the bid back to
+  // PENDING with new terms, while the deal keeps the terms it was accepted on.
+  const claimed = await prisma.bid.updateMany({
+    where: { id: bidId, status: { in: ['PENDING', 'COUNTERED'] } },
     data: {
       bidPricePerUnit: newPrice,
       totalAmount: newPrice * bid.quantity,
+      ...(freightPaidBy && { freightPaidBy }),
       status: 'PENDING', // Reset to pending after buyer revises
       counterPrice: null, // Clear the counter
     },
+  });
+  if (claimed.count === 0) {
+    throw new ApiError(409, 'The seller has just answered this bid. Refresh to see where it stands.', 'BID_CHANGED');
+  }
+
+  return prisma.bid.findUniqueOrThrow({
+    where: { id: bidId },
     include: {
       listing: true,
       buyer: { select: { id: true, name: true, trustScore: true, avatar: true } },
     },
   });
-
-  return updated;
 }
 
 // =============================================================================

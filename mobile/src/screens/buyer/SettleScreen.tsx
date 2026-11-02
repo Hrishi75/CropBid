@@ -34,6 +34,8 @@ import type { DeliveryStatus, Transaction } from '../../api/types';
 import { money, timeAgo, unitLabel } from '../../lib/format';
 import RazorpayCheckout from '../../components/RazorpayCheckout';
 import { SupplyContracts } from '../../components/SupplyContracts';
+import { CROPBID_CONTACT_DISPLAY, whatsAppCropBid } from '../../lib/support';
+import { buyerPayable, dealMadeSeen, dealMadeText, freightLabel, markDealMadeSeen } from '../../lib/freight';
 
 const DELIVERY_LABEL: Record<Transaction['deliveryStatus'], string> = {
   PENDING: 'Awaiting shipment',
@@ -102,6 +104,29 @@ export default function SettleScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // "Deal made": once per deal, to each side, while it still awaits payment.
+  // Says who pays for delivery and what happens next (lib/freight).
+  const userId = user?.id;
+  React.useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      // One at a time: the next unseen deal shows on the next visit.
+      for (const t of txs) {
+        if (t.retailOrder || t.paymentStatus !== 'AWAITING_PAYMENT') continue;
+        if (t.buyerId !== userId && t.farmerId !== userId) continue;
+        if (await dealMadeSeen(t.id, userId)) continue;
+        if (cancelled) return;
+        await markDealMadeSeen(t.id, userId);
+        const { title, body } = dealMadeText(t, t.buyerId === userId ? 'BUYER' : 'SELLER');
+        setSelectedId(t.id);
+        Alert.alert(title, body, [{ text: 'Got it' }]);
+        return;
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [txs, userId]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
@@ -116,7 +141,11 @@ export default function SettleScreen() {
   const needsMe = (t: Transaction): string | null => {
     const buyer = user?.id === t.buyerId;
     const seller = user?.id === t.farmerId;
-    if (buyer && t.paymentStatus === 'AWAITING_PAYMENT') return `Pay ${money(t.totalAmount, t.currency)}`;
+    // A deal whose delivery is not yet quoted is waiting on CropBid, not them.
+    if (buyer && t.paymentStatus === 'AWAITING_PAYMENT') {
+      const due = buyerPayable(t);
+      return due == null ? null : `Pay ${money(due, t.currency)}`;
+    }
     if (buyer && t.deliveryStatus === 'DELIVERED') return 'Confirm it arrived';
     if (seller && t.paymentStatus === 'ESCROW' && t.deliveryStatus === 'PENDING') return 'Mark it shipped';
     if (seller && t.deliveryStatus === 'IN_TRANSIT') return 'Mark it delivered';
@@ -135,7 +164,10 @@ export default function SettleScreen() {
     null;
   const isBuyer = user?.id === tx?.buyerId;
   const isFarmer = user?.id === tx?.farmerId;
-  const canPay = !!tx && isBuyer && tx.paymentStatus === 'AWAITING_PAYMENT';
+  // The buyer pays goods and their share of delivery together, so nothing is
+  // payable until ops have quoted a share the buyer owes.
+  const payAmount = tx ? buyerPayable(tx) : null;
+  const canPay = !!tx && isBuyer && tx.paymentStatus === 'AWAITING_PAYMENT' && payAmount != null;
 
   async function onPayNow() {
     if (!tx || paying) return;
@@ -203,6 +235,9 @@ export default function SettleScreen() {
   type DeliveryAction = { kind: 'go'; label: string; onPress: () => void } | { kind: 'idle'; label: string };
   function deliveryAction(): DeliveryAction {
     if (!tx) return { kind: 'idle', label: '' };
+    if (isBuyer && tx.paymentStatus === 'AWAITING_PAYMENT' && tx.freight?.awaitingQuote) {
+      return { kind: 'idle', label: 'Waiting for the delivery quote' };
+    }
     if (isBuyer && tx.deliveryStatus === 'DELIVERED') {
       return { kind: 'go', label: 'Confirm it arrived', onPress: onConfirmDelivery };
     }
@@ -226,7 +261,11 @@ export default function SettleScreen() {
   function escrowNote(): string {
     if (!tx) return '';
     if (isFarmer) {
-      if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'Waiting for the buyer to fund escrow. You can ship once the payment is held.';
+      if (tx.paymentStatus === 'AWAITING_PAYMENT') {
+        return tx.freight?.awaitingQuote
+          ? 'CropBid is pricing the delivery. The buyer pays once it is quoted; you can ship once the payment is held.'
+          : 'Waiting for the buyer to fund escrow. You can ship once the payment is held.';
+      }
       if (tx.paymentStatus === 'ESCROW') {
         if (tx.deliveryStatus === 'PENDING') return 'Payment is secured in escrow. Ship the crop, then mark it shipped here.';
         if (tx.deliveryStatus === 'IN_TRANSIT') return 'In transit. Mark it delivered once it reaches the buyer.';
@@ -235,6 +274,9 @@ export default function SettleScreen() {
       }
       if (tx.paymentStatus === 'RELEASED') return 'Settled. You are due this payment; CropBid sends it to the account on your profile.';
       return 'This contract was refunded to the buyer.';
+    }
+    if (tx.paymentStatus === 'AWAITING_PAYMENT' && tx.freight?.awaitingQuote) {
+      return 'CropBid is pricing the delivery. We will tell you when the quote is in; then you pay the goods and your share in one payment.';
     }
     if (tx.paymentStatus === 'AWAITING_PAYMENT') return 'Pay to start the deal. CropBid holds the money and books the delivery; the seller is due it once you confirm the goods arrived.';
     if (tx.paymentStatus === 'ESCROW') return 'Your payment is held by CropBid. Confirming delivery marks the seller due their money.';
@@ -259,6 +301,23 @@ export default function SettleScreen() {
         // The 2% comes off the seller's side, so only the seller sees it; to a
         // buyer it read as a charge on top of what they pay.
         ...(isBuyer ? [] : [['CropBid fee', `${money(tx.platformFeeAmount, tx.currency)} (${tx.platformFeePercent}%)`] as [string, string]]),
+        // Who pays for delivery, and this viewer's share once it is priced.
+        ...(!tx.retailOrder && tx.freight
+          ? [
+              ['Delivery', freightLabel(tx.freight.paidBy)] as [string, string],
+              ...((isBuyer ? tx.freight.paidBy !== 'FARMER' : tx.freight.paidBy !== 'BUYER')
+                ? [['Your share', (isBuyer ? tx.freight.buyerShare : tx.freight.sellerShare) == null
+                    ? 'on quote'
+                    : money((isBuyer ? tx.freight.buyerShare : tx.freight.sellerShare)!, tx.currency)] as [string, string]]
+                : []),
+              ...(isBuyer && tx.freight.buyerPays != null && tx.freight.paidBy !== 'FARMER'
+                ? [['You pay', money(tx.freight.buyerPays, tx.currency)] as [string, string]]
+                : []),
+              ...(!isBuyer && tx.freight.sellerReceives != null
+                ? [['You receive', money(tx.freight.sellerReceives, tx.currency)] as [string, string]]
+                : []),
+            ]
+          : []),
       ]
     : [];
 
@@ -297,7 +356,7 @@ export default function SettleScreen() {
               <View style={styles.sumCell}>
                 <Mono style={styles.sumLabel}>{user?.role === 'BUYER' ? 'TO PAY' : 'AWAITING PAYMENT'}</Mono>
                 <Text style={styles.sumVal}>
-                  {money(txs.filter((t) => t.paymentStatus === 'AWAITING_PAYMENT').reduce((n, t) => n + t.totalAmount, 0), txs[0].currency)}
+                  {money(txs.filter((t) => t.paymentStatus === 'AWAITING_PAYMENT').reduce((n, t) => n + (buyerPayable(t) ?? t.totalAmount), 0), txs[0].currency)}
                 </Text>
               </View>
               <View style={styles.sumDivider} />
@@ -395,6 +454,13 @@ export default function SettleScreen() {
                           <IconShield size={16} sw={2} stroke={colors.sage} />
                           <Text style={styles.noteText}>{escrowNote()}</Text>
                         </View>
+                        {/* Names only between the two sides: CropBid is the
+                            point of contact and does the delivery. */}
+                        <Pressable onPress={() => whatsAppCropBid(`deal #T-${t.id.slice(-6).toUpperCase()}`)} style={styles.note}>
+                          <Text style={styles.noteText}>
+                            Need to reach the {isBuyer ? 'seller' : 'buyer'}? Call or WhatsApp CropBid on {CROPBID_CONTACT_DISPLAY}. Tap to WhatsApp us.
+                          </Text>
+                        </Pressable>
                         {canPay ? (
                           <Pressable
                             onPress={onPayNow}
@@ -405,7 +471,7 @@ export default function SettleScreen() {
                               <ActivityIndicator color="#f4f1ea" size="small" />
                             ) : (
                               <>
-                                <Text style={styles.btnText}>Pay {money(t.totalAmount, t.currency)}</Text>
+                                <Text style={styles.btnText}>Pay {money(payAmount ?? t.totalAmount, t.currency)}</Text>
                                 <IconArrow size={14} stroke="#f4f1ea" />
                               </>
                             )}

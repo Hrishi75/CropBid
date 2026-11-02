@@ -152,6 +152,8 @@ export interface Listing {
   // retailPricePerUnit — no bid, no negotiation.
   directSaleEnabled: boolean;
   retailPricePerUnit: number | null;
+  /** Who pays for delivery on a trade deal off this lot: the seller's opening terms (utils/freight). */
+  freightPaidBy?: PaidBy;
   harvestDate: string | null;
   expiryDate: string | null;
   description: string | null;
@@ -211,6 +213,8 @@ export interface Bid {
   contactReleased?: boolean;
   paymentTerms?: string | null;
   deliveryTerms?: string | null;
+  /** Who pays for delivery if this bid is accepted. Accepting it accepts these terms. */
+  freightPaidBy?: PaidBy;
   isAgentBid: boolean;
   status: BidStatus;
   counterPrice: number | null;
@@ -355,7 +359,26 @@ export interface Transaction {
   // shopper pays for (every lot from one shop, plus its delivery fee). Null
   // for trade deals and for retail orders placed before shop orders existed.
   retailOrder?: RetailOrderSummary | null;
+  /** Delivery terms as accepted, and the quote ops send when the buyer pays part of it. */
+  freightPaidBy?: PaidBy;
+  freightQuote?: number | null;
+  /** Worked out on the server so every screen agrees about a split. */
+  freight?: FreightSummary;
   createdAt: string;
+}
+
+export interface FreightSummary {
+  paidBy: PaidBy;
+  /** The quote, or the booked cost on a seller-pays deal. Null until priced. */
+  amount: number | null;
+  buyerShare: number | null;
+  sellerShare: number | null;
+  /** The buyer owes a share that ops have not quoted yet, so they cannot pay. */
+  awaitingQuote: boolean;
+  /** Goods plus the buyer's share. Null while the buyer's share is unknown. */
+  buyerPays: number | null;
+  /** Goods minus the 2% fee minus the seller's share. Null until delivery is priced. */
+  sellerReceives: number | null;
 }
 
 export interface RetailOrderSummary {
@@ -467,9 +490,9 @@ export interface Shipment {
   transaction?: Transaction;
   logisticsPartnerId: string;
   logisticsPartner?: LogisticsPartner;
-  pickupLocation: string;
+  pickupLocation: string | null; // null for the buyer: the seller's end
   pickupDate: string;
-  deliveryLocation: string;
+  deliveryLocation: string | null; // null for the seller: the buyer's end
   estimatedDeliveryDate: string;
   actualDeliveryDate: string | null;
   vehicleType: string;

@@ -20,9 +20,10 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
-import { PUBLIC_SELLER_SELECT } from './publicSeller';
+import { PUBLIC_SELLER_SELECT, nameOnlySellers } from './publicSeller';
 import { Prisma } from '../generated/prisma/client';
 import { ApiError } from '../utils/ApiError';
+import { buyerPayable, buyerPaysFreight, freightShares } from '../utils/freight';
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
 import { redactTransactionContact, redactTransactionContacts } from './contactVisibility';
 
@@ -82,12 +83,64 @@ const RETAIL_ORDER_SUMMARY_SELECT = {
   _count: { select: { transactions: true } },
 } as const;
 
+// The seller's share of delivery comes out of their payout, and on a SPLIT or
+// BUYER deal that share is half or none of it (utils/freight.ts).
+// Each side keeps its own end of a shipment's route and loses the other's,
+// which is the other party's address; the event log's places go too. The
+// mirror of the same rule in forShipmentViewer() (logistics.service.ts).
+function routeForViewer<S extends Record<string, any> | null | undefined>(
+  shipment: S,
+  tx: { farmerId: string; buyerId: string },
+  userId: string,
+  role: string,
+): S {
+  if (!shipment || role === 'ADMIN') return shipment;
+  const out: Record<string, any> = { ...shipment };
+  if ('pickupLocation' in out && tx.farmerId !== userId) out.pickupLocation = null;
+  if ('deliveryLocation' in out && tx.buyerId !== userId) out.deliveryLocation = null;
+  if (Array.isArray(out.trackingUpdates)) {
+    out.trackingUpdates = out.trackingUpdates.map((u: Record<string, unknown>) => ({ ...u, location: null }));
+  }
+  return out as S;
+}
+
 export function sellerNetAmount(
   totalAmount: number,
   platformFeeAmount: number,
   transportCost?: number | null,
+  freightPaidBy: string = 'FARMER',
 ): number {
-  return totalAmount - platformFeeAmount - (transportCost ?? 0);
+  return totalAmount - platformFeeAmount - freightShares(freightPaidBy, transportCost).seller;
+}
+
+// Delivery as both sides of a trade deal need it on screen, worked out once
+// here so the web and the app cannot disagree about a split. `amount` is the
+// quote, or the booked cost on a seller-pays deal booked without one; null
+// while nobody has priced it yet.
+export function freightSummary(tx: {
+  totalAmount: number;
+  platformFeeAmount: number;
+  freightPaidBy: string;
+  freightQuote: number | null;
+  retailOrderId?: string | null;
+  shipment?: { transportCost?: number | null } | null;
+}) {
+  const amount = tx.freightQuote ?? tx.shipment?.transportCost ?? null;
+  const shares = freightShares(tx.freightPaidBy, amount);
+  return {
+    paidBy: tx.freightPaidBy,
+    amount,
+    buyerShare: amount == null ? null : shares.buyer,
+    sellerShare: amount == null ? null : shares.seller,
+    // The buyer cannot pay until a share they owe has been quoted.
+    awaitingQuote: !tx.retailOrderId && buyerPaysFreight(tx.freightPaidBy) && tx.freightQuote == null,
+    buyerPays: amount == null && buyerPaysFreight(tx.freightPaidBy)
+      ? null
+      : buyerPayable({ totalAmount: tx.totalAmount, freightPaidBy: tx.freightPaidBy, freightQuote: amount }),
+    sellerReceives: amount == null
+      ? null
+      : Math.round(sellerNetAmount(tx.totalAmount, tx.platformFeeAmount, amount, tx.freightPaidBy) * 100) / 100,
+  };
 }
 
 // =============================================================================
@@ -148,6 +201,9 @@ export async function createTransaction(
       paymentStatus: 'AWAITING_PAYMENT',
       deliveryStatus: 'PENDING',
       retailOrderId: link.retailOrderId ?? null,
+      // Delivery terms as accepted. Retail lots never carry anything but the
+      // seller default: household delivery is the shop order's fee (§3b).
+      freightPaidBy: link.retailOrderId ? 'FARMER' : bid.freightPaidBy,
     },
     include: {
       // The seller travels with the listing so an order can name the shop it
@@ -223,13 +279,17 @@ export async function getMyTransactions(userId: string, role: string) {
   // Skipping the second one would leave the gate wide open — the Deliveries
   // page reads tx.bid.contactPhone first and only falls back to tx.buyer.phone.
   //
-  // contactReleased already encodes the whole decision (admin, own row, or
-  // paid), so the bid snapshot follows it rather than re-deriving the rule.
-  return redactTransactionContacts(transactions, { userId, role }).map((t) =>
-    t.contactReleased
-      ? t
-      : { ...t, bid: { ...t.bid, deliveryAddress: null, contactPhone: null } },
-  );
+  // contactReleased already encodes the whole decision (admin or own row; the
+  // other side never), so the bid snapshot follows it rather than re-deriving
+  // the rule. Firm names go too (nameOnlySellers).
+  // Ops see firm names; the two sides do not.
+  const names = role === 'ADMIN' ? <T,>(v: T) => v : nameOnlySellers;
+  return names(redactTransactionContacts(transactions, { userId, role }).map((t) => {
+    const withFreight = { ...t, freight: freightSummary(t), shipment: routeForViewer(t.shipment, t, userId, role) };
+    return t.contactReleased
+      ? withFreight
+      : { ...withFreight, bid: { ...t.bid, deliveryAddress: null, contactPhone: null } };
+  }));
 }
 
 // =============================================================================
@@ -289,10 +349,10 @@ export async function getTransaction(transactionId: string, userId: string, role
   // the side the contact gate is for. The role is passed as FARMER rather than
   // as sent so that holds whatever the account's role says; an admin is passed
   // as ADMIN and sees both sides' contact, as on every other admin read.
-  const viewed = redactTransactionContact(transaction, { userId, role: isAdmin ? 'ADMIN' : 'FARMER' });
-  return viewed.contactReleased
+  const viewed = { ...redactTransactionContact(transaction, { userId, role: isAdmin ? 'ADMIN' : 'FARMER' }), freight: freightSummary(transaction) };
+  return (isAdmin ? <T,>(v: T) => v : nameOnlySellers)(viewed.contactReleased
     ? viewed
-    : { ...viewed, bid: { ...viewed.bid, deliveryAddress: null, contactPhone: null } };
+    : { ...viewed, bid: { ...viewed.bid, deliveryAddress: null, contactPhone: null } });
 }
 
 // =============================================================================
@@ -367,7 +427,12 @@ export async function updateDeliveryStatus(
     });
     notifyPaymentReleased(
       transaction.farmerId,
-      sellerNetAmount(transaction.totalAmount, transaction.platformFeeAmount, freight?.transportCost),
+      sellerNetAmount(
+        transaction.totalAmount,
+        transaction.platformFeeAmount,
+        freight?.transportCost ?? transaction.freightQuote,
+        transaction.freightPaidBy,
+      ),
       transaction.currency, transactionId
     ).catch(() => {});
   }

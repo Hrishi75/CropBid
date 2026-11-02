@@ -363,14 +363,49 @@ describe('capturing a basket payment', () => {
 });
 
 describe('a trade deal with no shop order', () => {
+  const txUpdateMany = mock(prisma.transaction.updateMany);
+
   it('still gets a Razorpay order of its own, for its own amount', async () => {
-    txFindUnique.mockResolvedValue({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000 });
-    txUpdate.mockResolvedValue({});
+    txFindUnique.mockResolvedValue({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'FARMER', freightQuote: null });
+    txUpdateMany.mockResolvedValue({ count: 1 });
 
     const answer = await createOrder('tx-1', SHOPPER);
 
     expect(orders.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 500000 }));
     expect(answer).toMatchObject({ transactionId: 'tx-1' });
     expect(ordersFindMany).not.toHaveBeenCalled();
+  });
+
+  // Delivery terms (utils/freight.ts): a buyer with a share pays it together
+  // with the goods, and only once ops have quoted it.
+  it('cannot be paid while the buyer owes an unquoted share of delivery', async () => {
+    txFindUnique.mockResolvedValue({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'SPLIT', freightQuote: null });
+
+    await expect(createOrder('tx-1', SHOPPER)).rejects.toMatchObject({ statusCode: 409, code: 'FREIGHT_QUOTE_PENDING' });
+    expect(orders.create).not.toHaveBeenCalled();
+  });
+
+  it('charges the goods plus half the quote on a split, and the whole quote when the buyer pays', async () => {
+    txUpdateMany.mockResolvedValue({ count: 1 });
+    txFindUnique.mockResolvedValue({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'SPLIT', freightQuote: 801 });
+    await createOrder('tx-1', SHOPPER);
+    expect(orders.create).toHaveBeenLastCalledWith(expect.objectContaining({ amount: 540050 }));
+
+    txFindUnique.mockResolvedValue({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'BUYER', freightQuote: 801 });
+    await createOrder('tx-1', SHOPPER);
+    expect(orders.create).toHaveBeenLastCalledWith(expect.objectContaining({ amount: 580100 }));
+  });
+
+  it('stores the order only against the quote it was priced with', async () => {
+    txFindUnique
+      .mockResolvedValueOnce({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'BUYER', freightQuote: 800 })
+      // Re-read after the miss: ops corrected the quote meanwhile.
+      .mockResolvedValueOnce({ ...RETAIL_LOT, retailOrderId: null, totalAmount: 5000, freightPaidBy: 'BUYER', freightQuote: 900, paymentStatus: 'AWAITING_PAYMENT' });
+    txUpdateMany.mockResolvedValue({ count: 0 });
+
+    await expect(createOrder('tx-1', SHOPPER)).rejects.toMatchObject({ statusCode: 409, code: 'PAYMENT_AMOUNT_CHANGED' });
+    expect(txUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ freightQuote: 800, razorpayOrderId: null }),
+    }));
   });
 });

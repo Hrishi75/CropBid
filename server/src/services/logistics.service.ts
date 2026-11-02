@@ -19,10 +19,12 @@
 //   Building it touches escrow, the fee basis and both sides' numbers, so it is
 //   a design job. Until then no user-facing string may claim we check goods.
 //
-// THE SELLER PAYS. `paidBy` is no longer an input: bookShipment writes FARMER
-// unconditionally, so no request can shift freight onto the buyer. Callers that
-// used to send BUYER or SPLIT are ignored rather than rejected, because the
-// field is gone from the request schema entirely.
+// WHO PAYS IS A TERM OF THE DEAL, not of the booking. The seller sets it on
+// the listing and a bid can propose otherwise (utils/freight.ts); accepting
+// the bid fixes it on the Transaction. `paidBy` is still not a booking input:
+// bookShipment copies the deal's terms, so ops cannot bill a side for freight
+// it never agreed to. When the buyer has a share, ops quote the delivery first
+// (setFreightQuote) and the shipment costs exactly that quote.
 //
 // CARRIER IDENTITY IS STRIPPED ON READ for anyone who is not an admin, by
 // forShipmentViewer() below. Hiding it in the client would not be enough: the
@@ -32,7 +34,8 @@
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getIO } from '../socket';
-import { notifyShipmentBooked, notifyShipmentUpdate } from './notification.helpers';
+import { notifyFreightQuoted, notifyShipmentBooked, notifyShipmentUpdate } from './notification.helpers';
+import { buyerPayable, buyerPaysFreight, freightShares, MAX_FREIGHT_QUOTE } from '../utils/freight';
 
 // =============================================================================
 // Helpers
@@ -78,6 +81,18 @@ function forShipmentViewer<T extends Record<string, any> | null>(shipment: T, ac
     platformCommission,
     ...visible
   } = shipment as any;
+  // Names only between the two sides (contactVisibility.ts): each keeps their
+  // own end of the route and loses the other's, which is the other party's
+  // address. The event log's locations go too, since the first of them is the
+  // pickup point. Without the deal to say who is reading, both ends go.
+  const tx = (shipment as any).transaction as { farmerId?: string; buyerId?: string } | undefined;
+  const isSeller = tx?.farmerId === actor.userId;
+  const isBuyer = tx?.buyerId === actor.userId;
+  if (!isSeller) visible.pickupLocation = null;
+  if (!isBuyer) visible.deliveryLocation = null;
+  if (Array.isArray(visible.trackingUpdates)) {
+    visible.trackingUpdates = visible.trackingUpdates.map((u: Record<string, unknown>) => ({ ...u, location: null }));
+  }
   return visible as T;
 }
 
@@ -156,6 +171,14 @@ export async function getMatchingPartners(transactionId: string, actor: Actor) {
       isPerishable,
       origin: `${listing.location}, ${listing.state}`,
       country: listing.country,
+      // The deal's delivery terms, so ops know whether to quote the buyer
+      // first, and whether that quote can still be changed.
+      freightPaidBy: transaction.retailOrderId ? 'FARMER' : transaction.freightPaidBy,
+      freightQuote: transaction.freightQuote,
+      buyerPaysFreight: !transaction.retailOrderId && buyerPaysFreight(transaction.freightPaidBy),
+      quoteLocked: transaction.paymentStatus !== 'AWAITING_PAYMENT' || transaction.razorpayOrderId != null,
+      paymentStatus: transaction.paymentStatus,
+      currency: transaction.currency,
     },
   };
 }
@@ -204,20 +227,6 @@ interface BookShipmentInput {
 }
 
 export async function bookShipment(input: BookShipmentInput, actor: Actor) {
-  const transaction = await prisma.transaction.findUnique({
-    where: { id: input.transactionId },
-    include: {
-      listing: true,
-      shipment: true,
-    },
-  });
-
-  if (!transaction) throw new ApiError(404, 'Transaction not found');
-  assertParty(transaction, actor);
-  if (transaction.shipment) {
-    throw new ApiError(409, 'Shipment already booked for this transaction');
-  }
-
   const partner = await prisma.logisticsPartner.findUnique({
     where: { id: input.logisticsPartnerId },
   });
@@ -225,51 +234,129 @@ export async function bookShipment(input: BookShipmentInput, actor: Actor) {
     throw new ApiError(400, 'Invalid or inactive logistics partner');
   }
 
-  const transportCost = Math.round(partner.costPerKmPerKg * input.distanceKm * input.totalWeightKg * 100) / 100;
-  const platformCommission = Math.round(transportCost * partner.commissionPercent / 100 * 100) / 100;
+  const shipment = await prisma.$transaction(async (tx) => {
+    // Locked so a quote being set at the same moment waits for this booking
+    // (and then finds a shipment and refuses), rather than repricing a deal
+    // whose carrier is already booked at the old figure.
+    await tx.$queryRaw`SELECT 1 FROM "Transaction" WHERE "id" = ${input.transactionId} FOR UPDATE`;
+    const transaction = await tx.transaction.findUnique({
+      where: { id: input.transactionId },
+      include: { listing: true, shipment: true },
+    });
 
-  const estimatedDeliveryDate = new Date(input.pickupDate);
-  estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + partner.avgDeliveryDays);
+    if (!transaction) throw new ApiError(404, 'Transaction not found');
+    assertParty(transaction, actor);
+    if (transaction.shipment) {
+      throw new ApiError(409, 'Shipment already booked for this transaction');
+    }
 
-  const shipment = await prisma.shipment.create({
-    data: {
-      transactionId: input.transactionId,
-      logisticsPartnerId: input.logisticsPartnerId,
-      pickupLocation: input.pickupLocation,
-      deliveryLocation: input.deliveryLocation,
-      pickupDate: new Date(input.pickupDate),
-      estimatedDeliveryDate,
-      vehicleType: input.vehicleType,
-      distanceKm: input.distanceKm,
-      totalWeightKg: input.totalWeightKg,
-      transportCost,
-      platformCommission,
-      currency: transaction.currency as any,
-      // Not from the request. The seller carries the freight cost, always, so
-      // there is no caller-supplied value here that could say otherwise.
-      // SPLIT stays in the enum for the rows booked before this rule existed.
-      paidBy: 'FARMER',
-      splitPercentBuyer: null,
-      trackingUpdates: [
-        {
-          timestamp: new Date().toISOString(),
-          location: input.pickupLocation,
-          status: 'PENDING_PICKUP',
-          note: 'Shipment booked. Awaiting pickup.',
-        },
-      ],
-    },
-    include: { logisticsPartner: true },
+    // A buyer with a share agreed to pay a quoted figure, so the booking costs
+    // that figure. Booking without one would charge them an amount nobody
+    // showed them.
+    const buyerShare = !transaction.retailOrderId && buyerPaysFreight(transaction.freightPaidBy);
+    if (buyerShare && transaction.freightQuote == null) {
+      throw new ApiError(409, 'The buyer pays towards delivery on this deal. Send them a delivery quote before booking.', 'FREIGHT_QUOTE_REQUIRED');
+    }
+    const transportCost = transaction.freightQuote != null
+      ? transaction.freightQuote
+      : Math.round(partner.costPerKmPerKg * input.distanceKm * input.totalWeightKg * 100) / 100;
+    const platformCommission = Math.round(transportCost * partner.commissionPercent / 100 * 100) / 100;
+
+    const estimatedDeliveryDate = new Date(input.pickupDate);
+    estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + partner.avgDeliveryDays);
+
+    const created = await tx.shipment.create({
+      data: {
+        transactionId: input.transactionId,
+        logisticsPartnerId: input.logisticsPartnerId,
+        pickupLocation: input.pickupLocation,
+        deliveryLocation: input.deliveryLocation,
+        pickupDate: new Date(input.pickupDate),
+        estimatedDeliveryDate,
+        vehicleType: input.vehicleType,
+        distanceKm: input.distanceKm,
+        totalWeightKg: input.totalWeightKg,
+        transportCost,
+        platformCommission,
+        currency: transaction.currency as any,
+        // From the deal, never the request: the terms both sides agreed.
+        paidBy: transaction.retailOrderId ? 'FARMER' : transaction.freightPaidBy,
+        splitPercentBuyer: !transaction.retailOrderId && transaction.freightPaidBy === 'SPLIT' ? 50 : null,
+        trackingUpdates: [
+          {
+            timestamp: new Date().toISOString(),
+            location: input.pickupLocation,
+            status: 'PENDING_PICKUP',
+            note: 'Shipment booked. Awaiting pickup.',
+          },
+        ],
+      },
+      include: { logisticsPartner: true },
+    });
+    return { created, transaction };
   });
 
   // Notify both parties. Deliberately not by carrier name: the notification
   // reaches the same two people the read endpoints strip the carrier for, and
   // a push that names the haulier would undo that on the lock screen.
+  const { created, transaction } = shipment;
   const cropName = transaction.listing.cropName;
-  notifyShipmentBooked(transaction.farmerId, cropName, input.pickupDate, transaction.id, shipment.id).catch(() => {});
-  notifyShipmentBooked(transaction.buyerId, cropName, input.pickupDate, transaction.id, shipment.id).catch(() => {});
+  notifyShipmentBooked(transaction.farmerId, cropName, input.pickupDate, transaction.id, created.id).catch(() => {});
+  notifyShipmentBooked(transaction.buyerId, cropName, input.pickupDate, transaction.id, created.id).catch(() => {});
 
-  return shipment;
+  return created;
+}
+
+// =============================================================================
+// Quote delivery to the buyer (ADMIN)
+// =============================================================================
+// On a deal where the buyer pays half or all of the delivery, the buyer cannot
+// pay until this is set, because they pay goods and their share in one go.
+// Ops may correct it until the buyer opens the payment or a carrier is booked;
+// after that the amount is in a Razorpay order or on a shipment and is fixed.
+export async function setFreightQuote(transactionId: string, amount: number, actor: Actor) {
+  if (actor.role !== 'ADMIN') throw new ApiError(403, 'Only CropBid ops quote delivery');
+  if (!(amount > 0) || amount > MAX_FREIGHT_QUOTE) {
+    throw new ApiError(400, `A delivery quote must be more than 0 and at most ${MAX_FREIGHT_QUOTE}`);
+  }
+  const quote = Math.round(amount * 100) / 100;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM "Transaction" WHERE "id" = ${transactionId} FOR UPDATE`;
+    const transaction = await tx.transaction.findUnique({
+      where: { id: transactionId },
+      include: { listing: { select: { cropName: true } }, shipment: { select: { id: true } } },
+    });
+    if (!transaction) throw new ApiError(404, 'Transaction not found');
+    if (transaction.retailOrderId || !buyerPaysFreight(transaction.freightPaidBy)) {
+      throw new ApiError(400, 'The seller pays all the delivery on this deal, so there is nothing to quote the buyer. Book it directly.');
+    }
+    if (transaction.paymentStatus !== 'AWAITING_PAYMENT') {
+      throw new ApiError(409, 'The buyer has already paid, so the delivery quote is fixed.', 'FREIGHT_QUOTE_LOCKED');
+    }
+    if (transaction.razorpayOrderId || transaction.shipment) {
+      throw new ApiError(409, 'The buyer has opened the payment or a carrier is booked, so the delivery quote is fixed.', 'FREIGHT_QUOTE_LOCKED');
+    }
+    await tx.transaction.update({
+      where: { id: transactionId },
+      data: { freightQuote: quote, freightQuotedAt: new Date() },
+    });
+    return { ...transaction, freightQuote: quote, previousQuote: transaction.freightQuote };
+  });
+
+  const shares = freightShares(updated.freightPaidBy, quote);
+  const cropName = updated.listing.cropName;
+  notifyFreightQuoted(updated.buyerId, 'BUYER', cropName, shares.buyer, buyerPayable(updated), updated.currency, updated.id).catch(() => {});
+  notifyFreightQuoted(updated.farmerId, 'SELLER', cropName, shares.seller, null, updated.currency, updated.id).catch(() => {});
+
+  return {
+    transactionId: updated.id,
+    freightPaidBy: updated.freightPaidBy,
+    freightQuote: quote,
+    previousQuote: updated.previousQuote,
+    buyerShare: shares.buyer,
+    sellerShare: shares.seller,
+  };
 }
 
 // =============================================================================
@@ -336,8 +423,11 @@ export async function updateShipmentStatus(
 
   // Notify both parties
   const cropName = tx.listing.cropName;
-  notifyShipmentUpdate(tx.farmerId, cropName, newStatus, update.location, shipmentId).catch(() => {});
-  notifyShipmentUpdate(tx.buyerId, cropName, newStatus, update.location, shipmentId).catch(() => {});
+  // Neither the notification nor the live event carries the place ops typed:
+  // it can be either party's address, and the two sides see names only
+  // (contactVisibility.ts), the same rule forShipmentViewer applies to reads.
+  notifyShipmentUpdate(tx.farmerId, cropName, newStatus, null, shipmentId).catch(() => {});
+  notifyShipmentUpdate(tx.buyerId, cropName, newStatus, null, shipmentId).catch(() => {});
 
   // Socket.io real-time push
   const io = getIO();
@@ -345,7 +435,7 @@ export async function updateShipmentStatus(
     io.to(`user:${tx.farmerId}`).to(`user:${tx.buyerId}`).emit('shipment:status_update', {
       shipmentId,
       status: newStatus,
-      trackingUpdate: trackingUpdates[trackingUpdates.length - 1],
+      trackingUpdate: { ...trackingUpdates[trackingUpdates.length - 1], location: null },
     });
   }
 

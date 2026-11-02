@@ -58,7 +58,7 @@ export default function AboutScreen() {
         />
         <Block
           label={t('WHAT WE CHARGE')}
-          text={t('A flat 2% when a deal settles. Accounts, listings and mandi rates are free. Freight is arranged by us and paid by the seller, charged separately.')}
+          text={t('A flat 2% when a deal settles. Accounts, listings and mandi rates are free. Freight is booked by us and charged separately; who pays it, the seller, the buyer or half each, is agreed with each deal.')}
         />
         <Block
           label={t('WHERE WE DELIVER')}

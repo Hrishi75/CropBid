@@ -21,6 +21,8 @@ import { CROP_CATEGORIES, ALL_CROPS, resolveCatalogueCrop } from '../../utils/cr
 import { VoiceCaptureButton, type VoiceDraft } from '../../components/voice/VoiceCaptureButton';
 import { cropImageFor } from '../../utils/cropImages';
 import api from '../../lib/axios';
+import { FREIGHT_OPTIONS } from '../../utils/freight';
+import type { PaidBy } from '../../types';
 import toast from 'react-hot-toast';
 
 const INDIAN_STATES = [
@@ -69,6 +71,9 @@ export function CreateListing() {
   // consumer storefront queries /browse?directSale=true.
   const [directSaleEnabled, setDirectSaleEnabled] = useState(false);
   const [retailPrice, setRetailPrice] = useState('');
+  // Who pays for delivery on a deal off this lot. A buyer's bid can propose
+  // other terms, which the seller sees before accepting.
+  const [freightPaidBy, setFreightPaidBy] = useState<PaidBy>('FARMER');
   const [location, setLocation] = useState('');
   const [state, setState] = useState('');
 
@@ -134,6 +139,7 @@ export function CreateListing() {
         setOrganic(l.organic || false);
         setDirectSaleEnabled(l.directSaleEnabled || false);
         setRetailPrice(l.retailPricePerUnit != null ? String(l.retailPricePerUnit) : '');
+        setFreightPaidBy(l.freightPaidBy || 'FARMER');
         setLocation(l.location || '');
         setState(l.state || '');
       })
@@ -194,6 +200,7 @@ export function CreateListing() {
       formData.append('organic', String(organic));
       formData.append('directSaleEnabled', String(directSaleEnabled));
       if (directSaleEnabled) formData.append('retailPricePerUnit', retailPrice);
+      formData.append('freightPaidBy', freightPaidBy);
       formData.append('location', location);
       formData.append('country', user?.country || 'India');
       formData.append('state', state);
@@ -222,6 +229,7 @@ export function CreateListing() {
           // is what should happen when a farmer closes the retail channel and
           // later reopens it.
           ...(directSaleEnabled && { retailPricePerUnit: parseFloat(retailPrice) }),
+          freightPaidBy,
           location,
           country: user?.country || 'India',
           state,
@@ -447,6 +455,30 @@ export function CreateListing() {
                 />
                 <span style={{ fontSize: 14 }}>Organic certified</span>
               </label>
+            </Section>
+
+            {/* Delivery is a term of the deal, so it is set here, before any
+                bid, and a buyer sees it on the lot before bidding. */}
+            <Section title="Delivery · who pays">
+              <p className="cb-field-hint" style={{ marginTop: 0 }}>
+                CropBid books the truck on every deal. Choose who pays for it. A buyer can propose different terms in their bid, and you see them before you accept.
+              </p>
+              <div className="cb-pill-group">
+                {FREIGHT_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`cb-pill ${freightPaidBy === o.value ? 'active' : ''}`}
+                    onClick={() => setFreightPaidBy(o.value)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <p className="cb-field-hint">
+                {FREIGHT_OPTIONS.find((o) => o.value === freightPaidBy)!.hint}
+                {freightPaidBy !== 'FARMER' && ' The buyer pays once CropBid has quoted the delivery.'}
+              </p>
             </Section>
 
             {/* The retail channel. Deliberately its own section rather than a

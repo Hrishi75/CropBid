@@ -21,7 +21,8 @@ import { formatCurrency } from '../../utils/currency';
 import { mspForCrop } from '../../utils/msp';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
-import type { Listing } from '../../types';
+import type { Listing, PaidBy } from '../../types';
+import { FREIGHT_OPTIONS, buyerPaysFreight, freightLabel } from '../../utils/freight';
 
 interface BidFormProps {
   listing: Listing;
@@ -38,7 +39,12 @@ export function BidForm({ listing }: BidFormProps) {
   ));
   const [message, setMessage] = useState('');
   const [payment, setPayment] = useState<'LC' | 'NET7' | 'NET15'>('LC');
-  const [delivery, setDelivery] = useState<'FOB' | 'CIF'>('CIF');
+  // Who pays for delivery. Starts at the seller's terms; anything else is a
+  // proposal the seller sees on the bid before accepting. This replaced an
+  // FOB/CIF picker, which asked the same question in trade shorthand and could
+  // disagree with it.
+  const listingFreight: PaidBy = listing.freightPaidBy ?? 'FARMER';
+  const [freight, setFreight] = useState<PaidBy>(listingFreight);
   // Prefilled from the profile — the seller sees these on the order
   const [deliveryAddress, setDeliveryAddress] = useState(user?.location ?? '');
   const [contactPhone, setContactPhone] = useState(user?.phone ?? '');
@@ -85,7 +91,7 @@ export function BidForm({ listing }: BidFormProps) {
         deliveryAddress: deliveryAddress.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         paymentTerms: payment,
-        deliveryTerms: delivery,
+        freightPaidBy: freight,
         agentMode,
         walkAwayPrice: agentMode && walkAway ? parseFloat(walkAway) : undefined,
       });
@@ -190,14 +196,19 @@ export function BidForm({ listing }: BidFormProps) {
             </div>
           </div>
           <div>
-            <label className="cb-label">Delivery</label>
+            <label className="cb-label">Delivery · who pays</label>
             <div className="cb-pill-group">
-              {[['FOB', 'FOB origin'], ['CIF', 'CIF dest']].map(([v, label]) => (
-                <button key={v} type="button" className={`cb-pill ${delivery === v ? 'active' : ''}`} onClick={() => setDelivery(v as any)}>
-                  {label}
+              {FREIGHT_OPTIONS.map((o) => (
+                <button key={o.value} type="button" className={`cb-pill ${freight === o.value ? 'active' : ''}`} onClick={() => setFreight(o.value)}>
+                  {o.label}
                 </button>
               ))}
             </div>
+            <p className="cb-field-hint">
+              The seller's terms: {freightLabel(listingFreight).toLowerCase()}.
+              {freight !== listingFreight && ' You are proposing different terms; the seller sees them before accepting.'}
+              {buyerPaysFreight(freight) && ' CropBid books the truck and quotes the delivery after the deal; you pay the goods and your share together.'}
+            </p>
           </div>
         </Section>
 

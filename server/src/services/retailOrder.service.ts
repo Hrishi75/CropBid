@@ -26,6 +26,7 @@
 // so neither keeps a copy that drifts.
 // =============================================================================
 
+import { assertNoContactDetails } from '../utils/contactDetails';
 import { Prisma } from '../generated/prisma/client';
 import { prisma } from '../lib/prisma';
 import type { Unit } from '../generated/prisma/enums';
@@ -259,7 +260,7 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
   if (!contact.deliveryAddress || !contact.contactPhone) {
     throw new ApiError(
       400,
-      'Add a delivery address and phone number so the seller can deliver your order. Set them in your profile or include them with the order.',
+      'Add a delivery address and phone number so CropBid can deliver your order. Set them in your profile or include them with the order.',
     );
   }
 
@@ -444,6 +445,9 @@ export async function cancelRetailOrder(
   actor: { userId: string; role: string },
   reason?: string,
 ) {
+  // CropBid is the point of contact: no phone, email or chat link in text the
+  // other side reads (utils/contactDetails.ts).
+  assertNoContactDetails(reason, 'The reason');
   const order = await prisma.retailOrder.findUnique({
     where: { id: retailOrderId },
     include: {

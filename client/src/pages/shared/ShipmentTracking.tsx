@@ -204,7 +204,9 @@ export function ShipmentTracking() {
           )}
         </div>
         <div style={{ fontWeight: 500, fontSize: 16 }}>
-          {shipment.pickupLocation} → {shipment.deliveryLocation}
+          {/* Each side gets only its own end of the route (names only,
+              CropBid in the middle); the other end reads as "CropBid". */}
+          {shipment.pickupLocation || 'Seller (via CropBid)'} → {shipment.deliveryLocation || 'Buyer (via CropBid)'}
         </div>
         <div className="cb-tiny" style={{ marginTop: 4 }}>
           {shipment.distanceKm} km · {shipment.totalWeightKg?.toLocaleString()} kg
@@ -343,8 +345,12 @@ export function ShipmentTracking() {
                 claiming an inspection nobody carried out. See the note on
                 TransactionDetail's settlement breakdown. */}
             <p className="cb-small" style={{ margin: 0 }}>
-              CropBid booked this delivery, so it is ours to answer for. The
-              freight charge is settled with the seller.
+              CropBid booked this delivery, so it is ours to answer for.{' '}
+              {shipment.paidBy === 'BUYER'
+                ? 'The buyer pays the freight charge.'
+                : shipment.paidBy === 'SPLIT'
+                  ? 'The freight charge is split 50/50 between buyer and seller.'
+                  : 'The freight charge is settled with the seller.'}
             </p>
           </Section>
         )}

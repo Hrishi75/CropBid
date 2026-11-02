@@ -23,6 +23,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
+import { CROPBID_CONTACT_DISPLAY } from '../../content/support';
 import type { Transaction } from '../../types';
 
 const SHIPMENT_META: Record<string, { label: string; color: string }> = {
@@ -87,7 +88,8 @@ export function Deliveries() {
       {/*
         Says both halves of the arrangement in one place, because a seller who
         learns about the freight charge from a deduction later has been
-        surprised by it. The same sentence appears on the settlement breakdown
+        surprised by it. Who pays is per deal now (seller, 50/50 or buyer,
+        agreed with the bid), so the figure lives on each deal. The same sentence appears on the settlement breakdown
         in TransactionDetail; if one changes, change the other.
 
         DO NOT say we check the goods. Inspecting at pickup is the INTENT
@@ -96,7 +98,9 @@ export function Deliveries() {
       */}
       <p className="cb-page-lede" style={{ marginTop: 12 }}>
         CropBid books the transport, so the delivery is ours to answer for.
-        The freight charge is payable by you and comes out of your settlement.
+        Who pays for it was agreed with each bid: your share of the freight
+        charge comes out of your settlement, and each deal shows how much.
+        To reach a buyer, call or WhatsApp CropBid on {CROPBID_CONTACT_DISPLAY}.
       </p>
 
       <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
@@ -166,16 +170,11 @@ export function Deliveries() {
                 </div>
                 <div className="cb-small" style={{ marginBottom: 8 }}>
                   to {tx.buyer?.name || 'buyer'}
-                  {(tx.bid?.contactPhone || tx.buyer?.phone) && (
-                    <> · <a href={`tel:${tx.bid?.contactPhone || tx.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {tx.bid?.contactPhone || tx.buyer?.phone}</a></>
-                  )}
                   {/* Route, not carrier. The API stops sending logisticsPartner
                       to a seller at all, so there is nothing to print here. */}
-                  {shp
-                    ? <> · {shp.pickupLocation} → {shp.deliveryLocation}</>
-                    : tx.bid?.deliveryAddress
-                      ? <> · deliver to {tx.bid.deliveryAddress}</>
-                      : tx.listing ? <> · from {tx.listing.location}, {tx.listing.state}</> : null}
+                  {/* From the lot's town only: the buyer's address never reaches
+                      the seller. CropBid takes it from here. */}
+                  {tx.listing ? <> · from {tx.listing.location}, {tx.listing.state}</> : null}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
                   <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>

@@ -20,9 +20,10 @@
 // not been paid for.
 // =============================================================================
 
+import { CROPBID_CONTACT_DISPLAY, callCropBid } from '../../lib/support';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -307,7 +308,9 @@ function OrderCard({
         ))}
       </View>
 
-      {o.address ? <Text style={styles.address} numberOfLines={2}>📍 {o.address}</Text> : null}
+      {o.address ? <Text style={styles.address} numberOfLines={2}>📍 {o.address}</Text> : (
+        <Text style={styles.address}>CropBid delivers this order. Questions: {CROPBID_CONTACT_DISPLAY}</Text>
+      )}
 
       {!o.paid ? (
         <View style={styles.waiting}>
@@ -332,15 +335,15 @@ function OrderCard({
               </>
             )}
           </Pressable>
-          {o.phone ? (
-            <Pressable
-              onPress={() => Linking.openURL(`tel:${o.phone}`)}
-              style={({ pressed }) => [styles.callBtn, pressed && styles.pressed]}
-              accessibilityLabel={`Call ${o.buyer}`}
-            >
-              <Text style={styles.callText}>☎ Call</Text>
-            </Pressable>
-          ) : null}
+          {/* The shopper's phone never reaches the shop: CropBid is the
+              point of contact and does the delivery. */}
+          <Pressable
+            onPress={callCropBid}
+            style={({ pressed }) => [styles.callBtn, pressed && styles.pressed]}
+            accessibilityLabel="Call CropBid about this order"
+          >
+            <Text style={styles.callText}>☎ CropBid</Text>
+          </Pressable>
         </View>
       )}
 

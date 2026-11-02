@@ -5,9 +5,8 @@
 // number of every buyer who bids on their listing. The properties that have to
 // hold are narrow but absolute:
 //
-//   1. Nothing is released while the deal is unpaid — AWAITING_PAYMENT is the
-//      state a transaction is BORN in, so treating it as "deal done" would make
-//      the gate decorative.
+//   1. Nothing is released to the other side, paid or not (2026-11-02: name
+//      only, CropBid is the point of contact and does the delivery).
 //   2. The snapshot on the Bid is redacted too, not just the buyer relation —
 //      the UI reads bid.contactPhone FIRST, so missing it leaks everything.
 //   3. The gate never fires against the buyer's own data or against admins,
@@ -74,25 +73,27 @@ describe('redactBidContact', () => {
     expect(out.id).toBe('bid-1');
   });
 
-  it('releases both fields once the money is in escrow', () => {
-    const out = redactBidContact({ ...BID, transaction: { paymentStatus: 'ESCROW' as const } });
-    expect(out.contactPhone).toBe('9876543210');
-    expect(out.deliveryAddress).toBe('12 MG Road, Pune');
-    expect(out.contactReleased).toBe(true);
+  // CropBid does the delivery and takes the calls, so payment unlocks nothing.
+  it('still withholds both fields once the money is in escrow, or paid out', () => {
+    for (const paymentStatus of ['ESCROW', 'RELEASED'] as const) {
+      const out = redactBidContact({ ...BID, transaction: { paymentStatus } });
+      expect(out.contactPhone).toBeNull();
+      expect(out.deliveryAddress).toBeNull();
+      expect(out.contactReleased).toBe(false);
+    }
   });
 
-  it('redacts every bid in a list independently of the others', () => {
+  it('redacts every bid in a list', () => {
     const out = redactBidContacts([
       { ...BID, transaction: null },
       { ...BID, transaction: { paymentStatus: 'ESCROW' as const } },
     ]);
-    expect(out[0].contactPhone).toBeNull();
-    expect(out[1].contactPhone).toBe('9876543210');
+    expect(out.map((b) => b.contactPhone)).toEqual([null, null]);
   });
 });
 
 describe('redactTransactionContact', () => {
-  it('hides the buyer phone from the farmer until payment clears', () => {
+  it('hides the buyer phone from the farmer before payment', () => {
     const out = redactTransactionContact(
       { ...TXN, paymentStatus: 'AWAITING_PAYMENT' as const },
       FARMER,
@@ -101,10 +102,12 @@ describe('redactTransactionContact', () => {
     expect(out.contactReleased).toBe(false);
   });
 
-  it('gives the farmer the phone once payment is in escrow', () => {
-    const out = redactTransactionContact({ ...TXN, paymentStatus: 'ESCROW' as const }, FARMER);
-    expect(out.buyer.phone).toBe('9876543210');
-    expect(out.contactReleased).toBe(true);
+  it('never gives the farmer the phone, even once paid', () => {
+    for (const paymentStatus of ['ESCROW', 'RELEASED'] as const) {
+      const out = redactTransactionContact({ ...TXN, paymentStatus }, FARMER);
+      expect(out.buyer.phone).toBeNull();
+      expect(out.contactReleased).toBe(false);
+    }
   });
 
   // Redacting a buyer's own contact details back at them would be a bug, not

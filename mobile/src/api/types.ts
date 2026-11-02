@@ -103,6 +103,8 @@ export interface Listing {
   currency: string;
   directSaleEnabled: boolean;
   retailPricePerUnit: number | null;
+  /** Who pays for delivery on a trade deal off this lot (lib/freight). */
+  freightPaidBy?: FreightPayer;
   description: string | null;
   images: string[];
   organic: boolean;
@@ -244,6 +246,10 @@ export interface Bid {
   contactPhone?: string | null;
   paymentTerms?: string | null;
   deliveryTerms?: string | null;
+  /** Who pays for delivery if this bid is accepted. */
+  freightPaidBy?: FreightPayer;
+  /** Set on the answer to an accept: the deal it made. */
+  transaction?: { id: string } | null;
   status: BidStatus;
   counterPrice: number | null;
   isAgentBid?: boolean;
@@ -286,7 +292,27 @@ export interface Transaction {
   // The carrier booking, once ops has made one (CLAUDE.md §2a). Carrier
   // identity is stripped by the server; only the status reaches a trader.
   shipment?: { status: string } | null;
+  /** Delivery terms as accepted, with the shares worked out on the server. */
+  freightPaidBy?: FreightPayer;
+  freight?: FreightSummary;
   createdAt: string;
+}
+
+/** Who pays for delivery on a trade deal: the seller, half each, or the buyer. */
+export type FreightPayer = 'FARMER' | 'SPLIT' | 'BUYER';
+
+export interface FreightSummary {
+  paidBy: FreightPayer;
+  /** The quote, or the booked cost on a seller-pays deal. Null until priced. */
+  amount: number | null;
+  buyerShare: number | null;
+  sellerShare: number | null;
+  /** The buyer owes a share ops have not quoted yet, so they cannot pay. */
+  awaitingQuote: boolean;
+  /** Goods plus the buyer's share. Null while that share is unknown. */
+  buyerPays: number | null;
+  /** Goods minus the fee minus the seller's share. Null until priced. */
+  sellerReceives: number | null;
 }
 
 export interface RetailOrderSummary {

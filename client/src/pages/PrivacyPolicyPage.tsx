@@ -18,6 +18,7 @@
 // user data belongs in "Who we share it with".
 // =============================================================================
 
+import { CROPBID_CONTACT_DISPLAY } from '../content/support';
 import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArcMark, ArrowIcon, CBFooter } from './landing/shared';
@@ -25,7 +26,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '25 October 2026';
+const UPDATED = '2 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -239,23 +240,21 @@ export function PrivacyPolicyPage() {
 
         <Section title="What the other side of a trade can see">
           <p>
-            When you list a crop or place a bid, the counterparty sees what they need to trade
-            with you and no more: your name, your general location, and your listing or bid
-            details.
+            <strong>Your name, and nothing else that identifies or reaches you.</strong> When
+            you list a crop, bid, post a request or buy, the other side sees your name and the
+            details of the listing, bid or order. They never see your phone number, email
+            address, delivery or home address, or your company or firm name, before payment
+            or after. A household shop's name is shown to shoppers, because that is the shop.
           </p>
           <p>
-            <strong>A farmer's phone number and email are never shown to buyers browsing
-            listings, bidding, or negotiating.</strong> Contact details are exchanged only once
-            an order is confirmed between the two of you, because at that point a delivery has
-            to be arranged.
+            <strong>CropBid is the point of contact for both sides and does the delivery.</strong>{' '}
+            If you need to reach the other side, call or WhatsApp us on {CROPBID_CONTACT_DISPLAY}
+            and we pass it on. Messages you write to the other side may not contain a phone
+            number, email address or chat link.
           </p>
           <p>
-            <strong>If you order for your home,</strong> the shop or farm you bought from is
-            told what you ordered straight away, but <strong>your delivery address and phone
-            number are withheld from them until your payment clears</strong>. Placing an order
-            creates it unpaid; the seller sees your contact details only once the money is
-            held, because that is the point at which a delivery has to be arranged. They go
-            only to the seller you bought that order from, and browsing a shop shares nothing.
+            We use your address and phone only to deliver your order and to reach you about it,
+            and the delivery partner we book is given what it needs to do that.
           </p>
         </Section>
 

@@ -12,7 +12,7 @@
 // =============================================================================
 
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -22,6 +22,10 @@ import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import { openCheckout } from '../../lib/razorpay';
 import toast from 'react-hot-toast';
+import { DealMadeModal } from '../../components/deals/DealMadeModal';
+import { ContactCropBid } from '../../components/deals/ContactCropBid';
+import { dealPopupSeen } from '../../utils/dealPopup';
+import { freightLabel } from '../../utils/freight';
 import type { Transaction, DeliveryStatus } from '../../types';
 
 const DELIVERY_STEPS: { key: DeliveryStatus; label: string }[] = [
@@ -53,7 +57,15 @@ export function TransactionDetail() {
   const [askCancel, setAskCancel] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  // "Deal made": shown to each side the first time they open a trade deal
+  // that is still waiting for payment, saying who pays for delivery and what
+  // happens next.
+  const [showDealMade, setShowDealMade] = useState(false);
 
+  // Refetched on every navigation to this page, not only when the id changes:
+  // opening the "delivery priced" notification while already on the deal
+  // navigates to the same URL, and the Pay button must appear without a reload.
+  const { key: navKey } = useLocation();
   useEffect(() => {
     async function fetch() {
       try {
@@ -66,7 +78,33 @@ export function TransactionDetail() {
       }
     }
     fetch();
-  }, [id]);
+  }, [id, navKey]);
+
+  // While the buyer waits on a delivery quote, coming back to the tab checks
+  // again, so a quote sent meanwhile shows the Pay button.
+  const waitingOnQuote = !!transaction?.freight?.awaitingQuote;
+  useEffect(() => {
+    if (!waitingOnQuote) return;
+    const onFocus = () => {
+      api.get(`/transactions/${id}`).then((res) => setTransaction(res.data)).catch(() => {});
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [waitingOnQuote, id]);
+
+  // Its own effect, because the session may still be restoring when the deal
+  // loads: deciding inside the fetch would miss the popup on a fresh tab.
+  const userId = user?.id;
+  const dealId = transaction?.id;
+  useEffect(() => {
+    if (!transaction || !userId) return;
+    const party = userId === transaction.buyerId || userId === transaction.farmerId;
+    if (party && !transaction.retailOrder && transaction.paymentStatus === 'AWAITING_PAYMENT' && !dealPopupSeen(transaction.id, userId)) {
+      setShowDealMade(true);
+    }
+    // Once per deal and account, not on every refetch of the same deal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dealId, userId]);
 
   async function handlePay() {
     if (!transaction) return;
@@ -171,6 +209,15 @@ export function TransactionDetail() {
   // figure the seller is not going to receive.
   const freightCost = transaction.shipment?.transportCost ?? 0;
   const freightKnown = transaction.shipment?.transportCost != null;
+  // Trade deals carry their delivery terms and the server's arithmetic for
+  // them (Transaction.freight). Retail lots have none: household delivery is
+  // the shop order's fee.
+  const freight = !transaction.retailOrder ? transaction.freight : undefined;
+  const freightPriced = freight ? freight.amount != null : freightKnown;
+  const sellerShare = freight ? freight.sellerShare ?? 0 : freightCost;
+  // What the buyer is charged: goods plus their share of delivery.
+  const payAmount = freight?.buyerPays ?? transaction.totalAmount;
+  const awaitingQuote = freight?.awaitingQuote ?? false;
   const currentStepIndex = DELIVERY_STEPS.findIndex((s) => s.key === transaction.deliveryStatus);
 
   const lifecycleStep = transaction.paymentStatus === 'RELEASED' ? 5
@@ -220,7 +267,7 @@ export function TransactionDetail() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
           <span className="cb-chip cb-chip-wheat" style={{ fontSize: 11 }}>● {transaction.paymentStatus}</span>
           <span className="cb-mono" style={{ fontSize: 18, fontWeight: 500 }}>
-            {formatCurrency(transaction.totalAmount, transaction.currency)} {moneyState}
+            {formatCurrency(moneyState === 'due' ? payAmount : transaction.totalAmount, transaction.currency)} {moneyState}
           </span>
         </div>
         <h1 className="cb-h3" style={{ fontSize: 22, marginTop: 6 }}>
@@ -344,18 +391,42 @@ export function TransactionDetail() {
             indistinguishable from a real one. Same reason `freightKnown` gates
             the total below.
           */}
-          <SpecRow
-            label="Delivery (paid by seller)"
-            value={freightKnown
-              ? <span className="cb-mono">−{formatCurrency(freightCost, transaction.currency)}</span>
-              : <span className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>on booking</span>}
-          />
+          {freight && <SpecRow label="Delivery terms" value={freightLabel(freight.paidBy)} />}
+          {(!freight || freight.paidBy !== 'BUYER') && (
+            <SpecRow
+              label={freight?.paidBy === 'SPLIT' ? "Delivery, seller's half" : 'Delivery (paid by seller)'}
+              value={freightPriced
+                ? <span className="cb-mono">−{formatCurrency(sellerShare, transaction.currency)}</span>
+                : <span className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{freight?.paidBy === 'SPLIT' ? 'on quote' : 'on booking'}</span>}
+            />
+          )}
           <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
             <SpecRow
-              label={freightKnown ? 'Seller receives' : 'Seller receives, before delivery'}
-              value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(transaction.totalAmount - transaction.platformFeeAmount - freightCost, transaction.currency)}</span>}
+              label={freightPriced || freight?.paidBy === 'BUYER' ? 'Seller receives' : 'Seller receives, before delivery'}
+              value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(
+                freight?.sellerReceives ?? transaction.totalAmount - transaction.platformFeeAmount - sellerShare,
+                transaction.currency,
+              )}</span>}
             />
           </div>
+          {/* The buyer's side of a deal where they pay towards delivery: their
+              share on top of the goods, which is the one amount they pay. */}
+          {freight && freight.paidBy !== 'FARMER' && (
+            <div style={{ paddingTop: 10, marginTop: 6, borderTop: '1px solid var(--cb-line)' }}>
+              <SpecRow
+                label={freight.paidBy === 'SPLIT' ? "Delivery, buyer's half" : 'Delivery (paid by buyer)'}
+                value={freight.buyerShare != null
+                  ? <span className="cb-mono">+{formatCurrency(freight.buyerShare, transaction.currency)}</span>
+                  : <span className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>on quote</span>}
+              />
+              <SpecRow
+                label="Buyer pays"
+                value={<span className="cb-mono" style={{ fontWeight: 600 }}>{freight.buyerPays != null
+                  ? formatCurrency(freight.buyerPays, transaction.currency)
+                  : 'once delivery is quoted'}</span>}
+              />
+            </div>
+          )}
           {/*
             Who books, and who pays. It stops there on purpose.
 
@@ -368,11 +439,17 @@ export function TransactionDetail() {
 
             The same sentence is the lede on Deliveries. Change both.
           */}
-          {isFarmer && (
+          {(isFarmer || isBuyer) && (
             <p className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ink-3)' }}>
               CropBid books the transport, so the delivery is ours to answer
-              for. The freight charge is payable by you and is deducted from
-              your settlement.
+              for.{' '}
+              {freight?.paidBy === 'BUYER'
+                ? isBuyer ? 'You pay the delivery charge, together with the goods.' : 'The buyer pays the delivery charge.'
+                : freight?.paidBy === 'SPLIT'
+                  ? isBuyer
+                    ? 'You pay half the delivery charge with the goods; the seller pays the other half.'
+                    : 'You pay half the delivery charge, deducted from your settlement; the buyer pays the other half.'
+                  : isFarmer ? 'The freight charge is payable by you and is deducted from your settlement.' : 'The seller pays the delivery charge.'}
             </p>
           )}
           <SpecRow label="Lot ID" value={<span className="cb-mono">#{transaction.listingId.slice(-6).toUpperCase()}</span>} />
@@ -392,16 +469,19 @@ export function TransactionDetail() {
             <div style={{ fontWeight: 500, marginTop: 2 }}>{transaction.buyer?.name}{isBuyer && ' (YOU)'}</div>
             <div className="cb-tiny" style={{ marginTop: 2 }}>
               Trust {Math.round(transaction.buyer?.trustScore || 0)}
-              {(transaction.bid?.contactPhone || transaction.buyer?.phone) && (
-                <> · <a href={`tel:${transaction.bid?.contactPhone || transaction.buyer?.phone}`} style={{ color: 'var(--cb-ink)' }}>☎ {transaction.bid?.contactPhone || transaction.buyer?.phone}</a></>
-              )}
             </div>
-            {!isBuyer && transaction.contactReleased === false && (
-              <div className="cb-tiny" style={{ marginTop: 2, color: 'var(--cb-ink-3)' }}>
-                Contact details unlock once payment reaches escrow.
-              </div>
-            )}
           </div>
+          {/* Names only, both ways. The other side's phone, email and address
+              never reach this page; CropBid is the point of contact and does
+              the delivery. Admins see everything on their own pages. */}
+          {(isBuyer || isFarmer) && (
+            <div style={{ marginTop: 12 }}>
+              <ContactCropBid
+                other={isBuyer ? 'the seller' : 'the buyer'}
+                about={`deal #T-${transaction.id.slice(-6).toUpperCase()}`}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -409,7 +489,10 @@ export function TransactionDetail() {
         <div className="cb-card">
           <div className="cb-eyebrow" style={{ marginBottom: 10 }}>Payment</div>
           <SpecRow label="Status" value={<span style={{ color: 'var(--cb-wheat)' }}>● {transaction.paymentStatus}</span>} />
-          <SpecRow label={moneyState.charAt(0).toUpperCase() + moneyState.slice(1)} value={<span className="cb-mono">{formatCurrency(transaction.totalAmount, transaction.currency)}</span>} />
+          <SpecRow
+            label={moneyState.charAt(0).toUpperCase() + moneyState.slice(1)}
+            value={<span className="cb-mono">{awaitingQuote ? 'once delivery is quoted' : formatCurrency(payAmount, transaction.currency)}</span>}
+          />
           <SpecRow label="Release" value="on delivery confirm" />
           <SpecRow label="Created" value={new Date(transaction.createdAt).toLocaleDateString()} />
           {transaction.razorpayPaymentId && (
@@ -417,10 +500,19 @@ export function TransactionDetail() {
           )}
           {isBuyer && transaction.paymentStatus === 'AWAITING_PAYMENT' && (
             <div style={{ marginTop: 14 }}>
-              <Button onClick={handlePay} loading={paying} style={{ width: '100%' }}>
-                Pay {formatCurrency(transaction.totalAmount, transaction.currency)} via Razorpay
-                <ArrowIcon />
-              </Button>
+              {/* The buyer pays the goods and their share of delivery in one
+                  go, so until ops have quoted it there is nothing to pay. The
+                  server refuses too (FREIGHT_QUOTE_PENDING). */}
+              {awaitingQuote ? (
+                <p className="cb-small" style={{ color: 'var(--cb-ink-3)', margin: 0 }}>
+                  CropBid is pricing the delivery. You can pay the goods and your share together once the quote is in; we will notify you.
+                </p>
+              ) : (
+                <Button onClick={handlePay} loading={paying} style={{ width: '100%' }}>
+                  Pay {formatCurrency(payAmount, transaction.currency)} via Razorpay
+                  <ArrowIcon />
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -431,6 +523,7 @@ export function TransactionDetail() {
           {transaction.bid?.deliveryAddress && (
             <SpecRow label="Deliver to" value={transaction.bid.deliveryAddress} />
           )}
+          {freight && <SpecRow label="Who pays" value={freightLabel(freight.paidBy)} />}
           {transaction.bid?.deliveryTerms && (
             <SpecRow label="Terms" value={[transaction.bid.paymentTerms, transaction.bid.deliveryTerms].filter(Boolean).join(' · ')} />
           )}
@@ -473,6 +566,15 @@ export function TransactionDetail() {
           </table>
         </div>
       </div>
+      {showDealMade && user && (
+        <DealMadeModal
+          transaction={transaction}
+          side={isBuyer ? 'BUYER' : 'SELLER'}
+          userId={user.id}
+          onPay={isBuyer && !awaitingQuote ? handlePay : undefined}
+          onClose={() => setShowDealMade(false)}
+        />
+      )}
     </DashboardLayout>
   );
 }
