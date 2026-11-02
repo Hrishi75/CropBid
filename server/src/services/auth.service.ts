@@ -98,7 +98,12 @@ function safeUser<T extends Record<string, any>>(user: T) {
     googleId: _____,
     ...rest
   } = user;
-  return maskUserPayoutDetails(rest);
+  // Whether Google signs this account in, as a boolean: the id itself stays
+  // here. The website reads it to ask a Google account for a phone number.
+  // Only when the row was read with the column, so a narrow select never
+  // reports false for an account that is linked.
+  const google = 'googleId' in user ? { googleLinked: user.googleId != null } : {};
+  return { ...maskUserPayoutDetails(rest), ...google };
 }
 
 // What a seller typed, checked and normalised, then encrypted for the
@@ -1652,6 +1657,58 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
   return getCurrentUser(userId);
 }
 
+// ---------------------------------------------------------------------------
+// Add a phone number to an account that has none
+// ---------------------------------------------------------------------------
+// Google sign-in gives us a name and an email and no phone, so the website
+// asks for one before letting a Google account carry on. Unverified, exactly
+// like the sign-up form's ("Knowingly unverified", CLAUDE.md section 4).
+//
+// It only FILLS an empty phone. Changing a number already on file is the
+// profile editor's job, and keeping this narrow means it cannot be used to
+// swap the number a phone-code sign-in would reach.
+//
+// Stored through normalizePhone like sign-up, so it is found by the same
+// lookup when they type it the same way at sign-in. Numbers are stored in
+// whatever form people typed (CLAUDE.md section 4), so "taken" is decided on
+// the last ten digits: +919876543210 on one account and 9876543210 on another
+// would be one person's phone reaching two accounts.
+const phoneTaken = () =>
+  new ApiError(409, 'That number is already on another CropBid account. Sign in with it, or use a different number.', 'PHONE_TAKEN');
+
+export async function addPhone(userId: string, rawPhone: string) {
+  const phone = normalizePhone(rawPhone);
+  const ten = phone.replace(/[^0-9]/g, '').slice(-10);
+  // Check and write under one lock on the ten digits, or two accounts saving
+  // +919876543210 and 9876543210 at once both pass the check: the unique
+  // index only sees two different strings.
+  const written = await prisma
+    .$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`phone:${ten}`}))`;
+      const clash = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "User"
+        WHERE id <> ${userId} AND phone IS NOT NULL
+          AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
+        LIMIT 1`;
+      if (clash.length > 0) throw phoneTaken();
+      return tx.user.updateMany({ where: { id: userId, phone: null }, data: { phone } });
+    })
+    .catch((err) => {
+      // The same number in the same form, written by a path that takes no lock.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw phoneTaken();
+      throw err;
+    });
+  if (written.count === 0) {
+    const current = await prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    if (!current) throw new ApiError(404, 'User not found');
+    // Already the same number: a double submit, not an error.
+    if (current.phone !== phone) {
+      throw new ApiError(409, 'This account already has a phone number. Change it from your profile.');
+    }
+  }
+  return getCurrentUser(userId);
+}
+
 export async function completeBuyerOnboarding(userId: string, input: BuyerOnboardingInput) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !CAN_APPLY_AS_BUYER.includes(user.role)) {
@@ -2105,7 +2162,12 @@ export async function signInWithGoogle(credential: string, consent?: boolean) {
       });
     }
 
-    const signedIn = linking ? { ...user, password: null, mustChangePassword: false, passwordResetAt: null } : user;
+    // googleId is set too, so the response reports the account as linked:
+    // the website asks a Google account for a phone on that flag, and the row
+    // read above still has the old null. Review caught a first link skipping it.
+    const signedIn = linking
+      ? { ...user, googleId: identity.sub, password: null, mustChangePassword: false, passwordResetAt: null }
+      : user;
     return {
       user: safeUser(signedIn),
       accessToken: tokens.accessToken,

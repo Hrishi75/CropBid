@@ -56,6 +56,9 @@ export interface User {
    *  server until they do, so the client routes on it rather than letting
    *  screens load into a wall of 403s. */
   mustChangePassword?: boolean;
+  /** Google signs this account in. Such an account has no phone until it
+   *  gives one, and PhoneRequired asks for it. */
+  googleLinked?: boolean;
   createdAt: string;
   updatedAt: string;
   farmerProfile?: FarmerProfile | null;

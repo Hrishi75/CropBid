@@ -130,7 +130,9 @@ export function PrivacyPolicyPage() {
             email Google gives us already belongs to a CropBid account, signing in with Google
             opens that account, because Google has confirmed the address is yours. Any password
             set on that account before is removed, since we cannot tell who chose it; you can
-            set a new one with Forgot password.
+            set a new one with Forgot password. Google does not give us a phone number, so if
+            your account has none we ask you for one before you carry on, for sellers, delivery
+            and support to reach you about an order.
           </p>
           <p>
             <strong>Profile details.</strong> Your role (farmer, buyer or consumer), city,

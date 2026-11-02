@@ -7,6 +7,7 @@ import { CartBar } from './components/consumer/CartBar';
 import { CookieNotice } from './components/ui/CookieNotice';
 import { PageAnalytics } from './components/ui/PageAnalytics';
 import { WhatsAppButton } from './components/ui/WhatsAppButton';
+import { PhoneRequired } from './components/auth/PhoneRequired';
 import { AppRoutes } from './routes';
 import { useSeo } from './lib/useSeo';
 
@@ -55,6 +56,9 @@ export function AppContent() {
           {/* Sits outside the routes so it survives every consumer page, and
               renders nothing at all for anyone who isn't shopping. */}
           <CartBar />
+          {/* Over every page: a Google account has no phone until it gives
+              one. Renders nothing for anyone else, and for the prerender. */}
+          <PhoneRequired />
         </CartProvider>
       </AuthModalProvider>
     </AuthProvider>
