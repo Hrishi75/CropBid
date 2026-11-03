@@ -53,26 +53,35 @@ function PageLoadFailed() {
   );
 }
 
-/** True unless the one automatic reload was used in the last 30 seconds. */
+/**
+ * True only when a reload can be counted: none in the last 30 seconds, and
+ * storage accepts a write. A reload whose timestamp cannot be saved would not
+ * be seen by the next load, which is how a page that keeps failing reloads for
+ * ever, so storage that can be read but not written shows the message instead.
+ */
 function reloadAllowed(): boolean {
   try {
-    return Date.now() - (Number(sessionStorage.getItem(RELOAD_KEY)) || 0) > 30_000;
+    if (Date.now() - (Number(sessionStorage.getItem(RELOAD_KEY)) || 0) <= 30_000) return false;
+    sessionStorage.setItem(`${RELOAD_KEY}-probe`, '1');
+    sessionStorage.removeItem(`${RELOAD_KEY}-probe`);
+    return true;
   } catch {
-    // Storage blocked: no way to tell a first failure from a loop, so show the
-    // message rather than risk reloading for ever.
     return false;
   }
 }
 
 function PageLoadRecovery() {
-  // Decided once, on mount, from a read; the write and the reload are the
-  // effect's, so a render that is thrown away cannot use up the reload.
+  // Decided once, on mount; the probe above is safe to repeat if React renders
+  // twice. The reload itself waits for the effect, and happens only once its
+  // timestamp is saved.
   const [reload] = useState(reloadAllowed);
   useEffect(() => {
     if (!reload) return;
     try {
       sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
-    } catch { /* reloadAllowed already read storage, so this only fails if it is full */ }
+    } catch {
+      return; // the probe passed a moment ago; never reload uncounted
+    }
     window.location.reload();
   }, [reload]);
   return reload ? null : <PageLoadFailed />;
