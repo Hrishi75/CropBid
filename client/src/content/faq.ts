@@ -92,7 +92,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Does it cost anything to join CropBid?',
-        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, an email address or phone number, and a password, and sign in with the same, or on the website, continue with your Google account instead. CropBid is available in English, Hindi and Marathi.',
+        a: 'Creating an account, listing crops and checking mandi rates are free; CropBid charges a flat 2% only when a deal settles. Households also pay ₹30 for delivery on a shop\u2019s order under ₹200. You sign up with your name, a mobile number, an email address if you have one, and a password, and sign in with the number or the email, or on the website, continue with your Google account instead. CropBid is available in English, Hindi and Marathi.',
       },
       {
         q: 'What are live mandi rates and where do they come from?',
@@ -114,7 +114,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Can I sign in with Google?',
-        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, the first time you use Google it opens that account, and the password set on it before then stops working, because we cannot tell who set it. You can choose a new one with Forgot password, and a password you set after that keeps working. An account already linked to a different Google account cannot be opened this way: sign in with its password if it has one, or write to info@cropbid.in. Google does not share your phone number, so if your account has none we ask for one the first time, before you carry on. A suspended account cannot be signed in to at all; write to info@cropbid.in. The phone app does not offer Google sign-in yet.',
+        a: 'Yes, on the website: choose Continue with Google in the sign-in window, and you are signed in, or a new account is made for you, with no password to remember. If your Google email already belongs to a CropBid account, the first time you use Google it opens that account, and the password set on it before then stops working, because we cannot tell who set it. You can choose a new one with Forgot password, and a password you set after that keeps working. An account already linked to a different Google account cannot be opened this way: sign in with its password if it has one, or write to info@cropbid.in. Every account needs a mobile number and Google does not share yours, so we ask for one the first time, before you carry on. A suspended account cannot be signed in to at all; write to info@cropbid.in. The phone app does not offer Google sign-in yet.',
       },
       {
         q: 'Do I need an email address?',

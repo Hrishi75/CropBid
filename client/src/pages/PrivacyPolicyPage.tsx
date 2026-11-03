@@ -26,7 +26,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '2 November 2026';
+const UPDATED = '3 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -116,9 +116,11 @@ export function PrivacyPolicyPage() {
 
         <Section title="What we collect">
           <p>
-            <strong>Account details.</strong> Your name, the email address or phone number you
-            signed up with, and a password if you set one. Either one is enough, since many
-            farmers do not have an email address. Your password is stored
+            <strong>Account details.</strong> Your name, your mobile number, an email address if
+            you give one, and a password if you set one. Every account has a mobile number; the
+            email is optional, since many farmers do not have one. If your account has no number,
+            we ask you for one before you carry on, so we can reach you about an order and support
+            can find your account. Your password is stored
             only as a bcrypt hash; nobody at CropBid can read it. We also hold the sign-in
             tokens that keep you logged in, and, briefly, a hashed one-time code when you sign
             in by phone or reset a password.
@@ -130,9 +132,8 @@ export function PrivacyPolicyPage() {
             email Google gives us already belongs to a CropBid account, signing in with Google
             opens that account, because Google has confirmed the address is yours. Any password
             set on that account before is removed, since we cannot tell who chose it; you can
-            set a new one with Forgot password. Google does not give us a phone number, so if
-            your account has none we ask you for one before you carry on, for sellers, delivery
-            and support to reach you about an order.
+            set a new one with Forgot password. Google does not give us a phone number, so we ask
+            you for one, as above.
           </p>
           <p>
             <strong>Profile details.</strong> Your role (farmer, buyer or consumer), city,

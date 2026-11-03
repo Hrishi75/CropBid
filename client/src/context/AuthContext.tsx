@@ -68,9 +68,9 @@ const MODE_KEY = 'cb-mode';
 
 interface SignupData {
   name: string;
-  // At least one of phone and email: whichever is given is what they sign in
-  // with. No role: the server makes every new account a shopper.
-  phone?: string;
+  // The phone is required and the email optional (decided 2026-11-03); either
+  // one signs in. No role: the server makes every new account a shopper.
+  phone: string;
   email?: string;
   password: string;
   country?: string;

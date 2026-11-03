@@ -70,9 +70,9 @@ export async function login(identifier: string, password: string): Promise<User>
 
 export interface SignupInput {
   name: string;
-  // At least one of phone and email: whichever is given is what they sign in
-  // with. No role: the server makes every new account a shopper.
-  phone?: string;
+  // The phone is required and the email optional (decided 2026-11-03); either
+  // one signs in. No role: the server makes every new account a shopper.
+  phone: string;
   email?: string;
   password: string;
   country?: string;
@@ -141,6 +141,14 @@ export async function forgotPassword(email: string): Promise<void> {
 
 export async function fetchMe(): Promise<User> {
   const { data } = await api.get<{ user: User }>('/auth/me');
+  return data.user;
+}
+
+// Fills an empty phone on the signed-in account (POST /auth/me/phone). The
+// server refuses to replace a number already on file, and a number another
+// account holds in any form.
+export async function addPhone(phone: string): Promise<User> {
+  const { data } = await api.post<{ user: User }>('/auth/me/phone', { phone });
   return data.user;
 }
 

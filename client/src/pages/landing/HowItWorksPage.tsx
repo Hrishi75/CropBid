@@ -86,7 +86,7 @@ const FEATURES: Array<[emoji: string, title: string, desc: string]> = [
   ['🚚', 'We book the truck, not you', 'One less thing for a farmer to arrange, and a delivery the platform answers for instead of a number the seller gave you. Who pays the freight is agreed with the bid: the seller, half each, or the buyer. Both sides follow the deal: paid → shipped → delivered.'],
   ['🏛️', 'Govt schemes hub', 'PM-KISAN to KCC — 12 schemes explained in English and Hindi, with how to apply.'],
   ['🪪', 'No anonymous sellers', 'Every seller is a reviewed partner with a name, a place, and the licence their trade needs: FSSAI for a food shop, GSTIN for a wholesale firm.'],
-  ['📱', 'Sign up in a minute', 'Your name, an email or phone number, and a password. English, Hindi or Marathi, on the site or the app.'],
+  ['📱', 'Sign up in a minute', 'Your name, a mobile number, an email if you like, and a password. English, Hindi or Marathi, on the site or the app.'],
 ];
 
 // =============================================================================
@@ -604,7 +604,7 @@ function BuyDirect() {
             ordered one shop at a time, because each shop makes its own delivery, and
             <strong> delivery is free on ₹200 or more from a shop, and ₹30 below that</strong>:
             a delivery run costs the same whether it carries ₹60 of coriander or ₹600 of
-            groceries. Signing up takes a name, an email or phone number and a password, and
+            groceries. Signing up takes a name, a mobile number and a password (email is optional), and
             you only need it at checkout.
           </p>
         </div>
