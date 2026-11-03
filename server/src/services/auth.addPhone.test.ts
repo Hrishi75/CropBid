@@ -81,5 +81,7 @@ describe('addPhone', () => {
       const winner = results[0].status === 'fulfilled' ? '+919876543210' : '9876543210';
       expect(holders[0].phone).toBe(winner);
     }
-  });
+    // Twenty sign-ups, each hashing a password at bcrypt cost 12 on purpose:
+    // over vitest's 5 seconds on a CI runner.
+  }, 60_000);
 });
