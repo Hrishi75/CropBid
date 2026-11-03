@@ -408,11 +408,21 @@ export async function updateDeliveryStatus(
   // cancelled at the same moment (retailOrder.service, which writes on
   // PENDING) must not be overwritten by "on the way", and two confirms arriving
   // together move it once.
-  const moved = await prisma.transaction.updateMany({
-    where: { id: transactionId, deliveryStatus: current, paymentStatus: transaction.paymentStatus },
-    data: { deliveryStatus: status as any },
-  });
-  if (moved.count === 0) {
+  //
+  // CONFIRMING IS THE RELEASE, IN ONE WRITE. They used to be two: the delivery
+  // moved to CONFIRMED, the seller was told "payment released", and only then
+  // did the release try its claim. A refund landing in between left a
+  // refunded deal marked confirmed, with that message already sent, which with
+  // manual payouts is an invitation to pay the seller anyway. Review caught it.
+  // Now the confirmation and the release are one claim, and a refund that got
+  // there first makes the whole confirmation fail before anyone is told.
+  const moved = status === 'CONFIRMED'
+    ? await releasePayment(transactionId, { confirmDelivery: true })
+    : (await prisma.transaction.updateMany({
+        where: { id: transactionId, deliveryStatus: current, paymentStatus: transaction.paymentStatus },
+        data: { deliveryStatus: status as any },
+      })).count === 1;
+  if (!moved) {
     throw new ApiError(409, 'This deal changed while you were looking at it. Refresh and try again.');
   }
 
@@ -434,10 +444,8 @@ export async function updateDeliveryStatus(
   const cropName = updated.listing?.cropName || 'Crop';
   notifyDeliveryUpdate(notifyUserId, cropName, status, transactionId).catch(() => {});
 
-  // If buyer confirmed delivery, release payment and update trust scores
-  // A refund that won the race means nothing was released, so the seller is
-  // not told it was.
-  if (status === 'CONFIRMED' && (await releasePayment(transactionId))) {
+  // Confirmed means released (above), so the seller is told what they are due.
+  if (status === 'CONFIRMED') {
     // Freight comes out too. This used to quote total minus platform fee while
     // the settlement breakdown on screen already subtracted transport as well,
     // so the seller was told two different numbers for the same payout and the
@@ -464,15 +472,26 @@ export async function updateDeliveryStatus(
 // =============================================================================
 // RELEASE PAYMENT — Move funds from escrow to farmer
 // =============================================================================
-export async function releasePayment(transactionId: string): Promise<boolean> {
+export async function releasePayment(
+  transactionId: string,
+  { confirmDelivery = false }: { confirmDelivery?: boolean } = {},
+): Promise<boolean> {
   // Conditional on ESCROW in the write, like refundTransaction: a refund
   // landing first makes this miss rather than flip REFUNDED back to RELEASED.
   // The trust bumps ride on the same claim, so two confirms arriving together
-  // cannot award them twice.
+  // cannot award them twice. With confirmDelivery the same write moves the
+  // delivery DELIVERED -> CONFIRMED, so the two cannot disagree.
   return prisma.$transaction(async (tx) => {
     const claimed = await tx.transaction.updateMany({
-      where: { id: transactionId, paymentStatus: 'ESCROW' },
-      data: { paymentStatus: 'RELEASED' },
+      where: {
+        id: transactionId,
+        paymentStatus: 'ESCROW',
+        ...(confirmDelivery && { deliveryStatus: 'DELIVERED' as const }),
+      },
+      data: {
+        paymentStatus: 'RELEASED',
+        ...(confirmDelivery && { deliveryStatus: 'CONFIRMED' as const }),
+      },
     });
     if (claimed.count === 0) return false;
 

@@ -21,6 +21,7 @@ vi.mock('./notification.helpers', () => ({
 }));
 
 import { prisma } from '../lib/prisma';
+import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
 import { refundTransaction, releasePayment, updateDeliveryStatus } from './transaction.service';
 import { getAllListings } from './admin.service';
 
@@ -137,6 +138,32 @@ describe('delivery moves', () => {
       ]);
       expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       expect(await state(tx.id)).toMatchObject({ paymentStatus: 'RELEASED', deliveryStatus: 'CONFIRMED', farmerTrust: START_TRUST + 2 });
+    }
+  });
+
+  // The confirmation and the release are one write, so a refund that wins
+  // leaves the deal DELIVERED and nobody is told anything was released.
+  // Watched failing on the two-write version.
+  it('raced against a refund, a confirmation either releases or tells nobody', async () => {
+    for (let round = 0; round < 40; round++) {
+      vi.mocked(notifyDeliveryUpdate).mockClear();
+      vi.mocked(notifyPaymentReleased).mockClear();
+      const tx = await deal('ESCROW', 'DELIVERED');
+      // The refund starts 0 to 7 ms behind, which is what lands it between
+      // two writes when there are two. Started together it nearly always
+      // went first, and the test passed on the code it is here to catch.
+      const [refund, confirm] = await Promise.allSettled([
+        new Promise((r) => setTimeout(r, round % 8)).then(() => refundTransaction(tx.id)),
+        updateDeliveryStatus(tx.id, BUYER, 'CONFIRMED'),
+      ]);
+      expect((refund.status === 'fulfilled') !== (confirm.status === 'fulfilled')).toBe(true);
+      if (refund.status === 'fulfilled') {
+        expect(await state(tx.id)).toMatchObject({ paymentStatus: 'REFUNDED', deliveryStatus: 'DELIVERED' });
+        expect(notifyDeliveryUpdate).not.toHaveBeenCalled();
+        expect(notifyPaymentReleased).not.toHaveBeenCalled();
+      } else {
+        expect(await state(tx.id)).toMatchObject({ paymentStatus: 'RELEASED', deliveryStatus: 'CONFIRMED' });
+      }
     }
   });
 
