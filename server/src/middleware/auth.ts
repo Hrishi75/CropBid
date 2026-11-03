@@ -110,12 +110,39 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   }
 
   const actAs = req.headers['x-act-as'];
-  if (actAs === undefined || actAs === '') return next();
+  const hasActAs = actAs !== undefined && actAs !== '';
+  const isAdmin = req.user.role === 'ADMIN';
+  if (!hasActAs && !isAdmin) return next();
 
-  // Async only on this path, so every request without the header stays exactly
-  // as it was. Express 5 would forward a rejected promise, but next(err) says
-  // so outright.
-  actAsBuyer(req, String(actAs)).then(() => next(), next);
+  // Async only on these two paths, so an ordinary request stays exactly as it
+  // was. Express 5 would forward a rejected promise, but next(err) says so
+  // outright.
+  (async () => {
+    if (isAdmin) await confirmAdmin(req.user!.userId);
+    if (hasActAs) await actAsBuyer(req, String(actAs));
+  })().then(() => next(), next);
+}
+
+// AN ADMIN TOKEN IS CHECKED AGAINST THE ROW, HERE AND NOT IN requireRole.
+// The role in an access token is what it was when the token was minted, so an
+// admin demoted or suspended a minute ago would otherwise keep admin powers for
+// the rest of the token's life. It has to be here, in the path every
+// authenticated request takes: several reads grant platform-wide access from
+// the role alone without requireRole (GET /transactions, a deal's detail,
+// analytics), so a check in requireRole left those open. Review caught it.
+// Every other role still trusts the token, so ordinary requests pay no round
+// trip; admin traffic is a handful of people.
+export async function confirmAdmin(userId: string): Promise<void> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, suspended: true },
+  });
+  if (!row || row.role !== 'ADMIN') {
+    throw new ApiError(403, 'This account is no longer an admin');
+  }
+  if (row.suspended) {
+    throw new ApiError(403, 'This account has been suspended. Please contact support.');
+  }
 }
 
 async function actAsBuyer(req: Request, actAs: string): Promise<void> {

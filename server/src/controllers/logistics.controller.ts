@@ -66,8 +66,13 @@ const driverInfoSchema = z.object({
   message: 'At least one driver field is required',
 });
 
+// http(s) only. z.string().url() alone accepts javascript: and data: URLs,
+// which would turn "proof" into a script the moment any screen links it.
 const proofSchema = z.object({
-  imageUrl: z.string().url().max(2000),
+  imageUrl: z.string().url().max(2000).refine(
+    (v) => /^https?:\/\//i.test(v),
+    'Proof must be an http or https link',
+  ),
 });
 
 const partnerSchema = z.object({

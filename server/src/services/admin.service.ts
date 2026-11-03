@@ -280,8 +280,17 @@ export async function getAllListings(status?: string, limit = 20, offset = 0) {
       take: limit,
       skip: offset,
       include: {
+        // A select, never an include. An include returns every column on the
+        // seller profile, which put PAN, Farmer ID, licence numbers and the
+        // payout account on every row of this list, around the audited payout
+        // read (getSellerPayoutDetails). The panel needs a name and a score.
         farmer: {
-          include: { user: { select: { id: true, name: true } } },
+          select: {
+            id: true,
+            sellerType: true,
+            businessName: true,
+            user: { select: { id: true, name: true, trustScore: true, country: true } },
+          },
         },
         // transactions: a lot that has sold is financial history and cannot
         // be deleted, and the panel needs to know before offering to.

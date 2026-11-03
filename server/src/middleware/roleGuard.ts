@@ -39,6 +39,8 @@ export function requireRole(...allowedRoles: string[]) {
       );
     }
 
+    // An ADMIN token has already been checked against the account by
+    // authenticate(), which every route runs first (see confirmAdmin there).
     next();
   };
 }

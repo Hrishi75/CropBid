@@ -395,9 +395,39 @@ export async function updateDeliveryStatus(
     throw new ApiError(403, 'Only the buyer can confirm delivery');
   }
 
-  const updated = await prisma.transaction.update({
+  // A deal that was called off or refunded has nothing to deliver, and
+  // confirming one that was never paid would mark it done with no money held.
+  if (transaction.paymentStatus === 'CANCELLED' || transaction.paymentStatus === 'REFUNDED') {
+    throw new ApiError(409, `This deal was ${transaction.paymentStatus.toLowerCase()}, so its delivery cannot change`);
+  }
+  if (status === 'CONFIRMED' && transaction.paymentStatus !== 'ESCROW') {
+    throw new ApiError(409, 'This deal has not been paid for yet, so delivery cannot be confirmed');
+  }
+
+  // Conditional on the delivery and payment state just read. A shop order
+  // cancelled at the same moment (retailOrder.service, which writes on
+  // PENDING) must not be overwritten by "on the way", and two confirms arriving
+  // together move it once.
+  //
+  // CONFIRMING IS THE RELEASE, IN ONE WRITE. They used to be two: the delivery
+  // moved to CONFIRMED, the seller was told "payment released", and only then
+  // did the release try its claim. A refund landing in between left a
+  // refunded deal marked confirmed, with that message already sent, which with
+  // manual payouts is an invitation to pay the seller anyway. Review caught it.
+  // Now the confirmation and the release are one claim, and a refund that got
+  // there first makes the whole confirmation fail before anyone is told.
+  const moved = status === 'CONFIRMED'
+    ? await releasePayment(transactionId, { confirmDelivery: true })
+    : (await prisma.transaction.updateMany({
+        where: { id: transactionId, deliveryStatus: current, paymentStatus: transaction.paymentStatus },
+        data: { deliveryStatus: status as any },
+      })).count === 1;
+  if (!moved) {
+    throw new ApiError(409, 'This deal changed while you were looking at it. Refresh and try again.');
+  }
+
+  const updated = await prisma.transaction.findUniqueOrThrow({
     where: { id: transactionId },
-    data: { deliveryStatus: status as any },
     include: {
       // The seller travels with the listing so an order can name the shop it
       // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
@@ -414,9 +444,8 @@ export async function updateDeliveryStatus(
   const cropName = updated.listing?.cropName || 'Crop';
   notifyDeliveryUpdate(notifyUserId, cropName, status, transactionId).catch(() => {});
 
-  // If buyer confirmed delivery, release payment and update trust scores
+  // Confirmed means released (above), so the seller is told what they are due.
   if (status === 'CONFIRMED') {
-    await releasePayment(transactionId);
     // Freight comes out too. This used to quote total minus platform fee while
     // the settlement breakdown on screen already subtracted transport as well,
     // so the seller was told two different numbers for the same payout and the
@@ -443,27 +472,39 @@ export async function updateDeliveryStatus(
 // =============================================================================
 // RELEASE PAYMENT — Move funds from escrow to farmer
 // =============================================================================
-async function releasePayment(transactionId: string) {
-  const transaction = await prisma.transaction.findUnique({
-    where: { id: transactionId },
-  });
+export async function releasePayment(
+  transactionId: string,
+  { confirmDelivery = false }: { confirmDelivery?: boolean } = {},
+): Promise<boolean> {
+  // Conditional on ESCROW in the write, like refundTransaction: a refund
+  // landing first makes this miss rather than flip REFUNDED back to RELEASED.
+  // The trust bumps ride on the same claim, so two confirms arriving together
+  // cannot award them twice. With confirmDelivery the same write moves the
+  // delivery DELIVERED -> CONFIRMED, so the two cannot disagree.
+  return prisma.$transaction(async (tx) => {
+    const claimed = await tx.transaction.updateMany({
+      where: {
+        id: transactionId,
+        paymentStatus: 'ESCROW',
+        ...(confirmDelivery && { deliveryStatus: 'DELIVERED' as const }),
+      },
+      data: {
+        paymentStatus: 'RELEASED',
+        ...(confirmDelivery && { deliveryStatus: 'CONFIRMED' as const }),
+      },
+    });
+    if (claimed.count === 0) return false;
 
-  if (!transaction) return;
-  if (transaction.paymentStatus !== 'ESCROW') return;
-
-  await prisma.$transaction([
-    // Release payment
-    prisma.transaction.update({
+    const transaction = await tx.transaction.findUniqueOrThrow({
       where: { id: transactionId },
-      data: { paymentStatus: 'RELEASED' },
-    }),
+      select: { farmerId: true, buyerId: true },
+    });
 
-    // Boost farmer trust score (successful delivery = +2, capped at 100)
-    prisma.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.farmerId}`,
-
-    // Boost buyer trust score (confirmed receipt = +2, capped at 100)
-    prisma.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.buyerId}`,
-  ]);
+    // Successful delivery = +2 each side, capped at 100.
+    await tx.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.farmerId}`;
+    await tx.$executeRaw`UPDATE "User" SET "trustScore" = LEAST("trustScore" + 2, 100) WHERE id = ${transaction.buyerId}`;
+    return true;
+  });
 }
 
 // =============================================================================
@@ -479,9 +520,21 @@ export async function refundTransaction(transactionId: string) {
     throw new ApiError(400, 'Can only refund transactions in escrow');
   }
 
-  const updated = await prisma.transaction.update({
-    where: { id: transactionId },
+  // CONDITIONAL ON ESCROW IN THE WRITE ITSELF. Read-then-write let a refund
+  // and the buyer confirming delivery both see ESCROW and both write, so the
+  // deal ended RELEASED and REFUNDED in either order, and with manual
+  // transfers both sides could be paid. Whichever lands first wins; the other
+  // is refused. releasePayment holds the same condition.
+  const claimed = await prisma.transaction.updateMany({
+    where: { id: transactionId, paymentStatus: 'ESCROW' },
     data: { paymentStatus: 'REFUNDED' },
+  });
+  if (claimed.count === 0) {
+    throw new ApiError(409, 'This deal is no longer in escrow (it may have just been released). Nothing was refunded.');
+  }
+
+  const updated = await prisma.transaction.findUniqueOrThrow({
+    where: { id: transactionId },
     include: {
       // The seller travels with the listing so an order can name the shop it
       // came from and derive its delivery lane. PUBLIC_SELLER_SELECT is the
