@@ -11,7 +11,7 @@
 // the lists below are the only place route-to-role mapping is defined.
 // =============================================================================
 
-import { lazy, type ComponentType } from 'react';
+import { lazy, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
@@ -30,10 +30,14 @@ import { ProtectedRoute } from './ProtectedRoute';
 //
 // A page's code can fail to download: a dropped connection, or a tab opened
 // before a deploy asking for a file the deploy replaced. Thrown, that would
-// take the whole app off the screen. So the first failure reloads the page,
-// which also picks up the new deploy, and a second one within 30 seconds shows
-// PageLoadFailed rather than reloading in a loop. During the build there is no
-// window, and the error is thrown so a broken prerender fails loudly.
+// take the whole app off the screen. So a failed download resolves to
+// PageLoadRecovery instead, and the recovery runs when that component mounts,
+// which is only while the failed page is the one on screen: a visitor who
+// started opening a page and went elsewhere before its download failed is not
+// reloaded out of whatever they are doing now. The first failure reloads, which
+// also picks up the new deploy; a second within 30 seconds shows the Reload
+// message rather than reloading in a loop. During the build there is no window,
+// and the error is thrown so a broken prerender fails loudly.
 const RELOAD_KEY = 'cb-page-load-reload';
 
 function PageLoadFailed() {
@@ -49,27 +53,39 @@ function PageLoadFailed() {
   );
 }
 
-function recoverFromFailedLoad(error: unknown): ComponentType {
-  if (typeof window === 'undefined') throw error;
-  let last = 0;
+/** True unless the one automatic reload was used in the last 30 seconds. */
+function reloadAllowed(): boolean {
   try {
-    last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0;
-  } catch { /* storage blocked: fall through to one reload attempt */ }
-  if (Date.now() - last > 30_000) {
+    return Date.now() - (Number(sessionStorage.getItem(RELOAD_KEY)) || 0) > 30_000;
+  } catch {
+    // Storage blocked: no way to tell a first failure from a loop, so show the
+    // message rather than risk reloading for ever.
+    return false;
+  }
+}
+
+function PageLoadRecovery() {
+  // Decided once, on mount, from a read; the write and the reload are the
+  // effect's, so a render that is thrown away cannot use up the reload.
+  const [reload] = useState(reloadAllowed);
+  useEffect(() => {
+    if (!reload) return;
     try {
       sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
-      window.location.reload();
-      return () => null;
-    } catch { /* storage blocked: show the message rather than risk a loop */ }
-  }
-  return PageLoadFailed;
+    } catch { /* reloadAllowed already read storage, so this only fails if it is full */ }
+    window.location.reload();
+  }, [reload]);
+  return reload ? null : <PageLoadFailed />;
 }
 
 function lazyPage<M, K extends keyof M>(load: () => Promise<M>, key: K) {
   return lazy(() =>
     load().then(
       (m) => ({ default: m[key] as unknown as ComponentType }),
-      (error: unknown) => ({ default: recoverFromFailedLoad(error) }),
+      (error: unknown) => {
+        if (typeof window === 'undefined') throw error;
+        return { default: PageLoadRecovery as ComponentType };
+      },
     ),
   );
 }
