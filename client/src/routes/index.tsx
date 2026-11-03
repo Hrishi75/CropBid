@@ -26,7 +26,7 @@ import { ProtectedRoute } from './ProtectedRoute';
 // With no boundary the root waits: the prerendered page stays on screen, and on
 // navigation (React Router wraps it in a transition) the old page stays until
 // the new one is ready. The build's prerender waits for these too
-// (prerenderToNodeStream in entry-server.tsx).
+// (prerender in entry-server.tsx).
 function lazyPage<M, K extends keyof M>(load: () => Promise<M>, key: K) {
   return lazy(() => load().then((m) => ({ default: m[key] as unknown as ComponentType })));
 }

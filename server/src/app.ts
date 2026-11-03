@@ -15,6 +15,7 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import compression from 'compression';
 import * as Sentry from '@sentry/node';
 import { sentryEnabled } from './instrument';
 import path from 'path';
@@ -69,6 +70,13 @@ app.use(helmet({
   // Allow the website (cropbid.in) to load /uploads images from this API origin.
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
+
+// Compress responses (gzip, or brotli where the client asks for it). Caddy in
+// front passes bodies through as they are, so without this every response
+// left the server uncompressed: the forecast was 164 KB on the wire, about a
+// sixth of that compressed, and the API is a long round trip from India.
+// Bodies under 1 KB are left alone, where compressing costs more than it saves.
+app.use(compression({ threshold: 1024 }));
 
 // CORS — Cross-Origin Resource Sharing
 app.use(cors({

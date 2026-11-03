@@ -24,23 +24,21 @@
 // CSS to produce markup that references it by class name only.
 // =============================================================================
 
-import { prerenderToNodeStream } from 'react-dom/static';
+import { prerender } from 'react-dom/static';
 import { StaticRouter } from 'react-router-dom';
 import { AppContent } from './App';
 import './i18n';
 
-// prerenderToNodeStream rather than renderToString because every page except
+// prerender rather than renderToString because every page except
 // the storefront is loaded lazily (routes/index.tsx): renderToString cannot
 // wait for a lazy component, prerender waits for all of them.
 export async function render(url: string): Promise<string> {
-  const { prelude } = await prerenderToNodeStream(
+  const { prelude } = await prerender(
     <StaticRouter location={url}>
       <AppContent />
     </StaticRouter>,
   );
-  const chunks: Buffer[] = [];
-  for await (const chunk of prelude) chunks.push(Buffer.from(chunk));
-  return Buffer.concat(chunks).toString('utf8');
+  return new Response(prelude).text();
 }
 
 // Re-exported so the prerender script reads the route manifest through the
