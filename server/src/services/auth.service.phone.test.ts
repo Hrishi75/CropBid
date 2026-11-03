@@ -74,14 +74,21 @@ describe('signup phone validation', () => {
     expect(parse('+91-123').success).toBe(false);
   });
 
+  // India only (CLAUDE.md section 2): a 10-digit mobile, starting 6 to 9.
+  it('rejects a foreign or landline-shaped number', () => {
+    for (const bad of ['+1 (555) 0101', '+44 7700 900123', '0712 345 678', '5876543210']) {
+      expect(parse(bad).success, `expected ${JSON.stringify(bad)} to be rejected`).toBe(false);
+    }
+  });
+
   it('accepts real numbers however they are spelled', () => {
-    for (const ok of ['+91-9876543210', '+91 9876543210', '9876543210', '+1 (555) 0101']) {
+    for (const ok of ['+91-9876543210', '+91 9876543210', '9876543210', '09876543210', '(98765) 43210']) {
       expect(parse(ok).success, `expected ${JSON.stringify(ok)} to be accepted`).toBe(true);
     }
   });
 
   it('leaves every accepted number with digits for login to match', () => {
-    for (const ok of ['+91-9876543210', '9876543210', '+1 (555) 0101']) {
+    for (const ok of ['+91-9876543210', '9876543210', '09876543210']) {
       expect(normalizePhone(ok).replace('+', '').length).toBeGreaterThanOrEqual(7);
     }
   });

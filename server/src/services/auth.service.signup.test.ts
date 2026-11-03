@@ -1,8 +1,8 @@
 // =============================================================================
 // auth.service signup tests — duplicate phone/email handling
 // =============================================================================
-// An account signs up with an email, a phone, or both; each is unique when
-// present. Two signups for the same phone (or email) can both
+// An account signs up with a phone, and an email if it has one (the phone is
+// required since 2026-11-03); each is unique when present. Two signups for the same phone (or email) can both
 // pass the findUnique pre-check; the unique index decides the race. Both the
 // pre-check loser and the race loser must see the same 409, never a raw Prisma
 // error surfacing as a 500.
@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn(),
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -40,6 +41,7 @@ import { sendSignupOtpEmail } from './email.service';
 import { ApiError } from '../utils/ApiError';
 import { POLICY_VERSION } from '../utils/consent';
 
+const mockQueryRaw = vi.mocked(prisma.$queryRaw);
 const mockFindUnique = vi.mocked(prisma.user.findUnique);
 const mockFindFirst = vi.mocked(prisma.user.findFirst);
 const mockCreate = vi.mocked(prisma.user.create);
@@ -80,6 +82,8 @@ function existingAccounts({ phone = false, email = false }) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The last-ten-digits lookup: no other account holds the number.
+  mockQueryRaw.mockResolvedValue([] as any);
   mockUpdate.mockResolvedValue(createdUser);
   mockPendingUpsert.mockResolvedValue({ id: 'pending-1' } as any);
   mockPendingDeleteMany.mockResolvedValue({ count: 0 } as any);
@@ -167,25 +171,22 @@ describe('signup', () => {
     await expect(signup(input)).rejects.toThrow('connection lost');
   });
 
-  it('creates an email-only account without looking up a phone', async () => {
-    existingAccounts({ phone: true }); // would collide IF a phone were checked
-    mockCreate.mockResolvedValue(createdUser);
-
-    const result = await signup({ ...input, phone: undefined });
-
-    expect(result.accessToken).toBeTruthy();
-    expect(mockFindUnique).not.toHaveBeenCalled();
-    expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ phone: null, email: input.email, role: 'CONSUMER' }),
-      }),
+  it('refuses an account with no phone, even with an email', async () => {
+    await expect(signup({ ...input, phone: undefined })).rejects.toMatchObject(
+      new ApiError(400, 'Enter your mobile number'),
     );
+    await expect(signup({ ...input, phone: undefined, email: undefined })).rejects.toMatchObject(
+      new ApiError(400, 'Enter your mobile number'),
+    );
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('refuses an account with neither an email nor a phone', async () => {
-    await expect(
-      signup({ ...input, phone: undefined, email: undefined }),
-    ).rejects.toMatchObject(new ApiError(400, 'Enter an email address or a phone number'));
+  it('refuses a number another account holds in a different form', async () => {
+    existingAccounts({}); // no exact match…
+    mockQueryRaw.mockResolvedValue([{ id: 'other' }] as any); // …but the same ten digits
+    await expect(signup({ ...input, phone: '98765 43210' })).rejects.toMatchObject(
+      new ApiError(409, 'An account with this phone number already exists'),
+    );
     expect(mockCreate).not.toHaveBeenCalled();
   });
 

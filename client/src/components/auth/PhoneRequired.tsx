@@ -1,19 +1,17 @@
 // =============================================================================
-// PhoneRequired: a Google account gives us a phone number before carrying on
+// PhoneRequired: every account gives us a phone number before carrying on
 // =============================================================================
-// Google sign-in hands over a name and an email and never a phone, so an
-// account made or linked through it had no number for a seller, a delivery
-// rider or support to reach. This asks for one, over every page, whenever a
-// signed-in account is Google-linked and has none.
+// A mobile number is required on every account (decided 2026-11-03), and email
+// is the optional one. Sign-up asks for it now, but accounts made before, with
+// an email alone or through Google (which never sends one), have none. This
+// asks for one, over every page, whenever a signed-in account has no number.
 //
 // It is mounted once, at the root, rather than as a step inside the sign-in
 // window, so a reload or a second tab cannot get past it: it reads the account
 // as the server last described it. There is no close button; Sign out is the
 // way out for someone who will not give a number.
 //
-// Accounts made with a password and an email alone are NOT asked: sign-up
-// takes an email or a phone, by design (CLAUDE.md section 4). The number is
-// not verified, the same as the sign-up form's.
+// The number is not verified, the same as the sign-up form's.
 //
 // The rest of the page is `inert` while it is open and Tab cycles inside it,
 // as in the rates page's dialog: aria-modal alone leaves the page behind
@@ -47,7 +45,7 @@ export function PhoneRequired() {
   // Not while a support reset is outstanding: the server refuses everything
   // but the password change until then, this save included.
   const open = Boolean(
-    !loading && user && user.googleLinked && !user.phone && !user.mustChangePassword && !isEmbedded(),
+    !loading && user && !user.phone && !user.mustChangePassword && !isEmbedded(),
   );
 
   useEffect(() => {
@@ -122,8 +120,8 @@ export function PhoneRequired() {
             One more thing:<br /><span className="cb-italic">your phone number.</span>
           </h2>
           <p className="cb-small" style={{ marginTop: 10, marginBottom: 22 }}>
-            Google does not share your number with us. Sellers and delivery need it to reach
-            you about an order, and it is how support finds your account if you call.
+            Every CropBid account needs one. We use it to reach you about your orders, it is how
+            support finds your account if you call, and you can sign in with it.
           </p>
           <form onSubmit={submit} noValidate>
             <Input
@@ -143,7 +141,7 @@ export function PhoneRequired() {
             </Button>
           </form>
           <p className="cb-small" style={{ marginTop: 16, textAlign: 'center' }}>
-            Signed in as {user.email}.{' '}
+            Signed in as {user.email || user.name}.{' '}
             <button type="button" className="cb-btn cb-btn-link" onClick={() => logout()}>
               Sign out
             </button>

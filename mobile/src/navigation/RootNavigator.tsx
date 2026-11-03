@@ -71,6 +71,7 @@ import ConsumerTabBar from './ConsumerTabBar';
 import type { BuyerTabParamList, ConsumerStackParamList, ConsumerTabParamList, FarmerStackParamList, FarmerTabParamList, GuestStackParamList, PartnerStackParamList, RootStackParamList } from './types';
 import type { User } from '../api/types';
 import { isPendingPartner } from '../lib/partner';
+import PhoneRequiredScreen from '../screens/PhoneRequiredScreen';
 import { sellerWords } from '../lib/sellerType';
 
 // --- Buyer ---
@@ -643,13 +644,18 @@ export default function RootNavigator() {
   // whose name it also has: a buyer signed out on the Wallet screen landed on
   // the guest Wallet with no back button and nothing behind it.
   const tree = !user ? 'guest'
-    : needsApplication(user) ? 'apply'
-      : isPendingPartner(user) ? 'pending'
-        : user.role;
+    : !user.phone ? 'phone'
+      : needsApplication(user) ? 'apply'
+        : isPendingPartner(user) ? 'pending'
+          : user.role;
   return (
     <NavigationContainer key={tree}>
       {!user ? (
         <GuestNavigator />
+      ) : !user.phone ? (
+        /* Every account needs a mobile number (2026-11-03). Before anything
+           else, so an older email-only account cannot get round it. */
+        <PhoneRequiredScreen />
       ) : needsApplication(user) ? (
         <OnboardingScreen />
       ) : isPendingPartner(user) ? (

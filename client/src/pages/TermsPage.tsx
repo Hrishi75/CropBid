@@ -39,7 +39,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '2 November 2026';
+const UPDATED = '3 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -124,8 +124,9 @@ export function TermsPage() {
         <Section title="2. Who can use CropBid">
           <p>
             You must be at least 18 and able to enter a contract under Indian law. You must
-            give accurate details and keep them current. The email address or phone number
-            you sign up with is your account, and a wrong one can lock you out of it.
+            give accurate details and keep them current. Every account needs a mobile number;
+            an email address is optional. You sign in with either, so a wrong one can lock you
+            out of your account.
           </p>
           <p>
             <strong>Selling is by application.</strong> Farmers, local shops and wholesalers

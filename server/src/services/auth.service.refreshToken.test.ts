@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../lib/prisma', () => ({
   prisma: {
+    $queryRaw: vi.fn(() => Promise.resolve([])),
     user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     phoneChallenge: { findUnique: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     auditLog: { create: vi.fn() },
@@ -123,11 +124,13 @@ describe('signing in', () => {
 // (createUserAndIssueTokens), so it gets its own test rather than being assumed.
 describe('signing up', () => {
   it('stores the hash for a brand new account', async () => {
+    userFindUnique.mockResolvedValue(null);
     userFindFirst.mockResolvedValue(null);
     userCreate.mockResolvedValue(await userRow({ id: 'new-user' }));
 
     const result = await signup({
       name: 'Anita',
+      phone: '9876543210',
       email: 'new@example.com',
       password: 'password123',
     } as Parameters<typeof signup>[0]);

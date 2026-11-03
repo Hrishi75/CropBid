@@ -241,15 +241,22 @@ export async function signup(input: Omit<SignupInput, 'role'>) {
   const email = input.email ? normalizeEmail(input.email) || undefined : undefined;
   const phone = input.phone ? normalizePhone(input.phone) || undefined : undefined;
 
-  // The identifier is what they sign in with, so an account with neither could
-  // never be reached again. The controller's schema refuses it first; repeated
-  // here so it holds for every caller of the service.
-  if (!email && !phone) {
-    throw new ApiError(400, 'Enter an email address or a phone number');
+  // Every account has a mobile number (decided 2026-11-03); email is optional.
+  // The controller's schema refuses a missing one first; repeated here so it
+  // holds for every caller of the service.
+  if (!phone) {
+    throw new ApiError(400, 'Enter your mobile number');
   }
   assertConsentNotRefused(input.consent);
 
   await assertIdentifiersFree(phone, email);
+  // assertIdentifiersFree matches the number exactly as stored. Numbers are
+  // kept in whatever form people typed, so 9876543210 here and +919876543210 on
+  // another account would be one phone on two accounts: refused on the last
+  // ten digits, as adding a number later is.
+  if (await phoneHeldElsewhere(phone)) {
+    throw new ApiError(409, 'An account with this phone number already exists');
+  }
 
   // Cost factor 12 ≈ 250ms — slow enough to resist brute-force, fast enough
   // not to annoy users.
@@ -1673,6 +1680,17 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
 // whatever form people typed (CLAUDE.md section 4), so "taken" is decided on
 // the last ten digits: +919876543210 on one account and 9876543210 on another
 // would be one person's phone reaching two accounts.
+// True when another account holds the same last ten digits, in any stored form.
+async function phoneHeldElsewhere(phone: string, exceptUserId = '', db: Prisma.TransactionClient = prisma) {
+  const ten = phone.replace(/[^0-9]/g, '').slice(-10);
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "User"
+    WHERE id <> ${exceptUserId} AND phone IS NOT NULL
+      AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
+    LIMIT 1`;
+  return rows.length > 0;
+}
+
 const phoneTaken = () =>
   new ApiError(409, 'That number is already on another CropBid account. Sign in with it, or use a different number.', 'PHONE_TAKEN');
 
@@ -1685,12 +1703,7 @@ export async function addPhone(userId: string, rawPhone: string) {
   const written = await prisma
     .$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`phone:${ten}`}))`;
-      const clash = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM "User"
-        WHERE id <> ${userId} AND phone IS NOT NULL
-          AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${ten}
-        LIMIT 1`;
-      if (clash.length > 0) throw phoneTaken();
+      if (await phoneHeldElsewhere(phone, userId, tx)) throw phoneTaken();
       return tx.user.updateMany({ where: { id: userId, phone: null }, data: { phone } });
     })
     .catch((err) => {
