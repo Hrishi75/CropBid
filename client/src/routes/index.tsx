@@ -27,8 +27,51 @@ import { ProtectedRoute } from './ProtectedRoute';
 // navigation (React Router wraps it in a transition) the old page stays until
 // the new one is ready. The build's prerender waits for these too
 // (prerender in entry-server.tsx).
+//
+// A page's code can fail to download: a dropped connection, or a tab opened
+// before a deploy asking for a file the deploy replaced. Thrown, that would
+// take the whole app off the screen. So the first failure reloads the page,
+// which also picks up the new deploy, and a second one within 30 seconds shows
+// PageLoadFailed rather than reloading in a loop. During the build there is no
+// window, and the error is thrown so a broken prerender fails loudly.
+const RELOAD_KEY = 'cb-page-load-reload';
+
+function PageLoadFailed() {
+  return (
+    <div className="cb-landing" style={{ padding: '64px 16px', textAlign: 'center', alignItems: 'center' }}>
+      <p className="cb-body" style={{ marginBottom: 16 }}>
+        This page didn't load. Check your connection and try again.
+      </p>
+      <button type="button" className="cb-btn cb-btn-primary" onClick={() => window.location.reload()}>
+        Reload
+      </button>
+    </div>
+  );
+}
+
+function recoverFromFailedLoad(error: unknown): ComponentType {
+  if (typeof window === 'undefined') throw error;
+  let last = 0;
+  try {
+    last = Number(sessionStorage.getItem(RELOAD_KEY)) || 0;
+  } catch { /* storage blocked: fall through to one reload attempt */ }
+  if (Date.now() - last > 30_000) {
+    try {
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+      window.location.reload();
+      return () => null;
+    } catch { /* storage blocked: show the message rather than risk a loop */ }
+  }
+  return PageLoadFailed;
+}
+
 function lazyPage<M, K extends keyof M>(load: () => Promise<M>, key: K) {
-  return lazy(() => load().then((m) => ({ default: m[key] as unknown as ComponentType })));
+  return lazy(() =>
+    load().then(
+      (m) => ({ default: m[key] as unknown as ComponentType }),
+      (error: unknown) => ({ default: recoverFromFailedLoad(error) }),
+    ),
+  );
 }
 
 // Auth pages (public)
