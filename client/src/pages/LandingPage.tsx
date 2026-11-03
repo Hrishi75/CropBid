@@ -1014,6 +1014,45 @@ function PromoTrio({ shopHref, user }: { shopHref: string; user: User | null }) 
   );
 }
 
+// -----------------------------------------------------------------------------
+// Free-to-join strip, under the hero. Every line is true of the code: sign-up
+// and partner applications cost nothing, listing costs nothing, mandi rates are
+// free. The 2% deal fee is left off on purpose (the user's call); delivery is
+// billed on top, so the footnote says so.
+// Approved partners already know all this, so they are not shown it.
+function FreeToJoin({ user }: { user: User | null }) {
+  const { t } = useTranslation();
+  if (user?.role === 'FARMER' || user?.role === 'BUYER' || user?.role === 'ADMIN') return null;
+  const items = [
+    { k: '₹0', title: 'Free to register', sub: 'Sign up and apply as a partner at no cost' },
+    { k: '₹0', title: 'Free to list', sub: 'Put up as many lots as you like' },
+    { k: '₹0', title: 'Free mandi rates', sub: 'Live government prices from 4,600+ mandis' },
+  ];
+  return (
+    <section className="st-free" aria-labelledby="st-free-title">
+      <div className="st-free-head">
+        <h2 id="st-free-title" className="st-free-title">
+          {t('Joining CropBid is')} <span className="italic">{t('free.')}</span>
+        </h2>
+        <Link to="/partner" className="cb-btn st-free-cta">
+          {t(user ? 'Become a partner' : 'Start selling free')}
+          <ArrowIcon />
+        </Link>
+      </div>
+      <ul className="st-free-grid">
+        {items.map((i) => (
+          <li key={i.title} className="st-free-item">
+            <span className="st-free-k">{i.k}</span>
+            <span className="st-free-t">{t(i.title)}</span>
+            <span className="st-free-s">{t(i.sub)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="st-free-note">{t('No signup charge, no listing charge. Delivery is billed separately, as agreed in each deal.')}</p>
+    </section>
+  );
+}
+
 function SellCTA({ user }: { user: User | null }) {
   const { t } = useTranslation();
   const ref = useReveal<HTMLElement>();
@@ -1247,6 +1286,7 @@ export function LandingPage() {
             user={user}
           />} />
         )}
+        {!searching && <FreeToJoin user={user} />}
         <LiveShelf query={query} />
         {!searching && (
           <>
