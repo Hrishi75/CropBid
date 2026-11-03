@@ -27,6 +27,7 @@
 // =============================================================================
 
 import crypto from 'crypto';
+import { signatureMatches } from '../utils/signature';
 import Razorpay from 'razorpay';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
@@ -223,11 +224,8 @@ export async function verifyTopup(
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 
-  // timingSafeEqual guards against signature-comparison timing attacks, and the
-  // length check guards timingSafeEqual, which throws on a length mismatch.
-  const valid =
-    expected.length === signature.length &&
-    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  // Constant-time, and safe on a signature of the wrong byte length.
+  const valid = signatureMatches(expected, signature);
 
   if (!valid) throw new ApiError(400, 'Payment signature verification failed');
 

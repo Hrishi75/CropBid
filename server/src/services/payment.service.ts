@@ -28,6 +28,7 @@
 // =============================================================================
 
 import crypto, { randomUUID } from 'crypto';
+import { signatureMatches } from '../utils/signature';
 import Razorpay from 'razorpay';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
@@ -274,9 +275,8 @@ function checkoutSignatureValid(orderId: string, paymentId: string, signature: s
     .update(`${orderId}|${paymentId}`)
     .digest('hex');
 
-  // timingSafeEqual guards against signature-comparison timing attacks.
-  return expected.length === signature.length &&
-    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  // Constant-time, and safe on a signature of the wrong byte length.
+  return signatureMatches(expected, signature);
 }
 
 // =============================================================================
@@ -338,9 +338,7 @@ export async function handleWebhook(rawBody: Buffer, signature: string | undefin
     .update(rawBody)
     .digest('hex');
 
-  const valid =
-    expected.length === signature.length &&
-    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  const valid = signatureMatches(expected, signature);
 
   if (!valid) throw new ApiError(400, 'Invalid webhook signature');
 

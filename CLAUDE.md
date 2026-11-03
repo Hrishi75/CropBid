@@ -257,6 +257,10 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **Not another admin, and not yourself.** An admin account is where this would be a way to take over somebody's access rather than restore it, the same reason deleting one is refused.
 - **The app refuses to sign such an account in** and sends them to the website, because `mobile/` has no change-password screen. Building one there is unbuilt, not decided against.
 
+**An admin token is checked against the database** (2026-11-04). `requireRole` looks up the account whenever the token says ADMIN and refuses one that is no longer an admin or is suspended, because the role in a token is what it was when minted and admin routes are where five minutes of a revoked admin matter (refunds, password resets, payout reads). Every other role still trusts the token, so ordinary requests pay no round trip, and a suspended non-admin keeps working until their access token expires.
+
+**Admin lists select, never include, a seller profile.** Admin → Listings returned the whole `FarmerProfile` on every row, PAN, Farmer ID, licence numbers and the payout account included, around the audited payout read (§4a). It now selects the seller's kind, business name, name and trust score.
+
 **Sessions are stored as a hash.** `User.refreshToken` holds the SHA-256 of the refresh token, never the token (`utils/refreshToken.ts`), because the column is otherwise a live session for every signed-in account and a database dump hands them all over. The schema said "stored hashed" for months while it stored them raw; fixed 2026-09-20, and the migration cleared the existing values, which signed everyone out once. The same rule already covered reset tokens and sign-in codes.
 
 **One session per account, and tabs take turns refreshing it** (2026-10-05). There is one refresh token per user and every refresh rotates it, so two tabs refreshing at the same moment both sent the same cookie, the first won and the second tab signed itself out. Every web refresh now goes through `refreshSession()` in `client/src/lib/axios.ts`, which holds a browser-wide Web Lock, so a waiting tab sends the cookie the first one just received. Reproduced first (two simultaneous refreshes: 200 and 401), then four under the lock all 200.
@@ -472,6 +476,8 @@ Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery 
 ## 6. Known gaps: read before touching payments or copy
 
 **Settlement moves no money.** Capture is real; money genuinely reaches the platform account. But the release (inside `updateDeliveryStatus`, when the buyer confirms) and `refundTransaction` **only update a database column**. Paying a seller's bank needs Razorpay Route (not built), and the refund path never calls Razorpay's refund API at all. Every payout and refund is a manual bank transfer.
+
+**A refund and a release cannot both win** (2026-11-04). Both used to read ESCROW and then write unconditionally, so a "Force refund" landing as the buyer confirmed left the deal RELEASED or REFUNDED depending on which wrote last, and with manual transfers both sides could be paid. Each now writes only where the deal is still ESCROW and the loser is refused; the trust bump rides on the release's claim. Delivery moves are conditional on the state read too, so a shop order cancelled as the shop presses "on the way" stays cancelled, and a cancelled, refunded or unpaid deal cannot be moved or confirmed (`refundRelease.test.ts`, races ten rounds, watched failing with the conditions removed).
 
 It is invisible in the UI: an order reads "Released" and looks finished. **Never write copy promising an automatic payout.**
 

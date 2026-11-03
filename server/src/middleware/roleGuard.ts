@@ -39,8 +39,32 @@ export function requireRole(...allowedRoles: string[]) {
       );
     }
 
+    // AN ADMIN TOKEN IS CHECKED AGAINST THE ROW. The role in an access token
+    // is what it was when the token was minted, so an admin demoted or
+    // suspended a minute ago would otherwise keep admin powers (refunds,
+    // password resets, payout reads) for the rest of the token's life. Every
+    // other request trusts the token to spare it a round trip; admin traffic is
+    // a handful of people, and these are the routes where five minutes matter.
+    if (req.user.role === 'ADMIN') {
+      confirmAdmin(req.user.userId).then(() => next(), next);
+      return;
+    }
+
     next();
   };
+}
+
+export async function confirmAdmin(userId: string): Promise<void> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, suspended: true },
+  });
+  if (!row || row.role !== 'ADMIN') {
+    throw new ApiError(403, 'This account is no longer an admin');
+  }
+  if (row.suspended) {
+    throw new ApiError(403, 'This account has been suspended. Please contact support.');
+  }
 }
 
 // ---------------------------------------------------------------------------
