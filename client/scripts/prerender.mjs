@@ -161,7 +161,7 @@ async function main() {
   const afterSeo = template.slice(seoEnd);
 
   for (const route of ROUTES) {
-    const appHtml = render(route.path);
+    const appHtml = await render(route.path);
 
     if (!appHtml.trim()) {
       throw new Error(

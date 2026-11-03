@@ -216,18 +216,16 @@ function useReveal<T extends HTMLElement>() {
 }
 
 // =============================================================================
-// Images — /products/<slug>.jpg with emoji fallback until photos are uploaded
+// Hero image
 // =============================================================================
+// Points straight at a file that exists. It used to try
+// /products/banner-hero.jpg first and fall back to this on error, but that file
+// was never uploaded: the prerendered page preloaded it, the site answered with
+// the HTML shell, and the real picture only started loading once the script had
+// run and noticed. To use a new photo, put it in client/public and change this.
 
 function BannerImg() {
-  const [src, setSrc] = useState('/products/banner-hero.jpg');
-  return (
-    <img
-      src={src}
-      alt="Fresh produce arriving from CropBid farms"
-      onError={() => { if (src !== '/mandi.jpg') setSrc('/mandi.jpg'); }}
-    />
-  );
+  return <img src="/mandi.jpg" alt="Fresh produce arriving from CropBid farms" />;
 }
 
 // =============================================================================
