@@ -58,7 +58,9 @@ function Rule({ met, label }: { met: boolean; label: string }) {
 // server holds (indianMobile in server/src/controllers/auth.controller.ts).
 export function isIndianMobile(raw: string): boolean {
   const value = raw.trim();
-  return /^[0-9+\s\-()]+$/.test(value) && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
+  return value.length <= 20
+    && /^[0-9+\s\-()]+$/.test(value)
+    && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
 }
 
 const looksLikeEmail = (raw: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim());

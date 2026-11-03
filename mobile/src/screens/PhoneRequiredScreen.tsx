@@ -8,7 +8,7 @@
 // No way past it but saving a number or signing out. The number is not
 // verified, the same as sign-up's (CLAUDE.md section 4).
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { addPhone } from '../api/endpoints';
@@ -23,6 +23,17 @@ export default function PhoneRequiredScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // The account this screen is for, and whether it is still on screen. Sign
+  // out while a save is in flight unmounts it, and a late answer must then be
+  // dropped: applying it would put the signed-out account back on screen with
+  // no tokens behind it, or over whoever signed in next.
+  const forId = useRef(user?.id);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   async function onSave() {
     if (!isIndianMobile(phone)) {
       setError('Enter a 10-digit mobile number');
@@ -33,11 +44,14 @@ export default function PhoneRequiredScreen() {
     try {
       // The server's copy, which carries the real role even in buying mode,
       // so the account is not stored as a BUYER by mistake.
-      applyUser(await addPhone(phone.trim()));
+      const saved = await addPhone(phone.trim());
+      if (!mounted.current || saved.id !== forId.current) return;
+      applyUser(saved);
     } catch (e) {
+      if (!mounted.current) return;
       setError(errorMessage(e, 'Could not save that number. Try again.'));
     } finally {
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   }
 

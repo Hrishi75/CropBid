@@ -175,11 +175,11 @@ async function createUserAndIssueTokens(data: {
   currency?: SignupInput['currency'];
   language?: SignupInput['language'];
   consent?: boolean;
-}) {
+}, db: Prisma.TransactionClient = prisma) {
   // Two concurrent signups can both pass the pre-check above; the unique index
   // decides the race, so map the loser's P2002 to the same 409 instead of
   // letting it surface as a 500.
-  const user = await prisma.user
+  const user = await db.user
     .create({
       data: {
         name: data.name,
@@ -216,7 +216,7 @@ async function createUserAndIssueTokens(data: {
   const tokens = generateTokens(user.id, user.role);
 
   // Save the refresh token so we can invalidate it on logout (set to null).
-  await prisma.user.update({
+  await db.user.update({
     where: { id: user.id },
     // The HASH, never the token: see utils/refreshToken.
     data: { refreshToken: hashRefreshToken(tokens.refreshToken) },
@@ -250,28 +250,33 @@ export async function signup(input: Omit<SignupInput, 'role'>) {
   assertConsentNotRefused(input.consent);
 
   await assertIdentifiersFree(phone, email);
+
+  // Cost factor 12 ≈ 250ms — slow enough to resist brute-force, fast enough
+  // not to annoy users. Hashed before the lock below, so it is not held for it.
+  const hashedPassword = await bcrypt.hash(input.password, 12);
+
   // assertIdentifiersFree matches the number exactly as stored. Numbers are
   // kept in whatever form people typed, so 9876543210 here and +919876543210 on
   // another account would be one phone on two accounts: refused on the last
-  // ten digits, as adding a number later is.
-  if (await phoneHeldElsewhere(phone)) {
-    throw new ApiError(409, 'An account with this phone number already exists');
-  }
-
-  // Cost factor 12 ≈ 250ms — slow enough to resist brute-force, fast enough
-  // not to annoy users.
-  const hashedPassword = await bcrypt.hash(input.password, 12);
-
-  return createUserAndIssueTokens({
-    name: input.name,
-    email: email || null,
-    hashedPassword,
-    role: 'CONSUMER',
-    phone: phone ?? null,
-    country: input.country,
-    currency: input.currency,
-    language: input.language,
-    consent: input.consent,
+  // ten digits. The check and the create run under the same lock on those ten
+  // digits as adding a number later (addPhone), or two sign-ups typing one
+  // number two ways could both pass the check before either writes.
+  return prisma.$transaction(async (tx) => {
+    await lockPhoneDigits(tx, phone);
+    if (await phoneHeldElsewhere(phone, '', tx)) {
+      throw new ApiError(409, 'An account with this phone number already exists');
+    }
+    return createUserAndIssueTokens({
+      name: input.name,
+      email: email || null,
+      hashedPassword,
+      role: 'CONSUMER',
+      phone,
+      country: input.country,
+      currency: input.currency,
+      language: input.language,
+      consent: input.consent,
+    }, tx);
   });
 }
 
@@ -1680,6 +1685,13 @@ export async function updateAccountBasics(userId: string, input: UpdateAccountBa
 // whatever form people typed (CLAUDE.md section 4), so "taken" is decided on
 // the last ten digits: +919876543210 on one account and 9876543210 on another
 // would be one person's phone reaching two accounts.
+// Held for the rest of the transaction by anyone giving an account this number,
+// so the check below and the write after it are not interleaved with another's.
+async function lockPhoneDigits(tx: Prisma.TransactionClient, phone: string) {
+  const ten = phone.replace(/[^0-9]/g, '').slice(-10);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`phone:${ten}`}))`;
+}
+
 // True when another account holds the same last ten digits, in any stored form.
 async function phoneHeldElsewhere(phone: string, exceptUserId = '', db: Prisma.TransactionClient = prisma) {
   const ten = phone.replace(/[^0-9]/g, '').slice(-10);
@@ -1696,13 +1708,12 @@ const phoneTaken = () =>
 
 export async function addPhone(userId: string, rawPhone: string) {
   const phone = normalizePhone(rawPhone);
-  const ten = phone.replace(/[^0-9]/g, '').slice(-10);
   // Check and write under one lock on the ten digits, or two accounts saving
   // +919876543210 and 9876543210 at once both pass the check: the unique
   // index only sees two different strings.
   const written = await prisma
     .$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`phone:${ten}`}))`;
+      await lockPhoneDigits(tx, phone);
       if (await phoneHeldElsewhere(phone, userId, tx)) throw phoneTaken();
       return tx.user.updateMany({ where: { id: userId, phone: null }, data: { phone } });
     })

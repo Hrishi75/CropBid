@@ -18,6 +18,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../lib/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn(() => Promise.resolve([])),
+    $executeRaw: vi.fn(() => Promise.resolve(1)),
+    // Run the callback against this same fake client.
+    $transaction: vi.fn(async (fn: any): Promise<any> => fn((await import('../lib/prisma')).prisma)),
     user: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     phoneChallenge: { findUnique: vi.fn(), updateMany: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     auditLog: { create: vi.fn() },

@@ -6,7 +6,7 @@
 // =============================================================================
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { prisma } from '../lib/prisma';
-import { addPhone } from './auth.service';
+import { addPhone, signup } from './auth.service';
 
 const DOMAIN = '@add-phone.test';
 const NAME = 'add-phone-test';
@@ -64,6 +64,22 @@ describe('addPhone', () => {
       expect(holders).toHaveLength(1);
       const winner = results[0].status === 'fulfilled' ? a.id : b.id;
       expect(holders[0].id).toBe(winner);
+    }
+  });
+
+  // Sign-up holds the same lock, so two sign-ups typing one number two ways,
+  // or a sign-up racing a save from the prompt, end with one holder.
+  it('gives one number to one account when two sign up with it at once in different forms', async () => {
+    for (let round = 0; round < 10; round++) {
+      await cleanUp();
+      const make = (phone: string) =>
+        signup({ name: NAME, phone, password: 'Sup3rSecret', consent: true });
+      const results = await Promise.allSettled([make('+919876543210'), make('9876543210')]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const holders = await prisma.user.findMany({ where: { name: NAME } });
+      expect(holders).toHaveLength(1);
+      const winner = results[0].status === 'fulfilled' ? '+919876543210' : '9876543210';
+      expect(holders[0].phone).toBe(winner);
     }
   });
 });

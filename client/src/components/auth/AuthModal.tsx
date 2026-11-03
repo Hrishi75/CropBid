@@ -100,7 +100,9 @@ const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
 // sends something it will refuse.
 function isIndianMobile(raw: string): boolean {
   const value = raw.trim();
-  return /^[0-9+\s\-()]+$/.test(value) && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
+  return value.length <= 20
+    && /^[0-9+\s\-()]+$/.test(value)
+    && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
 }
 
 const looksLikeEmail = (raw: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim());
@@ -393,7 +395,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       // the foot of the form.
       const status = err.response?.status;
       const message: string = err.response?.data?.message || 'Could not create your account just now';
-      const field: SignupField = status !== 409 ? 'confirm' : /email/i.test(message) ? 'email' : 'contact';
+      const field: SignupField = /email/i.test(message) ? 'email'
+        : /phone|mobile/i.test(message) ? 'contact'
+          : status === 409 ? 'contact' : 'confirm';
       fail(field, message);
     } finally {
       if (attemptRef.current === attempt) setSigningIn(false);

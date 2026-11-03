@@ -13,6 +13,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../lib/prisma', () => ({
   prisma: {
     $queryRaw: vi.fn(),
+    $executeRaw: vi.fn(),
+    $transaction: vi.fn(),
     user: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
@@ -84,6 +86,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // The last-ten-digits lookup: no other account holds the number.
   mockQueryRaw.mockResolvedValue([] as any);
+  // The number lock, and a transaction that runs against the same fake client.
+  vi.mocked(prisma.$executeRaw).mockResolvedValue(1 as any);
+  vi.mocked(prisma.$transaction).mockImplementation((async (fn: any) => fn(prisma)) as any);
   mockUpdate.mockResolvedValue(createdUser);
   mockPendingUpsert.mockResolvedValue({ id: 'pending-1' } as any);
   mockPendingDeleteMany.mockResolvedValue({ count: 0 } as any);
