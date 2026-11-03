@@ -1,6 +1,7 @@
-// Signup screen — create an account. Four fields, the same as the web's
-// create-an-account lane: name, an email OR a phone number (one box, whichever
-// they have), a password with live-validated rules, and the password again.
+// Signup screen — create an account. The same fields as the web's
+// create-an-account lane: name, a mobile number (required), an email
+// (optional, decided 2026-11-03), a password with live-validated rules, and
+// the password again.
 // No code is sent: the account is made on the spot and AuthContext.signUp()
 // signs them in, so the root navigator drops them on the storefront. Phone
 // verification is to be integrated later (CLAUDE.md section 4).
@@ -53,28 +54,24 @@ function Rule({ met, label }: { met: boolean; label: string }) {
   );
 }
 
-/**
- * Read the one "email or phone" box. Anything with an @ is an email address;
- * everything else has to be a phone number, counted on its digits the way the
- * server counts them, so "+  -  " cannot pass as one.
- */
-function readContact(raw: string): { email?: string; phone?: string } | null {
+// A 10-digit Indian mobile, with or without +91 or a leading 0: the rule the
+// server holds (indianMobile in server/src/controllers/auth.controller.ts).
+export function isIndianMobile(raw: string): boolean {
   const value = raw.trim();
-  if (value.includes('@')) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? { email: value } : null;
-  }
-  const digits = value.replace(/[^0-9]/g, '');
-  return /^[+0-9][0-9\s\-()]*$/.test(value) && digits.length >= 7 && value.length <= 20
-    ? { phone: value }
-    : null;
+  return value.length <= 20
+    && /^[0-9+\s\-()]+$/.test(value)
+    && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
 }
+
+const looksLikeEmail = (raw: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim());
 
 export default function SignupScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { signUp } = useAuth();
 
   const [name, setName] = useState('');
-  const [contact, setContact] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -98,22 +95,28 @@ export default function SignupScreen() {
   const mismatch = confirm.length > 0 && confirm !== password;
 
   async function onSubmit() {
-    const parsedContact = readContact(contact);
     const problem =
       name.trim().length < 2 ? 'Name must be at least 2 characters'
-        : !parsedContact ? 'Enter a valid email address or phone number'
+        : !isIndianMobile(phone) ? 'Enter a 10-digit mobile number'
+        : email.trim() && !looksLikeEmail(email) ? 'Enter a valid email address, or leave it blank'
         : !passwordValid ? 'Password does not meet the requirements'
         : confirm !== password ? 'The two passwords do not match'
         : !agreed ? 'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy'
         : null;
-    if (problem || !parsedContact) {
+    if (problem) {
       setError(problem);
       return;
     }
     setError(null);
     setSubmitting(true);
     try {
-      await signUp({ name: name.trim(), ...parsedContact, password, consent: true });
+      await signUp({
+        name: name.trim(),
+        phone: phone.trim(),
+        ...(email.trim() ? { email: email.trim() } : {}),
+        password,
+        consent: true,
+      });
     } catch (e) {
       setError(errorMessage(e, 'Signup failed'));
     } finally {
@@ -154,18 +157,31 @@ export default function SignupScreen() {
             autoComplete="name"
           />
 
-          <Text style={styles.label}>Email or phone number</Text>
+          <Text style={styles.label}>Mobile number</Text>
           <TextInput
             style={[styles.input, styles.inputWithHint]}
-            value={contact}
-            onChangeText={edit(setContact)}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="username"
-            placeholder="you@example.com or +91-9876543210"
+            value={phone}
+            onChangeText={edit(setPhone)}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            placeholder="98765 43210"
             placeholderTextColor={colors.textMuted}
           />
-          <Text style={styles.hint}>Whichever you give is what you sign in with.</Text>
+          <Text style={styles.hint}>You sign in with this. We also use it to reach you about orders.</Text>
+
+          <Text style={styles.label}>Email (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.inputWithHint]}
+            value={email}
+            onChangeText={edit(setEmail)}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            autoComplete="email"
+            placeholder="you@example.com"
+            placeholderTextColor={colors.textMuted}
+          />
+          <Text style={styles.hint}>Lets you reset your password by email. You can sign in with it too.</Text>
 
           <Text style={styles.label}>Password</Text>
           <TextInput

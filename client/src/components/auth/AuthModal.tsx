@@ -11,7 +11,8 @@
 // them loses the page behind it.
 //
 //   Sign in (the default)  email or phone, and the password they chose
-//   Create an account      name, email or phone, password, confirm password.
+//   Create an account      name, mobile number (required), email (optional),
+//                          password, confirm password.
 //                          No code: the account is made on the spot and they
 //                          are signed in.
 //
@@ -94,23 +95,19 @@ const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
   { label: 'a number', test: (p) => /[0-9]/.test(p) },
 ];
 
-/**
- * Read the one "email or phone" box. Anything with an @ is an email address;
- * everything else has to be a phone number, counted on its digits the way the
- * server counts them, so "+  -  " cannot pass as one.
- */
-function readContact(raw: string): { email?: string; phone?: string } | null {
+// A 10-digit Indian mobile, with or without +91 or a leading 0. The same rule
+// the server holds (indianMobile in auth.controller.ts), so the form never
+// sends something it will refuse.
+function isIndianMobile(raw: string): boolean {
   const value = raw.trim();
-  if (value.includes('@')) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? { email: value } : null;
-  }
-  const digits = value.replace(/[^0-9]/g, '');
-  return /^[+0-9][0-9\s\-()]*$/.test(value) && digits.length >= 7 && value.length <= 20
-    ? { phone: value }
-    : null;
+  return value.length <= 20
+    && /^[0-9+\s\-()]+$/.test(value)
+    && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
 }
 
-type SignupField = 'name' | 'contact' | 'password' | 'confirm' | 'consent';
+const looksLikeEmail = (raw: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim());
+
+type SignupField = 'name' | 'contact' | 'email' | 'password' | 'confirm' | 'consent';
 
 // The in-text links that move between lanes.
 const LINK_BUTTON: React.CSSProperties = {
@@ -209,6 +206,9 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // Create-an-account only. The error is shown under the field it is about,
   // rather than under the last box whatever went wrong.
   const [confirm, setConfirm] = useState('');
+  // The optional email on create-an-account. The mobile number uses
+  // `identifier`, the box sign-in shares, so a number typed there carries over.
+  const [signupEmail, setSignupEmail] = useState('');
   const [errorField, setErrorField] = useState<SignupField>();
   // The sign-up tickbox, on every way of making an account, Google included. Starts unticked
   // every time: consent is something the person does, never a default.
@@ -244,7 +244,7 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       setMode(openingMode);
       setChallenge(null); setPhone(''); setCode(''); setName('');
       setEmail(''); setNeedsEmail(false);
-      setIdentifier(''); setPassword(''); setConfirm(''); setAgreed(false);
+      setIdentifier(''); setSignupEmail(''); setPassword(''); setConfirm(''); setAgreed(false);
       setError(undefined); setErrorField(undefined); setCooldown(0);
       setGoogleError(undefined); setGoogleNeedsConsent(false);
     }
@@ -366,10 +366,10 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
     setGoogleError(undefined);
-    const contact = readContact(identifier);
     const fail = (field: SignupField, message: string) => { setErrorField(field); setError(message); };
     if (name.trim().length < 2) return fail('name', 'Tell us your name (at least 2 characters)');
-    if (!contact) return fail('contact', 'Enter a valid email address or phone number');
+    if (!isIndianMobile(identifier)) return fail('contact', 'Enter a 10-digit mobile number');
+    if (signupEmail.trim() && !looksLikeEmail(signupEmail)) return fail('email', 'Enter a valid email address, or leave it blank');
     if (unmetRules.length) return fail('password', `Your password still needs ${unmetRules.map((r) => r.label).join(', ')}`);
     if (confirm !== password) return fail('confirm', 'The two passwords do not match');
     if (!agreed) return fail('consent', CONSENT_REQUIRED);
@@ -377,7 +377,13 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     const attempt = attemptRef.current;
     setSigningIn(true); setError(undefined); setErrorField(undefined);
     try {
-      await signup({ name: name.trim(), ...contact, password, consent: true });
+      await signup({
+        name: name.trim(),
+        phone: identifier.trim(),
+        ...(signupEmail.trim() ? { email: signupEmail.trim() } : {}),
+        password,
+        consent: true,
+      });
       if (attemptRef.current !== attempt) return;
       toast.success(`Welcome to CropBid, ${name.trim().split(' ')[0]}`);
       onClose();
@@ -385,10 +391,14 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
       routeAfterAuth(null, true);
     } catch (err: any) {
       if (attemptRef.current !== attempt) return;
-      // A taken email or number is about the contact box; anything else is
-      // shown at the foot of the form.
+      // A taken number or email is shown under its own box; anything else at
+      // the foot of the form.
       const status = err.response?.status;
-      fail(status === 409 ? 'contact' : 'confirm', err.response?.data?.message || 'Could not create your account just now');
+      const message: string = err.response?.data?.message || 'Could not create your account just now';
+      const field: SignupField = /email/i.test(message) ? 'email'
+        : /phone|mobile/i.test(message) ? 'contact'
+          : status === 409 ? 'contact' : 'confirm';
+      fail(field, message);
     } finally {
       if (attemptRef.current === attempt) setSigningIn(false);
     }
@@ -398,9 +408,10 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
   // sitting there submittable when someone comes back to it, and no stale
   // "Enter a valid phone number" greets them on the password form.
   //
-  // The identity itself travels, though. Sign-in and create-an-account share
-  // one "email or phone" box, so someone who typed their email to sign in and
-  // then found they have no account does not type it again. A number typed on
+  // The identity itself travels, though. Sign-in's "email or phone" box is
+  // create-an-account's mobile number box, so someone who typed their number to
+  // sign in and then found they have no account does not type it again; an
+  // email typed there lands in the optional email box instead. A number typed on
   // the code step carries into that box too, and back the other way only when
   // what they entered really is a number, since the code step has nowhere to
   // send an email address. Passwords never travel.
@@ -415,6 +426,13 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
     } else if (mode === 'code') {
       setIdentifier(phone.trim());
       setChallenge(null); setCode(''); setPhone('');
+    }
+    if (next === 'signup' && identifier.includes('@')) {
+      setSignupEmail(identifier.trim());
+      setIdentifier('');
+    } else if (mode === 'signup' && next !== 'signup') {
+      if (!identifier.trim() && signupEmail.trim()) setIdentifier(signupEmail.trim());
+      setSignupEmail('');
     }
     setPassword(''); setConfirm('');
     setMode(next);
@@ -539,14 +557,26 @@ export function AuthModal({ open, onClose, intendedRole, redirectTo, title, star
                   required
                 />
                 <Input
-                  label="Email or phone number"
-                  placeholder="you@example.com or +91-9876543210"
-                  autoComplete="username"
+                  label="Mobile number"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="98765 43210"
+                  autoComplete="tel"
                   value={identifier}
                   onChange={(e) => { setIdentifier(e.target.value); clearError(); }}
                   error={errorField === 'contact' ? error : undefined}
-                  hint="Whichever you give is what you sign in with."
+                  hint="You sign in with this. We also use it to reach you about orders."
                   required
+                />
+                <Input
+                  label="Email (optional)"
+                  type="email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  value={signupEmail}
+                  onChange={(e) => { setSignupEmail(e.target.value); clearError(); }}
+                  error={errorField === 'email' ? error : undefined}
+                  hint="Lets you reset your password by email. You can sign in with it too."
                 />
                 <Input
                   label="Password"

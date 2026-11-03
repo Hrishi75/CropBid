@@ -1555,6 +1555,39 @@ body * {
   50%      { transform: translateY(-9px); }
 }
 
+/* --- free-to-join strip (under the hero) --- */
+.st-free {
+  margin-top: 14px;
+  border: 1px solid var(--cb-line); border-radius: 16px;
+  background: var(--cb-paper);
+  padding: 18px 20px 14px;
+}
+.st-free-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.st-free-title {
+  font-family: var(--cb-font-sans); font-size: 22px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--cb-ink); margin: 0;
+}
+.st-free-title .italic { font-family: var(--cb-font-serif); font-style: italic; font-weight: 400; color: var(--cb-sage); font-size: 1.15em; }
+.st-free-cta { background: var(--cb-forest); color: #f4f1ea; border-color: transparent; }
+.st-free-cta:hover { background: #2b3d22; color: #fff; }
+.st-free-grid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+}
+.st-free-item {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px; border-radius: 12px;
+  background: var(--cb-bg); border: 1px solid var(--cb-line);
+}
+.st-free-k { font-family: var(--cb-font-mono); font-size: 20px; font-weight: 600; color: var(--cb-sage); }
+.st-free-t { font-size: 14px; font-weight: 600; color: var(--cb-ink); }
+.st-free-s { font-size: 12.5px; line-height: 1.4; color: var(--cb-ink-3, rgba(20,20,15,0.6)); }
+.st-free-note { margin: 10px 2px 0; font-size: 11.5px; color: var(--cb-ink-3, rgba(20,20,15,0.6)); }
+@media (max-width: 640px) { .st-free-grid { grid-template-columns: 1fr; } .st-free-cta { width: 100%; justify-content: center; } }
+
 /* --- live mandi rates board --- */
 .st-rates {
   margin-top: 14px;

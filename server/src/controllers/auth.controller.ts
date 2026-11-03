@@ -27,48 +27,40 @@ const passwordSchema = z.string()
 // before validating, so an untouched box is absent rather than malformed.
 const blankToUndefined = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 
-// The sign-up form asks for an email address OR a phone number, whichever the
-// person has, and the account signs in with that and a password. At least one
-// is required (see the superRefine below), because it is the login identifier.
+// The sign-up form asks for a mobile number, which is required, and an email
+// address, which is optional (decided 2026-11-03). The account signs in with
+// either one and the password. App builds from before that send one or the
+// other in a single box; one that sends an email alone is refused with
+// "Enter your mobile number", which is the right answer for a required field.
 //
 // There is no role field. Every account made here is a shopper (CLAUDE.md
 // section 4). App builds from before that rule still send one from their old
 // picker; zod drops keys the schema does not name, so it is never read.
+// A 10-digit Indian mobile, with or without +91 or a leading 0, spaces, dashes
+// or brackets. Sign-up and the add-a-number prompt both use it.
+const indianMobile = z
+  .string()
+  .min(1, 'Enter your mobile number')
+  .max(20)
+  .refine(
+    (v) => /^[0-9+\s\-()]+$/.test(v) && /^(\+?91|0)?[6-9]\d{9}$/.test(v.replace(/[\s\-()]/g, '')),
+    'Enter a 10-digit mobile number',
+  );
+
 export const signupSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
   email: z.preprocess(blankToUndefined, z.string().email('Invalid email address').optional()),
   password: passwordSchema,
-  // The digit count is checked on the SEPARATOR-STRIPPED value, not the raw
-  // string: "+      " is seven allowed characters but normalizes to "+", which
-  // login can never match — that account would be locked out of its own login.
-  phone: z.preprocess(
-    blankToUndefined,
-    z
-      .string()
-      .max(20)
-      .regex(/^[+0-9][0-9\s\-()]*$/, 'Invalid phone number')
-      .refine(
-        (v) => v.replace(/[^0-9]/g, '').length >= 7,
-        'Phone number must have at least 7 digits'
-      )
-      .optional(),
-  ),
+  // Required since 2026-11-03: every account has a mobile number, and email is
+  // the optional one (CLAUDE.md section 4). The same rule as adding one later.
+  // A missing field reads as blank, so it gets the same message as an empty box.
+  phone: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v ?? ''), indianMobile),
   country: z.string().max(60).optional(),
   currency: z.enum(['INR', 'USD', 'EUR', 'GBP']).optional(),
   language: z.enum(['EN', 'HI', 'MR']).optional(),
   // The "18 or older and agree" tickbox (utils/consent.ts). Optional because
   // older app builds never send it; the service refuses an explicit false.
   consent: z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  // Cross-field, so it cannot live on either property. The path points back at
-  // a field so a client can highlight it.
-  if (!data.email && !data.phone) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['email'],
-      message: 'Enter an email address or a phone number',
-    });
-  }
 });
 
 // Buyer signup step 2. The code is retyped from an inbox, so accept the shapes
@@ -412,14 +404,7 @@ export async function updateProfileHandler(req: Request, res: Response) {
 // service stores it through normalizePhone, as sign-up does, so the form they
 // typed is the form sign-in finds.
 export const addPhoneSchema = z.object({
-  phone: z
-    .string()
-    .trim()
-    .max(20)
-    .refine(
-      (v) => /^[0-9+\s\-()]+$/.test(v) && /^(\+?91|0)?[6-9]\d{9}$/.test(v.replace(/[\s\-()]/g, '')),
-      'Enter a 10-digit mobile number',
-    ),
+  phone: z.string().trim().pipe(indianMobile),
 });
 
 export async function addPhoneHandler(req: Request, res: Response) {
