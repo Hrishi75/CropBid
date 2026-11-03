@@ -11,89 +11,106 @@
 // the lists below are the only place route-to-role mapping is defined.
 // =============================================================================
 
+import { lazy, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ProtectedRoute } from './ProtectedRoute';
 
+// Every page but the storefront is loaded when it is first opened, so a visitor
+// to "/" or /faq does not download the admin panel, the dashboards and checkout.
+// The storefront stays in the main bundle because it is where most visits land.
+//
+// There is deliberately no <Suspense> boundary around the routes. main.tsx
+// mounts with createRoot over the prerendered HTML, and a fallback would be
+// committed in place of that HTML, blanking the page until the chunk arrived.
+// With no boundary the root waits: the prerendered page stays on screen, and on
+// navigation (React Router wraps it in a transition) the old page stays until
+// the new one is ready. The build's prerender waits for these too
+// (prerenderToNodeStream in entry-server.tsx).
+function lazyPage<M, K extends keyof M>(load: () => Promise<M>, key: K) {
+  return lazy(() => load().then((m) => ({ default: m[key] as unknown as ComponentType })));
+}
+
 // Auth pages (public)
-import { LoginPage } from '../pages/auth/LoginPage';
-import { SignupPage } from '../pages/auth/SignupPage';
-import { OnboardingPage } from '../pages/auth/OnboardingPage';
-import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
-import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
-import { ChangePasswordPage } from '../pages/auth/ChangePasswordPage';
+const LoginPage = lazyPage(() => import('../pages/auth/LoginPage'), 'LoginPage');
+const SignupPage = lazyPage(() => import('../pages/auth/SignupPage'), 'SignupPage');
+const OnboardingPage = lazyPage(() => import('../pages/auth/OnboardingPage'), 'OnboardingPage');
+const ForgotPasswordPage = lazyPage(() => import('../pages/auth/ForgotPasswordPage'), 'ForgotPasswordPage');
+const ResetPasswordPage = lazyPage(() => import('../pages/auth/ResetPasswordPage'), 'ResetPasswordPage');
+const ChangePasswordPage = lazyPage(() => import('../pages/auth/ChangePasswordPage'), 'ChangePasswordPage');
 
 // Partner flow — the seller/buyer door. The landing is public; the status
 // page manages its own auth (it must stay reachable to PENDING partners, so
 // it cannot sit behind ProtectedRoute's approval gate).
-import { PartnerPage } from '../pages/partner/PartnerPage';
-import { PartnerStatusPage } from '../pages/partner/PartnerStatusPage';
+const PartnerPage = lazyPage(() => import('../pages/partner/PartnerPage'), 'PartnerPage');
+const PartnerStatusPage = lazyPage(() => import('../pages/partner/PartnerStatusPage'), 'PartnerStatusPage');
 
 // Dashboard pages (protected)
-import { FarmerDashboard } from '../pages/farmer/FarmerDashboard';
-import { MyListings } from '../pages/farmer/MyListings';
-import { CreateListing } from '../pages/farmer/CreateListing';
-import { IncomingBids } from '../pages/farmer/IncomingBids';
-import { Deliveries } from '../pages/farmer/Deliveries';
-import { DemandBoard } from '../pages/shared/DemandBoard';
-import { MyOffers } from '../pages/farmer/MyOffers';
-import { CreditApply } from '../pages/buyer/CreditApply';
-import { ContractsPage } from '../pages/shared/ContractsPage';
-import { BuyerDashboard } from '../pages/buyer/BuyerDashboard';
-import { BrowseListings } from '../pages/buyer/BrowseListings';
-import { MyBids } from '../pages/buyer/MyBids';
-import { MyRequirements } from '../pages/buyer/MyRequirements';
-import { CreateRequirement } from '../pages/buyer/CreateRequirement';
-import { RequirementDetail } from '../pages/buyer/RequirementDetail';
-import { PlaceBid } from '../pages/buyer/PlaceBid';
-import { RestockList } from '../pages/buyer/RestockList';
-import { AdminDashboard } from '../pages/admin/AdminDashboard';
-import { AdminUsers } from '../pages/admin/AdminUsers';
-import { AdminPartners } from '../pages/admin/AdminPartners';
-import { AdminListings } from '../pages/admin/AdminListings';
-import { AdminTransactions } from '../pages/admin/AdminTransactions';
-import { AdminEnquiries } from '../pages/admin/AdminEnquiries';
-import { AdminCredit } from '../pages/admin/AdminCredit';
-import { AdminIncidents } from '../pages/admin/AdminIncidents';
-import { AdminInputs } from '../pages/admin/AdminInputs';
-import { AdminEquipment } from '../pages/admin/AdminEquipment';
-import { AdminAnalytics } from '../pages/admin/AdminAnalytics';
-import { FarmerAnalytics } from '../pages/farmer/FarmerAnalytics';
-import { BuyerAnalytics } from '../pages/buyer/BuyerAnalytics';
+const FarmerDashboard = lazyPage(() => import('../pages/farmer/FarmerDashboard'), 'FarmerDashboard');
+const MyListings = lazyPage(() => import('../pages/farmer/MyListings'), 'MyListings');
+const CreateListing = lazyPage(() => import('../pages/farmer/CreateListing'), 'CreateListing');
+const IncomingBids = lazyPage(() => import('../pages/farmer/IncomingBids'), 'IncomingBids');
+const Deliveries = lazyPage(() => import('../pages/farmer/Deliveries'), 'Deliveries');
+const DemandBoard = lazyPage(() => import('../pages/shared/DemandBoard'), 'DemandBoard');
+const MyOffers = lazyPage(() => import('../pages/farmer/MyOffers'), 'MyOffers');
+const CreditApply = lazyPage(() => import('../pages/buyer/CreditApply'), 'CreditApply');
+const ContractsPage = lazyPage(() => import('../pages/shared/ContractsPage'), 'ContractsPage');
+const BuyerDashboard = lazyPage(() => import('../pages/buyer/BuyerDashboard'), 'BuyerDashboard');
+const BrowseListings = lazyPage(() => import('../pages/buyer/BrowseListings'), 'BrowseListings');
+const MyBids = lazyPage(() => import('../pages/buyer/MyBids'), 'MyBids');
+const MyRequirements = lazyPage(() => import('../pages/buyer/MyRequirements'), 'MyRequirements');
+const CreateRequirement = lazyPage(() => import('../pages/buyer/CreateRequirement'), 'CreateRequirement');
+const RequirementDetail = lazyPage(() => import('../pages/buyer/RequirementDetail'), 'RequirementDetail');
+const PlaceBid = lazyPage(() => import('../pages/buyer/PlaceBid'), 'PlaceBid');
+const RestockList = lazyPage(() => import('../pages/buyer/RestockList'), 'RestockList');
+const AdminDashboard = lazyPage(() => import('../pages/admin/AdminDashboard'), 'AdminDashboard');
+const AdminUsers = lazyPage(() => import('../pages/admin/AdminUsers'), 'AdminUsers');
+const AdminPartners = lazyPage(() => import('../pages/admin/AdminPartners'), 'AdminPartners');
+const AdminListings = lazyPage(() => import('../pages/admin/AdminListings'), 'AdminListings');
+const AdminTransactions = lazyPage(() => import('../pages/admin/AdminTransactions'), 'AdminTransactions');
+const AdminEnquiries = lazyPage(() => import('../pages/admin/AdminEnquiries'), 'AdminEnquiries');
+const AdminCredit = lazyPage(() => import('../pages/admin/AdminCredit'), 'AdminCredit');
+const AdminIncidents = lazyPage(() => import('../pages/admin/AdminIncidents'), 'AdminIncidents');
+const AdminInputs = lazyPage(() => import('../pages/admin/AdminInputs'), 'AdminInputs');
+const AdminEquipment = lazyPage(() => import('../pages/admin/AdminEquipment'), 'AdminEquipment');
+const AdminAnalytics = lazyPage(() => import('../pages/admin/AdminAnalytics'), 'AdminAnalytics');
+const FarmerAnalytics = lazyPage(() => import('../pages/farmer/FarmerAnalytics'), 'FarmerAnalytics');
+const BuyerAnalytics = lazyPage(() => import('../pages/buyer/BuyerAnalytics'), 'BuyerAnalytics');
 
 // Consumer (retail) pages — deliberately a small set. A shopper gets a product
 // page, a cart, a checkout and their orders; everything else in the app is B2B.
-import { ProductDetail } from '../pages/consumer/ProductDetail';
-import { ShopDetail } from '../pages/consumer/ShopDetail';
-import { Cart } from '../pages/consumer/Cart';
-import { Checkout, BuyNowRedirect } from '../pages/consumer/Checkout';
-import { MyOrders } from '../pages/consumer/MyOrders';
-import { OrderDetail } from '../pages/consumer/OrderDetail';
+const ProductDetail = lazyPage(() => import('../pages/consumer/ProductDetail'), 'ProductDetail');
+const ShopDetail = lazyPage(() => import('../pages/consumer/ShopDetail'), 'ShopDetail');
+const Cart = lazyPage(() => import('../pages/consumer/Cart'), 'Cart');
+const Checkout = lazyPage(() => import('../pages/consumer/Checkout'), 'Checkout');
+const BuyNowRedirect = lazyPage(() => import('../pages/consumer/Checkout'), 'BuyNowRedirect');
+const MyOrders = lazyPage(() => import('../pages/consumer/MyOrders'), 'MyOrders');
+const OrderDetail = lazyPage(() => import('../pages/consumer/OrderDetail'), 'OrderDetail');
 
 // Shared pages
-import { ListingDetail } from '../pages/shared/ListingDetail';
-import { AgentConfigPage } from '../pages/shared/AgentConfigPage';
-import { NegotiationList } from '../pages/shared/NegotiationList';
-import { NegotiationChat } from '../pages/shared/NegotiationChat';
-import { AuctionList } from '../pages/shared/AuctionList';
-import { AuctionRoom } from '../pages/shared/AuctionRoom';
-import { TransactionList } from '../pages/shared/TransactionList';
-import { TransactionDetail } from '../pages/shared/TransactionDetail';
-import { BookTransport } from '../pages/shared/BookTransport';
-import { ShipmentTracking } from '../pages/shared/ShipmentTracking';
+const ListingDetail = lazyPage(() => import('../pages/shared/ListingDetail'), 'ListingDetail');
+const AgentConfigPage = lazyPage(() => import('../pages/shared/AgentConfigPage'), 'AgentConfigPage');
+const NegotiationList = lazyPage(() => import('../pages/shared/NegotiationList'), 'NegotiationList');
+const NegotiationChat = lazyPage(() => import('../pages/shared/NegotiationChat'), 'NegotiationChat');
+const AuctionList = lazyPage(() => import('../pages/shared/AuctionList'), 'AuctionList');
+const AuctionRoom = lazyPage(() => import('../pages/shared/AuctionRoom'), 'AuctionRoom');
+const TransactionList = lazyPage(() => import('../pages/shared/TransactionList'), 'TransactionList');
+const TransactionDetail = lazyPage(() => import('../pages/shared/TransactionDetail'), 'TransactionDetail');
+const BookTransport = lazyPage(() => import('../pages/shared/BookTransport'), 'BookTransport');
+const ShipmentTracking = lazyPage(() => import('../pages/shared/ShipmentTracking'), 'ShipmentTracking');
 import { LandingPage } from '../pages/LandingPage';
-import { HowItWorksPage } from '../pages/landing/HowItWorksPage';
-import { RatesPage } from '../pages/RatesPage';
-import { ForecastPage } from '../pages/ForecastPage';
-import { SchemesPage } from '../pages/SchemesPage';
-import { PublicDemandPage } from '../pages/PublicDemandPage';
-import { EquipmentPage } from '../pages/EquipmentPage';
-import { AgriInputsPage } from '../pages/AgriInputsPage';
-import { FaqPage } from '../pages/FaqPage';
-import { TermsPage } from '../pages/TermsPage';
-import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
-import { AdminLogistics } from '../pages/admin/AdminLogistics';
-import { SettingsPage } from '../pages/shared/SettingsPage';
+const HowItWorksPage = lazyPage(() => import('../pages/landing/HowItWorksPage'), 'HowItWorksPage');
+const RatesPage = lazyPage(() => import('../pages/RatesPage'), 'RatesPage');
+const ForecastPage = lazyPage(() => import('../pages/ForecastPage'), 'ForecastPage');
+const SchemesPage = lazyPage(() => import('../pages/SchemesPage'), 'SchemesPage');
+const PublicDemandPage = lazyPage(() => import('../pages/PublicDemandPage'), 'PublicDemandPage');
+const EquipmentPage = lazyPage(() => import('../pages/EquipmentPage'), 'EquipmentPage');
+const AgriInputsPage = lazyPage(() => import('../pages/AgriInputsPage'), 'AgriInputsPage');
+const FaqPage = lazyPage(() => import('../pages/FaqPage'), 'FaqPage');
+const TermsPage = lazyPage(() => import('../pages/TermsPage'), 'TermsPage');
+const PrivacyPolicyPage = lazyPage(() => import('../pages/PrivacyPolicyPage'), 'PrivacyPolicyPage');
+const AdminLogistics = lazyPage(() => import('../pages/admin/AdminLogistics'), 'AdminLogistics');
+const SettingsPage = lazyPage(() => import('../pages/shared/SettingsPage'), 'SettingsPage');
 
 /**
  * WHY a separate RootRedirect component?

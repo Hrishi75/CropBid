@@ -13,7 +13,7 @@
 //
 // WHAT GETS RENDERED: the component tree only, with no data fetching. Every
 // page loads its data in useEffect, and effects don't run during
-// renderToString — so a prerendered page carries its headings, hero copy, nav,
+// prerendering — so a prerendered page carries its headings, hero copy, nav,
 // footer and structured data, but its live data (rates, listings) arrives when
 // React takes over in the browser. That is the right trade: the durable,
 // indexable content is exactly the part that renders statically, and today's
@@ -24,17 +24,23 @@
 // CSS to produce markup that references it by class name only.
 // =============================================================================
 
-import { renderToString } from 'react-dom/server';
+import { prerenderToNodeStream } from 'react-dom/static';
 import { StaticRouter } from 'react-router-dom';
 import { AppContent } from './App';
 import './i18n';
 
-export function render(url: string): string {
-  return renderToString(
+// prerenderToNodeStream rather than renderToString because every page except
+// the storefront is loaded lazily (routes/index.tsx): renderToString cannot
+// wait for a lazy component, prerender waits for all of them.
+export async function render(url: string): Promise<string> {
+  const { prelude } = await prerenderToNodeStream(
     <StaticRouter location={url}>
       <AppContent />
     </StaticRouter>,
   );
+  const chunks: Buffer[] = [];
+  for await (const chunk of prelude) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 // Re-exported so the prerender script reads the route manifest through the
