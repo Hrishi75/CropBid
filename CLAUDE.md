@@ -405,6 +405,10 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 **The copy is baked into the artwork, so it is outside this file's reach unless someone regenerates the picture.** As supplied, the sell banner says "Faster Payments" (payouts are a manual transfer, §6) and the buy banner "Quality Produce" (nothing checks a lot, §2b). Both are on screen until the images are redone.
 
+### "Joining CropBid is free" strip (2026-11-03)
+
+`FreeToJoin` in `LandingPage.tsx`, under the hero carousel: free to register, free to list and free mandi rates, with a line saying delivery is billed separately per deal (§2c). Shown to guests and shoppers with a button to `/partner`; hidden from approved sellers, buyers and admins, and while searching. The 2% deal fee is left off it on purpose (the user's call, 2026-11-03); it stays on `/how-it-works`, the FAQ and `/terms`. Every line must stay true of §2: if a signup or listing charge is ever added, or the fee changes, this strip changes in the same PR.
+
 ### WhatsApp chat button (2026-10-09)
 
 **A round green button, bottom right on every website page, opening a WhatsApp chat with the company number** (`components/ui/WhatsAppButton.tsx`). A plain `wa.me` link with "Hi CropBid, I have a question." typed in: nothing passes through our servers.
