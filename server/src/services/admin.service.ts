@@ -5,7 +5,7 @@
 // like viewing all users, suspending accounts, and overseeing transactions.
 // =============================================================================
 
-import { buyerPaysFreight } from '../utils/freight';
+import { buyerPayable, buyerPaysFreight } from '../utils/freight';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
@@ -113,7 +113,8 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
     }
   }
 
-  if (role && ['FARMER', 'BUYER', 'ADMIN'].includes(role)) {
+  // CONSUMER is most accounts: every sign-up is one until approved (§4).
+  if (role && ['CONSUMER', 'FARMER', 'BUYER', 'ADMIN'].includes(role)) {
     where.role = role;
   }
 
@@ -338,12 +339,26 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
         // Whether freight is already booked. Ops arranges every delivery now,
         // so this row is the queue: no shipment means nobody has booked it yet.
         shipment: { select: { id: true, status: true } },
+        // A household lot's shop order holds the delivery fee, which a refund
+        // of that lot does not touch (§6).
+        retailOrder: { select: { id: true, deliveryFee: true } },
       },
     }),
     prisma.transaction.count({ where }),
   ]);
 
-  return { transactions, total };
+  // What the buyer paid for this deal, which is what a refund owes them.
+  // Refunds only change a column (§6), so whoever makes the bank transfer reads
+  // the amount here: goods plus the buyer's share of delivery on a SPLIT or
+  // BUYER deal (§2c). A shop order's own delivery fee is per order, not per
+  // lot, and is sent separately as retailOrder.deliveryFee.
+  return {
+    transactions: transactions.map((t) => ({
+      ...t,
+      buyerPaid: t.retailOrderId ? t.totalAmount : buyerPayable(t),
+    })),
+    total,
+  };
 }
 
 // =============================================================================
@@ -1292,13 +1307,23 @@ export async function reviewPartnerApplication(input: ReviewInput) {
 // every deal (CLAUDE.md §2a), so an unbooked deal is unstarted work. Disputes
 // and KYC failures belong here too when those states exist; add them as more
 // queries into the same shape rather than inventing a triage table.
+// The queue's rule, shared by the page of items and the count, so the panel's
+// "N items" is the whole queue rather than however many fit on one page.
+const AWAITING_TRANSPORT = {
+  shipment: null,
+  // A cancelled or refunded deal is not freight waiting to move. CANCELLED is a
+  // shop order called off before payment (§3d); leaving it out made every
+  // cancelled household lot sit in this queue for good.
+  paymentStatus: { notIn: ['REFUNDED', 'CANCELLED'] as ('REFUNDED' | 'CANCELLED')[] },
+};
+
+export async function countAttentionItems() {
+  return prisma.transaction.count({ where: AWAITING_TRANSPORT });
+}
+
 export async function getAttentionItems(limit = 20) {
   const awaitingTransport = await prisma.transaction.findMany({
-    where: {
-      shipment: null,
-      // A cancelled or refunded deal is not freight waiting to move.
-      paymentStatus: { notIn: ['REFUNDED'] },
-    },
+    where: AWAITING_TRANSPORT,
     orderBy: { createdAt: 'asc' }, // oldest first: that is the one aging
     take: limit,
     include: {

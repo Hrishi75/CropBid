@@ -20,6 +20,7 @@ import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 import toast from 'react-hot-toast';
 
 interface AdminUser {
@@ -62,6 +63,7 @@ export function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export function AdminUsers() {
 
   async function fetchUsers() {
     setLoading(true);
+    setFailed(false);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -91,6 +94,7 @@ export function AdminUsers() {
       setTotal(res.data.total);
     } catch (err) {
       console.error('Failed to load users:', err);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -112,12 +116,12 @@ export function AdminUsers() {
     }
   }
 
+  // Asked through ConfirmButton, not window.confirm, which embedded browsers
+  // can suppress: it returns false without showing anything, and the button
+  // looked broken.
   async function handleToggleSuspend(user: AdminUser) {
     const next = !user.suspended;
     const verb = next ? 'Suspend' : 'Reinstate';
-    if (!window.confirm(`${verb} ${user.name}? ${next ? 'They will be signed out and blocked from logging in.' : 'They will be able to log in again.'}`)) {
-      return;
-    }
     try {
       await api.patch(`/admin/users/${user.id}`, { suspended: next });
       setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, suspended: next } : u));
@@ -216,6 +220,7 @@ export function AdminUsers() {
             <div className="cb-pill-group">
               {[
                 ['', 'All'],
+                ['CONSUMER', 'Shopper'],
                 ['FARMER', 'Farmer'],
                 ['BUYER', 'Buyer'],
                 ['ADMIN', 'Admin'],
@@ -236,6 +241,8 @@ export function AdminUsers() {
         <div>
           {loading ? (
             <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading users…</span></div>
+          ) : failed ? (
+            <LoadFailed what="users" onRetry={fetchUsers} />
           ) : users.length === 0 ? (
             <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}>
               <span className="cb-tiny">No users match.</span>
@@ -261,7 +268,7 @@ export function AdminUsers() {
                           {u.email && <span className="cb-tiny" style={{ marginLeft: 8 }}>{u.email}</span>}
                           {u.phone && <span className="cb-mono cb-tiny" style={{ marginLeft: 8 }}>{u.phone}</span>}
                         </div>
-                        <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role.toLowerCase()}</span>
+                        <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{u.role === 'CONSUMER' ? 'shopper' : u.role.toLowerCase()}</span>
                       </div>
                       <div className="cb-tiny" style={{ marginTop: 4 }}>
                         {flag} {u.country}{u.location ? ` · ${u.location}` : ''} · joined {new Date(u.createdAt).toLocaleDateString()}
@@ -303,14 +310,14 @@ export function AdminUsers() {
                               {viewingId === u.id ? 'Hide' : 'View'}
                             </button>
                             {u.role !== 'ADMIN' && (
-                              <button
-                                type="button"
-                                onClick={() => handleToggleSuspend(u)}
-                                className="cb-btn cb-btn-link"
-                                style={{ fontSize: 12, color: u.suspended ? 'var(--cb-ink-3)' : 'var(--cb-ember)' }}
-                              >
-                                {u.suspended ? 'Reinstate' : 'Suspend'}
-                              </button>
+                              <ConfirmButton
+                                label={u.suspended ? 'Reinstate' : 'Suspend'}
+                                confirmLabel={u.suspended
+                                  ? `Reinstate ${u.name}? They will be able to sign in again.`
+                                  : `Suspend ${u.name}? They are signed out and blocked from signing in.`}
+                                color={u.suspended ? 'var(--cb-ink-3)' : 'var(--cb-ember)'}
+                                onConfirm={() => handleToggleSuspend(u)}
+                              />
                             )}
                             {u.role !== 'ADMIN' && (
                               <ConfirmButton

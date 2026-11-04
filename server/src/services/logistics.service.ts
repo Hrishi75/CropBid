@@ -249,6 +249,11 @@ export async function bookShipment(input: BookShipmentInput, actor: Actor) {
     if (transaction.shipment) {
       throw new ApiError(409, 'Shipment already booked for this transaction');
     }
+    // A deal called off or refunded has nothing to carry. Checked under the
+    // row lock above, so a refund committing first is seen here.
+    if (transaction.paymentStatus === 'CANCELLED' || transaction.paymentStatus === 'REFUNDED') {
+      throw new ApiError(409, `This deal was ${transaction.paymentStatus.toLowerCase()}, so there is nothing to deliver.`, 'DEAL_CLOSED');
+    }
 
     // A buyer with a share agreed to pay a quoted figure, so the booking costs
     // that figure. Booking without one would charge them an amount nobody

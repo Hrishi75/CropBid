@@ -27,6 +27,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
 import { DemoDataCard } from './DemoDataCard';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 
 interface PlatformStats {
   users: { total: number; farmers: number; buyers: number };
@@ -51,40 +52,55 @@ export function AdminDashboard() {
   // Zero items and "we could not ask" must not render identically: one says
   // there is nothing to do, the other says we do not know.
   const [attentionFailed, setAttentionFailed] = useState(false);
+  // Out of the whole queue, not the page of items that came back.
+  const [attentionTotal, setAttentionTotal] = useState(0);
+  const [statsFailed, setStatsFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetch() {
-      // allSettled: the triage queue and the headline stats are independent
-      // feeds, and a failing /admin/stats must not blank a queue of deals
-      // waiting on freight. An empty "needs attention" reads as "all clear",
-      // which is the one thing it must never say by accident.
-      const [statsRes, attentionRes] = await Promise.allSettled([
-        api.get('/admin/stats'),
-        api.get('/admin/attention'),
-      ]);
+  // allSettled: the triage queue and the headline stats are independent feeds,
+  // and a failing /admin/stats must not blank a queue of deals waiting on
+  // freight. An empty "needs attention" reads as "all clear", which is the one
+  // thing it must never say by accident.
+  function fetchPulse() {
+    return Promise.allSettled([api.get('/admin/stats'), api.get('/admin/attention')]);
+  }
 
-      if (statsRes.status === 'fulfilled') {
-        setStats(statsRes.value.data);
-      } else {
-        console.error('Failed to load stats:', statsRes.reason);
-      }
-
-      if (attentionRes.status === 'fulfilled') {
-        setAttention(attentionRes.value.data.items ?? []);
-      } else {
-        setAttentionFailed(true);
-        console.error('Failed to load triage queue:', attentionRes.reason);
-      }
-
-      // TODO: wire the /admin/events endpoint when the backend exposes it;
-      // until then the stream renders empty rather than fabricated rows.
-      setLoading(false);
+  function apply([statsRes, attentionRes]: Awaited<ReturnType<typeof fetchPulse>>) {
+    if (statsRes.status === 'fulfilled') {
+      setStats(statsRes.value.data);
+    } else {
+      // Said, not left on "Loading ops…" for good. The queue below still
+      // renders, which is the reason the two are fetched separately.
+      setStatsFailed(true);
+      console.error('Failed to load stats:', statsRes.reason);
     }
-    fetch();
+
+    if (attentionRes.status === 'fulfilled') {
+      const items = attentionRes.value.data.items ?? [];
+      setAttention(items);
+      setAttentionTotal(attentionRes.value.data.total ?? items.length);
+    } else {
+      setAttentionFailed(true);
+      console.error('Failed to load triage queue:', attentionRes.reason);
+    }
+
+    // TODO: wire the /admin/events endpoint when the backend exposes it;
+    // until then the stream renders empty rather than fabricated rows.
+    setLoading(false);
+  }
+
+  function retry() {
+    setLoading(true);
+    setStatsFailed(false);
+    setAttentionFailed(false);
+    fetchPulse().then(apply);
+  }
+
+  useEffect(() => {
+    fetchPulse().then(apply);
   }, []);
 
-  if (loading || !stats) {
+  if (loading) {
     return (
       <DashboardLayout>
         <div className="cb-page-eyebrow">Loading ops…</div>
@@ -102,6 +118,11 @@ export function AdminDashboard() {
         <span className="cb-italic">live.</span>
       </h1>
 
+      {!stats ? (
+        <div style={{ marginTop: 24, marginBottom: 24 }}>
+          {statsFailed && <LoadFailed what="the platform numbers" onRetry={retry} />}
+        </div>
+      ) : (
       <div className="cb-kpi-strip" style={{ marginTop: 24, marginBottom: 24 }}>
         {/* Every delta below is derived from the stats payload. There are no
             rate-of-change figures (per-day signups, bids/min, QoQ growth)
@@ -139,6 +160,7 @@ export function AdminDashboard() {
           <div className="cb-kpi-delta">on released deals</div>
         </div>
       </div>
+      )}
 
       <div className="cb-cols-2" style={{ gap: 16, marginBottom: 24 }}>
         <div className="cb-card" style={{ padding: 0 }}>
@@ -184,7 +206,8 @@ export function AdminDashboard() {
         <div className="cb-card" style={{ padding: 0 }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--cb-line)' }}>
             <div className="cb-eyebrow">
-              Needs attention · {attentionFailed ? 'unavailable' : `${attention.length} items`}
+              Needs attention · {attentionFailed ? 'unavailable' : `${attentionTotal} ${attentionTotal === 1 ? 'item' : 'items'}`}
+              {!attentionFailed && attentionTotal > attention.length && ` · oldest ${attention.length} shown`}
             </div>
           </div>
           {/* "All clear" is a claim. Only say it when we actually asked and
