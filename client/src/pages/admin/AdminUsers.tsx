@@ -49,6 +49,14 @@ const DELETE_BLOCKED: Record<'TRANSACTIONS' | 'WALLET' | 'CONTRACTS', string> = 
   CONTRACTS: "Has a live supply contract, so can't be deleted",
 };
 
+// Counted by the server over every account, whatever the search or filter.
+// The tiles used to count the twenty rows on screen, next to a growth figure
+// and a "new this week" that were typed in.
+interface UserSummary {
+  byRole: { CONSUMER: number; FARMER: number; BUYER: number; ADMIN: number };
+  newLast7Days: number;
+}
+
 const COUNTRY_FLAGS: Record<string, string> = {
   'India': '🇮🇳',
   'United States': '🇺🇸',
@@ -62,6 +70,7 @@ const COUNTRY_FLAGS: Record<string, string> = {
 export function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<UserSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [search, setSearch] = useState('');
@@ -92,6 +101,7 @@ export function AdminUsers() {
       const res = await api.get(`/admin/users?${params}`);
       setUsers(res.data.users);
       setTotal(res.data.total);
+      setSummary(res.data.summary ?? null);
     } catch (err) {
       console.error('Failed to load users:', err);
       setFailed(true);
@@ -160,9 +170,9 @@ export function AdminUsers() {
   }
 
   const totalPages = Math.ceil(total / LIMIT);
-  const farmers = users.filter((u) => u.role === 'FARMER').length;
-  const buyers = users.filter((u) => u.role === 'BUYER').length;
-  const admins = users.filter((u) => u.role === 'ADMIN').length;
+  const r = summary?.byRole;
+  const everyone = r ? r.CONSUMER + r.FARMER + r.BUYER + r.ADMIN : 0;
+  const shareOf = (n: number) => (everyone > 0 ? `${Math.round((n / everyone) * 100)}%` : '0%');
 
   return (
     <DashboardLayout>
@@ -177,33 +187,40 @@ export function AdminUsers() {
         <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
 
+      {r && summary && (
       <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Total</div>
-          <div className="cb-kpi-value">{total.toLocaleString()}</div>
-          <div className="cb-kpi-delta pos">+18% Q</div>
+          <div className="cb-kpi-label">Accounts</div>
+          <div className="cb-kpi-value">{everyone.toLocaleString()}</div>
+          <div className="cb-kpi-delta">all roles</div>
         </div>
         <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Farmers</div>
-          <div className="cb-kpi-value">{farmers}</div>
-          <div className="cb-kpi-delta">{users.length > 0 ? Math.round((farmers / users.length) * 100) : 0}%</div>
+          <div className="cb-kpi-label">Shoppers</div>
+          <div className="cb-kpi-value">{r.CONSUMER.toLocaleString()}</div>
+          <div className="cb-kpi-delta">{shareOf(r.CONSUMER)}</div>
+        </div>
+        <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Sellers</div>
+          <div className="cb-kpi-value">{r.FARMER.toLocaleString()}</div>
+          <div className="cb-kpi-delta">{shareOf(r.FARMER)} · farms, shops, wholesalers</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Buyers</div>
-          <div className="cb-kpi-value">{buyers}</div>
-          <div className="cb-kpi-delta">{users.length > 0 ? Math.round((buyers / users.length) * 100) : 0}%</div>
+          <div className="cb-kpi-value">{r.BUYER.toLocaleString()}</div>
+          <div className="cb-kpi-delta">{shareOf(r.BUYER)}</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Admins</div>
-          <div className="cb-kpi-value">{admins}</div>
-          <div className="cb-kpi-delta">—</div>
+          <div className="cb-kpi-value">{r.ADMIN}</div>
+          <div className="cb-kpi-delta">{shareOf(r.ADMIN)}</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">New 7d</div>
-          <div className="cb-kpi-value">+{Math.round(total * 0.08)}</div>
-          <div className="cb-kpi-delta">est. from total</div>
+          <div className="cb-kpi-value">{summary.newLast7Days.toLocaleString()}</div>
+          <div className="cb-kpi-delta">signed up this week</div>
         </div>
       </div>
+      )}
 
       <div className="cb-split-filters" style={{ gap: 24, alignItems: 'start' }}>
         <div className="cb-card" style={{ position: 'sticky', top: 76, alignSelf: 'flex-start', padding: 18 }}>

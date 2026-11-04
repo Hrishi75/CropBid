@@ -6,6 +6,7 @@
 // =============================================================================
 
 import { buyerPayable, buyerPaysFreight } from '../utils/freight';
+import { PLATFORM_FEE_PERCENT } from './transaction.service';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
@@ -118,7 +119,7 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
     where.role = role;
   }
 
-  const [users, total] = await Promise.all([
+  const [users, total, summary] = await Promise.all([
     prisma.user.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -140,6 +141,7 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
       },
     }),
     prisma.user.count({ where }),
+    getUserSummary(),
   ]);
 
   // Each row says whether it can be deleted and, if not, why, so the panel
@@ -151,7 +153,22 @@ export async function getUsers(search?: string, role?: string, limit = 20, offse
       deleteBlocker: userDeleteBlocker({ role: u.role, _count, wallet }),
     })),
     total,
+    summary,
   };
+}
+
+// The headline counts on Admin -> Users, over every account, whatever the
+// search or filter. They used to be counted from the twenty rows on screen,
+// beside a growth figure and a "new this week" that were typed in.
+export async function getUserSummary(now = new Date()) {
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const [roles, newLast7Days] = await Promise.all([
+    prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
+    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+  ]);
+  const byRole = { CONSUMER: 0, FARMER: 0, BUYER: 0, ADMIN: 0 };
+  for (const r of roles) byRole[r.role] = r._count._all;
+  return { byRole, newLast7Days };
 }
 
 // =============================================================================
@@ -316,7 +333,7 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
   const where: any = {};
   if (paymentStatus) where.paymentStatus = paymentStatus;
 
-  const [transactions, total] = await Promise.all([
+  const [transactions, total, summary] = await Promise.all([
     prisma.transaction.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -347,6 +364,7 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
       },
     }),
     prisma.transaction.count({ where }),
+    getTransactionSummary(),
   ]);
 
   // What the buyer paid for this deal, which is what a refund owes them.
@@ -366,6 +384,26 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
       },
     })),
     total,
+    summary,
+  };
+}
+
+// The headline counts on Admin -> Transactions, over every deal rather than
+// the page on screen. There is no dispute record anywhere in the schema, so
+// there is no dispute count: the tile that showed "0, no SLA breach" was a
+// constant. The fee rate is the one createTransaction charges.
+export async function getTransactionSummary() {
+  const [statuses, fees] = await Promise.all([
+    prisma.transaction.groupBy({ by: ['paymentStatus'], _count: { _all: true } }),
+    prisma.transaction.aggregate({ where: { paymentStatus: 'RELEASED' }, _sum: { platformFeeAmount: true } }),
+  ]);
+  const byStatus = { AWAITING_PAYMENT: 0, ESCROW: 0, RELEASED: 0, REFUNDED: 0, CANCELLED: 0 };
+  for (const s of statuses) byStatus[s.paymentStatus] = s._count._all;
+  return {
+    byStatus,
+    total: Object.values(byStatus).reduce((a, b) => a + b, 0),
+    feesOnReleased: fees._sum.platformFeeAmount ?? 0,
+    feePercent: PLATFORM_FEE_PERCENT,
   };
 }
 

@@ -2,9 +2,15 @@
 // AdminAnalytics — Platform-wide analytics charts
 // =============================================================================
 // Admin recharts dashboard off /analytics: monthly GMV, revenue, signups,
-// listings, bids, top crops, role split. PERIODS drives the range selector.
-// COUNTRIES (geo split) and COHORT (retention grid) are static illustrative
-// data until the backend exposes those series.
+// listings, bids, top crops, role split, the signup-to-deal funnel and what
+// the negotiation agents have done.
+//
+// Every figure here comes from the server. The page used to carry typed-in
+// numbers beside the real ones: "+18% QQ" growth, a 1% take (the fee is 2%),
+// a funnel worked out as fixed shares of signups, a GMV split across six
+// countries, a retention grid and a card of agent results. They are gone, as
+// is a 7D/30D/90D picker that changed nothing. A country split and retention
+// come back when the server can count them.
 // =============================================================================
 
 import { useState, useEffect } from 'react';
@@ -18,9 +24,14 @@ import api from '../../lib/axios';
 import { LoadFailed } from './LoadFailed';
 
 const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869'];
-const PERIODS = ['7D', '30D', '90D', 'QTD', 'YTD'];
 
 interface AdminData {
+  feePercent: number;
+  funnel: { signedUp: number; applied: number; approved: number; dealt: number; repeat: number };
+  negotiations: {
+    total: number; deals: number; noDeals: number; inProgress: number;
+    avgRounds: number | null; avgSecondsToDeal: number | null;
+  };
   charts: {
     monthlyGMV: { name: string; value: number }[];
     monthlyRevenue: { name: string; value: number }[];
@@ -32,22 +43,17 @@ interface AdminData {
   };
 }
 
-const COUNTRIES = [
-  { name: 'India', flag: '🇮🇳', gmv: 142, pct: 57 },
-  { name: 'USA', flag: '🇺🇸', gmv: 47, pct: 19 },
-  { name: 'Brazil', flag: '🇧🇷', gmv: 28, pct: 11 },
-  { name: 'Kenya', flag: '🇰🇪', gmv: 14, pct: 6 },
-  { name: 'UK', flag: '🇬🇧', gmv: 9, pct: 4 },
-  { name: 'Germany', flag: '🇩🇪', gmv: 4, pct: 2 },
-];
+// "12 (60%)" of the finished negotiations, or the bare count before any.
+function share(n: number, of: number) {
+  return of > 0 ? `${n.toLocaleString()} (${Math.round((n / of) * 100)}%)` : n.toLocaleString();
+}
 
-const COHORT: { month: string; vals: (number | null)[] }[] = [
-  { month: 'Jan', vals: [100, 68, 54, 48, 38, 31] },
-  { month: 'Feb', vals: [100, 72, 58, 52, 42, 35] },
-  { month: 'Mar', vals: [100, 74, 61, 55, 47, null] },
-  { month: 'Apr', vals: [100, 78, 65, 59, null, null] },
-  { month: 'May', vals: [100, 76, 62, null, null, null] },
-];
+function duration(seconds: number) {
+  if (seconds < 90) return `${Math.round(seconds)} seconds`;
+  if (seconds < 90 * 60) return `${Math.round(seconds / 60)} minutes`;
+  if (seconds < 36 * 3600) return `${(seconds / 3600).toFixed(1)} hours`;
+  return `${(seconds / 86400).toFixed(1)} days`;
+}
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -61,7 +67,6 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 export function AdminAnalytics() {
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState('90D');
 
   const [failed, setFailed] = useState(false);
 
@@ -95,7 +100,8 @@ export function AdminAnalytics() {
     );
   }
 
-  const { charts } = data;
+  const { charts, funnel, negotiations: neg } = data;
+  const finished = neg.deals + neg.noDeals;
   const totalGMV = charts.monthlyGMV.reduce((sum, m) => sum + m.value, 0);
   const totalFees = charts.monthlyRevenue.reduce((sum, m) => sum + m.value, 0);
   const totalSignups = charts.monthlySignups.reduce((sum, m) => sum + m.value, 0);
@@ -113,44 +119,36 @@ export function AdminAnalytics() {
         <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
 
-      <div className="cb-pill-group" style={{ marginTop: 8, marginBottom: 24 }}>
-        {PERIODS.map((p) => (
-          <button key={p} type="button" className={`cb-pill ${period === p ? 'active' : ''}`} onClick={() => setPeriod(p)}>
-            {p}
-          </button>
-        ))}
-      </div>
-
-      <div className="cb-kpi-strip" style={{ marginBottom: 24 }}>
+      <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">GMV</div>
           <div className="cb-kpi-value">{formatCurrency(totalGMV, 'INR')}</div>
-          <div className="cb-kpi-delta pos">+18% QQ</div>
+          <div className="cb-kpi-delta">all time</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Fees</div>
           <div className="cb-kpi-value">{formatCurrency(totalFees, 'INR')}</div>
-          <div className="cb-kpi-delta pos">+18% QQ</div>
+          <div className="cb-kpi-delta">on released deals</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Signups</div>
           <div className="cb-kpi-value">{totalSignups.toLocaleString()}</div>
-          <div className="cb-kpi-delta">in period</div>
+          <div className="cb-kpi-delta">all time</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Lots</div>
           <div className="cb-kpi-value">{charts.monthlyListings.reduce((s, m) => s + m.value, 0).toLocaleString()}</div>
-          <div className="cb-kpi-delta">created</div>
+          <div className="cb-kpi-delta">created, all time</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Bids</div>
           <div className="cb-kpi-value">{charts.monthlyBids.reduce((s, m) => s + m.value, 0).toLocaleString()}</div>
-          <div className="cb-kpi-delta pos">healthy</div>
+          <div className="cb-kpi-delta">placed, all time</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Take</div>
-          <div className="cb-kpi-value">1.0%</div>
-          <div className="cb-kpi-delta">constant</div>
+          <div className="cb-kpi-value">{data.feePercent}%</div>
+          <div className="cb-kpi-delta">of each deal</div>
         </div>
       </div>
 
@@ -177,7 +175,7 @@ export function AdminAnalytics() {
       </div>
 
       <div className="cb-cols-2" style={{ gap: 18, marginBottom: 18 }}>
-        <ChartCard title="Fee revenue · weekly">
+        <ChartCard title="Fee revenue · monthly">
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={charts.monthlyRevenue} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
               <XAxis dataKey="name" fontSize={11} stroke="#82806f" axisLine={{ stroke: '#d8d4c8' }} tickLine={false} />
@@ -203,26 +201,31 @@ export function AdminAnalytics() {
       </div>
 
       <div className="cb-card" style={{ marginBottom: 18 }}>
-        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Funnel · signup → deal (lifetime cohort)</div>
+        <div className="cb-eyebrow" style={{ marginBottom: 4 }}>Signup to deal · all time</div>
+        <div className="cb-tiny" style={{ marginBottom: 14 }}>
+          Each step as a share of signups. Shoppers can buy without applying, so the steps do not always narrow.
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[
-            ['Signed up', totalSignups, 100],
-            ['Onboarded', Math.round(totalSignups * 0.8), 80],
-            ['Listed / Bid', Math.round(totalSignups * 0.57), 57],
-            ['Negotiating', Math.round(totalSignups * 0.37), 37],
-            ['Closed deal', Math.round(totalSignups * 0.33), 33],
-            ['Repeat', Math.round(totalSignups * 0.15), 15],
-          ].map(([label, count, pct]) => (
-            <div key={label as string}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13 }}>{label}</span>
-                <span className="cb-mono cb-tiny">{(count as number).toLocaleString()} · {pct}%</span>
+          {([
+            ['Signed up', funnel.signedUp],
+            ['Applied to trade', funnel.applied],
+            ['Approved partner', funnel.approved],
+            ['Made a paid deal', funnel.dealt],
+            ['Made 2 or more', funnel.repeat],
+          ] as [string, number][]).map(([label, count]) => {
+            const pct = funnel.signedUp > 0 ? Math.round((count / funnel.signedUp) * 100) : 0;
+            return (
+              <div key={label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 13 }}>{label}</span>
+                  <span className="cb-mono cb-tiny">{count.toLocaleString()} · {pct}%</span>
+                </div>
+                <div style={{ height: 8, background: 'var(--cb-paper-2)', borderRadius: 4 }}>
+                  <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: 'var(--cb-sage)', borderRadius: 4 }} />
+                </div>
               </div>
-              <div style={{ height: 8, background: 'var(--cb-paper-2)', borderRadius: 4 }}>
-                <div style={{ width: `${pct}%`, height: '100%', background: 'var(--cb-sage)', borderRadius: 4 }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -249,59 +252,16 @@ export function AdminAnalytics() {
         </ChartCard>
       </div>
 
-      <div className="cb-card" style={{ marginBottom: 18 }}>
-        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Geo · GMV by country</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {COUNTRIES.map((c) => (
-            <div key={c.name}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13 }}>{c.flag} {c.name}</span>
-                <span className="cb-mono cb-tiny">₹{c.gmv} Cr · {c.pct}%</span>
-              </div>
-              <div style={{ height: 6, background: 'var(--cb-paper-2)', borderRadius: 3 }}>
-                <div style={{ width: `${c.pct}%`, height: '100%', background: 'var(--cb-forest)', borderRadius: 3 }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="cb-card" style={{ marginBottom: 18 }}>
-        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Cohort retention · % returning by week</div>
-        <div className="cb-table-wrap">
-          <table className="cb-table">
-            <thead>
-              <tr>
-                <th></th>
-                {['W1', 'W2', 'W3', 'W4', 'W8', 'W12'].map((w) => <th key={w} className="num">{w}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {COHORT.map((row) => (
-                <tr key={row.month}>
-                  <td className="cb-mono" style={{ color: 'var(--cb-ink-3)' }}>{row.month}</td>
-                  {row.vals.map((v, i) => (
-                    <td key={i} className="num" style={{ color: v === null ? 'var(--cb-ink-3)' : v >= 65 ? 'var(--cb-sage)' : v >= 45 ? 'var(--cb-wheat)' : 'var(--cb-ember)' }}>
-                      {v === null ? '—' : `${v}`}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       <div className="cb-card">
-        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Negotiation performance</div>
+        <div className="cb-eyebrow" style={{ marginBottom: 14 }}>Agent negotiations · all time</div>
         <div className="cb-cols-2" style={{ gap: 8 }}>
           {[
-            ['Total agent negotiations', '8,142'],
-            ['Match rate', '72.7%'],
-            ['Avg rounds to settle', '3.4'],
-            ['Avg time to settle', '41 seconds'],
-            ['Avg buyer savings vs broker', '+1.6% (₹4.7Cr)'],
-            ['Walk-away rate', '18% (floor mismatch)'],
+            ['Negotiations', neg.total.toLocaleString()],
+            ['Ended in a deal', share(neg.deals, finished)],
+            ['Ended without one', share(neg.noDeals, finished)],
+            ['Still going', neg.inProgress.toLocaleString()],
+            ['Avg rounds when finished', neg.avgRounds === null ? 'none finished' : neg.avgRounds.toFixed(1)],
+            ['Avg time to a deal', neg.avgSecondsToDeal === null ? 'no deals yet' : duration(neg.avgSecondsToDeal)],
           ].map(([label, val]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--cb-line)' }}>
               <span className="cb-mono cb-tiny" style={{ color: 'var(--cb-ink-3)' }}>{label.toUpperCase()}</span>

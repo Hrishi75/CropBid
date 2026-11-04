@@ -27,7 +27,7 @@ import { buyerPayable, buyerPaysFreight, freightShares } from '../utils/freight'
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
 import { redactTransactionContact, redactTransactionContacts } from './contactVisibility';
 
-const PLATFORM_FEE_PERCENT = 2.0;
+export const PLATFORM_FEE_PERCENT = 2.0;
 
 // What a farmer or buyer may see of a shipment. CropBid hires the haulier, so
 // the carrier's identity, its phone number and our cut of the freight are ops
