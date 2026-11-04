@@ -149,6 +149,11 @@ export function AdminUsers() {
       await api.delete(`/admin/users/${user.id}`);
       setUsers((prev) => prev.filter((u) => u.id !== user.id));
       setTotal((t) => t - 1);
+      // The tiles count every account, so re-read them rather than guess
+      // which role and week the deleted one was in.
+      api.get<{ summary: UserSummary }>('/admin/users', { params: { limit: 1 } })
+        .then((res) => setSummary(res.data.summary))
+        .catch(() => {});
       toast.success(`${user.name} deleted`);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to delete');

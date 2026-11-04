@@ -138,6 +138,15 @@ describe('the funnel', () => {
 describe('agent negotiations', () => {
   it('counts outcomes and reads rounds and time from the rows', async () => {
     const before = await getNegotiationStats();
+    // How many rows each average was already taken over, by the same rules,
+    // so the new averages can be checked exactly whatever else is in the table.
+    const [base] = await prisma.$queryRaw<{ finished: bigint; timed: bigint }[]>`
+      SELECT
+        count(*) FILTER (WHERE "finalOutcome" <> 'IN_PROGRESS' AND jsonb_typeof(rounds) = 'array') AS finished,
+        count(*) FILTER (WHERE "finalOutcome" = 'DEAL' AND "endedAt" IS NOT NULL) AS timed
+      FROM "Negotiation"`;
+    const finished = Number(base.finished);
+    const timed = Number(base.timed);
     await seed();
     const farmerAgent = await prisma.agentConfig.create({ data: { userId: SELLER, agentType: 'FARMER_AGENT' } });
     const buyerAgent = await prisma.agentConfig.create({ data: { userId: BUYER, agentType: 'BUYER_AGENT' } });
@@ -161,12 +170,10 @@ describe('agent negotiations', () => {
     expect(after.deals - before.deals).toBe(1);
     expect(after.noDeals - before.noDeals).toBe(1);
     expect(after.inProgress - before.inProgress).toBe(1);
-    if (before.total === 0) {
-      expect(after.avgRounds).toBe(2); // (3 + 1) / 2, the open one left out
-      expect(after.avgSecondsToDeal).toBeCloseTo(60, 0);
-    } else {
-      expect(after.avgRounds).not.toBeNull();
-      expect(after.avgSecondsToDeal).not.toBeNull();
-    }
+    // Rounds: 3 and 1 added, the open one left out. Time: one 60-second deal.
+    const expectedRounds = ((before.avgRounds ?? 0) * finished + 3 + 1) / (finished + 2);
+    const expectedSeconds = ((before.avgSecondsToDeal ?? 0) * timed + 60) / (timed + 1);
+    expect(after.avgRounds).toBeCloseTo(expectedRounds, 6);
+    expect(after.avgSecondsToDeal).toBeCloseTo(expectedSeconds, 1);
   });
 });

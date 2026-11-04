@@ -336,6 +336,22 @@ async function runNegotiation(
         where: { id: bid.id, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
+      // The record was saved as a DEAL before the claim, so it must say NO_DEAL
+      // now, or the admin negotiation figures count a sale that never happened.
+      const lostRounds = [...rounds, {
+        round: rounds.length + 1,
+        from: 'farmer_agent' as const,
+        action: 'reject' as const,
+        price: currentPrice,
+        reasoning: 'The lot sold to another buyer before this deal could be made.',
+        timestamp: new Date().toISOString(),
+      }];
+      await prisma.negotiation.update({
+        where: { id: negotiationId },
+        data: { finalOutcome: 'NO_DEAL', rounds: lostRounds as any },
+      });
+      updated.finalOutcome = 'NO_DEAL';
+      updated.rounds = lostRounds as any;
       // For these parties the agent didn't close a deal — the listing sold
       // elsewhere. Tell them it's a no-deal rather than a misleading "deal".
       notifyBoth('NO_DEAL', null);
