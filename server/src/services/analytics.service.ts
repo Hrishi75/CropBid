@@ -13,6 +13,7 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
+import { PLATFORM_FEE_PERCENT } from './transaction.service';
 
 // =============================================================================
 // FARMER ANALYTICS — Revenue, listings, bid stats
@@ -247,7 +248,12 @@ export async function getAdminAnalytics() {
   const roleDistribution = Object.entries(roleCounts)
     .map(([name, value]) => ({ name, value }));
 
+  const [funnel, negotiations] = await Promise.all([getAdminFunnel(), getNegotiationStats()]);
+
   return {
+    feePercent: PLATFORM_FEE_PERCENT,
+    funnel,
+    negotiations,
     charts: {
       monthlyGMV,
       monthlyRevenue,
@@ -257,6 +263,85 @@ export async function getAdminAnalytics() {
       topCrops,
       roleDistribution,
     },
+  };
+}
+
+// =============================================================================
+// ADMIN FUNNEL — how far accounts get, all time
+// =============================================================================
+// Counted, not estimated: the page used to multiply total signups by fixed
+// shares (80%, 57%, 37%...). Admin accounts are left out of every step.
+//
+// A deal is one that was paid and not given back (ESCROW or RELEASED). A
+// household basket is one deal however many lots it holds, so a shopper who
+// bought three things once is not counted as a repeat customer: each side's
+// deals are counted by shop order where there is one, else by transaction.
+// Shoppers can make a deal without applying to trade, so the steps are each a
+// share of signups rather than a strict narrowing.
+export async function getAdminFunnel() {
+  const [row] = await prisma.$queryRaw<{
+    signedUp: bigint; applied: bigint; approved: bigint; dealt: bigint; repeat: bigint;
+  }[]>`
+    WITH people AS (
+      SELECT id FROM "User" WHERE role <> 'ADMIN'
+    ),
+    sides AS (
+      SELECT "farmerId" AS uid, COALESCE("retailOrderId", id) AS deal
+        FROM "Transaction" WHERE "paymentStatus" IN ('ESCROW', 'RELEASED')
+      UNION ALL
+      SELECT "buyerId", COALESCE("retailOrderId", id)
+        FROM "Transaction" WHERE "paymentStatus" IN ('ESCROW', 'RELEASED')
+    ),
+    per AS (
+      SELECT s.uid, count(DISTINCT s.deal) AS n
+        FROM sides s JOIN people p ON p.id = s.uid
+       GROUP BY s.uid
+    )
+    SELECT
+      (SELECT count(*) FROM people) AS "signedUp",
+      (SELECT count(*) FROM people p WHERE
+         EXISTS (SELECT 1 FROM "FarmerProfile" f WHERE f."userId" = p.id) OR
+         EXISTS (SELECT 1 FROM "BuyerProfile" b WHERE b."userId" = p.id)) AS applied,
+      (SELECT count(*) FROM people p WHERE
+         EXISTS (SELECT 1 FROM "FarmerProfile" f WHERE f."userId" = p.id AND f.status = 'APPROVED') OR
+         EXISTS (SELECT 1 FROM "BuyerProfile" b WHERE b."userId" = p.id AND b.status = 'APPROVED')) AS approved,
+      (SELECT count(*) FROM per) AS dealt,
+      (SELECT count(*) FROM per WHERE n >= 2) AS repeat`;
+  return {
+    signedUp: Number(row.signedUp),
+    applied: Number(row.applied),
+    approved: Number(row.approved),
+    dealt: Number(row.dealt),
+    repeat: Number(row.repeat),
+  };
+}
+
+// =============================================================================
+// AGENT NEGOTIATIONS — what the two-sided agents have actually done
+// =============================================================================
+// Replaces a card of typed-in figures (8,142 negotiations, 72.7% match rate,
+// "41 seconds", "+1.6% (₹4.7Cr)" savings vs a broker). There is no broker
+// price to compare with anywhere, so savings are not shown at all.
+export async function getNegotiationStats() {
+  const [row] = await prisma.$queryRaw<{
+    total: bigint; deals: bigint; noDeals: bigint; inProgress: bigint;
+    avgRounds: number | null; avgSeconds: number | null;
+  }[]>`
+    SELECT
+      count(*) AS total,
+      count(*) FILTER (WHERE "finalOutcome" = 'DEAL') AS deals,
+      count(*) FILTER (WHERE "finalOutcome" = 'NO_DEAL') AS "noDeals",
+      count(*) FILTER (WHERE "finalOutcome" = 'IN_PROGRESS') AS "inProgress",
+      avg(jsonb_array_length(rounds)) FILTER (WHERE "finalOutcome" <> 'IN_PROGRESS' AND jsonb_typeof(rounds) = 'array')::float AS "avgRounds",
+      avg(EXTRACT(EPOCH FROM ("endedAt" - "startedAt"))) FILTER (WHERE "finalOutcome" = 'DEAL' AND "endedAt" IS NOT NULL)::float AS "avgSeconds"
+    FROM "Negotiation"`;
+  return {
+    total: Number(row.total),
+    deals: Number(row.deals),
+    noDeals: Number(row.noDeals),
+    inProgress: Number(row.inProgress),
+    avgRounds: row.avgRounds,
+    avgSecondsToDeal: row.avgSeconds,
   };
 }
 

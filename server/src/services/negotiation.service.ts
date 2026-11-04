@@ -336,6 +336,16 @@ async function runNegotiation(
         where: { id: bid.id, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
+      // The record was saved as a DEAL before the claim, so it must say NO_DEAL
+      // now, or the admin negotiation figures count a sale that never happened.
+      // No round is added: a NO_DEAL whose last round is an accept is how the
+      // chat knows the agents agreed and the lot went elsewhere, and says so
+      // to both sides rather than showing it as somebody walking away.
+      await prisma.negotiation.update({
+        where: { id: negotiationId },
+        data: { finalOutcome: 'NO_DEAL' },
+      });
+      updated.finalOutcome = 'NO_DEAL';
       // For these parties the agent didn't close a deal — the listing sold
       // elsewhere. Tell them it's a no-deal rather than a misleading "deal".
       notifyBoth('NO_DEAL', null);

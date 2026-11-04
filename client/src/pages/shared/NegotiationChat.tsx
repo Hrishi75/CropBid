@@ -248,7 +248,11 @@ export function NegotiationChat() {
                 </>
               )}
               {negotiation.finalOutcome === 'NO_DEAL' && (
-                <div className="cb-tiny" style={{ color: 'rgba(244,241,234,0.7)' }}>Walk-away triggered after {rounds.length} rounds.</div>
+                <div className="cb-tiny" style={{ color: 'rgba(244,241,234,0.7)' }}>
+                  {rounds[rounds.length - 1]?.action === 'accept'
+                    ? 'Both agents agreed, but the lot sold to another buyer first.'
+                    : `Walk-away triggered after ${rounds.length} rounds.`}
+                </div>
               )}
             </div>
           )}

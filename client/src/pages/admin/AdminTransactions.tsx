@@ -70,6 +70,17 @@ function shopOrderFee(tx: AdminTransaction): string | null {
     : `${ref}: ${o.refundedLots} of ${o.lots} lots refunded. Its ${fee} delivery fee is owed back only once every lot is.`;
 }
 
+// Counted by the server over every deal, not the page on screen. There is no
+// dispute record in the schema, so there is no dispute tile: it read "0, no
+// SLA breach" as a constant. The fee rate is the one the server charges; the
+// tile said 1% when it is 2%.
+interface TransactionSummary {
+  byStatus: { AWAITING_PAYMENT: number; ESCROW: number; RELEASED: number; REFUNDED: number; CANCELLED: number };
+  total: number;
+  feesOnReleased: number;
+  feePercent: number;
+}
+
 const STATUS_TABS = [
   { value: '', label: 'All' },
   { value: 'ESCROW', label: 'Escrow' },
@@ -93,6 +104,7 @@ const DLV_META: Record<string, string> = {
 export function AdminTransactions() {
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
@@ -114,6 +126,7 @@ export function AdminTransactions() {
       const res = await api.get(`/admin/transactions?${params}`);
       setTransactions(res.data.transactions);
       setTotal(res.data.total);
+      setSummary(res.data.summary ?? null);
     } catch (err) {
       console.error('Failed to load transactions:', err);
       setFailed(true);
@@ -135,10 +148,7 @@ export function AdminTransactions() {
   }
 
   const totalPages = Math.ceil(total / LIMIT);
-  const inEscrow = transactions.filter((t) => t.paymentStatus === 'ESCROW').length;
-  const released = transactions.filter((t) => t.paymentStatus === 'RELEASED').length;
-  const refunded = transactions.filter((t) => t.paymentStatus === 'REFUNDED').length;
-  const totalFees = transactions.reduce((sum, t) => sum + t.platformFeeAmount, 0);
+  const st = summary?.byStatus;
 
   return (
     <DashboardLayout>
@@ -153,33 +163,35 @@ export function AdminTransactions() {
         <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
       </div>
 
+      {st && summary && (
       <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
+          <div className="cb-kpi-label">Unpaid</div>
+          <div className="cb-kpi-value">{st.AWAITING_PAYMENT}</div>
+          <div className="cb-kpi-delta">awaiting payment</div>
+        </div>
+        <div className="cb-kpi-cell">
           <div className="cb-kpi-label">In escrow</div>
-          <div className="cb-kpi-value">{inEscrow}</div>
-          <div className="cb-kpi-delta">awaiting</div>
+          <div className="cb-kpi-value">{st.ESCROW}</div>
+          <div className="cb-kpi-delta">paid, not released</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Released</div>
-          <div className="cb-kpi-value">{released}</div>
-          <div className="cb-kpi-delta pos">settled</div>
+          <div className="cb-kpi-value">{st.RELEASED}</div>
+          <div className="cb-kpi-delta">seller due a transfer</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Refunded</div>
-          <div className="cb-kpi-value">{refunded}</div>
-          <div className="cb-kpi-delta">{transactions.length > 0 ? ((refunded / transactions.length) * 100).toFixed(1) : 0}% rate</div>
-        </div>
-        <div className="cb-kpi-cell">
-          <div className="cb-kpi-label">Disputed</div>
-          <div className="cb-kpi-value">0</div>
-          <div className="cb-kpi-delta">no SLA breach</div>
+          <div className="cb-kpi-value">{st.REFUNDED}</div>
+          <div className="cb-kpi-delta">{summary.total > 0 ? ((st.REFUNDED / summary.total) * 100).toFixed(1) : 0}% of all deals</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Fees</div>
-          <div className="cb-kpi-value">{formatCurrency(totalFees, 'INR')}</div>
-          <div className="cb-kpi-delta">1% take</div>
+          <div className="cb-kpi-value">{formatCurrency(summary.feesOnReleased, 'INR')}</div>
+          <div className="cb-kpi-delta">{summary.feePercent}% of released deals</div>
         </div>
       </div>
+      )}
 
       <div className="cb-pill-group" style={{ marginBottom: 20 }}>
         {STATUS_TABS.map((tab) => (
