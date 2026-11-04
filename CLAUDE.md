@@ -486,7 +486,7 @@ Still missing for Razorpay live-mode onboarding: **standalone Shipping/Delivery 
 
 It is invisible in the UI: an order reads "Released" and looks finished. **Never write copy promising an automatic payout.**
 
-**Admin → Transactions says what a refund owes** (2026-11-04): each row carries `buyerPaid` (goods plus the buyer's share of delivery, `buyerPayable`), and a refunded row and the Force refund confirmation say to send that back by bank transfer, plus a shop order's delivery fee once every lot in it is refunded. Before this the toast said "Transaction refunded" and nothing said a transfer was still to make.
+**Admin → Transactions says what a refund owes** (2026-11-04): each row carries `buyerPaid` (goods plus the buyer's share of delivery, `buyerPayable`), and a refunded row and the Force refund confirmation say to send that back by bank transfer. A household lot's row also names its shop order and how many of its lots are refunded, because the delivery fee is per order and owed back once, when all of them are; review caught the first version, which put the fee instruction on every lot and invited returning it twice. Before this the toast said "Transaction refunded" and nothing said a transfer was still to make.
 
 Since 2026-09-21 there is at least somewhere to send it by hand: §4a. **Nothing yet connects the two.** No screen lists who is owed what, the admin transaction list still shows no delivery fees, and a released transaction does not appear anywhere alongside the account it should be paid into. The queue that would fix it is the derived-not-stored kind `/admin/attention` already demonstrates (§2a): released transactions, oldest first, with the seller's payout status on the row.
 

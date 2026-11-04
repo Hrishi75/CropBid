@@ -34,6 +34,7 @@ async function clean() {
   const txs = await prisma.transaction.findMany({ where: { listingId: { in: lotIds } }, select: { id: true } });
   await prisma.shipment.deleteMany({ where: { transactionId: { in: txs.map((t) => t.id) } } });
   await prisma.transaction.deleteMany({ where: { listingId: { in: lotIds } } });
+  await prisma.retailOrder.deleteMany({ where: { buyerId: { in: ALL } } });
   await prisma.bid.deleteMany({ where: { listingId: { in: lotIds } } });
   await prisma.listing.deleteMany({ where: { id: { in: lotIds } } });
   await prisma.logisticsPartner.deleteMany({ where: { name: 'AF Test Carrier' } });
@@ -76,7 +77,7 @@ afterAll(async () => {
 
 type Pay = 'ESCROW' | 'AWAITING_PAYMENT' | 'CANCELLED' | 'REFUNDED';
 
-async function deal(paymentStatus: Pay, freight: { freightPaidBy?: 'FARMER' | 'SPLIT' | 'BUYER'; freightQuote?: number } = {}) {
+async function deal(paymentStatus: Pay, freight: { freightPaidBy?: 'FARMER' | 'SPLIT' | 'BUYER'; freightQuote?: number; retailOrderId?: string } = {}) {
   const bid = await prisma.bid.create({
     data: { listingId: lotId, buyerId: BUYER, bidPricePerUnit: 5500, quantity: 1, totalAmount: 5500, status: 'ACCEPTED' },
   });
@@ -137,5 +138,30 @@ describe('what a refund owes the buyer', () => {
     const paid = new Map(transactions.map((t) => [t.id, t.buyerPaid]));
     expect(paid.get(sellerPays.id)).toBe(5500);
     expect(paid.get(split.id)).toBe(5500 + 500.5);
+  });
+});
+
+describe("a shop order's delivery fee", () => {
+  // Per order, not per lot, so each lot's row says how many of its order's
+  // lots are refunded: the fee is owed back once, when all of them are.
+  it("travels with each lot as the order's refund progress", async () => {
+    const order = await prisma.retailOrder.create({
+      data: { buyerId: SHOPPER, sellerId: FARM, itemsTotal: 11000, deliveryFee: 30, totalAmount: 11030 },
+    });
+    const first = await deal('REFUNDED', { retailOrderId: order.id });
+    const second = await deal('ESCROW', { retailOrderId: order.id });
+
+    const read = async () => {
+      const { transactions } = await getAllTransactions(undefined, 100, 0);
+      return new Map(transactions.map((t) => [t.id, t]));
+    };
+
+    let rows = await read();
+    expect(rows.get(first.id)!.retailOrder).toEqual({ id: order.id, deliveryFee: 30, lots: 2, refundedLots: 1 });
+    expect(rows.get(first.id)!.buyerPaid).toBe(5500);
+
+    await prisma.transaction.update({ where: { id: second.id }, data: { paymentStatus: 'REFUNDED' } });
+    rows = await read();
+    expect(rows.get(second.id)!.retailOrder).toMatchObject({ lots: 2, refundedLots: 2 });
   });
 });

@@ -42,18 +42,32 @@ interface AdminTransaction {
   // What the buyer paid for this deal (goods plus their share of delivery,
   // §2c), worked out on the server. A refund owes them this.
   buyerPaid: number;
-  // A household lot's shop order, whose delivery fee is per order.
-  retailOrder: { id: string; deliveryFee: number } | null;
+  // A household lot's shop order. Its delivery fee is per order, so the row
+  // carries how many of the order's lots are refunded.
+  retailOrder: { id: string; deliveryFee: number; lots: number; refundedLots: number } | null;
   createdAt: string;
 }
 
 // Refunds only change a column (CLAUDE.md §6). The money goes back by hand,
 // so the row says how much, rather than "refunded" reading as done.
+//
+// A shop order's delivery fee is per order, not per lot, and is owed back once,
+// when every lot in it is refunded. So the lot's own line never includes it;
+// the order's line says how many of its lots are refunded and, only once all
+// are, that the fee goes back once for the whole order. Review caught the
+// version that repeated the fee instruction on every lot.
 function refundOwed(tx: AdminTransaction): string {
-  const fee = tx.retailOrder && tx.retailOrder.deliveryFee > 0
-    ? `, plus the shop order's ${formatCurrency(tx.retailOrder.deliveryFee, tx.currency)} delivery fee once every lot in it is refunded`
-    : '';
-  return `Send ${formatCurrency(tx.buyerPaid, tx.currency)} back to the buyer by bank transfer${fee}. CropBid moves no money on its own.`;
+  return `Send ${formatCurrency(tx.buyerPaid, tx.currency)} back to the buyer by bank transfer. CropBid moves no money on its own.`;
+}
+
+function shopOrderFee(tx: AdminTransaction): string | null {
+  const o = tx.retailOrder;
+  if (!o || o.deliveryFee <= 0) return null;
+  const ref = `Shop order #O-${o.id.slice(-6).toUpperCase()}`;
+  const fee = formatCurrency(o.deliveryFee, tx.currency);
+  return o.refundedLots >= o.lots
+    ? `${ref}: all ${o.lots} ${o.lots === 1 ? 'lot' : 'lots'} refunded, so its ${fee} delivery fee goes back too, once for the whole order, not per lot.`
+    : `${ref}: ${o.refundedLots} of ${o.lots} lots refunded. Its ${fee} delivery fee is owed back only once every lot is.`;
 }
 
 const STATUS_TABS = [
@@ -288,6 +302,7 @@ export function AdminTransactions() {
                 {tx.paymentStatus === 'REFUNDED' && (
                   <div className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ember)' }}>
                     Refunded in CropBid. {refundOwed(tx)}
+                    {shopOrderFee(tx) && <div style={{ marginTop: 4 }}>{shopOrderFee(tx)}</div>}
                   </div>
                 )}
               </div>

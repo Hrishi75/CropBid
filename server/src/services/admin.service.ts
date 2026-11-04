@@ -340,8 +340,10 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
         // so this row is the queue: no shipment means nobody has booked it yet.
         shipment: { select: { id: true, status: true } },
         // A household lot's shop order holds the delivery fee, which a refund
-        // of that lot does not touch (§6).
-        retailOrder: { select: { id: true, deliveryFee: true } },
+        // of that lot does not touch (§6). The fee is per order, so the row
+        // needs the order's other lots too: it is owed back once, when every
+        // lot in it is refunded, and only the order can say whether they are.
+        retailOrder: { select: { id: true, deliveryFee: true, transactions: { select: { paymentStatus: true } } } },
       },
     }),
     prisma.transaction.count({ where }),
@@ -353,9 +355,15 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
   // BUYER deal (§2c). A shop order's own delivery fee is per order, not per
   // lot, and is sent separately as retailOrder.deliveryFee.
   return {
-    transactions: transactions.map((t) => ({
+    transactions: transactions.map(({ retailOrder, ...t }) => ({
       ...t,
       buyerPaid: t.retailOrderId ? t.totalAmount : buyerPayable(t),
+      retailOrder: retailOrder && {
+        id: retailOrder.id,
+        deliveryFee: retailOrder.deliveryFee,
+        lots: retailOrder.transactions.length,
+        refundedLots: retailOrder.transactions.filter((l) => l.paymentStatus === 'REFUNDED').length,
+      },
     })),
     total,
   };
