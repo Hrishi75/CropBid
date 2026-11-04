@@ -202,6 +202,27 @@ describe('GMV', () => {
   });
 });
 
+describe('lots listed', () => {
+  it('leaves out the hidden lots that carry request fills and contract batches', async () => {
+    const crop = (charts: { topCrops: { name: string; value: number }[] }) =>
+      charts.topCrops.find((c) => c.name === 'AN Gram')?.value ?? 0;
+    const sum = (rows: { value: number }[]) => rows.reduce((s, m) => s + m.value, 0);
+    await seed(); // one listed lot
+    await prisma.listing.create({
+      data: {
+        farmerId: PROFILE, cropName: 'AN Gram', quantity: 1, remainingQuantity: 0, unit: 'QUINTAL', status: 'SOLD',
+        qualityGrade: 'A', pricePerUnitMin: 5000, pricePerUnitMax: 5000, location: 'Wardha', state: 'Maharashtra',
+        isRequirementFill: true,
+      },
+    });
+    const before = (await getAdminAnalytics()).charts;
+    await prisma.listing.deleteMany({ where: { farmerId: PROFILE, isRequirementFill: true } });
+    const after = (await getAdminAnalytics()).charts;
+    expect(crop(before)).toBe(1);
+    expect(sum(before.monthlyListings)).toBe(sum(after.monthlyListings));
+  });
+});
+
 describe('the monthly charts', () => {
   it('keep date order when a month is older than the six always shown', () => {
     const now = new Date(2026, 10, 4);

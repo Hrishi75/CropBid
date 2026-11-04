@@ -212,7 +212,11 @@ export async function getAdminAnalytics() {
       select: { role: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),
+    // Lots put up for sale. A requirement fill or a supply-contract batch is
+    // a SOLD listing made to carry the deal, never shown to anyone, so it is
+    // left out of the lot count and the crop ranking.
     prisma.listing.findMany({
+      where: { isRequirementFill: false },
       select: { createdAt: true, cropName: true },
       orderBy: { createdAt: 'asc' },
     }),
