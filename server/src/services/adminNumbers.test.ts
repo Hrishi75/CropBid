@@ -203,10 +203,12 @@ describe('GMV', () => {
 });
 
 describe('lots listed', () => {
+  // The crop ranking and the Lots tile read the same list of lots. The ranking
+  // is cut at ten crops across the whole database, so the count is what is
+  // checked: a listed lot adds one, a hidden request-fill lot adds nothing.
   it('leaves out the hidden lots that carry request fills and contract batches', async () => {
-    const crop = (charts: { topCrops: { name: string; value: number }[] }) =>
-      charts.topCrops.find((c) => c.name === 'AN Gram')?.value ?? 0;
-    const sum = (rows: { value: number }[]) => rows.reduce((s, m) => s + m.value, 0);
+    const lots = async () => (await getAdminAnalytics()).charts.monthlyListings.reduce((s, m) => s + m.value, 0);
+    const before = await lots();
     await seed(); // one listed lot
     await prisma.listing.create({
       data: {
@@ -215,11 +217,7 @@ describe('lots listed', () => {
         isRequirementFill: true,
       },
     });
-    const before = (await getAdminAnalytics()).charts;
-    await prisma.listing.deleteMany({ where: { farmerId: PROFILE, isRequirementFill: true } });
-    const after = (await getAdminAnalytics()).charts;
-    expect(crop(before)).toBe(1);
-    expect(sum(before.monthlyListings)).toBe(sum(after.monthlyListings));
+    expect((await lots()) - before).toBe(1);
   });
 });
 
