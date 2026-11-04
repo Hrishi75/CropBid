@@ -10,7 +10,9 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
+import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 import toast from 'react-hot-toast';
 
 interface AdminTransaction {
@@ -37,7 +39,35 @@ interface AdminTransaction {
   // Null until ops books a carrier. Present means the freight is arranged, so
   // the row offers tracking rather than the booking form.
   shipment: { id: string; status: string } | null;
+  // What the buyer paid for this deal (goods plus their share of delivery,
+  // §2c), worked out on the server. A refund owes them this.
+  buyerPaid: number;
+  // A household lot's shop order. Its delivery fee is per order, so the row
+  // carries how many of the order's lots are refunded.
+  retailOrder: { id: string; deliveryFee: number; lots: number; refundedLots: number } | null;
   createdAt: string;
+}
+
+// Refunds only change a column (CLAUDE.md §6). The money goes back by hand,
+// so the row says how much, rather than "refunded" reading as done.
+//
+// A shop order's delivery fee is per order, not per lot, and is owed back once,
+// when every lot in it is refunded. So the lot's own line never includes it;
+// the order's line says how many of its lots are refunded and, only once all
+// are, that the fee goes back once for the whole order. Review caught the
+// version that repeated the fee instruction on every lot.
+function refundOwed(tx: AdminTransaction): string {
+  return `Send ${formatCurrency(tx.buyerPaid, tx.currency)} back to the buyer by bank transfer. CropBid moves no money on its own.`;
+}
+
+function shopOrderFee(tx: AdminTransaction): string | null {
+  const o = tx.retailOrder;
+  if (!o || o.deliveryFee <= 0) return null;
+  const ref = `Shop order #O-${o.id.slice(-6).toUpperCase()}`;
+  const fee = formatCurrency(o.deliveryFee, tx.currency);
+  return o.refundedLots >= o.lots
+    ? `${ref}: all ${o.lots} ${o.lots === 1 ? 'lot' : 'lots'} refunded, so its ${fee} delivery fee goes back too, once for the whole order, not per lot.`
+    : `${ref}: ${o.refundedLots} of ${o.lots} lots refunded. Its ${fee} delivery fee is owed back only once every lot is.`;
 }
 
 const STATUS_TABS = [
@@ -64,6 +94,7 @@ export function AdminTransactions() {
   const [transactions, setTransactions] = useState<AdminTransaction[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(0);
   const LIMIT = 15;
@@ -74,6 +105,7 @@ export function AdminTransactions() {
 
   async function fetchTransactions() {
     setLoading(true);
+    setFailed(false);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('paymentStatus', statusFilter);
@@ -84,16 +116,18 @@ export function AdminTransactions() {
       setTotal(res.data.total);
     } catch (err) {
       console.error('Failed to load transactions:', err);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
   }
 
+  // Asked through ConfirmButton, not window.confirm, which embedded browsers
+  // can suppress without showing anything.
   async function handleRefund(txId: string) {
-    if (!confirm('Refund this transaction?')) return;
     try {
       await api.post(`/transactions/${txId}/refund`);
-      toast.success('Transaction refunded');
+      toast.success('Marked refunded. The transfer back is still to make by hand.');
       fetchTransactions();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Refund failed');
@@ -162,6 +196,8 @@ export function AdminTransactions() {
 
       {loading ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading…</span></div>
+      ) : failed ? (
+        <LoadFailed what="transactions" onRetry={fetchTransactions} />
       ) : transactions.length === 0 ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">No transactions match.</span></div>
       ) : (
@@ -256,11 +292,19 @@ export function AdminTransactions() {
                     </Link>
                   )}
                   {tx.paymentStatus === 'ESCROW' && (
-                    <button type="button" onClick={() => handleRefund(tx.id)} className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-ember)' }}>
-                      ↺ Force refund
-                    </button>
+                    <ConfirmButton
+                      label="↺ Force refund"
+                      confirmLabel={`Mark this deal refunded? ${refundOwed(tx)}`}
+                      onConfirm={() => handleRefund(tx.id)}
+                    />
                   )}
                 </div>
+                {tx.paymentStatus === 'REFUNDED' && (
+                  <div className="cb-tiny" style={{ marginTop: 8, color: 'var(--cb-ember)' }}>
+                    Refunded in CropBid. {refundOwed(tx)}
+                    {shopOrderFee(tx) && <div style={{ marginTop: 4 }}>{shopOrderFee(tx)}</div>}
+                  </div>
+                )}
               </div>
             );
           })}

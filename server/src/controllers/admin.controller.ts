@@ -96,8 +96,11 @@ export async function getAllListings(req: Request, res: Response, next: NextFunc
 // GET /api/admin/attention — The ops triage queue
 export async function getAttentionItems(_req: Request, res: Response, next: NextFunction) {
   try {
-    const items = await adminService.getAttentionItems();
-    res.json({ items });
+    const [items, total] = await Promise.all([
+      adminService.getAttentionItems(),
+      adminService.countAttentionItems(),
+    ]);
+    res.json({ items, total });
   } catch (error) {
     next(error);
   }

@@ -19,6 +19,7 @@ import { COMPANY_TYPE_LABEL } from '../../utils/companyType';
 import { SELLER_TYPE_LABEL, SHOP_TYPE_OPTIONS, PARTNER_STATUS_META } from '../../utils/partner';
 import type { PartnerStatus, SellerType } from '../../types';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 import toast from 'react-hot-toast';
 
 interface ApplicationRow {
@@ -496,12 +497,14 @@ export function AdminPartners() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState('SUBMITTED');
   const [page, setPage] = useState(0);
   const LIMIT = 15;
 
   const fetchApps = useCallback(async () => {
     setLoading(true);
+    setFailed(false);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
@@ -513,6 +516,7 @@ export function AdminPartners() {
       setCounts(res.data.counts || {});
     } catch (err) {
       console.error('Failed to load partner applications:', err);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -538,22 +542,22 @@ export function AdminPartners() {
       <div className="cb-kpi-strip" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginTop: 8, marginBottom: 24 }}>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Waiting</div>
-          <div className="cb-kpi-value" style={waiting > 0 ? { color: 'var(--cb-ember)' } : undefined}>{waiting}</div>
+          <div className="cb-kpi-value" style={!failed && waiting > 0 ? { color: 'var(--cb-ember)' } : undefined}>{failed ? '—' : waiting}</div>
           <div className="cb-kpi-delta">oldest first</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Needs info</div>
-          <div className="cb-kpi-value">{counts.NEEDS_INFO || 0}</div>
+          <div className="cb-kpi-value">{failed ? '—' : counts.NEEDS_INFO || 0}</div>
           <div className="cb-kpi-delta">with applicant</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Approved</div>
-          <div className="cb-kpi-value">{counts.APPROVED || 0}</div>
+          <div className="cb-kpi-value">{failed ? '—' : counts.APPROVED || 0}</div>
           <div className="cb-kpi-delta">live partners</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Rejected</div>
-          <div className="cb-kpi-value">{counts.REJECTED || 0}</div>
+          <div className="cb-kpi-value">{failed ? '—' : counts.REJECTED || 0}</div>
           <div className="cb-kpi-delta">may resubmit</div>
         </div>
       </div>
@@ -574,6 +578,8 @@ export function AdminPartners() {
 
       {loading ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading…</span></div>
+      ) : failed ? (
+        <LoadFailed what="the applications" onRetry={fetchApps} />
       ) : apps.length === 0 ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}>
           <span className="cb-tiny">

@@ -13,6 +13,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
 import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 import toast from 'react-hot-toast';
 
 interface AdminListing {
@@ -53,6 +54,7 @@ export function AdminListings() {
   const [listings, setListings] = useState<AdminListing[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(0);
   const LIMIT = 15;
@@ -63,6 +65,7 @@ export function AdminListings() {
 
   async function fetchListings() {
     setLoading(true);
+    setFailed(false);
     try {
       const params = new URLSearchParams();
       if (statusFilter) params.set('status', statusFilter);
@@ -73,6 +76,7 @@ export function AdminListings() {
       setTotal(res.data.total);
     } catch (err) {
       console.error('Failed to load listings:', err);
+      setFailed(true);
     } finally {
       setLoading(false);
     }
@@ -121,6 +125,8 @@ export function AdminListings() {
 
       {loading ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">Loading…</span></div>
+      ) : failed ? (
+        <LoadFailed what="listings" onRetry={fetchListings} />
       ) : listings.length === 0 ? (
         <div className="cb-card" style={{ padding: 40, textAlign: 'center' }}><span className="cb-tiny">No listings match.</span></div>
       ) : (

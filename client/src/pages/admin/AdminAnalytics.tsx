@@ -15,6 +15,7 @@ import {
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
+import { LoadFailed } from './LoadFailed';
 
 const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869'];
 const PERIODS = ['7D', '30D', '90D', 'QTD', 'YTD'];
@@ -62,24 +63,34 @@ export function AdminAnalytics() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState('90D');
 
-  useEffect(() => {
-    async function fetch() {
-      try {
-        const res = await api.get('/analytics');
-        setData(res.data);
-      } catch (err) {
-        console.error('Failed to load analytics:', err);
-      } finally {
-        setLoading(false);
-      }
+  const [failed, setFailed] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setFailed(false);
+    try {
+      const res = await api.get('/analytics');
+      setData(res.data);
+    } catch (err) {
+      console.error('Failed to load analytics:', err);
+      setFailed(true);
+    } finally {
+      setLoading(false);
     }
-    fetch();
+  }
+
+  useEffect(() => {
+    load();
   }, []);
 
   if (loading || !data) {
+    // A failed load used to sit on "loading…" for good.
     return (
       <DashboardLayout>
-        <div className="cb-page-eyebrow">Analytics · loading…</div>
+        <div className="cb-page-eyebrow">Analytics · {failed ? 'unavailable' : 'loading…'}</div>
+        {failed && !loading && (
+          <div style={{ marginTop: 24 }}><LoadFailed what="analytics" onRetry={load} /></div>
+        )}
       </DashboardLayout>
     );
   }
