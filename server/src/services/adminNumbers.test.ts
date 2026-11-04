@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 
 import { prisma } from '../lib/prisma';
-import { getTransactionSummary, getUserSummary } from './admin.service';
-import { getAdminFunnel, getNegotiationStats } from './analytics.service';
+import { getPlatformStats, getTransactionSummary, getUserSummary } from './admin.service';
+import { aggregateByMonth, getAdminAnalytics, getAdminFunnel, getNegotiationStats } from './analytics.service';
 
 const SELLER = 'an-seller';
 const BUYER = 'an-buyer';
@@ -57,14 +57,14 @@ async function seed() {
 
 type Pay = 'ESCROW' | 'RELEASED' | 'REFUNDED' | 'CANCELLED' | 'AWAITING_PAYMENT';
 
-async function deal(buyerId: string, paymentStatus: Pay, retailOrderId?: string) {
+async function deal(buyerId: string, paymentStatus: Pay, retailOrderId?: string, currency: 'INR' | 'USD' = 'INR') {
   const bid = await prisma.bid.create({
     data: { listingId: lotId, buyerId, bidPricePerUnit: 5000, quantity: 1, totalAmount: 5000, status: 'ACCEPTED' },
   });
   return prisma.transaction.create({
     data: {
       listingId: lotId, bidId: bid.id, farmerId: SELLER, buyerId,
-      finalPricePerUnit: 5000, totalAmount: 5000, platformFeeAmount: 100, paymentStatus, retailOrderId,
+      finalPricePerUnit: 5000, totalAmount: 5000, platformFeeAmount: 100, paymentStatus, retailOrderId, currency,
     },
   });
 }
@@ -175,5 +175,43 @@ describe('agent negotiations', () => {
     const expectedSeconds = ((before.avgSecondsToDeal ?? 0) * timed + 60) / (timed + 1);
     expect(after.avgRounds).toBeCloseTo(expectedRounds, 6);
     expect(after.avgSecondsToDeal).toBeCloseTo(expectedSeconds, 1);
+  });
+});
+
+describe('GMV', () => {
+  // Money that reached us and stayed, in rupees. Not an unpaid, cancelled or
+  // refunded deal, and not a USD seed lot added in as if it were rupees.
+  it('counts paid rupee deals only, on the dashboard and in analytics', async () => {
+    const sum = (rows: { value: number }[]) => rows.reduce((s, m) => s + m.value, 0);
+    const stats0 = await getPlatformStats();
+    const charts0 = (await getAdminAnalytics()).charts;
+    await seed();
+    await deal(BUYER, 'ESCROW');
+    await deal(BUYER, 'RELEASED');
+    for (const status of ['AWAITING_PAYMENT', 'CANCELLED', 'REFUNDED'] as const) await deal(BUYER, status);
+    await deal(BUYER, 'RELEASED', undefined, 'USD');
+    const stats1 = await getPlatformStats();
+    const charts1 = (await getAdminAnalytics()).charts;
+
+    expect(stats1.financial.gmv - stats0.financial.gmv).toBe(10_000);
+    expect(sum(charts1.monthlyGMV) - sum(charts0.monthlyGMV)).toBe(10_000);
+    // Fees: the one released rupee deal.
+    expect(stats1.financial.platformRevenue - stats0.financial.platformRevenue).toBe(100);
+    expect(sum(charts1.monthlyRevenue) - sum(charts0.monthlyRevenue)).toBe(100);
+    expect((await getTransactionSummary()).feesOnReleased).toBe(stats1.financial.platformRevenue);
+  });
+});
+
+describe('the monthly charts', () => {
+  it('keep date order when a month is older than the six always shown', () => {
+    const now = new Date(2026, 10, 4);
+    const rows = [
+      { createdAt: new Date(2026, 9, 2), n: 1 },
+      { createdAt: new Date(2025, 11, 20), n: 5 },
+      { createdAt: new Date(2026, 0, 10), n: 2 },
+    ];
+    const months = aggregateByMonth(rows, (r) => r.n, now);
+    expect(months.map((m) => m.name)).toEqual(['Dec 25', 'Jan 26', 'Jun 26', 'Jul 26', 'Aug 26', 'Sep 26', 'Oct 26', 'Nov 26']);
+    expect(months.map((m) => m.value)).toEqual([5, 2, 0, 0, 0, 0, 1, 0]);
   });
 });
