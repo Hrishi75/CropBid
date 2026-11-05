@@ -312,7 +312,9 @@ function ApplicationCard({ app, onDone }: { app: ApplicationRow; onDone: () => v
       await api.post(`/admin/partners/${app.id}/review`, {
         kind: app.kind,
         action,
-        note: note.trim() || undefined,
+        // Only an action that asks for a note sends one. The box keeps what was
+        // typed for another action, which must not reach this one's email.
+        note: needsNote ? note.trim() : undefined,
       });
       toast.success(
         action === 'APPROVE' ? `${displayName} is live`

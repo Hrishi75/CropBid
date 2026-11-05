@@ -39,6 +39,37 @@ const updateEnquirySchema = z.object({
   kind: enquiryKindSchema,
 });
 
+// The paged admin lists. A page is at most 200 rows, which is what the CSV
+// export reads at a time (the pages ask for 15); an unbounded limit let one
+// request ask the database for every row there is. A filter that is not one of
+// the enum's values is refused here with a 400: it used to go straight into
+// the Prisma WHERE clause and come back as a 500. A blank filter means none,
+// which is what the page's "All" tab sends.
+const blank = (v: unknown) => (v === '' ? undefined : v);
+const pageQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(20),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+});
+const usersQuerySchema = pageQuery.extend({
+  search: z.preprocess(blank, z.string().trim().max(100).optional()),
+  role: z.preprocess(blank, z.enum(['FARMER', 'BUYER', 'CONSUMER', 'ADMIN']).optional()),
+});
+const listingsQuerySchema = pageQuery.extend({
+  status: z.preprocess(blank, z.enum(['ACTIVE', 'IN_AUCTION', 'SOLD', 'EXPIRED']).optional()),
+});
+const transactionsQuerySchema = pageQuery.extend({
+  paymentStatus: z.preprocess(blank, z.enum(['AWAITING_PAYMENT', 'ESCROW', 'RELEASED', 'REFUNDED', 'CANCELLED']).optional()),
+});
+const enquiriesQuerySchema = pageQuery.extend({
+  status: z.preprocess(blank, z.enum(['NEW', 'CONTACTED', 'CLOSED']).optional()),
+});
+
+function badQuery(res: Response, error: z.ZodError) {
+  const issue = error.issues[0];
+  const field = issue?.path.join('.') || 'query';
+  return res.status(400).json({ message: `Invalid ${field}: ${issue?.message ?? 'not allowed'}` });
+}
+
 // GET /api/admin/stats — Platform-wide statistics
 export async function getPlatformStats(_req: Request, res: Response, next: NextFunction) {
   try {
@@ -52,13 +83,10 @@ export async function getPlatformStats(_req: Request, res: Response, next: NextF
 // GET /api/admin/users — List users with search & filter
 export async function getUsers(req: Request, res: Response, next: NextFunction) {
   try {
-    const { search, role, limit, offset } = req.query;
-    const result = await adminService.getUsers(
-      search as string,
-      role as string,
-      parseInt(limit as string) || 20,
-      parseInt(offset as string) || 0
-    );
+    const q = usersQuerySchema.safeParse(req.query);
+    if (!q.success) return badQuery(res, q.error);
+    const { search, role, limit, offset } = q.data;
+    const result = await adminService.getUsers(search as string, role as string, limit, offset);
     res.json(result);
   } catch (error) {
     next(error);
@@ -81,12 +109,10 @@ export async function getUser(req: Request, res: Response, next: NextFunction) {
 // GET /api/admin/listings — List all listings
 export async function getAllListings(req: Request, res: Response, next: NextFunction) {
   try {
-    const { status, limit, offset } = req.query;
-    const result = await adminService.getAllListings(
-      status as string,
-      parseInt(limit as string) || 20,
-      parseInt(offset as string) || 0
-    );
+    const q = listingsQuerySchema.safeParse(req.query);
+    if (!q.success) return badQuery(res, q.error);
+    const { status, limit, offset } = q.data;
+    const result = await adminService.getAllListings(status as string, limit, offset);
     res.json(result);
   } catch (error) {
     next(error);
@@ -109,12 +135,10 @@ export async function getAttentionItems(_req: Request, res: Response, next: Next
 // GET /api/admin/transactions — List all transactions
 export async function getAllTransactions(req: Request, res: Response, next: NextFunction) {
   try {
-    const { paymentStatus, limit, offset } = req.query;
-    const result = await adminService.getAllTransactions(
-      paymentStatus as string,
-      parseInt(limit as string) || 20,
-      parseInt(offset as string) || 0
-    );
+    const q = transactionsQuerySchema.safeParse(req.query);
+    if (!q.success) return badQuery(res, q.error);
+    const { paymentStatus, limit, offset } = q.data;
+    const result = await adminService.getAllTransactions(paymentStatus as string, limit, offset);
     res.json(result);
   } catch (error) {
     next(error);
@@ -265,7 +289,9 @@ export async function purgeDemoData(req: Request, res: Response, next: NextFunct
 // GET /api/admin/enquiries — Inbound equipment leads
 export async function getEnquiries(req: Request, res: Response, next: NextFunction) {
   try {
-    const { status, limit, offset } = req.query;
+    const q = enquiriesQuerySchema.safeParse(req.query);
+    if (!q.success) return badQuery(res, q.error);
+    const { status, limit, offset } = q.data;
     const kind = enquiryKindSchema.safeParse(req.query.kind);
     if (!kind.success) {
       return res.status(400).json({ message: 'kind must be EQUIPMENT or AGRI_INPUT' });
@@ -273,11 +299,7 @@ export async function getEnquiries(req: Request, res: Response, next: NextFuncti
     const list = kind.data === 'AGRI_INPUT'
       ? adminService.getAgriInputEnquiries
       : adminService.getEquipmentEnquiries;
-    const result = await list(
-      status as string,
-      parseInt(limit as string) || 20,
-      parseInt(offset as string) || 0
-    );
+    const result = await list(status as string, limit, offset);
     res.json(result);
   } catch (error) {
     next(error);
