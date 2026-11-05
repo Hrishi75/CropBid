@@ -35,6 +35,8 @@ import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../lib/prisma';
 import { createTransaction } from '../services/transaction.service';
 import { alertNewOrder } from '../services/orderAlert.service';
+import { createNotification } from '../services/notification.service';
+import { ApiError } from '../utils/ApiError';
 
 // =============================================================================
 // Types
@@ -358,7 +360,19 @@ export async function startAuction(
   durationMinutes: number = 10
 ): Promise<AuctionState> {
   if (activeAuctions.has(listingId)) {
-    throw new Error('Auction already active for this listing');
+    throw new ApiError(409, 'An auction is already running on this lot');
+  }
+
+  // CLAIM THE LOT FIRST, conditionally. Only an ACTIVE lot can go to auction,
+  // and the write itself says so, so two starts at once (or a sale landing as
+  // the seller presses start) cannot both succeed: one claims, the other gets
+  // count 0. The in-memory auction is created only after the claim wins.
+  const claim = await prisma.listing.updateMany({
+    where: { id: listingId, status: 'ACTIVE' },
+    data: { status: 'IN_AUCTION' },
+  });
+  if (claim.count === 0) {
+    throw new ApiError(409, 'This lot can no longer be auctioned. It may have sold or already be in an auction.');
   }
 
   const listing = await prisma.listing.findUnique({
@@ -370,10 +384,7 @@ export async function startAuction(
     },
   });
 
-  if (!listing) throw new Error('Listing not found');
-  if (listing.status !== 'ACTIVE') {
-    throw new Error(`Cannot start auction on ${listing.status} listing`);
-  }
+  if (!listing) throw new ApiError(404, 'Listing not found');
 
   const endsAt = new Date(Date.now() + durationMinutes * 60 * 1000);
   const hardEndsAt = new Date(endsAt.getTime() + ANTI_SNIPE_MAX_EXTENSION_MS);
@@ -396,12 +407,6 @@ export async function startAuction(
   };
 
   activeAuctions.set(listingId, auction);
-
-  // Update listing status to IN_AUCTION
-  await prisma.listing.update({
-    where: { id: listingId },
-    data: { status: 'IN_AUCTION' },
-  });
 
   // Broadcast to any connected clients watching this listing
   if (io) {
@@ -432,78 +437,25 @@ async function endAuction(listingId: string) {
   if (auction.currentWinner && auction.bids.length > 0) {
     const winnerId = auction.currentWinner; // narrowed to string by the if above
 
-    // Settle the auction ATOMICALLY. Every fact the outcome depends on is read
-    // and written inside ONE transaction, so there is no check-then-act gap:
-    //   - The winner's CURRENT role is re-read here (tx.user), not trusted from
-    //     the socket handshake or the moment they bid. Because that read shares
-    //     the settlement transaction, a role change racing settlement cannot
-    //     slip a sale through between the authorization check and the writes —
-    //     a since-demoted winner is caught and the sale is voided.
-    //   - The winning bid, the SOLD flip, and the escrow Transaction commit
-    //     together, so a settled auction can never leave a SOLD listing with no
-    //     payable transaction.
-    // The whole thing is wrapped in try/catch because endAuction runs from a
-    // setTimeout with no caller to handle a rejection — on ANY failure (e.g. a
-    // transient DB outage during the authorization read) we must still release
-    // the listing and drop the in-memory auction, or it is stranded IN_AUCTION
-    // with a dead timer and never ends.
-    type Settlement =
-      | { outcome: 'sold'; bidId: string }
-      | { outcome: 'voided' }
-      | { outcome: 'gone' };
-    let settlement: Settlement;
+    // settleAuctionSale (below) says what is checked and why. It is wrapped in
+    // try/catch because endAuction runs from a setTimeout with no caller to
+    // handle a rejection: on ANY failure the lot must still be released and the
+    // in-memory auction dropped, or it is stranded IN_AUCTION with a dead timer.
+    let settlement: AuctionSettlement;
     try {
-      settlement = await prisma.$transaction(async (tx): Promise<Settlement> => {
-        const listing = await tx.listing.findUnique({ where: { id: listingId } });
-        if (!listing) return { outcome: 'gone' };
-
-        // Final authorization gate — never mint an ACCEPTED bid + escrow
-        // Transaction for a principal the REST layer would now 403.
-        //
-        // We take a row lock on the winner (SELECT ... FOR UPDATE) rather than a
-        // plain read: under PostgreSQL's default read-committed isolation a plain
-        // read wouldn't stop a demotion from committing between the role check
-        // and the sale writes. FOR UPDATE holds the User row for the rest of this
-        // transaction, so a concurrent role UPDATE blocks until settlement
-        // commits or rolls back — making the authorization decision and the sale
-        // genuinely atomic. (Cast to text so the enum comes back as a plain
-        // string; empty result = user deleted mid-auction, treated as not a
-        // buyer.)
-        const lockedWinner = await tx.$queryRaw<Array<{ role: string }>>`
-          SELECT "role"::text AS role FROM "User" WHERE "id" = ${winnerId} FOR UPDATE
-        `;
-        if (lockedWinner[0]?.role !== 'BUYER') {
-          // Void: return the listing to the market instead of selling to a
-          // non-buyer. Same transaction, so the revert is atomic too.
-          await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
-          return { outcome: 'voided' };
-        }
-
-        const wb = await tx.bid.create({
-          data: {
-            listingId,
-            buyerId: winnerId,
-            bidPricePerUnit: auction.currentPrice,
-            quantity: listing.quantity,
-            totalAmount: auction.currentPrice * listing.quantity,
-            currency: auction.currency as any,
-            message: `Won via live auction (${auction.bids.length} bids)`,
-            // An auction bids on price alone, so delivery is on the lot's terms.
-            freightPaidBy: listing.freightPaidBy,
-            isAgentBid: false,
-            status: 'ACCEPTED',
-          },
-        });
-        await tx.listing.update({ where: { id: listingId }, data: { status: 'SOLD' } });
-        await createTransaction(wb.id, tx);
-        return { outcome: 'sold', bidId: wb.id };
+      settlement = await settleAuctionSale({
+        listingId,
+        winnerId,
+        price: auction.currentPrice,
+        bidCount: auction.bids.length,
       });
     } catch (err) {
       console.error(`Failed to settle auction ${listingId}:`, err);
       // The transaction rolled back, so the listing is still IN_AUCTION.
-      // Release it back to the market so it isn't stranded.
+      // Release it back to the market so it isn't stranded. Conditional, so a
+      // lot that left the auction some other way is never put back on sale.
       try {
-        await prisma.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+        await releaseAuctionLot(listingId);
       } catch (revertErr) {
         // Even the release failed — the DB is likely still unreachable. Dropping
         // the auction now would leave the listing stuck IN_AUCTION with no timer
@@ -547,15 +499,24 @@ async function endAuction(listingId: string) {
         totalBids: auction.bids.length,
         message: 'Auction voided — winning bidder is no longer authorized to buy',
       });
+    } else {
+      // 'gone': the lot was deleted, or is no longer in this auction, so there
+      // is nothing to sell. Bidders are told rather than left on a frozen clock.
+      io.to(roomName).emit('auction:ended', {
+        listingId,
+        winner: null,
+        finalPrice: auction.currentPrice,
+        totalBids: auction.bids.length,
+        message: 'Auction closed: this lot is no longer available',
+      });
     }
-    // outcome 'gone' (listing deleted mid-auction): nothing to settle or
-    // broadcast; fall through to the shared cleanup below.
   } else {
-    // No bids — revert to ACTIVE
-    await prisma.listing.update({
-      where: { id: listingId },
-      data: { status: 'ACTIVE' },
-    });
+    // No bids: back on the market, if it is still this auction's lot.
+    try {
+      await releaseAuctionLot(listingId);
+    } catch (err) {
+      console.error(`Failed to release listing ${listingId} after an auction with no bids:`, err);
+    }
 
     io.to(roomName).emit('auction:ended', {
       listingId,
@@ -568,6 +529,131 @@ async function endAuction(listingId: string) {
 
   // Clean up
   activeAuctions.delete(listingId);
+}
+
+// =============================================================================
+// SETTLE AN AUCTION SALE
+// =============================================================================
+// Everything the outcome depends on is read and written in ONE transaction, so
+// there is no check-then-act gap. Exported so it can be tested on a real
+// database; endAuction is the only caller.
+//
+// - THE LOT IS LOCKED AND CHECKED FIRST. It must still be IN_AUCTION with stock
+//   left. Before this, settlement never looked: a seller accepting an older
+//   pending bid mid-auction sold the lot, and the auction then sold it again
+//   to its winner, two buyers and two deals for one lot. Bid accepts now refuse
+//   an IN_AUCTION lot too, but this check is what makes a second sale
+//   impossible whichever path got there first.
+// - THE WINNER BUYS WHAT IS LEFT, remainingQuantity, not the quantity first
+//   listed. Shoppers can buy part of a lot by the kilo before it goes to
+//   auction, and the winner used to be billed for those kilos as well.
+// - THE WINNER'S ROLE IS RE-READ UNDER A ROW LOCK (FOR UPDATE), not trusted
+//   from the socket handshake, so a demotion racing settlement either commits
+//   first and voids the sale or waits until the sale commits.
+// - The winning bid, the SOLD flip and the escrow Transaction commit together,
+//   so a settled auction never leaves a SOLD lot with no payable deal.
+export type AuctionSettlement =
+  | { outcome: 'sold'; bidId: string }
+  | { outcome: 'voided' }
+  | { outcome: 'gone' };
+
+export async function settleAuctionSale(input: {
+  listingId: string;
+  winnerId: string;
+  price: number;
+  bidCount: number;
+}): Promise<AuctionSettlement> {
+  const { listingId, winnerId, price, bidCount } = input;
+  return prisma.$transaction(async (tx): Promise<AuctionSettlement> => {
+    // Lock the lot so nothing can change its status or stock until this
+    // commits; whatever was read here is what gets sold.
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "Listing" WHERE "id" = ${listingId} FOR UPDATE
+    `;
+    if (locked.length === 0) return { outcome: 'gone' };
+    const listing = await tx.listing.findUniqueOrThrow({ where: { id: listingId } });
+    if (listing.status !== 'IN_AUCTION' || !(listing.remainingQuantity > 0)) {
+      return { outcome: 'gone' };
+    }
+
+    // Final authorization gate: never mint an ACCEPTED bid and an escrow deal
+    // for somebody the REST layer would now refuse. An empty result means the
+    // account was deleted mid-auction, treated as not a buyer.
+    const lockedWinner = await tx.$queryRaw<Array<{ role: string }>>`
+      SELECT "role"::text AS role FROM "User" WHERE "id" = ${winnerId} FOR UPDATE
+    `;
+    if (lockedWinner[0]?.role !== 'BUYER') {
+      await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+      return { outcome: 'voided' };
+    }
+
+    const quantity = listing.remainingQuantity;
+    const wb = await tx.bid.create({
+      data: {
+        listingId,
+        buyerId: winnerId,
+        bidPricePerUnit: price,
+        quantity,
+        totalAmount: price * quantity,
+        currency: listing.currency,
+        message: `Won via live auction (${bidCount} bids)`,
+        // An auction bids on price alone, so delivery is on the lot's terms.
+        freightPaidBy: listing.freightPaidBy,
+        isAgentBid: false,
+        status: 'ACCEPTED',
+      },
+    });
+    await tx.listing.update({
+      where: { id: listingId },
+      data: { status: 'SOLD', remainingQuantity: 0 },
+    });
+    await createTransaction(wb.id, tx);
+    return { outcome: 'sold', bidId: wb.id };
+  });
+}
+
+// Put an auction's lot back on the market, only if it is still in an auction.
+async function releaseAuctionLot(listingId: string): Promise<void> {
+  await prisma.listing.updateMany({
+    where: { id: listingId, status: 'IN_AUCTION' },
+    data: { status: 'ACTIVE' },
+  });
+}
+
+// =============================================================================
+// RELEASE LOTS STRANDED BY A RESTART
+// =============================================================================
+// Live auctions are held in this process's memory, so a restart (every deploy
+// is one) loses them: the bids, the clock and the timer that would end them.
+// Their lots were left IN_AUCTION for good, where nothing can sell, relist or
+// re-auction them. Called once at boot, before the server listens, when this
+// process holds no auctions, so every IN_AUCTION lot is one a previous process
+// abandoned. Each goes back on sale and its seller is told the auction was cut
+// short and can be started again. Persisting auctions so they survive a
+// restart is the real fix and is not built.
+export async function releaseStrandedAuctions(): Promise<number> {
+  const stranded = await prisma.listing.findMany({
+    where: { status: 'IN_AUCTION' },
+    select: { id: true, cropName: true, farmer: { select: { userId: true } } },
+  });
+  let released = 0;
+  for (const lot of stranded) {
+    if (activeAuctions.has(lot.id)) continue;
+    const { count } = await prisma.listing.updateMany({
+      where: { id: lot.id, status: 'IN_AUCTION' },
+      data: { status: 'ACTIVE' },
+    });
+    if (count === 0) continue;
+    released += 1;
+    createNotification({
+      userId: lot.farmer.userId,
+      type: 'AUCTION_INTERRUPTED',
+      title: 'Your auction was interrupted',
+      message: `The live auction on your ${lot.cropName} stopped when CropBid restarted, so no sale was made. The lot is back on the market and you can start a new auction.`,
+      data: { listingId: lot.id },
+    }).catch(() => {});
+  }
+  return released;
 }
 
 // =============================================================================

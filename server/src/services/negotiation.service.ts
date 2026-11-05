@@ -287,11 +287,13 @@ async function runNegotiation(
     // took, nor oversell stock already bought directly by consumers (which
     // decrements remainingQuantity). Mirrors the guard in bid.service.acceptBid.
     // If the claim loses the race, void this deal rather than create a second sale.
+    // ACTIVE only: a lot in a live auction is sold by the auction (bid.service
+    // acceptBid says why), so a negotiation that closes mid-auction is voided.
     const claimed = await prisma.$transaction(async (tx) => {
       const claim = await tx.listing.updateMany({
         where: {
           id: bid.listingId,
-          status: { notIn: ['SOLD', 'EXPIRED'] },
+          status: 'ACTIVE',
           remainingQuantity: { gte: bid.quantity },
         },
         data: { status: 'SOLD', remainingQuantity: 0 },

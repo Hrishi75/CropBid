@@ -317,11 +317,19 @@ export async function acceptBid(
   // accepted for more stock than is actually left after direct-sale consumer
   // purchases (which decrement remainingQuantity but leave the listing ACTIVE).
   // Accepting sells the whole listing, so remainingQuantity drops to 0.
+  //
+  // ACTIVE only, never IN_AUCTION. A lot in a live auction is the auction's to
+  // sell: accepting an older pending bid here used to sell it, and then the
+  // auction sold it again to its winner when it ended. The pre-check below
+  // gives the seller a reason; the claim is what makes it hold.
+  if (bid.listing.status === 'IN_AUCTION') {
+    throw new ApiError(409, 'This lot is in a live auction. Wait for the auction to end.', 'LOT_IN_AUCTION');
+  }
   const accepted = await prisma.$transaction(async (tx) => {
     const claim = await tx.listing.updateMany({
       where: {
         id: bid.listingId,
-        status: { notIn: ['SOLD', 'EXPIRED'] },
+        status: 'ACTIVE',
         remainingQuantity: { gte: bid.quantity },
       },
       data: { status: 'SOLD', remainingQuantity: 0 },
