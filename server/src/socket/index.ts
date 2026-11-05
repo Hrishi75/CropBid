@@ -373,11 +373,12 @@ export async function startAuction(
   // the transaction commits, and nothing after that touches the database.
   const listing = await prisma.$transaction(async (tx) => {
     const claim = await tx.listing.updateMany({
-      where: { id: listingId, status: 'ACTIVE' },
+      // Stock left too: an auction of nothing would end in a deal for nothing.
+      where: { id: listingId, status: 'ACTIVE', remainingQuantity: { gt: 0 } },
       data: { status: 'IN_AUCTION' },
     });
     if (claim.count === 0) {
-      throw new ApiError(409, 'This lot can no longer be auctioned. It may have sold or already be in an auction.');
+      throw new ApiError(409, 'This lot can no longer be auctioned. It may have sold, have no stock left, or already be in an auction.');
     }
     return tx.listing.findUniqueOrThrow({
       where: { id: listingId },
@@ -607,6 +608,12 @@ export async function settleAuctionSale(input: {
     // that; whatever is over stays on sale.
     const quantity = Math.min(listing.remainingQuantity, input.quantity ?? Infinity);
     const left = listing.remainingQuantity - quantity;
+    // Nothing to sell (an auction opened on no stock by an older build, say):
+    // no bid and no deal for nothing; the lot goes back on sale.
+    if (!(quantity > 0)) {
+      await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
+      return { outcome: 'gone' };
+    }
     const wb = await tx.bid.create({
       data: {
         listingId,

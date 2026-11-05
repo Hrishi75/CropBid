@@ -23,6 +23,7 @@ import { prisma } from '../lib/prisma';
 import { createNotification } from '../services/notification.service';
 import { acceptBid } from '../services/bid.service';
 import { updateListing } from '../services/listing.service';
+import { createTransaction } from '../services/transaction.service';
 import { settleAuctionSale, startAuction, releaseStrandedAuctions } from './index';
 
 const BUYER = 'au-buyer';
@@ -141,6 +142,14 @@ describe('settling an auction', () => {
     expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ status: 'ACTIVE', remainingQuantity: 2 });
   });
 
+  it('makes no deal when there is nothing to sell', async () => {
+    const l = await lot('IN_AUCTION', 10, 2);
+    const result = await settleAuctionSale({ listingId: l.id, winnerId: BUYER, price: 2400, bidCount: 1, quantity: 0 });
+    expect(result.outcome).toBe('gone');
+    expect(await salesOf(l.id)).toBe(0);
+    expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ status: 'ACTIVE', remainingQuantity: 2 });
+  });
+
   it('voids the sale and puts the lot back when the winner is no longer a buyer', async () => {
     const l = await lot('IN_AUCTION');
     await prisma.user.update({ where: { id: BUYER }, data: { role: 'CONSUMER' } });
@@ -171,6 +180,12 @@ describe('starting an auction', () => {
     const auction = await startAuction(l.id, 60);
     if (auction.timer) clearTimeout(auction.timer);
     expect(auction.quantity).toBe(6);
+  });
+
+  it('refuses a lot with no stock left', async () => {
+    const l = await lot('ACTIVE', 10, 0);
+    await expect(startAuction(l.id, 60)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe('ACTIVE');
   });
 
   it('leaves the lot alone when it cannot be claimed', async () => {
@@ -207,6 +222,20 @@ describe('editing a lot in a live auction', () => {
       await expect(updateListing(l.id, FARM, change as any)).rejects.toMatchObject({ statusCode: 409, code: 'AUCTION_TERMS_LOCKED' });
     }
     expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ quantity: 10, unit: 'QUINTAL', currency: 'INR' });
+  });
+});
+
+describe('editing a lot that already has deals', () => {
+  it('cannot change its unit or currency, but can change its quantity', async () => {
+    const l = await lot('ACTIVE', 10, 6);
+    const bid = await pendingBid(l.id, 4);
+    await prisma.bid.update({ where: { id: bid.id }, data: { status: 'ACCEPTED' } });
+    await createTransaction(bid.id);
+    expect(await salesOf(l.id)).toBe(1);
+    for (const change of [{ unit: 'TONNE' }, { currency: 'USD' }]) {
+      await expect(updateListing(l.id, FARM, change as any)).rejects.toMatchObject({ statusCode: 409, code: 'LOT_HAS_DEALS' });
+    }
+    await expect(updateListing(l.id, FARM, { quantity: 12 } as any)).resolves.toMatchObject({ quantity: 12, remainingQuantity: 8 });
   });
 });
 
