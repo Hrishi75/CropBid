@@ -29,6 +29,7 @@ const TYPE_ICONS: Record<string, typeof Bell> = {
   BID_COUNTERED: Gavel,
   NEGOTIATION_DONE: Bot,
   AUCTION_WON: Gavel,
+  AUCTION_INTERRUPTED: Gavel,
   DELIVERY_UPDATE: Truck,
   PAYMENT_RELEASED: DollarSign,
   NEW_REQUIREMENT: ShoppingCart,

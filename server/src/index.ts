@@ -15,7 +15,7 @@ import './instrument';
 import http from 'http';
 import app from './app';
 import { config } from './config';
-import { initializeSocket } from './socket';
+import { initializeSocket, releaseStrandedAuctions } from './socket';
 import { clearPlaintextRefreshTokens } from './utils/refreshToken';
 import { purgeExpiredSignInData } from './services/retention.service';
 import { countSealedPayoutDetails, encryptStoredPayoutDetails } from './services/payoutDetails';
@@ -94,7 +94,18 @@ if (isEncryptionConfigured()) {
 // so the first visitor to the rates board is not the one who waits. Never fatal.
 warmRates();
 
-void payoutKeyChecked.then(() => server.listen(PORT, () => {
+// AUCTIONS LEFT BEHIND BY THE LAST PROCESS. Live auctions are held in memory,
+// so a restart loses them and their lots sat IN_AUCTION for good. Released
+// before the server listens, while this process can hold no auction of its
+// own, so nothing it starts can be mistaken for an abandoned one. Never fatal.
+const strandedAuctionsReleased: Promise<void> = releaseStrandedAuctions().then(
+  (n) => {
+    if (n > 0) console.log(`🔨 Returned ${n} lot(s) left in an interrupted auction to the market`);
+  },
+  (err) => console.error('Could not release lots left in an interrupted auction:', err),
+);
+
+void Promise.all([payoutKeyChecked, strandedAuctionsReleased]).then(() => server.listen(PORT, () => {
   console.log(`
   🌾 CropBid Server is running!
 

@@ -16,7 +16,7 @@ import { ApiError } from '../utils/ApiError';
 // POST /api/auctions/start — Farmer starts a live auction
 export async function startAuctionHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const { listingId, durationMinutes = 10 } = req.body;
+    const { listingId } = req.body;
 
     if (!listingId) {
       throw new ApiError(400, 'listingId is required');
@@ -37,7 +37,11 @@ export async function startAuctionHandler(req: Request, res: Response, next: Nex
     }
 
     // Validate duration (5-60 minutes)
-    const duration = Math.min(Math.max(durationMinutes, 5), 60);
+    // Anything that is not a number of minutes falls back to 10. It used to go
+    // straight into Math.max, where "abc" became NaN and the auction ended the
+    // moment it started.
+    const requested = Number(req.body.durationMinutes ?? 10);
+    const duration = Number.isFinite(requested) ? Math.min(Math.max(Math.round(requested), 5), 60) : 10;
 
     const auction = await startAuction(listingId, duration);
 

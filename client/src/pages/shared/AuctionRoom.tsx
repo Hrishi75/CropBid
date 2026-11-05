@@ -43,9 +43,9 @@ interface AuctionState {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
-  // Some servers include the lot quantity in the auction snapshot. Others
-  // omit it (it's only on the listing). We fetch the listing as a fallback
-  // when this is missing so the bid-total preview reflects real volume.
+  // What the winner buys: the lot's remaining stock when the auction started,
+  // not the quantity first listed. Older servers omit it, so the listing's
+  // remaining stock is fetched as a fallback.
   quantity?: number;
 }
 
@@ -97,11 +97,14 @@ export function AuctionRoom() {
       setLoading(false);
     });
 
-    // Always fetch the listing to learn the lot quantity. Auction snapshots
-    // may omit it, and without it the bid-total preview would be wrong.
+    // Fetch the listing too, for its delivery terms and, if the snapshot
+    // carried no quantity, what is left to sell. Remaining stock, not the
+    // quantity first listed: that is what the winner is billed for. The
+    // snapshot's figure wins when both arrive.
     api.get(`/listings/${listingId}`)
       .then(({ data }) => {
-        if (data?.quantity) setLotQuantity(data.quantity);
+        const left = data?.remainingQuantity ?? data?.quantity;
+        if (left) setLotQuantity((prev) => prev ?? left);
         if (data?.freightPaidBy) setLotFreight(data.freightPaidBy);
       })
       .catch(() => {
@@ -132,6 +135,7 @@ export function AuctionRoom() {
           const res = await api.get(`/auctions/${listingId}`);
           setAuction(res.data);
           setBids(res.data.bids || []);
+          if (res.data.quantity) setLotQuantity(res.data.quantity);
           endsAtRef.current = new Date(res.data.endsAt);
           setBidPrice(String(Math.ceil(res.data.currentPrice * 1.05)));
         } catch {

@@ -286,73 +286,95 @@ export async function updateListing(listingId: string, userId: string, input: Up
     throw new ApiError(400, `Retail price cannot be below your floor price (${minPrice})`);
   }
 
-  // Reconcile direct-sale stock when the total quantity changes: preserve the
-  // units already sold (quantity - remainingQuantity) and recompute what's left,
-  // so remainingQuantity never drifts from the real available stock.
-  const soldQuantity = listing.quantity - listing.remainingQuantity;
-  const reconciledRemaining =
-    input.quantity !== undefined ? Math.max(0, input.quantity - soldQuantity) : undefined;
-
   const freightPaidBy = parseFreightPayer(input.freightPaidBy);
-  // Bidders in a live auction bid on the terms shown when it opened, and the
-  // winner takes the lot's terms at settlement, so they cannot move mid-auction.
-  if (freightPaidBy && freightPaidBy !== listing.freightPaidBy && listing.status === 'IN_AUCTION') {
-    throw new ApiError(409, 'Delivery terms cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
-  }
-  // Written on its own, conditional on the lot not being in an auction, so an
-  // auction starting between the check above and this write cannot be missed.
-  if (freightPaidBy && freightPaidBy !== listing.freightPaidBy) {
-    const moved = await prisma.listing.updateMany({
-      where: { id: listingId, status: { notIn: ['IN_AUCTION', 'SOLD', 'EXPIRED'] } },
-      data: { freightPaidBy },
-    });
-    if (moved.count === 0) {
-      throw new ApiError(409, 'Delivery terms cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
+
+  // ONE TRANSACTION, the row locked first. Everything the edit depends on is
+  // re-read under the lock and every field is written in one statement, so an
+  // auction starting (its claim waits on this lock), a sale, or a failure
+  // part way can never see half an edit: the lot carries either the old terms
+  // or the complete new ones.
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id" = ${listingId} FOR UPDATE`;
+    const current = await tx.listing.findUniqueOrThrow({ where: { id: listingId } });
+    if (current.status === 'SOLD' || current.status === 'EXPIRED') {
+      throw new ApiError(400, `Cannot edit a ${current.status.toLowerCase()} listing`);
     }
-  }
 
-  const updated = await prisma.listing.update({
-    where: { id: listingId },
-    data: {
-      ...(input.cropName && { cropName: input.cropName }),
-      ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
-      ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
-      ...(input.unit && { unit: input.unit as any }),
-      ...(input.qualityGrade && { qualityGrade: input.qualityGrade as any }),
-      ...(input.pricePerUnitMin !== undefined && { pricePerUnitMin: input.pricePerUnitMin }),
-      ...(input.pricePerUnitMax !== undefined && { pricePerUnitMax: input.pricePerUnitMax }),
-      ...(input.currency && { currency: input.currency as any }),
-      ...(input.harvestDate !== undefined && { harvestDate: input.harvestDate ? new Date(input.harvestDate) : null }),
-      ...(input.expiryDate !== undefined && { expiryDate: input.expiryDate ? new Date(input.expiryDate) : null }),
-      // Editing the description invalidates its stored translations, so they
-      // are cleared in the SAME write. Without this the listing would show a
-      // Hindi buyer a translation of text the farmer has already replaced —
-      // worse than showing them the new original, which is what a null falls
-      // back to. The controller re-queues a translation right after.
-      ...(input.description !== undefined && {
-        description: input.description || null,
-        descriptionEn: null,
-        descriptionHi: null,
-        descriptionMr: null,
-        descriptionLang: null,
-      }),
-      ...(input.images && { images: input.images }),
-      ...(input.labReportUrl !== undefined && { labReportUrl: input.labReportUrl || null }),
-      ...(input.organic !== undefined && { organic: input.organic }),
-      ...(input.location && { location: input.location }),
-      ...(input.country && { country: input.country }),
-      ...(input.state && { state: input.state }),
-      ...(input.directSaleEnabled !== undefined && { directSaleEnabled: input.directSaleEnabled }),
-      ...(input.retailPricePerUnit !== undefined && { retailPricePerUnit: input.retailPricePerUnit }),
-    },
-    include: {
-      farmer: {
-        include: { user: { select: { id: true, name: true, trustScore: true, avatar: true } } },
+    const freightChanges = !!freightPaidBy && freightPaidBy !== current.freightPaidBy;
+    const quantityChanges = input.quantity !== undefined && input.quantity !== current.quantity;
+    const unitChanges = !!input.unit && input.unit !== current.unit;
+    const currencyChanges = !!input.currency && input.currency !== current.currency;
+
+    // What an auction sells is fixed when it opens: bidders bid on that
+    // quantity, in that unit and currency, on those delivery terms, and the
+    // winner is billed for it. None of them may move mid-auction.
+    if (current.status === 'IN_AUCTION' && (freightChanges || quantityChanges || unitChanges || currencyChanges)) {
+      throw new ApiError(
+        409,
+        'Quantity, unit, currency and delivery terms cannot change while the lot is in a live auction.',
+        'AUCTION_TERMS_LOCKED',
+      );
+    }
+
+    // A deal already made on this lot reads its unit and currency from the
+    // listing (neither Bid nor Transaction stores them), so changing either
+    // would turn "6 quintals" into "6 kg" on a deal whose amount stays put.
+    if ((unitChanges || currencyChanges) && (await tx.transaction.count({ where: { listingId } })) > 0) {
+      throw new ApiError(
+        409,
+        'This lot already has deals, so its unit and currency cannot change. List the rest as a new lot instead.',
+        'LOT_HAS_DEALS',
+      );
+    }
+
+    // Reconcile direct-sale stock when the total quantity changes: preserve the
+    // units already sold (quantity - remainingQuantity) and recompute what's
+    // left, so remainingQuantity never drifts from the real available stock.
+    const soldQuantity = current.quantity - current.remainingQuantity;
+    const reconciledRemaining = quantityChanges ? Math.max(0, input.quantity! - soldQuantity) : undefined;
+
+    return tx.listing.update({
+      where: { id: listingId },
+      data: {
+        ...(freightChanges && { freightPaidBy }),
+        ...(quantityChanges && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
+        ...(unitChanges && { unit: input.unit as any }),
+        ...(currencyChanges && { currency: input.currency as any }),
+        ...(input.cropName && { cropName: input.cropName }),
+        ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
+        ...(input.qualityGrade && { qualityGrade: input.qualityGrade as any }),
+        ...(input.pricePerUnitMin !== undefined && { pricePerUnitMin: input.pricePerUnitMin }),
+        ...(input.pricePerUnitMax !== undefined && { pricePerUnitMax: input.pricePerUnitMax }),
+        ...(input.harvestDate !== undefined && { harvestDate: input.harvestDate ? new Date(input.harvestDate) : null }),
+        ...(input.expiryDate !== undefined && { expiryDate: input.expiryDate ? new Date(input.expiryDate) : null }),
+        // Editing the description invalidates its stored translations, so they
+        // are cleared in the SAME write. Without this the listing would show a
+        // Hindi buyer a translation of text the farmer has already replaced —
+        // worse than showing them the new original, which is what a null falls
+        // back to. The controller re-queues a translation right after.
+        ...(input.description !== undefined && {
+          description: input.description || null,
+          descriptionEn: null,
+          descriptionHi: null,
+          descriptionMr: null,
+          descriptionLang: null,
+        }),
+        ...(input.images && { images: input.images }),
+        ...(input.labReportUrl !== undefined && { labReportUrl: input.labReportUrl || null }),
+        ...(input.organic !== undefined && { organic: input.organic }),
+        ...(input.location && { location: input.location }),
+        ...(input.country && { country: input.country }),
+        ...(input.state && { state: input.state }),
+        ...(input.directSaleEnabled !== undefined && { directSaleEnabled: input.directSaleEnabled }),
+        ...(input.retailPricePerUnit !== undefined && { retailPricePerUnit: input.retailPricePerUnit }),
       },
-    },
+      include: {
+        farmer: {
+          include: { user: { select: { id: true, name: true, trustScore: true, avatar: true } } },
+        },
+      },
+    });
   });
-
-  return updated;
 }
 
 // =============================================================================
