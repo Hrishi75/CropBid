@@ -22,7 +22,7 @@
 import { prisma } from '../lib/prisma';
 import { PUBLIC_SELLER_SELECT, nameOnlySellers } from './publicSeller';
 import { Prisma } from '../generated/prisma/client';
-import type { Currency, PaymentStatus } from '../generated/prisma/enums';
+import type { PaymentStatus } from '../generated/prisma/enums';
 import { ApiError } from '../utils/ApiError';
 import { buyerPayable, buyerPaysFreight, freightShares } from '../utils/freight';
 import { notifyDeliveryUpdate, notifyPaymentReleased } from './notification.helpers';
@@ -34,13 +34,9 @@ export const PLATFORM_FEE_PERCENT = 2.0;
 // stayed: in escrow or released, never unpaid, cancelled or refunded. Rupee
 // deals only, because the figures are shown in rupees and seed data carries
 // USD, EUR and GBP lots that would otherwise be added in as if they were.
-const GMV_STATUSES: PaymentStatus[] = ['ESCROW', 'RELEASED'];
+export const GMV_STATUSES: PaymentStatus[] = ['ESCROW', 'RELEASED'];
 export const GMV_WHERE = { paymentStatus: { in: GMV_STATUSES }, currency: 'INR' } satisfies Prisma.TransactionWhereInput;
 export const FEES_WHERE = { paymentStatus: 'RELEASED', currency: 'INR' } satisfies Prisma.TransactionWhereInput;
-// The same two rules for rows already in memory.
-type MoneyRow = { paymentStatus: PaymentStatus; currency: Currency };
-export const countsAsGmv = (t: MoneyRow) => GMV_STATUSES.includes(t.paymentStatus) && t.currency === 'INR';
-export const countsAsFee = (t: MoneyRow) => t.paymentStatus === 'RELEASED' && t.currency === 'INR';
 
 // What a farmer or buyer may see of a shipment. CropBid hires the haulier, so
 // the carrier's identity, its phone number and our cut of the freight are ops

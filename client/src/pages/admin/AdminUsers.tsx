@@ -13,7 +13,7 @@
 // It is good for one sign-in, which is the change of password itself.
 // =============================================================================
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { Input } from '../../components/ui/Input';
@@ -87,28 +87,42 @@ export function AdminUsers() {
   const [page, setPage] = useState(0);
   const LIMIT = 15;
 
+  // The search box asks the server once typing pauses, not on every key. And
+  // only the newest request may write: an older answer landing last used to
+  // put the results for "Ram" back over the results for "Ramesh".
+  const [query, setQuery] = useState('');
+  const latest = useRef(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   useEffect(() => {
     fetchUsers();
-  }, [search, roleFilter, page]);
+  }, [query, roleFilter, page]);
 
   async function fetchUsers() {
+    const mine = ++latest.current;
     setLoading(true);
     setFailed(false);
     try {
       const params = new URLSearchParams();
-      if (search) params.set('search', search);
+      if (query) params.set('search', query);
       if (roleFilter) params.set('role', roleFilter);
       params.set('limit', String(LIMIT));
       params.set('offset', String(page * LIMIT));
       const res = await api.get(`/admin/users?${params}`);
+      if (mine !== latest.current) return;
       setUsers(res.data.users);
       setTotal(res.data.total);
       setSummary(res.data.summary ?? null);
     } catch (err) {
+      if (mine !== latest.current) return;
       console.error('Failed to load users:', err);
       setFailed(true);
     } finally {
-      setLoading(false);
+      if (mine === latest.current) setLoading(false);
     }
   }
 
@@ -180,7 +194,7 @@ export function AdminUsers() {
   // location: the location of a seller is often a street address.
   async function exportUsers() {
     const filters: Record<string, string> = {};
-    if (search) filters.search = search;
+    if (query) filters.search = query;
     if (roleFilter) filters.role = roleFilter;
     const all = await fetchEveryRow<AdminUser>('/admin/users', filters, 'users');
     if (all.length === 0) return 0;

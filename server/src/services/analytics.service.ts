@@ -13,7 +13,8 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
-import { PLATFORM_FEE_PERCENT, countsAsFee, countsAsGmv } from './transaction.service';
+import { GMV_STATUSES, PLATFORM_FEE_PERCENT } from './transaction.service';
+import { Prisma } from '../generated/prisma/client';
 
 // =============================================================================
 // FARMER ANALYTICS — Revenue, listings, bid stats
@@ -196,59 +197,52 @@ export async function getBuyerAnalytics(userId: string) {
 // =============================================================================
 // ADMIN ANALYTICS — Platform-wide trends
 // =============================================================================
+// Counted and summed in the database, a row per month, rather than every
+// transaction, user, lot and bid on the platform loaded into memory to be
+// counted here. The money rules are the dashboard's (GMV_WHERE and
+// FEES_WHERE in transaction.service): paid rupee deals for GMV, released
+// rupee deals for fees.
+type MonthRow = { y: number; m: number; value: number | null };
+
+async function perMonth(query: Prisma.Sql) {
+  const rows = await prisma.$queryRaw<MonthRow[]>(query);
+  // Mid-month, so the month is the same in any server timezone.
+  return aggregateByMonth(
+    rows.map((r) => ({ createdAt: new Date(Number(r.y), Number(r.m) - 1, 15), value: Number(r.value ?? 0) })),
+    (r) => r.value,
+  );
+}
+
+const month = Prisma.sql`EXTRACT(YEAR FROM "createdAt")::int AS y, EXTRACT(MONTH FROM "createdAt")::int AS m`;
+
 export async function getAdminAnalytics() {
-  const [transactions, users, listings, bids] = await Promise.all([
-    prisma.transaction.findMany({
-      select: {
-        totalAmount: true,
-        platformFeeAmount: true,
-        paymentStatus: true,
-        currency: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    }),
-    prisma.user.findMany({
-      select: { role: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-    }),
+  const [monthlyGMV, monthlyRevenue, monthlySignups, monthlyListings, monthlyBids, crops, roles] = await Promise.all([
+    perMonth(Prisma.sql`
+      SELECT ${month}, sum("totalAmount")::float AS value FROM "Transaction"
+      WHERE "paymentStatus"::text IN (${Prisma.join(GMV_STATUSES)}) AND currency = 'INR'
+      GROUP BY 1, 2`),
+    perMonth(Prisma.sql`
+      SELECT ${month}, sum("platformFeeAmount")::float AS value FROM "Transaction"
+      WHERE "paymentStatus" = 'RELEASED' AND currency = 'INR'
+      GROUP BY 1, 2`),
+    perMonth(Prisma.sql`SELECT ${month}, count(*)::int AS value FROM "User" GROUP BY 1, 2`),
     // Lots put up for sale. A requirement fill or a supply-contract batch is
     // a SOLD listing made to carry the deal, never shown to anyone, so it is
     // left out of the lot count and the crop ranking.
-    prisma.listing.findMany({
+    perMonth(Prisma.sql`SELECT ${month}, count(*)::int AS value FROM "Listing" WHERE NOT "isRequirementFill" GROUP BY 1, 2`),
+    perMonth(Prisma.sql`SELECT ${month}, count(*)::int AS value FROM "Bid" GROUP BY 1, 2`),
+    prisma.listing.groupBy({
+      by: ['cropName'],
       where: { isRequirementFill: false },
-      select: { createdAt: true, cropName: true },
-      orderBy: { createdAt: 'asc' },
+      _count: { _all: true },
+      orderBy: { _count: { cropName: 'desc' } },
+      take: 10,
     }),
-    prisma.bid.findMany({
-      select: { createdAt: true },
-      orderBy: { createdAt: 'asc' },
-    }),
+    prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
   ]);
 
-  const monthlyGMV = aggregateByMonth(transactions.filter(countsAsGmv), (t) => t.totalAmount);
-  const monthlyRevenue = aggregateByMonth(transactions.filter(countsAsFee), (t) => t.platformFeeAmount);
-  const monthlySignups = aggregateByMonth(users, () => 1);
-  const monthlyListings = aggregateByMonth(listings, () => 1);
-  const monthlyBids = aggregateByMonth(bids, () => 1);
-
-  // Top crops
-  const cropCounts: Record<string, number> = {};
-  listings.forEach((l) => {
-    cropCounts[l.cropName] = (cropCounts[l.cropName] || 0) + 1;
-  });
-  const topCrops = Object.entries(cropCounts)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 10);
-
-  // User role distribution
-  const roleCounts: Record<string, number> = {};
-  users.forEach((u) => {
-    roleCounts[u.role] = (roleCounts[u.role] || 0) + 1;
-  });
-  const roleDistribution = Object.entries(roleCounts)
-    .map(([name, value]) => ({ name, value }));
+  const topCrops = crops.map((c) => ({ name: c.cropName, value: c._count._all }));
+  const roleDistribution = roles.map((r) => ({ name: r.role, value: r._count._all }));
 
   const [funnel, negotiations] = await Promise.all([getAdminFunnel(), getNegotiationStats()]);
 
