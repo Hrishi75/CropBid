@@ -311,17 +311,37 @@ export async function updateListing(listingId: string, userId: string, input: Up
     }
   }
 
+  // What an auction sells is fixed when it opens: bidders are shown that
+  // quantity, in that unit and currency, and the winner is billed for it. So
+  // none of the three may change mid-auction. Written on its own, conditional
+  // on the lot not being in an auction, for the same reason as the delivery
+  // terms above.
+  const stockChanges = {
+    ...(input.quantity !== undefined && input.quantity !== listing.quantity && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
+    ...(input.unit && input.unit !== listing.unit && { unit: input.unit as any }),
+    ...(input.currency && input.currency !== listing.currency && { currency: input.currency as any }),
+  };
+  if (Object.keys(stockChanges).length > 0) {
+    if (listing.status === 'IN_AUCTION') {
+      throw new ApiError(409, 'Quantity, unit and currency cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
+    }
+    const moved = await prisma.listing.updateMany({
+      where: { id: listingId, status: { notIn: ['IN_AUCTION', 'SOLD', 'EXPIRED'] } },
+      data: stockChanges,
+    });
+    if (moved.count === 0) {
+      throw new ApiError(409, 'Quantity, unit and currency cannot change while the lot is in a live auction.', 'AUCTION_TERMS_LOCKED');
+    }
+  }
+
   const updated = await prisma.listing.update({
     where: { id: listingId },
     data: {
       ...(input.cropName && { cropName: input.cropName }),
       ...(input.cropVariety !== undefined && { cropVariety: input.cropVariety || null }),
-      ...(input.quantity !== undefined && { quantity: input.quantity, remainingQuantity: reconciledRemaining }),
-      ...(input.unit && { unit: input.unit as any }),
       ...(input.qualityGrade && { qualityGrade: input.qualityGrade as any }),
       ...(input.pricePerUnitMin !== undefined && { pricePerUnitMin: input.pricePerUnitMin }),
       ...(input.pricePerUnitMax !== undefined && { pricePerUnitMax: input.pricePerUnitMax }),
-      ...(input.currency && { currency: input.currency as any }),
       ...(input.harvestDate !== undefined && { harvestDate: input.harvestDate ? new Date(input.harvestDate) : null }),
       ...(input.expiryDate !== undefined && { expiryDate: input.expiryDate ? new Date(input.expiryDate) : null }),
       // Editing the description invalidates its stored translations, so they

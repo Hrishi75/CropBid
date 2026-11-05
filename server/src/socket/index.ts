@@ -452,6 +452,7 @@ async function endAuction(listingId: string) {
         winnerId,
         price: auction.currentPrice,
         bidCount: auction.bids.length,
+        quantity: auction.quantity,
       });
     } catch (err) {
       console.error(`Failed to settle auction ${listingId}:`, err);
@@ -574,6 +575,8 @@ export async function settleAuctionSale(input: {
   winnerId: string;
   price: number;
   bidCount: number;
+  // What bidders were shown. Optional so a caller without one sells what is left.
+  quantity?: number;
 }): Promise<AuctionSettlement> {
   const { listingId, winnerId, price, bidCount } = input;
   return prisma.$transaction(async (tx): Promise<AuctionSettlement> => {
@@ -599,7 +602,11 @@ export async function settleAuctionSale(input: {
       return { outcome: 'voided' };
     }
 
-    const quantity = listing.remainingQuantity;
+    // At most what bidders were shown. Stock can come back during an auction
+    // (a cancelled shop order returns its kilos), and the winner never bid on
+    // that; whatever is over stays on sale.
+    const quantity = Math.min(listing.remainingQuantity, input.quantity ?? Infinity);
+    const left = listing.remainingQuantity - quantity;
     const wb = await tx.bid.create({
       data: {
         listingId,
@@ -617,7 +624,7 @@ export async function settleAuctionSale(input: {
     });
     await tx.listing.update({
       where: { id: listingId },
-      data: { status: 'SOLD', remainingQuantity: 0 },
+      data: left > 0 ? { status: 'ACTIVE', remainingQuantity: left } : { status: 'SOLD', remainingQuantity: 0 },
     });
     await createTransaction(wb.id, tx);
     return { outcome: 'sold', bidId: wb.id };

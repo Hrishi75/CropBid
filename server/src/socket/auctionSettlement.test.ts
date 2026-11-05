@@ -22,6 +22,7 @@ vi.mock('../services/orderAlert.service', () => ({ alertNewOrder: vi.fn(() => Pr
 import { prisma } from '../lib/prisma';
 import { createNotification } from '../services/notification.service';
 import { acceptBid } from '../services/bid.service';
+import { updateListing } from '../services/listing.service';
 import { settleAuctionSale, startAuction, releaseStrandedAuctions } from './index';
 
 const BUYER = 'au-buyer';
@@ -129,6 +130,17 @@ describe('settling an auction', () => {
     expect(after).toMatchObject({ status: 'SOLD', remainingQuantity: 0 });
   });
 
+  it('sells no more than bidders were shown, leaving stock that came back on sale', async () => {
+    const l = await lot('IN_AUCTION', 10, 8); // opened at 6; a cancelled shop order returned 2
+
+    const result = await settleAuctionSale({ listingId: l.id, winnerId: BUYER, price: 2400, bidCount: 3, quantity: 6 });
+
+    expect(result.outcome).toBe('sold');
+    const deal = await prisma.transaction.findFirstOrThrow({ where: { listingId: l.id }, include: { bid: true } });
+    expect(deal.bid.quantity).toBe(6);
+    expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ status: 'ACTIVE', remainingQuantity: 2 });
+  });
+
   it('voids the sale and puts the lot back when the winner is no longer a buyer', async () => {
     const l = await lot('IN_AUCTION');
     await prisma.user.update({ where: { id: BUYER }, data: { role: 'CONSUMER' } });
@@ -185,6 +197,16 @@ describe('starting an auction', () => {
         expect(await salesOf(l.id)).toBe(1);
       }
     }
+  });
+});
+
+describe('editing a lot in a live auction', () => {
+  it('cannot change its quantity, unit or currency', async () => {
+    const l = await lot('IN_AUCTION');
+    for (const change of [{ quantity: 20 }, { unit: 'TONNE' }, { currency: 'USD' }]) {
+      await expect(updateListing(l.id, FARM, change as any)).rejects.toMatchObject({ statusCode: 409, code: 'AUCTION_TERMS_LOCKED' });
+    }
+    expect(await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ quantity: 10, unit: 'QUINTAL', currency: 'INR' });
   });
 });
 
