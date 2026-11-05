@@ -17,7 +17,7 @@ import express, { type RequestHandler } from 'express';
 import type { AddressInfo } from 'net';
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { loginAccountLimiter, phoneCodeLimiter, phoneKey } from './rateLimiter';
+import { loginAccountLimiter, loginKey, phoneCodeLimiter, phoneKey } from './rateLimiter';
 import authRoutes from '../routes/auth.routes';
 
 // The exported limiters keep one store for the life of the process, so every
@@ -77,6 +77,18 @@ describe('loginAccountLimiter', () => {
     expect(await s.post({ ...body, identifier: 'bystander-a@example.com' })).toBe(401);
   });
 
+  // Login ignores pendingId, so the limit must too, or a fresh one on every
+  // request is a fresh allowance against the same account.
+  it('gives no fresh allowance for a varied pendingId or an old-build email field', async () => {
+    const s = await serve(loginAccountLimiter, () => 401);
+    open.push(s);
+    for (let i = 0; i < 30; i++) {
+      expect(await s.post({ identifier: 'victim-c@example.com', password: 'guess', pendingId: `p-${i}` })).toBe(401);
+    }
+    expect(await s.post({ identifier: 'victim-c@example.com', password: 'guess', pendingId: 'p-new' })).toBe(429);
+    expect(await s.post({ email: 'victim-c@example.com', password: 'guess' })).toBe(429);
+  });
+
   it('never counts a successful sign-in', async () => {
     const s = await serve(loginAccountLimiter, () => 200);
     open.push(s);
@@ -102,6 +114,17 @@ describe('phoneCodeLimiter', () => {
     }
     expect(await s.post({ phone: '9811100003', email: 'new@example.com' })).toBe(429);
     expect(await s.post({ phone: '98111-00003' })).toBe(429);
+  });
+});
+
+describe('loginKey', () => {
+  it('reads the body the way loginHandler does, and never pendingId', () => {
+    const key = loginKey({ identifier: 'x@example.com' });
+    expect(loginKey({ identifier: 'x@example.com', pendingId: 'abc' })).toBe(key);
+    expect(loginKey({ email: 'X@example.com' })).toBe(key);
+    expect(loginKey({ phone: '98111 00009' })).toBe(loginKey({ identifier: '9811100009' }));
+    expect(loginKey({ pendingId: 'abc' })).toBe('');
+    expect(loginKey({ identifier: 42 })).toBe('');
   });
 });
 

@@ -217,6 +217,17 @@ export function phoneKey(body: unknown): string {
   return phone.replace(/[^0-9]/g, '') ? `phone:${phone}` : '';
 }
 
+// The account login actually checks the password for, and nothing else. It
+// MUST read the body the way loginHandler does (identifier, else email, else
+// phone). Not accountKey on the raw body: that reads `pendingId` first, which
+// login ignores, so a fresh pendingId on every request would have bought a
+// fresh allowance against the same identifier.
+export function loginKey(body: unknown): string {
+  const b = body as { identifier?: unknown; email?: unknown; phone?: unknown } | undefined;
+  const raw = b?.identifier ?? b?.email ?? b?.phone;
+  return typeof raw === 'string' ? accountKey({ identifier: raw }) : '';
+}
+
 // Password sign-in: 30 wrong passwords an hour per account. Only refusals
 // count (skipSuccessfulRequests), so somebody who signs in fine many times a
 // day is never touched. The same message for an account that exists and one
@@ -225,10 +236,10 @@ export const loginAccountLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 30,
   skipSuccessfulRequests: true,
-  skip: (req) => !accountKey(req.body),
+  skip: (req) => !loginKey(req.body),
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `login${accountKey(req.body)}`,
+  keyGenerator: (req) => `login${loginKey(req.body)}`,
   message: {
     error: true,
     message: 'Too many wrong passwords for this account. Try again in an hour, sign in with a phone code, or reset your password.',
