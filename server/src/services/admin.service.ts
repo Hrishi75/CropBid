@@ -1221,6 +1221,11 @@ export async function reviewPartnerApplication(input: ReviewInput) {
   if (rule.needsNote && !input.note?.trim()) {
     throw new ApiError(400, 'A note to the applicant is required for this action');
   }
+  // The note belongs to the actions that ask for one. Sent with any other, it
+  // is text typed for a different decision: a reason written for Reject,
+  // then Approve pressed instead, went out in the approval email as the
+  // reviewer's note. So it is dropped, from the email, the bell and the log.
+  const note = rule.needsNote ? input.note!.trim() : undefined;
 
   const table = input.kind === 'SELLER' ? prisma.farmerProfile : prisma.buyerProfile;
   const profile = await (table as typeof prisma.farmerProfile).findUnique({
@@ -1257,7 +1262,7 @@ export async function reviewPartnerApplication(input: ReviewInput) {
       where: { id: input.profileId, status: profile.status },
       data: {
         status: rule.to,
-        statusNote: rule.needsNote ? input.note!.trim() : null,
+        statusNote: note ?? null,
         reviewedAt: new Date(),
         reviewedById: input.adminId,
         // Approval doubles as the legacy verified badge.
@@ -1306,7 +1311,7 @@ export async function reviewPartnerApplication(input: ReviewInput) {
     action: `partner.application.${input.action.toLowerCase()}`,
     entityType: input.kind === 'SELLER' ? 'FarmerProfile' : 'BuyerProfile',
     entityId: input.profileId,
-    metadata: { from: profile.status, to: rule.to, note: input.note?.trim() || null },
+    metadata: { from: profile.status, to: rule.to, note: note ?? null },
   });
 
   const copy = DECISION_COPY[rule.to];
@@ -1320,7 +1325,7 @@ export async function reviewPartnerApplication(input: ReviewInput) {
       userId: profile.user.id,
       type: 'PARTNER_APPLICATION',
       title: copy.title,
-      message: copy.message(input.note?.trim()),
+      message: copy.message(note),
       data: { status: rule.to },
     }).catch((err) => console.error('[partner] decision notification failed:', err?.message || err));
     if (profile.user.email) {
@@ -1329,7 +1334,7 @@ export async function reviewPartnerApplication(input: ReviewInput) {
         name: profile.user.name,
         // Safe: copy.title is only non-empty for the four actionable states.
         status: rule.to as 'APPROVED' | 'NEEDS_INFO' | 'REJECTED' | 'SUSPENDED',
-        note: input.note?.trim(),
+        note,
       }).catch((err) => console.error('[partner] status email failed:', err?.message || err));
     }
   }
