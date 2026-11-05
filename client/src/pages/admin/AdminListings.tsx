@@ -97,16 +97,17 @@ export function AdminListings() {
     }
   }
 
-  // Every lot under the status tab. The lot's town and state are public on the
-  // market; the seller is named, never reached.
+  // Every lot under the status tab. State only, no town: a lot made to fill a
+  // request or a contract batch copies the seller's own location, which is
+  // often a street address. The seller is named, never reached.
   async function exportListings() {
     const all = await fetchEveryRow<AdminListing>('/admin/listings', statusFilter ? { status: statusFilter } : {}, 'listings');
     if (all.length === 0) return 0;
     downloadCsv(`listings-${statusFilter ? statusFilter.toLowerCase() : 'all'}`, toCsv(
       ['ID', 'Listed', 'Crop', 'Variety', 'Seller', 'Quantity', 'Unit', 'Price min', 'Price max', 'Currency',
-        'Grade', 'Organic', 'Town', 'State', 'Status', 'Bids', 'Deals'],
+        'Grade', 'Organic', 'State', 'Status', 'Bids', 'Deals'],
       all.map((x) => [x.id, day(x.createdAt), x.cropName, x.cropVariety, x.farmer.user.name, x.quantity, x.unit,
-        x.pricePerUnitMin, x.pricePerUnitMax, x.currency, x.qualityGrade, x.organic, x.location, x.state, x.status,
+        x.pricePerUnitMin, x.pricePerUnitMax, x.currency, x.qualityGrade, x.organic, x.state, x.status,
         x._count.bids, x._count.transactions]),
     ));
     return all.length;

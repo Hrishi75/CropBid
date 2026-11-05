@@ -47,18 +47,54 @@ export function downloadCsv(name: string, csv: string) {
 const BATCH = 200;
 // A stop for a list that never comes back short: 50,000 rows.
 const MAX_BATCHES = 250;
+const ATTEMPTS = 3;
 
-/** Every row of a paged admin list, for the filters given. */
-export async function fetchEveryRow<T>(path: string, filters: Record<string, string>, key: string): Promise<T[]> {
+export class ExportChangedError extends Error {
+  constructor() {
+    super('The list kept changing while it was exported');
+  }
+}
+
+/**
+ * Every row of a paged admin list, for the filters given.
+ *
+ * The lists are newest first and read by offset, so a row added, removed or
+ * moved out of the filter between two batches shifts the rest: a row is read
+ * twice or never. So every batch must report the same total as the first,
+ * and the rows must come to that total with no id twice. Anything else means
+ * the list moved underneath, and the read starts again; after three tries it
+ * fails rather than download a file that is quietly wrong.
+ */
+export async function fetchEveryRow<T extends { id: string }>(
+  path: string,
+  filters: Record<string, string>,
+  key: string,
+): Promise<T[]> {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    const rows = await readOnce<T>(path, filters, key);
+    if (rows) return rows;
+  }
+  throw new ExportChangedError();
+}
+
+async function readOnce<T extends { id: string }>(path: string, filters: Record<string, string>, key: string) {
   const rows: T[] = [];
+  const seen = new Set<string>();
+  let total: number | null = null;
   for (let i = 0; i < MAX_BATCHES; i++) {
     const params = new URLSearchParams(filters);
     params.set('limit', String(BATCH));
     params.set('offset', String(i * BATCH));
     const res = await api.get(`${path}?${params}`);
     const batch: T[] = res.data[key] ?? [];
-    rows.push(...batch);
-    if (batch.length < BATCH) return rows;
+    if (total === null) total = res.data.total;
+    else if (res.data.total !== total) return null;
+    for (const row of batch) {
+      if (seen.has(row.id)) return null;
+      seen.add(row.id);
+      rows.push(row);
+    }
+    if (batch.length < BATCH) return rows.length === total ? rows : null;
   }
   throw new Error('Too many rows to export');
 }
