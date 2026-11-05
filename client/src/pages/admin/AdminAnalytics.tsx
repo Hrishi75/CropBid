@@ -22,6 +22,8 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { formatCurrency } from '../../utils/currency';
 import api from '../../lib/axios';
 import { LoadFailed } from './LoadFailed';
+import { ExportCsvButton } from './ExportCsvButton';
+import { downloadCsv, toCsv, type CsvValue } from './csvExport';
 
 const COLORS = ['#1f2d18', '#6b8e4e', '#4a6580', '#c9b27a', '#c8602b', '#8b6b8e', '#82806f', '#8ba869'];
 
@@ -53,6 +55,31 @@ function duration(seconds: number) {
   if (seconds < 90 * 60) return `${Math.round(seconds / 60)} minutes`;
   if (seconds < 36 * 3600) return `${(seconds / 3600).toFixed(1)} hours`;
   return `${(seconds / 86400).toFixed(1)} days`;
+}
+
+// One row per figure, in the page's own words: the monthly series, then the
+// crops, roles, funnel and negotiation counts. Money is rupees, and GMV and
+// fees are paid deals only, as on screen. Counts only, no person in it.
+function analyticsCsv(d: AdminData): { csv: string; count: number } {
+  const rows: CsvValue[][] = [];
+  const series: [string, { name: string; value: number }[]][] = [
+    ['GMV (INR, paid deals)', d.charts.monthlyGMV],
+    [`Fees (INR, ${d.feePercent}% of released deals)`, d.charts.monthlyRevenue],
+    ['Signups', d.charts.monthlySignups],
+    ['Lots listed', d.charts.monthlyListings],
+    ['Bids', d.charts.monthlyBids],
+  ];
+  for (const [metric, points] of series) for (const p of points) rows.push([metric, p.name, p.value]);
+  for (const c of d.charts.topCrops) rows.push(['Lots listed by crop', c.name, c.value]);
+  for (const r of d.charts.roleDistribution) rows.push(['Accounts by role', r.name, r.value]);
+  const f = d.funnel;
+  rows.push(['Funnel', 'Signed up', f.signedUp], ['Funnel', 'Applied', f.applied], ['Funnel', 'Approved', f.approved],
+    ['Funnel', 'Made a paid deal', f.dealt], ['Funnel', 'Two or more deals', f.repeat]);
+  const n = d.negotiations;
+  rows.push(['Negotiations', 'Total', n.total], ['Negotiations', 'Deals', n.deals], ['Negotiations', 'No deal', n.noDeals],
+    ['Negotiations', 'In progress', n.inProgress], ['Negotiations', 'Average rounds', n.avgRounds],
+    ['Negotiations', 'Average seconds to a deal', n.avgSecondsToDeal]);
+  return { csv: toCsv(['Metric', 'Period or item', 'Value'], rows), count: rows.length };
 }
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -116,7 +143,14 @@ export function AdminAnalytics() {
             <span className="cb-italic">board.</span>
           </h1>
         </div>
-        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+        <ExportCsvButton
+          noun="figure"
+          run={async () => {
+            const { csv, count } = analyticsCsv(data);
+            downloadCsv('analytics', csv);
+            return count;
+          }}
+        />
       </div>
 
       <div className="cb-kpi-strip" style={{ marginTop: 8, marginBottom: 24 }}>

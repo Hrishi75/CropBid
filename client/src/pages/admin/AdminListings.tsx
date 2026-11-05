@@ -14,6 +14,8 @@ import { formatCurrency } from '../../utils/currency';
 import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
 import { LoadFailed } from './LoadFailed';
+import { ExportCsvButton } from './ExportCsvButton';
+import { day, downloadCsv, fetchEveryRow, toCsv } from './csvExport';
 import toast from 'react-hot-toast';
 
 interface AdminListing {
@@ -95,6 +97,22 @@ export function AdminListings() {
     }
   }
 
+  // Every lot under the status tab. State only, no town: a lot made to fill a
+  // request or a contract batch copies the seller's own location, which is
+  // often a street address. The seller is named, never reached.
+  async function exportListings() {
+    const all = await fetchEveryRow<AdminListing>('/admin/listings', statusFilter ? { status: statusFilter } : {}, 'listings');
+    if (all.length === 0) return 0;
+    downloadCsv(`listings-${statusFilter ? statusFilter.toLowerCase() : 'all'}`, toCsv(
+      ['ID', 'Listed', 'Crop', 'Variety', 'Seller', 'Quantity', 'Unit', 'Price min', 'Price max', 'Currency',
+        'Grade', 'Organic', 'State', 'Status', 'Bids', 'Deals'],
+      all.map((x) => [x.id, day(x.createdAt), x.cropName, x.cropVariety, x.farmer.user.name, x.quantity, x.unit,
+        x.pricePerUnitMin, x.pricePerUnitMax, x.currency, x.qualityGrade, x.organic, x.state, x.status,
+        x._count.bids, x._count.transactions]),
+    ));
+    return all.length;
+  }
+
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
@@ -107,7 +125,7 @@ export function AdminListings() {
             <span className="cb-italic">every one.</span>
           </h1>
         </div>
-        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+        <ExportCsvButton run={exportListings} noun="lot" />
       </div>
 
       <div className="cb-pill-group" style={{ marginTop: 8, marginBottom: 24 }}>
@@ -162,7 +180,6 @@ export function AdminListings() {
                 </div>
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                   <Link to={`/listings/${l.id}`} className="cb-btn cb-btn-link" style={{ fontSize: 12 }}>View →</Link>
-                  <button type="button" className="cb-btn cb-btn-link" style={{ fontSize: 12, color: 'var(--cb-wheat)' }}>⚠ Flag</button>
                   {l._count.transactions === 0 ? (
                     <ConfirmButton
                       label="✕ Delete"

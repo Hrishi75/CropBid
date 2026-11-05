@@ -21,6 +21,8 @@ import { Button } from '../../components/ui/Button';
 import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
 import { LoadFailed } from './LoadFailed';
+import { ExportCsvButton } from './ExportCsvButton';
+import { day as isoDate, downloadCsv, fetchEveryRow, toCsv } from './csvExport';
 import toast from 'react-hot-toast';
 
 interface AdminUser {
@@ -174,6 +176,21 @@ export function AdminUsers() {
     }
   }
 
+  // Every account matching the search and role, with no phone, email or
+  // location: the location of a seller is often a street address.
+  async function exportUsers() {
+    const filters: Record<string, string> = {};
+    if (search) filters.search = search;
+    if (roleFilter) filters.role = roleFilter;
+    const all = await fetchEveryRow<AdminUser>('/admin/users', filters, 'users');
+    if (all.length === 0) return 0;
+    downloadCsv(`users-${roleFilter ? roleFilter.toLowerCase() : 'all'}`, toCsv(
+      ['ID', 'Name', 'Role', 'Trust score', 'Status', 'Joined'],
+      all.map((x) => [x.id, x.name, x.role, Math.round(x.trustScore), x.suspended ? 'Suspended' : 'Active', isoDate(x.createdAt)]),
+    ));
+    return all.length;
+  }
+
   const totalPages = Math.ceil(total / LIMIT);
   const r = summary?.byRole;
   const everyone = r ? r.CONSUMER + r.FARMER + r.BUYER + r.ADMIN : 0;
@@ -189,7 +206,7 @@ export function AdminUsers() {
             <span className="cb-italic">trust.</span>
           </h1>
         </div>
-        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+        <ExportCsvButton run={exportUsers} noun="account" />
       </div>
 
       {r && summary && (

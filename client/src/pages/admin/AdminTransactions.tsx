@@ -13,6 +13,8 @@ import { formatCurrency } from '../../utils/currency';
 import { ConfirmButton } from './ConfirmButton';
 import api from '../../lib/axios';
 import { LoadFailed } from './LoadFailed';
+import { ExportCsvButton } from './ExportCsvButton';
+import { day, downloadCsv, fetchEveryRow, toCsv } from './csvExport';
 import toast from 'react-hot-toast';
 
 interface AdminTransaction {
@@ -147,6 +149,21 @@ export function AdminTransactions() {
     }
   }
 
+  // Every deal under the status tab. The rows on screen carry each side's
+  // phone and the delivery address; the file carries neither.
+  async function exportTransactions() {
+    const all = await fetchEveryRow<AdminTransaction>('/admin/transactions', statusFilter ? { paymentStatus: statusFilter } : {}, 'transactions');
+    if (all.length === 0) return 0;
+    downloadCsv(`transactions-${statusFilter ? statusFilter.toLowerCase() : 'all'}`, toCsv(
+      ['ID', 'Date', 'Crop', 'Seller', 'Buyer', 'Quantity', 'Unit', 'Price per unit', 'Goods total', 'Currency',
+        'Fee', 'Buyer paid', 'Payment', 'Delivery', 'Shipment', 'Shop order', 'Shop order delivery fee'],
+      all.map((x) => [x.id, day(x.createdAt), x.listing.cropName, x.farmer.name, x.buyer.name, x.bid?.quantity, x.listing.unit,
+        x.finalPricePerUnit, x.totalAmount, x.currency, x.platformFeeAmount, x.buyerPaid, x.paymentStatus,
+        x.deliveryStatus, x.shipment?.status, x.retailOrder?.id, x.retailOrder?.deliveryFee]),
+    ));
+    return all.length;
+  }
+
   const totalPages = Math.ceil(total / LIMIT);
   const st = summary?.byStatus;
 
@@ -160,7 +177,7 @@ export function AdminTransactions() {
             <span className="cb-italic">end to end.</span>
           </h1>
         </div>
-        <button type="button" className="cb-btn cb-btn-ghost">Export ↓ CSV</button>
+        <ExportCsvButton run={exportTransactions} noun="deal" />
       </div>
 
       {st && summary && (
