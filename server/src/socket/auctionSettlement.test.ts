@@ -154,6 +154,20 @@ describe('settling an auction', () => {
 });
 
 describe('starting an auction', () => {
+  it('offers what is left of the lot, not the quantity first listed', async () => {
+    const l = await lot('ACTIVE', 10, 6);
+    const auction = await startAuction(l.id, 60);
+    if (auction.timer) clearTimeout(auction.timer);
+    expect(auction.quantity).toBe(6);
+  });
+
+  it('leaves the lot alone when it cannot be claimed', async () => {
+    const l = await lot('ACTIVE');
+    await prisma.listing.update({ where: { id: l.id }, data: { status: 'SOLD' } });
+    await expect(startAuction(l.id, 60)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe('SOLD');
+  });
+
   it('raced against accepting a bid, only one of them gets the lot', async () => {
     for (let round = 0; round < 10; round++) {
       const l = await lot('ACTIVE');

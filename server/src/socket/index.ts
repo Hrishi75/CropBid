@@ -53,6 +53,7 @@ interface AuctionState {
   cropName: string;
   unit: string;
   currency: string;
+  quantity: number;         // What the winner buys: the lot's remaining stock at the start
   startPrice: number;       // Floor price — bidding starts here
   currentPrice: number;     // Current highest bid
   currentWinner: string | null;  // userId of current highest bidder
@@ -366,25 +367,27 @@ export async function startAuction(
   // CLAIM THE LOT FIRST, conditionally. Only an ACTIVE lot can go to auction,
   // and the write itself says so, so two starts at once (or a sale landing as
   // the seller presses start) cannot both succeed: one claims, the other gets
-  // count 0. The in-memory auction is created only after the claim wins.
-  const claim = await prisma.listing.updateMany({
-    where: { id: listingId, status: 'ACTIVE' },
-    data: { status: 'IN_AUCTION' },
-  });
-  if (claim.count === 0) {
-    throw new ApiError(409, 'This lot can no longer be auctioned. It may have sold or already be in an auction.');
-  }
-
-  const listing = await prisma.listing.findUnique({
-    where: { id: listingId },
-    include: {
-      farmer: {
-        include: { user: { select: { id: true, name: true } } },
+  // count 0. The claim and the read after it are one transaction, so a failed
+  // read rolls the claim back rather than leaving the lot IN_AUCTION with no
+  // auction in memory to end it. The in-memory auction is created only after
+  // the transaction commits, and nothing after that touches the database.
+  const listing = await prisma.$transaction(async (tx) => {
+    const claim = await tx.listing.updateMany({
+      where: { id: listingId, status: 'ACTIVE' },
+      data: { status: 'IN_AUCTION' },
+    });
+    if (claim.count === 0) {
+      throw new ApiError(409, 'This lot can no longer be auctioned. It may have sold or already be in an auction.');
+    }
+    return tx.listing.findUniqueOrThrow({
+      where: { id: listingId },
+      include: {
+        farmer: {
+          include: { user: { select: { id: true, name: true } } },
+        },
       },
-    },
+    });
   });
-
-  if (!listing) throw new ApiError(404, 'Listing not found');
 
   const endsAt = new Date(Date.now() + durationMinutes * 60 * 1000);
   const hardEndsAt = new Date(endsAt.getTime() + ANTI_SNIPE_MAX_EXTENSION_MS);
@@ -394,6 +397,7 @@ export async function startAuction(
     cropName: listing.cropName,
     unit: listing.unit,
     currency: listing.currency,
+    quantity: listing.remainingQuantity,
     startPrice: listing.pricePerUnitMin,
     currentPrice: listing.pricePerUnitMin,
     currentWinner: null,
@@ -511,11 +515,19 @@ async function endAuction(listingId: string) {
       });
     }
   } else {
-    // No bids: back on the market, if it is still this auction's lot.
+    // No bids: back on the market, if it is still this auction's lot. If the
+    // release fails (the database is unreachable), keep the auction and retry,
+    // as the settlement branch does: dropping it would strand the lot
+    // IN_AUCTION with nothing left to put it back.
     try {
       await releaseAuctionLot(listingId);
     } catch (err) {
-      console.error(`Failed to release listing ${listingId} after an auction with no bids:`, err);
+      console.error(
+        `Failed to release listing ${listingId} after an auction with no bids; retrying in ${SETTLEMENT_RETRY_MS / 1000}s:`,
+        err
+      );
+      auction.timer = setTimeout(() => endAuction(listingId), SETTLEMENT_RETRY_MS);
+      return;
     }
 
     io.to(roomName).emit('auction:ended', {
@@ -681,6 +693,7 @@ function serializeAuction(auction: AuctionState) {
     cropName: auction.cropName,
     unit: auction.unit,
     currency: auction.currency,
+    quantity: auction.quantity,
     startPrice: auction.startPrice,
     currentPrice: auction.currentPrice,
     currentWinner: auction.currentWinnerName,
