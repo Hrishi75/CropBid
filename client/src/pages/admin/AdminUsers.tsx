@@ -94,7 +94,9 @@ export function AdminUsers() {
   const latest = useRef(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setQuery(search.trim()), 300);
+    // The page goes back to the first with the settled search, in the same
+    // render, so a page turned while typing cannot carry into the new search.
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(0); }, 300);
     return () => clearTimeout(t);
   }, [search]);
 
