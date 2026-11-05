@@ -191,3 +191,75 @@ export const authLimiter = rateLimit({
   },
   message: { error: true, message: 'Too many authentication attempts, please try again later' },
 });
+
+// -----------------------------------------------------------------------------
+// Per-account limits that no change of address gets round
+// -----------------------------------------------------------------------------
+// authLimiter keys on (ip + account), which stops one address walking many
+// accounts but gives every new address a fresh fifteen tries at the SAME
+// account. These two key on the account alone, so what is rationed is how many
+// guesses one account can take, however many addresses they come from.
+//
+// The cost is that someone who knows your email or number can use up your
+// allowance and keep you out of that one lane for up to an hour. Each lane
+// leaves the others open: a password lockout still allows a phone code or
+// Google, and a phone-code lockout still allows the password. That trade is
+// the reason for the generous numbers.
+
+// The phone number alone, normalized the same way login and phone sign-in
+// store it. Deliberately NOT accountKey: that reads `email` before `phone`, and
+// /phone/start takes an optional fallback email, so keying on it would let
+// anyone vary the email to get a fresh allowance for the same number.
+export function phoneKey(body: unknown): string {
+  const raw = (body as { phone?: unknown } | undefined)?.phone;
+  if (typeof raw !== 'string') return '';
+  const phone = normalizePhone(raw.trim());
+  return phone.replace(/[^0-9]/g, '') ? `phone:${phone}` : '';
+}
+
+// The account login actually checks the password for, and nothing else. It
+// MUST read the body the way loginHandler does (identifier, else email, else
+// phone). Not accountKey on the raw body: that reads `pendingId` first, which
+// login ignores, so a fresh pendingId on every request would have bought a
+// fresh allowance against the same identifier.
+export function loginKey(body: unknown): string {
+  const b = body as { identifier?: unknown; email?: unknown; phone?: unknown } | undefined;
+  const raw = b?.identifier ?? b?.email ?? b?.phone;
+  return typeof raw === 'string' ? accountKey({ identifier: raw }) : '';
+}
+
+// Password sign-in: 30 wrong passwords an hour per account. Only refusals
+// count (skipSuccessfulRequests), so somebody who signs in fine many times a
+// day is never touched. The same message for an account that exists and one
+// that does not, so it reveals nothing.
+export const loginAccountLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  skipSuccessfulRequests: true,
+  skip: (req) => !loginKey(req.body),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `login${loginKey(req.body)}`,
+  message: {
+    error: true,
+    message: 'Too many wrong passwords for this account. Try again in an hour, sign in with a phone code, or reset your password.',
+  },
+});
+
+// Phone codes: 5 sent an hour per number. Every code carries three guesses,
+// and running out deletes the code, after which a fresh one could be asked for
+// at once from a new address. Without this a six-digit code fell to whoever
+// had enough addresses, and a stranger's phone could be flooded with codes.
+// Five an hour is fifteen guesses: about one chance in sixty-six thousand.
+export const phoneCodeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  skip: (req) => !phoneKey(req.body),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => phoneKey(req.body),
+  message: {
+    error: true,
+    message: 'Too many codes sent to this number. Try again in an hour, or sign in with your password.',
+  },
+});

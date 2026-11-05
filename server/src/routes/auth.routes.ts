@@ -15,6 +15,7 @@
 
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { loginAccountLimiter, phoneCodeLimiter } from '../middleware/rateLimiter';
 import { requireRole } from '../middleware/roleGuard';
 import { uploadAvatar, processAvatar } from '../middleware/upload';
 import {
@@ -51,12 +52,15 @@ const router = Router();
 router.post('/signup', signupHandler);
 router.post('/signup/verify', verifySignupHandler);
 router.post('/signup/resend', resendSignupOtpHandler);
-router.post('/login', loginHandler);
+// loginAccountLimiter also caps wrong passwords per account across every
+// address, which authLimiter (ip + account) cannot.
+router.post('/login', loginAccountLimiter, loginHandler);
 
 // --- Phone sign-in (passwordless): one flow for signing up and signing in ---
 // Covered by the strict authLimiter mounted on /api/auth in app.ts, which is
 // what keeps a 6-digit code from being brute-forced.
-router.post('/phone/start', startPhoneSignInHandler);
+// phoneCodeLimiter caps codes per number across every address.
+router.post('/phone/start', phoneCodeLimiter, startPhoneSignInHandler);
 router.post('/phone/verify', verifyPhoneSignInHandler);
 
 // --- Sign in with Google: also one flow for signing up and signing in ---
