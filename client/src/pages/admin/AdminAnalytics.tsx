@@ -123,7 +123,7 @@ export function AdminAnalytics() {
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">GMV</div>
           <div className="cb-kpi-value">{formatCurrency(totalGMV, 'INR')}</div>
-          <div className="cb-kpi-delta">all time</div>
+          <div className="cb-kpi-delta">paid deals, all time</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Fees</div>
@@ -230,7 +230,7 @@ export function AdminAnalytics() {
       </div>
 
       <div className="cb-cols-2" style={{ gap: 18, marginBottom: 18 }}>
-        <ChartCard title="Top crops by GMV">
+        <ChartCard title="Top crops by lots listed">
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={charts.topCrops} cx="50%" cy="50%" innerRadius={60} outerRadius={95} dataKey="value">

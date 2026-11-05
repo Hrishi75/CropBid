@@ -13,7 +13,7 @@
 // =============================================================================
 
 import { prisma } from '../lib/prisma';
-import { PLATFORM_FEE_PERCENT } from './transaction.service';
+import { PLATFORM_FEE_PERCENT, countsAsFee, countsAsGmv } from './transaction.service';
 
 // =============================================================================
 // FARMER ANALYTICS — Revenue, listings, bid stats
@@ -203,6 +203,7 @@ export async function getAdminAnalytics() {
         totalAmount: true,
         platformFeeAmount: true,
         paymentStatus: true,
+        currency: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'asc' },
@@ -211,7 +212,11 @@ export async function getAdminAnalytics() {
       select: { role: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),
+    // Lots put up for sale. A requirement fill or a supply-contract batch is
+    // a SOLD listing made to carry the deal, never shown to anyone, so it is
+    // left out of the lot count and the crop ranking.
     prisma.listing.findMany({
+      where: { isRequirementFill: false },
       select: { createdAt: true, cropName: true },
       orderBy: { createdAt: 'asc' },
     }),
@@ -221,11 +226,8 @@ export async function getAdminAnalytics() {
     }),
   ]);
 
-  const monthlyGMV = aggregateByMonth(transactions, (t) => t.totalAmount);
-  const monthlyRevenue = aggregateByMonth(
-    transactions.filter(t => t.paymentStatus === 'RELEASED'),
-    (t) => t.platformFeeAmount
-  );
+  const monthlyGMV = aggregateByMonth(transactions.filter(countsAsGmv), (t) => t.totalAmount);
+  const monthlyRevenue = aggregateByMonth(transactions.filter(countsAsFee), (t) => t.platformFeeAmount);
   const monthlySignups = aggregateByMonth(users, () => 1);
   const monthlyListings = aggregateByMonth(listings, () => 1);
   const monthlyBids = aggregateByMonth(bids, () => 1);
@@ -348,28 +350,30 @@ export async function getNegotiationStats() {
 // =============================================================================
 // HELPER — Aggregate records by month
 // =============================================================================
-function aggregateByMonth<T extends { createdAt: Date }>(
+export function aggregateByMonth<T extends { createdAt: Date }>(
   records: T[],
-  getValue: (record: T) => number
+  getValue: (record: T) => number,
+  now = new Date(),
 ): { name: string; value: number }[] {
-  const months: Record<string, number> = {};
+  // Keyed by year and month as a sortable number, so a month older than the
+  // six always shown still lands in date order rather than after them.
+  const months = new Map<number, number>();
+  const key = (d: Date) => d.getFullYear() * 12 + d.getMonth();
 
-  // Ensure last 6 months are always present
+  // The last six months are always present, even with nothing in them.
   for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    const key = d.toLocaleString('en', { month: 'short', year: '2-digit' });
-    months[key] = 0;
+    months.set(key(new Date(now.getFullYear(), now.getMonth() - i, 1)), 0);
   }
 
-  records.forEach((r) => {
-    const d = new Date(r.createdAt);
-    const key = d.toLocaleString('en', { month: 'short', year: '2-digit' });
-    months[key] = (months[key] || 0) + getValue(r);
-  });
+  for (const r of records) {
+    const k = key(new Date(r.createdAt));
+    months.set(k, (months.get(k) ?? 0) + getValue(r));
+  }
 
-  return Object.entries(months).map(([name, value]) => ({
-    name,
-    value: Math.round(value),
-  }));
+  return [...months.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([k, value]) => ({
+      name: new Date(Math.floor(k / 12), k % 12, 1).toLocaleString('en', { month: 'short', year: '2-digit' }),
+      value: Math.round(value),
+    }));
 }

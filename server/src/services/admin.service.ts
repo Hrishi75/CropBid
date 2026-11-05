@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { buyerPayable, buyerPaysFreight } from '../utils/freight';
-import { PLATFORM_FEE_PERCENT } from './transaction.service';
+import { FEES_WHERE, GMV_WHERE, PLATFORM_FEE_PERCENT } from './transaction.service';
 import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { createNotification } from './notification.service';
@@ -45,11 +45,8 @@ export async function getPlatformStats() {
     prisma.transaction.count({ where: { paymentStatus: 'ESCROW' } }),
     prisma.transaction.count({ where: { paymentStatus: 'RELEASED' } }),
     prisma.negotiation.count(),
-    prisma.transaction.aggregate({ _sum: { totalAmount: true } }),
-    prisma.transaction.aggregate({
-      where: { paymentStatus: 'RELEASED' },
-      _sum: { platformFeeAmount: true },
-    }),
+    prisma.transaction.aggregate({ where: GMV_WHERE, _sum: { totalAmount: true } }),
+    prisma.transaction.aggregate({ where: FEES_WHERE, _sum: { platformFeeAmount: true } }),
   ]);
 
   return {
@@ -395,7 +392,7 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
 export async function getTransactionSummary() {
   const [statuses, fees] = await Promise.all([
     prisma.transaction.groupBy({ by: ['paymentStatus'], _count: { _all: true } }),
-    prisma.transaction.aggregate({ where: { paymentStatus: 'RELEASED' }, _sum: { platformFeeAmount: true } }),
+    prisma.transaction.aggregate({ where: FEES_WHERE, _sum: { platformFeeAmount: true } }),
   ]);
   const byStatus = { AWAITING_PAYMENT: 0, ESCROW: 0, RELEASED: 0, REFUNDED: 0, CANCELLED: 0 };
   for (const s of statuses) byStatus[s.paymentStatus] = s._count._all;

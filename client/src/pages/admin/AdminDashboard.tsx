@@ -152,7 +152,7 @@ export function AdminDashboard() {
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">GMV</div>
           <div className="cb-kpi-value">{formatCurrency(stats.financial.gmv, 'INR')}</div>
-          <div className="cb-kpi-delta">{stats.transactions.completed} settled</div>
+          <div className="cb-kpi-delta">paid deals, not refunded</div>
         </div>
         <div className="cb-kpi-cell">
           <div className="cb-kpi-label">Fee</div>
