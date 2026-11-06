@@ -152,6 +152,15 @@ export async function auctionBidRefusal(userId: string): Promise<string | null> 
 export const MAX_RAISE_FACTOR = 2;
 export const MAX_OVER_START = 5;
 
+// The most anyone may bid right now, in whole paise. Sent to the room with
+// every snapshot and every new bid as `maxBid`, so the web room's suggestions
+// and buttons follow the server's rule instead of keeping a copy of it. Once
+// it is not above the current price, the auction has reached its top.
+export function auctionMaxBid(auction: { startPrice: number; currentPrice: number }): number {
+  const ceiling = Math.min(auction.currentPrice * MAX_RAISE_FACTOR, auction.startPrice * MAX_OVER_START);
+  return Math.floor(ceiling * 100 + 1e-6) / 100;
+}
+
 // Why this price is refused, or null if it stands. Pure, so it is tested on
 // its own; the handler applies it to the auction as it is at that moment.
 export function auctionBidAmountRefusal(
@@ -163,10 +172,11 @@ export function auctionBidAmountRefusal(
   if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6) {
     return 'Bids can have at most two decimal places';
   }
+  const max = auctionMaxBid(auction);
+  if (max <= auction.currentPrice) return 'This auction has reached the highest price it allows';
   if (price <= auction.currentPrice) return `Bid must be higher than ${auction.currentPrice}`;
-  const ceiling = Math.min(auction.currentPrice * MAX_RAISE_FACTOR, auction.startPrice * MAX_OVER_START);
-  if (price > ceiling) {
-    return `That bid is too far above the current price. The most you can bid now is ${Math.floor(ceiling * 100) / 100}`;
+  if (price > max + 1e-9) {
+    return `That bid is too far above the current price. The most you can bid now is ${max}`;
   }
   return null;
 }
@@ -339,6 +349,7 @@ export function initializeSocket(httpServer: HttpServer) {
       io.to(roomName).emit('auction:new_bid', {
         ...bid,
         currentPrice: auction.currentPrice,
+        maxBid: auctionMaxBid(auction),
         currentWinner: auction.currentWinnerName,
         bidCount: auction.bids.length,
       });
@@ -746,6 +757,7 @@ function serializeAuction(auction: AuctionState) {
     quantity: auction.quantity,
     startPrice: auction.startPrice,
     currentPrice: auction.currentPrice,
+    maxBid: auctionMaxBid(auction),
     currentWinner: auction.currentWinnerName,
     bidCount: auction.bids.length,
     participantCount: auction.participants.size,

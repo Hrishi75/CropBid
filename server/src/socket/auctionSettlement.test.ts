@@ -26,7 +26,7 @@ import { updateListing } from '../services/listing.service';
 import { createTransaction } from '../services/transaction.service';
 import {
   settleAuctionSale, startAuction, releaseStrandedAuctions,
-  auctionBidRefusal, auctionBidAmountRefusal,
+  auctionBidRefusal, auctionBidAmountRefusal, auctionMaxBid,
 } from './index';
 
 const BUYER = 'au-buyer';
@@ -314,6 +314,20 @@ describe('how far one bid may move the price', () => {
     const late = { startPrice: 2000, currentPrice: 8000 };
     expect(auctionBidAmountRefusal(late, 10000)).toBeNull();
     expect(auctionBidAmountRefusal(late, 10000.01)).toMatch(/most you can bid now is 10000/);
+  });
+
+  // The room is sent maxBid and caps its suggestions with it, so it must be
+  // exactly the line the refusal draws.
+  it('tells the room the most it may bid, and says so once the top is reached', () => {
+    const near = { startPrice: 2000, currentPrice: 9800 };
+    expect(auctionMaxBid(near)).toBe(10000);
+    expect(auctionBidAmountRefusal(near, auctionMaxBid(near))).toBeNull();
+    expect(auctionBidAmountRefusal(near, 10290)).toMatch(/most you can bid now is 10000/);
+    expect(auctionMaxBid({ startPrice: 2000, currentPrice: 2000 })).toBe(4000);
+    expect(auctionMaxBid({ startPrice: 33.33, currentPrice: 33.33 })).toBe(66.66);
+    const top = { startPrice: 2000, currentPrice: 10000 };
+    expect(auctionMaxBid(top)).toBe(10000);
+    expect(auctionBidAmountRefusal(top, 10000.5)).toMatch(/reached the highest price/);
   });
 
   it('refuses a fraction of a paisa, and nonsense', () => {
