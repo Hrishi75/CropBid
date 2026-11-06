@@ -11,8 +11,9 @@
 //      service, on create and on edit.
 //   3. Fields the client must not set (status, farmerId, images on edit) are
 //      dropped, not stored.
-//   4. Contact details in the crop name or variety are refused like the
-//      description's.
+//
+// Contact details in the crop name or variety are tested against the service
+// itself, in services/listing.contactDetails.test.ts.
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -26,7 +27,6 @@ vi.mock('../services/translation.service', () => ({ queueListingTranslation: vi.
 
 import * as listingService from '../services/listing.service';
 import { createListing, updateListing, createListingSchema, updateListingSchema } from './listing.controller';
-import { assertNoContactDetails } from '../utils/contactDetails';
 
 // What the web form posts: multipart, so every value is a string.
 const FORM = {
@@ -100,6 +100,8 @@ describe('creating a listing', () => {
     ['a missing grade', { qualityGrade: undefined }],
     ['an unknown currency', { currency: 'BTC' }],
     ['a bad date', { harvestDate: 'not-a-date' }],
+    ['a day the month does not have', { harvestDate: '2026-02-31' }],
+    ['a day the month does not have, with a time', { expiryDate: '2026-04-31T00:00:00.000Z' }],
     ['a word for a boolean', { organic: 'maybe' }],
     ['a missing crop name', { cropName: '   ' }],
     ['a missing town', { location: '' }],
@@ -125,6 +127,14 @@ describe('creating a listing', () => {
     expect(input.images).toEqual([]);
   });
 
+  it('treats a date of only spaces as blank, and takes a real one', async () => {
+    const r = await call(createListing, { ...FORM, harvestDate: '   ', expiryDate: '2028-02-29' });
+    expect(r.statusCode).toBe(201);
+    const input = vi.mocked(listingService.createListing).mock.calls[0][1] as any;
+    expect(input.harvestDate).toBe('');
+    expect(input.expiryDate).toBe('2028-02-29');
+  });
+
   it('accepts an https lab report link', () => {
     expect(createListingSchema.safeParse({ ...FORM, labReportUrl: 'https://lab.example/r.pdf' }).success).toBe(true);
   });
@@ -148,6 +158,7 @@ describe('editing a listing', () => {
     ['an unknown unit', { unit: 'LITRE' }],
     ['an unknown grade', { qualityGrade: 'Z' }],
     ['a bad expiry date', { expiryDate: '2026-13-45' }],
+    ['a day the month does not have', { harvestDate: '2026-02-30' }],
     ['a blank crop name', { cropName: '' }],
   ])('refuses %s with a 400, before the service', async (_label, body) => {
     const r = await call(updateListing, body, { id: 'l1' });
@@ -155,15 +166,12 @@ describe('editing a listing', () => {
     expect(listingService.updateListing).not.toHaveBeenCalled();
   });
 
+  it('treats an edited date of only spaces as clearing it', () => {
+    expect(updateListingSchema.parse({ expiryDate: '  ' })).toEqual({ expiryDate: '' });
+  });
+
   it('still clears a variety, date or lab report with a blank', () => {
     const parsed = updateListingSchema.parse({ cropVariety: '', harvestDate: '', labReportUrl: '' });
     expect(parsed).toEqual({ cropVariety: '', harvestDate: '', labReportUrl: '' });
-  });
-});
-
-describe('contact details in the crop name or variety', () => {
-  it('are refused by the same check as the description', () => {
-    expect(() => assertNoContactDetails('Wheat call 98220 55667', 'The crop name')).toThrow();
-    expect(() => assertNoContactDetails('Pusa 1121', 'The variety')).not.toThrow();
   });
 });

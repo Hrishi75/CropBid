@@ -64,11 +64,23 @@ function upperEnum<T extends readonly [string, ...string[]]>(values: T, label: s
   );
 }
 
-// A date, or blank for none.
+// A date, or blank for none. Trimmed, so "  " is blank rather than an
+// invalid date reaching the service. A calendar date must exist: Date.parse
+// rolls 2026-02-31 over to 3 March, so the day is checked against its month.
+export function isRealDate(s: string): boolean {
+  if (Number.isNaN(Date.parse(s))) return false;
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!ymd) return true;
+  const [y, m, d] = [Number(ymd[1]), Number(ymd[2]), Number(ymd[3])];
+  const check = new Date(Date.UTC(y, m - 1, d));
+  return check.getUTCFullYear() === y && check.getUTCMonth() === m - 1 && check.getUTCDate() === d;
+}
+
 const optionalDate = z
   .string()
+  .trim()
   .max(40)
-  .refine((s) => s.trim() === '' || !Number.isNaN(Date.parse(s)), 'Enter a valid date');
+  .refine((s) => s === '' || isRealDate(s), 'Enter a valid date');
 
 // A blank number field from a form means "not given".
 const blankToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
