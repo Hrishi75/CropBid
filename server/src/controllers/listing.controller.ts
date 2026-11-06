@@ -21,33 +21,99 @@ function paramId(req: Request): string {
   return req.params.id as string;
 }
 
-// Whitelist of farmer-editable fields. NOTE: `status` is intentionally absent —
-// listing status is driven by the bid/auction/expiry flows, never set directly
-// by the client (that would let a farmer bypass the sale state machine). Unknown
-// keys (including a smuggled `status`) are stripped by zod before reaching the
-// service. Numbers are coerced so a JSON or multipart body both validate.
-const updateListingSchema = z.object({
-  cropName: z.string().min(1).max(200).optional(),
-  cropVariety: z.string().max(200).optional(),
-  quantity: z.coerce.number().positive().optional(),
-  unit: z.string().max(20).optional(),
-  qualityGrade: z.string().max(50).optional(),
-  pricePerUnitMin: z.coerce.number().positive().optional(),
-  pricePerUnitMax: z.coerce.number().positive().optional(),
-  currency: z.string().max(10).optional(),
-  harvestDate: z.string().optional(),
-  expiryDate: z.string().optional(),
+// -----------------------------------------------------------------------------
+// What a listing may contain, on create and on edit alike
+// -----------------------------------------------------------------------------
+// Create used to have no schema at all: it parseFloat'd the numbers and passed
+// the rest through, so "-5", "abc" and "Infinity" were stored as a negative
+// quantity, NaN and Infinity (Postgres floats accept all three, so nothing
+// refused them), and a bad unit, grade, currency or date reached Prisma and
+// came back as a 500. Both routes now share one set of rules.
+//
+// `status` is absent on purpose: it is driven by the bid, auction and expiry
+// flows, never set by the client. Unknown keys (a smuggled `status`,
+// `isRequirementFill`, `farmerId`) are stripped by zod before the service.
+// `images` is absent too: photos are only ever files through the upload
+// middleware, so an edit cannot point a lot's pictures at any URL it likes.
+
+// Prices and quantities: finite, above zero, and below a ceiling no real lot
+// reaches, so a slipped key cannot list a lot at a billion rupees a kilo.
+export const LISTING_NUMBER_MAX = 1_000_000_000;
+
+function positiveNumber(label: string) {
+  return z.coerce
+    .number({ error: `${label} must be a number` })
+    .refine(Number.isFinite, `${label} must be a number`)
+    .refine((n) => n > 0, `${label} must be more than zero`)
+    .refine((n) => n <= LISTING_NUMBER_MAX, `${label} is too large`);
+}
+
+// Multipart sends every field as text, and z.coerce.boolean() reads the string
+// "false" as true. So read the words, and refuse anything else.
+const formBoolean = z.preprocess((v) => {
+  if (v === true || v === 'true' || v === '1' || v === 'on') return true;
+  if (v === false || v === 'false' || v === '0' || v === '') return false;
+  return v;
+}, z.boolean({ error: 'Expected true or false' }));
+
+// An enum typed in any case ("quintal" or "QUINTAL").
+function upperEnum<T extends readonly [string, ...string[]]>(values: T, label: string) {
+  return z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v),
+    z.enum(values, { error: `${label} must be one of ${values.join(', ')}` }),
+  );
+}
+
+// A date, or blank for none.
+const optionalDate = z
+  .string()
+  .max(40)
+  .refine((s) => s.trim() === '' || !Number.isNaN(Date.parse(s)), 'Enter a valid date');
+
+// A blank number field from a form means "not given".
+const blankToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
+
+// The lab report is a link a buyer would open, so only https.
+const labReportUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((s) => {
+    if (s === '') return true;
+    try {
+      return new URL(s).protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, 'The lab report must be an https link');
+
+export const createListingSchema = z.object({
+  cropName: z.string().trim().min(1, 'Enter the crop name').max(200),
+  cropVariety: z.string().trim().max(200).optional(),
+  quantity: positiveNumber('Quantity'),
+  unit: upperEnum(['KG', 'QUINTAL', 'TONNE'] as const, 'Unit').optional(),
+  qualityGrade: upperEnum(['A', 'B', 'C'] as const, 'Quality grade'),
+  pricePerUnitMin: positiveNumber('The lowest price'),
+  pricePerUnitMax: positiveNumber('The highest price'),
+  currency: upperEnum(['INR', 'USD', 'EUR', 'GBP'] as const, 'Currency').optional(),
+  harvestDate: optionalDate.optional(),
+  expiryDate: optionalDate.optional(),
   description: z.string().max(2000).optional(),
-  images: z.array(z.string()).optional(),
-  labReportUrl: z.string().optional(),
-  organic: z.coerce.boolean().optional(),
-  location: z.string().min(1).max(200).optional(),
-  country: z.string().max(100).optional(),
-  state: z.string().min(1).max(100).optional(),
-  directSaleEnabled: z.coerce.boolean().optional(),
-  retailPricePerUnit: z.coerce.number().positive().optional(),
+  labReportUrl: labReportUrl.optional(),
+  organic: formBoolean.optional(),
+  location: z.string().trim().min(1, 'Enter the town').max(200),
+  country: z.string().trim().max(100).optional(),
+  state: z.string().trim().min(1, 'Enter the state').max(100),
+  directSaleEnabled: formBoolean.optional(),
+  retailPricePerUnit: z.preprocess(blankToUndefined, positiveNumber('The retail price').optional()),
   freightPaidBy: z.enum(FREIGHT_PAYERS).optional(),
 });
+
+export const updateListingSchema = createListingSchema.partial();
+
+function firstIssue(error: z.ZodError): string {
+  return error.issues[0]?.message || 'Invalid input';
+}
 
 // POST /api/listings — Create a new listing
 export async function createListing(req: Request, res: Response, next: NextFunction) {
@@ -55,16 +121,13 @@ export async function createListing(req: Request, res: Response, next: NextFunct
     // Images may have been processed by the upload middleware
     const images = (req as any).processedImages || [];
 
-    // Multer sends form fields as strings — parse numeric fields
-    const body = req.body;
+    // Multer sends form fields as strings; the schema coerces them.
+    const parsed = createListingSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: firstIssue(parsed.error) });
+    }
     const listing = await listingService.createListing(req.user!.userId, {
-      ...body,
-      quantity: parseFloat(body.quantity),
-      pricePerUnitMin: parseFloat(body.pricePerUnitMin),
-      pricePerUnitMax: parseFloat(body.pricePerUnitMax),
-      organic: body.organic === 'true',
-      directSaleEnabled: body.directSaleEnabled === 'true' || body.directSaleEnabled === true,
-      retailPricePerUnit: body.retailPricePerUnit ? parseFloat(body.retailPricePerUnit) : undefined,
+      ...parsed.data,
       images,
     });
 
@@ -129,7 +192,7 @@ export async function updateListing(req: Request, res: Response, next: NextFunct
   try {
     const parsed = updateListingSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ message: parsed.error.issues[0]?.message || 'Invalid input' });
+      return res.status(400).json({ message: firstIssue(parsed.error) });
     }
     const listing = await listingService.updateListing(
       paramId(req),
