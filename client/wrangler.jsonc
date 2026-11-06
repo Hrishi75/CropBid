@@ -24,6 +24,11 @@
     // Signed-in pages (/orders, /cart, ...) have no file of their own: a browser
     // navigating to one gets the app shell and the router draws it. Other
     // misses go to worker.js.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Paths with a part starting with a dot (/.env, /x/.git/config) go to
+    // worker.js before any file or the app shell is looked up, so it can answer
+    // them 404. "*" matches across slashes. /.well-known/ is excluded so a file
+    // placed there later is still served as a file.
+    "run_worker_first": ["/.*", "/*/.*", "!/.well-known/*"]
   }
 }
