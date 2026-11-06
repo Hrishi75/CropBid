@@ -30,6 +30,14 @@ interface AuctionBid {
   timestamp: string;
 }
 
+// A suggested bid: pct above the current price, rounded up to a whole rupee,
+// but never past the server's ceiling. Null once no higher bid is allowed.
+function suggestBid(current: number, pct: number, max?: number): number | null {
+  let v = Math.ceil(current * (1 + pct / 100));
+  if (max != null) v = Math.min(v, max);
+  return v > current ? v : null;
+}
+
 interface AuctionState {
   listingId: string;
   cropName: string;
@@ -43,6 +51,9 @@ interface AuctionState {
   bids: AuctionBid[];
   endsAt: string;
   farmerId: string;
+  // The most anyone may bid right now (one bid at most doubles the price, never
+  // past five times the start). Older servers omit it, and then nothing caps.
+  maxBid?: number;
   // What the winner buys: the lot's remaining stock when the auction started,
   // not the quantity first listed. Older servers omit it, so the listing's
   // remaining stock is fetched as a fallback.
@@ -92,7 +103,7 @@ export function AuctionRoom() {
       setBids(state.bids || []);
       setParticipants(state.participantCount);
       endsAtRef.current = new Date(state.endsAt);
-      setBidPrice(String(Math.ceil(state.currentPrice * 1.05)));
+      setBidPrice(String(suggestBid(state.currentPrice, 5, state.maxBid) ?? ''));
       if (state.quantity) setLotQuantity(state.quantity);
       setLoading(false);
     });
@@ -111,9 +122,9 @@ export function AuctionRoom() {
         // Non-fatal: the bid total preview will hide itself when quantity is null.
       });
 
-    socket.on('auction:new_bid', (data: AuctionBid & { currentPrice: number; currentWinner: string; bidCount: number }) => {
+    socket.on('auction:new_bid', (data: AuctionBid & { currentPrice: number; maxBid?: number; currentWinner: string; bidCount: number }) => {
       setBids((prev) => [...prev, { userId: data.userId, userName: data.userName, price: data.price, timestamp: data.timestamp }]);
-      setAuction((prev) => prev ? { ...prev, currentPrice: data.currentPrice, currentWinner: data.currentWinner, bidCount: data.bidCount } : prev);
+      setAuction((prev) => prev ? { ...prev, currentPrice: data.currentPrice, maxBid: data.maxBid, currentWinner: data.currentWinner, bidCount: data.bidCount } : prev);
     });
 
     socket.on('auction:time_extended', (data: { newEndTime: string }) => {
@@ -137,7 +148,7 @@ export function AuctionRoom() {
           setBids(res.data.bids || []);
           if (res.data.quantity) setLotQuantity(res.data.quantity);
           endsAtRef.current = new Date(res.data.endsAt);
-          setBidPrice(String(Math.ceil(res.data.currentPrice * 1.05)));
+          setBidPrice(String(suggestBid(res.data.currentPrice, 5, res.data.maxBid) ?? ''));
         } catch {
           setError('Auction not found or has ended');
         } finally {
@@ -177,12 +188,20 @@ export function AuctionRoom() {
       setError(`Bid must be higher than ${formatCurrency(auction.currentPrice, auction.currency)}`);
       return;
     }
+    if (auction.maxBid != null && price > auction.maxBid) {
+      setError(`The most you can bid now is ${formatCurrency(auction.maxBid, auction.currency)}`);
+      return;
+    }
     const socket = getSocket(user?.name);
     socket.emit('auction:bid', { listingId, price });
-    setBidPrice(String(Math.ceil(price * 1.05)));
+    // The next suggestion, under the ceiling we already know: a higher price
+    // never lowers the ceiling, so this one is always still allowed.
+    setBidPrice(String(suggestBid(price, 5, auction.maxBid) ?? ''));
   }
 
   const isFarmer = user?.id === auction?.farmerId;
+  // The auction has reached the highest price the server allows.
+  const atTop = auction?.maxBid != null && auction.maxBid <= auction.currentPrice;
   const isYouLeading = auction?.currentWinner === user?.name;
   const delta = auction ? auction.currentPrice - auction.startPrice : 0;
   const deltaPct = auction ? (delta / auction.startPrice) * 100 : 0;
@@ -285,7 +304,9 @@ export function AuctionRoom() {
               value={bidPrice}
               onChange={(e) => setBidPrice(e.target.value)}
               min={(auction?.currentPrice || 0) + 1}
+              max={auction?.maxBid}
               step="0.5"
+              disabled={atTop}
             />
             <div className="cb-mono" style={{ fontSize: 14, color: 'var(--cb-ink-3)', paddingBottom: 12 }}>
               {auction && lotQuantity && parseFloat(bidPrice) > 0
@@ -300,23 +321,32 @@ export function AuctionRoom() {
             </div>
           )}
           <div className="cb-pill-group" style={{ marginTop: 10 }}>
-            {[5, 10, 20].map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                className="cb-pill"
-                onClick={() => setBidPrice(String(Math.ceil((auction?.currentPrice || 0) * (1 + pct / 100))))}
-              >
-                +{pct}%
-              </button>
-            ))}
+            {[5, 10, 20].map((pct) => {
+              const v = auction ? suggestBid(auction.currentPrice, pct, auction.maxBid) : null;
+              return (
+                <button
+                  key={pct}
+                  type="button"
+                  className="cb-pill"
+                  disabled={v == null}
+                  onClick={() => v != null && setBidPrice(String(v))}
+                >
+                  +{pct}%
+                </button>
+              );
+            })}
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
-            <Button onClick={handleBid} disabled={timeLeft === '0:00'}>
+            <Button onClick={handleBid} disabled={timeLeft === '0:00' || atTop}>
               Place bid
               <ArrowIcon />
             </Button>
           </div>
+          {atTop && (
+            <div className="cb-small" style={{ marginTop: 10, color: 'var(--cb-ink-3)' }}>
+              This auction has reached the highest price it allows, so no more bids can be placed.
+            </div>
+          )}
           {error && (
             <div className="cb-small" style={{ marginTop: 10, padding: 10, background: 'rgba(200,96,43,0.08)', color: 'var(--cb-ember)', borderRadius: 6 }}>
               ⚠ {error}

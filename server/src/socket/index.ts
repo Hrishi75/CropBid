@@ -27,7 +27,7 @@
 // for an MVP. Production would use Redis for shared state across servers.
 // =============================================================================
 
-import { bidsOnMarket, RESTAURANT_NO_BIDS } from '../services/bid.service';
+import { RESTAURANT_NO_BIDS } from '../services/bid.service';
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { config } from '../config';
@@ -123,18 +123,62 @@ export function handshakeIdentity(token: unknown): { userId: string; role: strin
   return { userId: payload.userId, role: payload.role };
 }
 
-// Re-validate a user's role against the database RIGHT NOW, rather than trusting
-// the role captured from the JWT at handshake. A socket outlives its 15-minute
-// access token and survives an account-role change, so the handshake claim can
-// go stale while the connection stays open. Any authorization decision that
-// persists a sale must confirm the CURRENT role. Returns true only if the
-// account still exists AND is a BUYER.
-async function isCurrentBuyer(userId: string): Promise<boolean> {
+// Why this account may not bid, read from the database RIGHT NOW, or null if it
+// may. The same fence POST /bids has (requireRole('BUYER') plus
+// requireApprovedPartner, plus the restaurant rule), because the socket is
+// another way to buy. The role alone is not enough: it stays BUYER when an
+// admin suspends the approval, sends it back for more information, or
+// suspends the whole account. And a socket outlives its 15-minute access token,
+// so the handshake's claim is never the answer.
+export async function auctionBidRefusal(userId: string): Promise<string | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { role: true, suspended: true, buyerProfile: { select: { status: true, companyType: true } } },
   });
-  return user?.role === 'BUYER';
+  if (!user || user.role !== 'BUYER' || user.suspended) return 'Your account is no longer authorized to bid';
+  if (user.buyerProfile?.status !== 'APPROVED') {
+    return 'Your buyer account is not approved right now, so you cannot bid';
+  }
+  // A restaurant negotiates, it does not bid (bid.service bidsOnMarket).
+  if (user.buyerProfile.companyType === 'RESTAURANT') return RESTAURANT_NO_BIDS;
+  return null;
+}
+
+// How far one bid may move the price. Without a ceiling a typo with an extra
+// zero, or somebody who never means to pay, wins the lot at ten times its
+// worth, and settlement makes a real deal at that price. Doubling in one bid
+// is far more than any real bidder needs and still catches the extra zero;
+// five times the starting price bounds walking it up in doublings.
+export const MAX_RAISE_FACTOR = 2;
+export const MAX_OVER_START = 5;
+
+// The most anyone may bid right now, in whole paise. Sent to the room with
+// every snapshot and every new bid as `maxBid`, so the web room's suggestions
+// and buttons follow the server's rule instead of keeping a copy of it. Once
+// it is not above the current price, the auction has reached its top.
+export function auctionMaxBid(auction: { startPrice: number; currentPrice: number }): number {
+  const ceiling = Math.min(auction.currentPrice * MAX_RAISE_FACTOR, auction.startPrice * MAX_OVER_START);
+  return Math.floor(ceiling * 100 + 1e-6) / 100;
+}
+
+// Why this price is refused, or null if it stands. Pure, so it is tested on
+// its own; the handler applies it to the auction as it is at that moment.
+export function auctionBidAmountRefusal(
+  auction: { startPrice: number; currentPrice: number },
+  price: number,
+): string | null {
+  if (!Number.isFinite(price) || price <= 0) return 'Enter a valid bid';
+  // Prices are in rupees and paise: a fraction of a paisa cannot be paid.
+  if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6) {
+    return 'Bids can have at most two decimal places';
+  }
+  const max = auctionMaxBid(auction);
+  if (max <= auction.currentPrice) return 'This auction has reached the highest price it allows';
+  if (price <= auction.currentPrice) return `Bid must be higher than ${auction.currentPrice}`;
+  if (price > max + 1e-9) {
+    return `That bid is too far above the current price. The most you can bid now is ${max}`;
+  }
+  return null;
 }
 
 // In-memory auction store
@@ -255,19 +299,12 @@ export function initializeSocket(httpServer: HttpServer) {
         return socket.emit('auction:error', `Too many bids — slow down (max ${BID_BURST} per ${BID_WINDOW_MS / 1000}s)`);
       }
 
-      // Live authorization: confirm the account is STILL a BUYER right now, not
-      // just when the socket connected. Closes the stale-role window where a
-      // since-demoted buyer — or one riding an already-expired access token —
-      // could keep winning auctions through an already-open socket. Runs after
+      // Live authorization: an approved, unsuspended, non-restaurant BUYER right
+      // now, not just when the socket connected (auctionBidRefusal). Runs after
       // the rate limiter so a flood of bids can't turn into a flood of queries.
       try {
-        if (!(await isCurrentBuyer(userId))) {
-          return socket.emit('auction:error', 'Your account is no longer authorized to bid');
-        }
-        // Same rule as POST /bids: a restaurant negotiates, it does not bid.
-        if (!(await bidsOnMarket(userId))) {
-          return socket.emit('auction:error', RESTAURANT_NO_BIDS);
-        }
+        const refusal = await auctionBidRefusal(userId);
+        if (refusal) return socket.emit('auction:error', refusal);
       } catch (err) {
         // A Prisma rejection here would otherwise escape this async Socket.IO
         // handler as an unhandled rejection (silent bid failure, and a process
@@ -289,9 +326,10 @@ export function initializeSocket(httpServer: HttpServer) {
       if (new Date() > auction.endsAt) {
         return socket.emit('auction:error', 'Auction has ended');
       }
-      if (data.price <= auction.currentPrice) {
-        return socket.emit('auction:error', `Bid must be higher than ${auction.currentPrice}`);
-      }
+      // Read against the auction as it is now, after the await above, so a bid
+      // that landed meanwhile moves both the floor and the ceiling.
+      const amountRefusal = auctionBidAmountRefusal(auction, data.price);
+      if (amountRefusal) return socket.emit('auction:error', amountRefusal);
 
       // Update auction state
       const bid: AuctionBid = {
@@ -311,6 +349,7 @@ export function initializeSocket(httpServer: HttpServer) {
       io.to(roomName).emit('auction:new_bid', {
         ...bid,
         currentPrice: auction.currentPrice,
+        maxBid: auctionMaxBid(auction),
         currentWinner: auction.currentWinnerName,
         bidCount: auction.bids.length,
       });
@@ -496,7 +535,7 @@ async function endAuction(listingId: string) {
       });
     } else if (settlement.outcome === 'voided') {
       console.warn(
-        `Auction ${listingId} winner ${winnerId} is no longer a BUYER — sale voided, listing returned to ACTIVE`
+        `Auction ${listingId} winner ${winnerId} is no longer an approved buyer — sale voided, listing returned to ACTIVE`
       );
       io.to(roomName).emit('auction:ended', {
         listingId,
@@ -593,12 +632,20 @@ export async function settleAuctionSale(input: {
     }
 
     // Final authorization gate: never mint an ACCEPTED bid and an escrow deal
-    // for somebody the REST layer would now refuse. An empty result means the
-    // account was deleted mid-auction, treated as not a buyer.
-    const lockedWinner = await tx.$queryRaw<Array<{ role: string }>>`
-      SELECT "role"::text AS role FROM "User" WHERE "id" = ${winnerId} FOR UPDATE
+    // for somebody the REST layer would now refuse. The same fence as a bid
+    // (auctionBidRefusal): a BUYER, not suspended, with an APPROVED buyer
+    // profile. Both rows are locked, so an admin suspending the account or the
+    // approval at this moment either lands first and voids the sale, or waits
+    // for it. An inner join, because Postgres cannot lock the nullable side of
+    // an outer one: no row (deleted account, no profile) is treated as refused.
+    const lockedWinner = await tx.$queryRaw<Array<{ role: string; suspended: boolean; status: string }>>`
+      SELECT u."role"::text AS role, u."suspended", b."status"::text AS status
+      FROM "User" u JOIN "BuyerProfile" b ON b."userId" = u."id"
+      WHERE u."id" = ${winnerId}
+      FOR UPDATE
     `;
-    if (lockedWinner[0]?.role !== 'BUYER') {
+    const winner = lockedWinner[0];
+    if (!winner || winner.role !== 'BUYER' || winner.suspended || winner.status !== 'APPROVED') {
       await tx.listing.update({ where: { id: listingId }, data: { status: 'ACTIVE' } });
       return { outcome: 'voided' };
     }
@@ -710,6 +757,7 @@ function serializeAuction(auction: AuctionState) {
     quantity: auction.quantity,
     startPrice: auction.startPrice,
     currentPrice: auction.currentPrice,
+    maxBid: auctionMaxBid(auction),
     currentWinner: auction.currentWinnerName,
     bidCount: auction.bids.length,
     participantCount: auction.participants.size,

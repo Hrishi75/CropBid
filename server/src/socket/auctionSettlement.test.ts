@@ -24,7 +24,10 @@ import { createNotification } from '../services/notification.service';
 import { acceptBid } from '../services/bid.service';
 import { updateListing } from '../services/listing.service';
 import { createTransaction } from '../services/transaction.service';
-import { settleAuctionSale, startAuction, releaseStrandedAuctions } from './index';
+import {
+  settleAuctionSale, startAuction, releaseStrandedAuctions,
+  auctionBidRefusal, auctionBidAmountRefusal, auctionMaxBid,
+} from './index';
 
 const BUYER = 'au-buyer';
 const BIDDER = 'au-bidder';
@@ -251,5 +254,86 @@ describe('after a restart', () => {
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
       userId: FARM, type: 'AUCTION_INTERRUPTED', data: { listingId: stranded.id },
     }));
+  });
+});
+
+// The socket is another way to buy, so it has the fence POST /bids has. The
+// role alone stays BUYER when an admin suspends the approval, sends it back for
+// more information, or suspends the account, so each of those must refuse.
+describe('who may bid in a live auction', () => {
+  it('lets an approved buyer bid', async () => {
+    expect(await auctionBidRefusal(BUYER)).toBeNull();
+  });
+
+  it.each(['SUSPENDED', 'NEEDS_INFO', 'REJECTED'] as const)('refuses a buyer whose approval is %s', async (status) => {
+    await prisma.buyerProfile.update({ where: { userId: BUYER }, data: { status } });
+    expect(await auctionBidRefusal(BUYER)).toMatch(/not approved/);
+  });
+
+  it('refuses a suspended account, a restaurant and a non-buyer', async () => {
+    await prisma.user.update({ where: { id: BUYER }, data: { suspended: true } });
+    expect(await auctionBidRefusal(BUYER)).toMatch(/no longer authorized/);
+    await prisma.buyerProfile.update({ where: { userId: BIDDER }, data: { companyType: 'RESTAURANT' } });
+    expect(await auctionBidRefusal(BIDDER)).toMatch(/negotiat/i);
+    expect(await auctionBidRefusal(FARM)).toMatch(/no longer authorized/);
+    expect(await auctionBidRefusal('no-such-user')).toMatch(/no longer authorized/);
+  });
+
+  it.each([
+    ['a suspended approval', () => prisma.buyerProfile.update({ where: { userId: BUYER }, data: { status: 'SUSPENDED' } })],
+    ['a suspended account', () => prisma.user.update({ where: { id: BUYER }, data: { suspended: true } })],
+  ])('voids the sale to a winner with %s, and puts the lot back on sale', async (_label, revoke) => {
+    const l = await lot('IN_AUCTION');
+    await revoke();
+    const result = await settleAuctionSale({ listingId: l.id, winnerId: BUYER, price: 2400, bidCount: 2 });
+    expect(result.outcome).toBe('voided');
+    expect(await salesOf(l.id)).toBe(0);
+    expect((await prisma.listing.findUniqueOrThrow({ where: { id: l.id } })).status).toBe('ACTIVE');
+  });
+});
+
+describe('how far one bid may move the price', () => {
+  const room = { startPrice: 2000, currentPrice: 2000 };
+
+  it('takes an ordinary raise, up to double the current price', () => {
+    expect(auctionBidAmountRefusal(room, 2000.5)).toBeNull();
+    expect(auctionBidAmountRefusal(room, 4000)).toBeNull();
+  });
+
+  it('refuses a bid at or under the current price', () => {
+    expect(auctionBidAmountRefusal(room, 2000)).toMatch(/higher than 2000/);
+    expect(auctionBidAmountRefusal(room, 1500)).toMatch(/higher than/);
+  });
+
+  it('refuses an extra zero, and says how high is allowed', () => {
+    expect(auctionBidAmountRefusal(room, 20000)).toMatch(/most you can bid now is 4000/);
+    expect(auctionBidAmountRefusal(room, 4000.01)).toMatch(/too far/);
+  });
+
+  it('never goes past five times the starting price, however it is walked up', () => {
+    const late = { startPrice: 2000, currentPrice: 8000 };
+    expect(auctionBidAmountRefusal(late, 10000)).toBeNull();
+    expect(auctionBidAmountRefusal(late, 10000.01)).toMatch(/most you can bid now is 10000/);
+  });
+
+  // The room is sent maxBid and caps its suggestions with it, so it must be
+  // exactly the line the refusal draws.
+  it('tells the room the most it may bid, and says so once the top is reached', () => {
+    const near = { startPrice: 2000, currentPrice: 9800 };
+    expect(auctionMaxBid(near)).toBe(10000);
+    expect(auctionBidAmountRefusal(near, auctionMaxBid(near))).toBeNull();
+    expect(auctionBidAmountRefusal(near, 10290)).toMatch(/most you can bid now is 10000/);
+    expect(auctionMaxBid({ startPrice: 2000, currentPrice: 2000 })).toBe(4000);
+    expect(auctionMaxBid({ startPrice: 33.33, currentPrice: 33.33 })).toBe(66.66);
+    const top = { startPrice: 2000, currentPrice: 10000 };
+    expect(auctionMaxBid(top)).toBe(10000);
+    expect(auctionBidAmountRefusal(top, 10000.5)).toMatch(/reached the highest price/);
+  });
+
+  it('refuses a fraction of a paisa, and nonsense', () => {
+    expect(auctionBidAmountRefusal(room, 2100.005)).toMatch(/two decimal places/);
+    expect(auctionBidAmountRefusal(room, 2100.1)).toBeNull();
+    expect(auctionBidAmountRefusal(room, 0.1 + 2100.2)).toBeNull();
+    for (const bad of [NaN, Infinity, -5, 0]) expect(auctionBidAmountRefusal(room, bad)).toBe('Enter a valid bid');
   });
 });
