@@ -19,7 +19,6 @@ import { parseFreightPayer } from '../utils/freight';
 
 // --- Types for service inputs ---
 interface CreateListingInput {
-  farmerId: string;
   cropName: string;
   cropVariety?: string;
   quantity: number;
@@ -83,7 +82,10 @@ interface ListingsQuery {
 // =============================================================================
 export async function createListing(userId: string, input: CreateListingInput) {
   // CropBid is the point of contact: no phone, email or chat link in text the
-  // other side reads (utils/contactDetails.ts).
+  // other side reads (utils/contactDetails.ts). The crop name and variety are
+  // read by every buyer too, so they are held to the same rule.
+  assertNoContactDetails(input.cropName, 'The crop name');
+  assertNoContactDetails(input.cropVariety, 'The variety');
   assertNoContactDetails(input.description, 'The description');
   // First, verify the user has a farmer profile
   const farmerProfile = await prisma.farmerProfile.findUnique({
@@ -248,7 +250,10 @@ export async function getListingById(id: string) {
 // =============================================================================
 export async function updateListing(listingId: string, userId: string, input: UpdateListingInput) {
   // CropBid is the point of contact: no phone, email or chat link in text the
-  // other side reads (utils/contactDetails.ts).
+  // other side reads (utils/contactDetails.ts). The crop name and variety are
+  // read by every buyer too, so they are held to the same rule.
+  assertNoContactDetails(input.cropName, 'The crop name');
+  assertNoContactDetails(input.cropVariety, 'The variety');
   assertNoContactDetails(input.description, 'The description');
   // Find the listing and verify ownership
   const listing = await prisma.listing.findUnique({
