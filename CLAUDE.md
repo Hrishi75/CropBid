@@ -165,6 +165,7 @@ How it holds together:
 - **Closing the payment window leaves the orders placed.** The orders screen then leads with "₹X to pay" and one Pay button for everything owed. On the website, an order's own page can still pay that one shop order.
 - **"Did it arrive?"** sits on app orders that the seller has marked delivered, and only those: one tap confirms every delivered item on that card, which is the step that marks the seller due their money. The website's order page already had it.
 - **`RazorpayCheckout` still has no web implementation** (§9), so the app's payment window can only be exercised on a phone.
+- **Its page is built as an HTML string with the shopper's name and email inside a `<script>`**, so every value goes through `scriptJson` (`mobile/src/lib/scriptJson.ts`, 2026-11-06), never bare `JSON.stringify`: account names are not checked, and a name holding `</script>` ended the block and ran whatever followed inside the payment page, which can post a fake "paid" message to the app. The server's signature check still refused a fake payment, so no money moved, but the page was the shopper's to break.
 
 ### 3d. Cancelling a shop order (decided 2026-09-20)
 
