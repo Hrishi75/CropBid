@@ -201,3 +201,21 @@ export const SCHEME_TEXT: Record<string, { hi: SchemeText; mr: SchemeText }> = {
     },
   },
 };
+
+// The category names in Hindi and Marathi, the same words the web page shows
+// on its chips (client/src/locales), so the server's search finds a scheme by
+// the category name a reader sees.
+export const CATEGORY_TEXT: Record<string, { hi: string; mr: string }> = {
+  income: { hi: 'आय सहायता', mr: 'उत्पन्न सहाय्य' },
+  insurance: { hi: 'फसल बीमा', mr: 'पीक विमा' },
+  credit: { hi: 'कर्ज़ और क्रेडिट', mr: 'कर्ज आणि पतपुरवठा' },
+  pension: { hi: 'पेंशन', mr: 'पेन्शन' },
+  soil: { hi: 'मिट्टी और खाद-बीज', mr: 'माती आणि निविष्ठा' },
+  energy: { hi: 'सोलर और ऊर्जा', mr: 'सौर आणि ऊर्जा' },
+  irrigation: { hi: 'सिंचाई', mr: 'सिंचन' },
+  machinery: { hi: 'मशीनें और उपकरण', mr: 'यंत्रे आणि अवजारे' },
+  storage: { hi: 'भंडारण और गोदाम', mr: 'साठवण आणि गोदामे' },
+  organic: { hi: 'जैविक खेती', mr: 'सेंद्रिय शेती' },
+  market: { hi: 'बिक्री और बाज़ार', mr: 'विक्री आणि बाजार' },
+  allied: { hi: 'डेयरी और पशुपालन', mr: 'दुग्धव्यवसाय आणि पशुपालन' },
+};

@@ -19,7 +19,7 @@
 // each entry links to the official portal as the source of truth.
 // =============================================================================
 
-import { SCHEME_TEXT, type SchemeText } from './schemeTranslations';
+import { CATEGORY_TEXT, SCHEME_TEXT, type SchemeText } from './schemeTranslations';
 
 export type SchemeCategory =
   | 'income'      // direct income support
@@ -231,9 +231,11 @@ const CATALOGUE: Scheme[] = [
 export const SCHEMES: Scheme[] = CATALOGUE.map((s) => ({ ...s, translations: SCHEME_TEXT[s.slug] }));
 
 function translatedText(s: Scheme): string[] {
-  if (!s.translations) return [];
-  return [s.translations.hi, s.translations.mr].flatMap((t) =>
-    [t.name ?? '', t.tagline, t.benefit, t.eligibility, t.apply]);
+  const category = CATEGORY_TEXT[s.category];
+  const categoryWords = category ? [category.hi, category.mr] : [];
+  if (!s.translations) return categoryWords;
+  return [...categoryWords, ...[s.translations.hi, s.translations.mr].flatMap((t) =>
+    [t.name ?? '', t.tagline, t.benefit, t.eligibility, t.apply])];
 }
 
 // -----------------------------------------------------------------------------

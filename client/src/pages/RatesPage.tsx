@@ -162,6 +162,13 @@ function Signal({ r }: { r: LiveRate }) {
   );
 }
 
+/**
+ * The label over a price range. A reference price has no reports behind it,
+ * and its range can be an estimate around a saved average, so it must not be
+ * labelled as where mandis sold.
+ */
+const rangeLabel = (r: LiveRate, t: TFunction) => t(r.source === 'reference' ? 'Reference range' : 'Most mandis');
+
 /** Where the card's number comes from, and how many mandis it rests on. */
 function sourceLine(r: LiveRate, t: TFunction): string {
   if (r.source === 'reference') return t("Reference price, not today's report");
@@ -445,7 +452,7 @@ function MandiModal({ crop, state, onClose }: { crop: LiveRate; state: string; o
         </div>
         <dl className="rp-facts">
           <div>
-            <dt>{t('Most mandis')}</dt>
+            <dt>{rangeLabel(crop, t)}</dt>
             <dd>{inr(crop.min)} – {inr(crop.max)}</dd>
           </div>
           {crop.source !== 'reference' && (
@@ -646,7 +653,7 @@ export function RatesPage() {
                       <div className="rp-rate-caption">{t('Typical mandi price')}</div>
 
                       <div className="rp-rate-range">
-                        <span>{t('Most mandis')}</span>
+                        <span>{rangeLabel(r, t)}</span>
                         <strong>{inr(r.min)} – {inr(r.max)}</strong>
                       </div>
 

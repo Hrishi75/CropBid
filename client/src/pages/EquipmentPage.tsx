@@ -88,6 +88,27 @@ const CATEGORY_EMOJI: Record<string, string> = {
   TOOLS: '🔧',
 };
 
+// Dealers list machines in English, but the Hindi and Marathi search hints
+// suggest Hindi and Marathi words, so a search in either is also tried as the
+// English word a listing would use. Covers the words the hints and the
+// category names put in front of a reader.
+const SEARCH_ALIASES: Record<string, string> = {
+  'पंप': 'pump', 'पाइप': 'pipe', 'मोटर': 'motor', 'इंजन': 'engine', 'इंजिन': 'engine',
+  'ट्रैक्टर': 'tractor', 'ट्रॅक्टर': 'tractor', 'टिलर': 'tiller',
+  'रोटावेटर': 'rotavator', 'रोटाव्हेटर': 'rotavator',
+  'ड्रिप': 'drip', 'ठिबक': 'drip', 'स्प्रिंकलर': 'sprinkler', 'तुषार': 'sprinkler',
+  'स्प्रेयर': 'sprayer', 'फवारणी': 'sprayer', 'हार्वेस्टर': 'harvester', 'रीपर': 'reaper',
+  'थ्रेशर': 'thresher', 'मळणी': 'thresher', 'हल': 'plough', 'नांगर': 'plough',
+};
+
+/** The search as typed, plus the English word for any Hindi or Marathi one in it. */
+function searchTerms(needle: string): string[] {
+  const english = Object.entries(SEARCH_ALIASES)
+    .filter(([word]) => word.startsWith(needle) || needle.includes(word))
+    .map(([, en]) => en);
+  return [needle, ...new Set(english)];
+}
+
 function rupees(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`;
 }
@@ -107,7 +128,7 @@ function priceLine(e: Equipment, intent: Intent, t: TFunction): string {
 
 export function EquipmentPage() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [items, setItems] = useState<Equipment[] | null>(null);
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
@@ -151,11 +172,18 @@ export function EquipmentPage() {
     if (!items) return [];
     const needle = q.trim().toLowerCase();
     if (!needle) return items;
-    return items.filter((e) =>
-      [e.title, e.brand, e.modelName, e.location, e.dealer.name]
-        .filter(Boolean).join(' ').toLowerCase().includes(needle)
-    );
-  }, [items, q]);
+    const terms = searchTerms(needle);
+    const labelOf = new Map(categories.map((c) => [c.id, c.label]));
+    return items.filter((e) => {
+      // The category name in all three languages, so a reader can search
+      // with the words the chips show them.
+      const label = labelOf.get(e.category) ?? '';
+      const text = [e.title, e.brand, e.modelName, e.location, e.dealer.name,
+        label, i18n.t(label, { lng: 'hi' }), i18n.t(label, { lng: 'mr' })]
+        .filter(Boolean).join(' ').toLowerCase();
+      return terms.some((term) => text.includes(term));
+    });
+  }, [items, q, categories, i18n]);
 
   const detail = results.find((e) => e.id === selected) ?? null;
 

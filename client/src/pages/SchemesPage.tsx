@@ -70,11 +70,14 @@ interface SchemesData {
   schemes: Scheme[];
 }
 
-function matches(s: Scheme, needle: string, categories: Record<string, string>): boolean {
+function matches(s: Scheme, needle: string, categories: Record<string, string>, tr: (key: string, lng: string) => string): boolean {
   const translated = s.translations
     ? [s.translations.hi, s.translations.mr].flatMap((t) => [t.name ?? '', t.tagline, t.benefit, t.eligibility, t.apply])
     : [];
-  return [s.name, s.hindiName, s.tagline, s.benefit, s.eligibility, s.apply, s.keywords, categories[s.category] ?? '', ...translated]
+  // The category name in all three languages, as the chips show it.
+  const label = categories[s.category] ?? '';
+  const labels = label ? [label, tr(label, 'hi'), tr(label, 'mr')] : [];
+  return [s.name, s.hindiName, s.tagline, s.benefit, s.eligibility, s.apply, s.keywords, ...labels, ...translated]
     .join(' ')
     .toLowerCase()
     .includes(needle);
@@ -101,9 +104,9 @@ export function SchemesPage() {
     let out = data.schemes;
     if (cat) out = out.filter((s) => s.category === cat);
     const needle = q.trim().toLowerCase();
-    if (needle) out = out.filter((s) => matches(s, needle, data.categories));
+    if (needle) out = out.filter((s) => matches(s, needle, data.categories, (key, lng) => i18n.t(key, { lng })));
     return out;
-  }, [data, q, cat]);
+  }, [data, q, cat, i18n]);
 
   const detail = results.find((s) => s.slug === selected) ?? null;
   const detailText = detail ? readable(detail, i18n.language) : null;

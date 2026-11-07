@@ -8,9 +8,11 @@
 // appears in the same field of each translation.
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SCHEMES, searchSchemes } from './schemes.service';
-import { SCHEME_TEXT } from './schemeTranslations';
+import { CATEGORY_LABEL, SCHEMES, searchSchemes } from './schemes.service';
+import { CATEGORY_TEXT, SCHEME_TEXT } from './schemeTranslations';
 
 const FIELDS = ['tagline', 'benefit', 'eligibility', 'apply'] as const;
 
@@ -44,5 +46,20 @@ describe('scheme translations', () => {
 
   it('finds a scheme by its Marathi words', () => {
     expect(searchSchemes('पीक विमा').map((s) => s.slug)).toContain('pmfby');
+  });
+
+  it('finds a scheme by the Hindi or Marathi category name the page shows', () => {
+    expect(Object.keys(CATEGORY_TEXT).sort()).toEqual(Object.keys(CATEGORY_LABEL).sort());
+    expect(searchSchemes('आय सहायता').map((s) => s.slug)).toContain('pm-kisan');
+    expect(searchSchemes('उत्पन्न सहाय्य').map((s) => s.slug)).toContain('pm-kisan');
+  });
+
+  it('names each category exactly as the website shows it', () => {
+    const locales = join(__dirname, '../../../client/src/locales');
+    const hi = JSON.parse(readFileSync(join(locales, 'hi.json'), 'utf8'));
+    const mr = JSON.parse(readFileSync(join(locales, 'mr.json'), 'utf8'));
+    for (const [id, english] of Object.entries(CATEGORY_LABEL)) {
+      expect(CATEGORY_TEXT[id], id).toEqual({ hi: hi[english], mr: mr[english] });
+    }
   });
 });
