@@ -101,12 +101,18 @@ const SEARCH_ALIASES: Record<string, string> = {
   'थ्रेशर': 'thresher', 'मळणी': 'thresher', 'हल': 'plough', 'नांगर': 'plough',
 };
 
-/** The search as typed, plus the English word for any Hindi or Marathi one in it. */
-function searchTerms(needle: string): string[] {
-  const english = Object.entries(SEARCH_ALIASES)
-    .filter(([word]) => word.startsWith(needle) || needle.includes(word))
-    .map(([, en]) => en);
-  return [needle, ...new Set(english)];
+/**
+ * The search, word by word: each word with the English word for it when it
+ * is (the start of) a Hindi or Marathi one. A listing must match every word,
+ * so "Kirloskar पंप" narrows to Kirloskar pumps rather than any pump.
+ */
+function searchWords(needle: string): string[][] {
+  return needle.split(/\s+/).filter(Boolean).map((word) => {
+    const english = Object.entries(SEARCH_ALIASES)
+      .filter(([alias]) => alias.startsWith(word))
+      .map(([, en]) => en);
+    return [word, ...new Set(english)];
+  });
 }
 
 function rupees(amount: number): string {
@@ -172,7 +178,7 @@ export function EquipmentPage() {
     if (!items) return [];
     const needle = q.trim().toLowerCase();
     if (!needle) return items;
-    const terms = searchTerms(needle);
+    const words = searchWords(needle);
     const labelOf = new Map(categories.map((c) => [c.id, c.label]));
     return items.filter((e) => {
       // The category name in all three languages, so a reader can search
@@ -181,7 +187,7 @@ export function EquipmentPage() {
       const text = [e.title, e.brand, e.modelName, e.location, e.dealer.name,
         label, i18n.t(label, { lng: 'hi' }), i18n.t(label, { lng: 'mr' })]
         .filter(Boolean).join(' ').toLowerCase();
-      return terms.some((term) => text.includes(term));
+      return words.every((options) => options.some((option) => text.includes(option)));
     });
   }, [items, q, categories, i18n]);
 
