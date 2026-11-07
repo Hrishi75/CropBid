@@ -40,6 +40,7 @@ import { createTransaction } from './transaction.service';
 import { alertNewOrder } from './orderAlert.service';
 import { orderContactDefaults } from './bid.service';
 import { isRetailCity } from '../utils/retailCities';
+import { STOCK_EPSILON } from './lotStock';
 
 export const RETAIL_DELIVERY = {
   /** A shop's items worth at least this many rupees travel free. */
@@ -551,19 +552,21 @@ export async function cancelRetailOrder(
         data: { remainingQuantity: { increment: lot.bid.quantity } },
       });
 
-      // And back on sale, but only where this retail channel is the only thing
-      // that ever closed it. A lot marked SOLD because a wholesale deal took
-      // it is spoken for: returning a few kilos to the shelf must not put the
-      // whole lot back on the market for someone else to buy.
-      const wholesaleDeals = await tx.transaction.count({
-        where: { listingId: lot.listingId, bid: { isDirectPurchase: false } },
+      // And back on sale if the lot had sold out. A wholesale deal now takes
+      // only its own quantity (lotStock.ts), so SOLD means nothing was left,
+      // and the kilos just returned are stock nobody has bought. It used to
+      // stay SOLD whenever a wholesale deal existed, because an accept took
+      // the whole lot. A lot made to fill a request or a contract batch is
+      // never on the household shelf, but is left alone all the same.
+      await tx.listing.updateMany({
+        where: {
+          id: lot.listingId,
+          status: 'SOLD',
+          isRequirementFill: false,
+          remainingQuantity: { gt: STOCK_EPSILON },
+        },
+        data: { status: 'ACTIVE' },
       });
-      if (wholesaleDeals === 0) {
-        await tx.listing.updateMany({
-          where: { id: lot.listingId, status: 'SOLD' },
-          data: { status: 'ACTIVE' },
-        });
-      }
     }
 
     // The refund is recorded with the cancellation, not after it. The admin
