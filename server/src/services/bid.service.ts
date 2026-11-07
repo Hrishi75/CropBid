@@ -22,6 +22,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { notifyNewBid, notifyBidAccepted, notifyBidRejected, notifyBidCountered } from './notification.helpers';
 import { createTransaction } from './transaction.service';
+import { claimLotQuantity, rejectBidsOverStock, STOCK_EPSILON } from './lotStock';
 import type { FreightPayer } from '../utils/freight';
 import { alertNewOrder } from './orderAlert.service';
 import { PUBLIC_BUYER_USER_SELECT, redactBidContact, redactBidContacts } from './contactVisibility';
@@ -134,7 +135,7 @@ export async function placeBid(buyerId: string, input: PlaceBidInput) {
   // Validate against remainingQuantity, not the original quantity: direct-sale
   // consumer purchases decrement remainingQuantity, so this is the real stock a
   // bulk bid can still claim (and equals quantity for listings with no direct sales).
-  if (input.quantity > listing.remainingQuantity) {
+  if (input.quantity > listing.remainingQuantity + STOCK_EPSILON) {
     throw new ApiError(400, `Only ${listing.remainingQuantity} ${listing.unit} available`);
   }
 
@@ -315,8 +316,9 @@ export async function acceptBid(
   //
   // The claim also requires remainingQuantity >= bid.quantity so a bid can't be
   // accepted for more stock than is actually left after direct-sale consumer
-  // purchases (which decrement remainingQuantity but leave the listing ACTIVE).
-  // Accepting sells the whole listing, so remainingQuantity drops to 0.
+  // purchases and earlier accepts. Accepting sells the bid's quantity only:
+  // the rest stays on sale, and the lot is SOLD once nothing is left
+  // (lotStock.ts).
   //
   // ACTIVE only, never IN_AUCTION. A lot in a live auction is the auction's to
   // sell: accepting an older pending bid here used to sell it, and then the
@@ -326,15 +328,8 @@ export async function acceptBid(
     throw new ApiError(409, 'This lot is in a live auction. Wait for the auction to end.', 'LOT_IN_AUCTION');
   }
   const accepted = await prisma.$transaction(async (tx) => {
-    const claim = await tx.listing.updateMany({
-      where: {
-        id: bid.listingId,
-        status: 'ACTIVE',
-        remainingQuantity: { gte: bid.quantity },
-      },
-      data: { status: 'SOLD', remainingQuantity: 0 },
-    });
-    if (claim.count === 0) {
+    const remaining = await claimLotQuantity(tx, bid.listingId, bid.quantity);
+    if (remaining === null) {
       throw new ApiError(409, 'This listing is no longer available — its stock was reduced or another sale just went through.');
     }
 
@@ -354,15 +349,8 @@ export async function acceptBid(
       throw new ApiError(409, 'This bid changed or is no longer pending. Refresh and check it again.', 'BID_CHANGED');
     }
 
-    // Reject competing bids
-    await tx.bid.updateMany({
-      where: {
-        listingId: bid.listingId,
-        id: { not: bidId },
-        status: { in: ['PENDING', 'COUNTERED'] },
-      },
-      data: { status: 'REJECTED' },
-    });
+    // Turn down only the bids what is left cannot fill; the rest stay open.
+    await rejectBidsOverStock(tx, bid.listingId, bidId, remaining);
 
     // Create the escrow transaction in the SAME tx so an accepted sale always
     // has a payable record — atomic, never fire-and-forget.
