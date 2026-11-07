@@ -38,7 +38,15 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false }, // React already escapes
 });
 
+// Tell the browser which language the page is in, so screen readers read
+// Hindi and Marathi with the right voice and fonts pick the right shapes.
+function setDocumentLang(lang: string) {
+  if (typeof document !== 'undefined') document.documentElement.lang = lang;
+}
+setDocumentLang(i18n.language);
+
 i18n.on('languageChanged', (lang) => {
+  setDocumentLang(lang);
   try {
     localStorage.setItem(STORAGE_KEY, lang);
   } catch {

@@ -19,6 +19,8 @@
 // each entry links to the official portal as the source of truth.
 // =============================================================================
 
+import { SCHEME_TEXT, type SchemeText } from './schemeTranslations';
+
 export type SchemeCategory =
   | 'income'      // direct income support
   | 'insurance'   // crop insurance
@@ -45,6 +47,10 @@ export interface Scheme {
   apply: string;         // how to apply, in plain words
   link: string;          // official portal
   keywords: string;      // extra search words incl. Hinglish (not displayed)
+  // The same text in Hindi and Marathi (schemeTranslations.ts), sent with
+  // every scheme so the web page reads in the visitor's language. Optional
+  // on the type so a client that ignores it is unaffected.
+  translations?: { hi: SchemeText; mr: SchemeText };
 }
 
 export const CATEGORY_LABEL: Record<SchemeCategory, string> = {
@@ -62,7 +68,7 @@ export const CATEGORY_LABEL: Record<SchemeCategory, string> = {
   allied: 'Dairy & livestock',
 };
 
-const SCHEMES: Scheme[] = [
+const CATALOGUE: Scheme[] = [
   {
     slug: 'pm-kisan',
     name: 'PM-KISAN',
@@ -221,6 +227,15 @@ const SCHEMES: Scheme[] = [
   },
 ];
 
+// Every scheme carries its Hindi and Marathi text alongside the English.
+export const SCHEMES: Scheme[] = CATALOGUE.map((s) => ({ ...s, translations: SCHEME_TEXT[s.slug] }));
+
+function translatedText(s: Scheme): string[] {
+  if (!s.translations) return [];
+  return [s.translations.hi, s.translations.mr].flatMap((t) =>
+    [t.name ?? '', t.tagline, t.benefit, t.eligibility, t.apply]);
+}
+
 // -----------------------------------------------------------------------------
 // Search — case-insensitive match across every text field incl. Hinglish
 // keywords, so "bima", "loan", "solar", "पेंशन" all land on the right scheme.
@@ -231,7 +246,8 @@ export function searchSchemes(q?: string, category?: string): Scheme[] {
   if (q && q.trim()) {
     const needle = q.trim().toLowerCase();
     out = out.filter((s) =>
-      [s.name, s.hindiName, s.tagline, s.benefit, s.eligibility, s.apply, s.keywords, CATEGORY_LABEL[s.category]]
+      [s.name, s.hindiName, s.tagline, s.benefit, s.eligibility, s.apply, s.keywords, CATEGORY_LABEL[s.category],
+        ...translatedText(s)]
         .join(' ')
         .toLowerCase()
         .includes(needle)

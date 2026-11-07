@@ -1687,6 +1687,7 @@ body * {
 .rp-emoji { font-size: 22px; }
 .rp-source { font-size: 8.5px; letter-spacing: 0.6px; color: var(--cb-ink-3); }
 .rp-name { font-size: 14px; font-weight: 600; margin-top: 8px; color: var(--cb-ink); }
+.rp-name-en { font-size: 11px; color: var(--cb-ink-3); margin-top: -1px; }
 .rp-price { font-size: 19px; font-weight: 700; color: var(--cb-ink); }
 .rp-unit { font-size: 11px; font-weight: 400; color: var(--cb-ink-3); }
 .rp-band { font-size: 11px; color: var(--cb-ink-3); }
@@ -1695,6 +1696,69 @@ body * {
 .rp-sig.neg { color: #c25e2a; }
 .rp-sig.flat { color: var(--cb-ink-3); }
 .rp-more { font-size: 11px; color: var(--cb-sage); margin-top: 8px; }
+
+/* The rate card on /rates. Its own classes, because .rp-card is shared with
+   the schemes, equipment and inputs pages. Each number carries its own
+   label, so the card reads without a key. */
+.rp-card.rp-rate { gap: 0; padding: 14px 14px 12px; }
+.rp-rate-head { display: flex; align-items: center; gap: 10px; }
+.rp-rate-emoji {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 21px;
+  background: var(--cb-bg); border: 1px solid var(--cb-line-2, var(--cb-line));
+}
+.rp-rate-names { min-width: 0; }
+.rp-rate-name { font-size: 15px; font-weight: 600; color: var(--cb-ink); line-height: 1.25; }
+.rp-rate-en { font-size: 11.5px; color: var(--cb-ink-3); margin-top: 1px; }
+.rp-rate-price {
+  margin-top: 14px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--cb-ink); line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.rp-rate-unit { font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--cb-ink-3); margin-left: 1px; }
+.rp-rate-caption { font-size: 11.5px; color: var(--cb-ink-3); margin-top: 3px; }
+.rp-rate-range {
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--cb-line);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  font-size: 12px; color: var(--cb-ink-3);
+}
+.rp-rate-range strong { font-weight: 600; color: var(--cb-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-pill {
+  align-self: flex-start; margin-top: 10px;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; line-height: 1.4;
+}
+.rp-pill.pos { color: #2f5a1e; background: rgba(63, 109, 42, 0.12); }
+.rp-pill.neg { color: #a44a1c; background: rgba(194, 94, 42, 0.12); }
+.rp-pill.flat { color: var(--cb-ink-3); background: var(--cb-line-2, rgba(0, 0, 0, 0.05)); font-weight: 500; }
+.rp-rate-foot { margin-top: auto; padding-top: 12px; }
+.rp-rate-source { font-size: 11px; color: var(--cb-ink-3); }
+.rp-rate-go { font-size: 12px; font-weight: 500; color: var(--cb-sage); margin-top: 4px; }
+.rp-card.rp-rate:hover .rp-rate-go { color: var(--cb-forest); }
+/* Two cards a row on a phone: one per row is a long scroll through 200 crops. */
+@media (max-width: 720px) {
+  .rp-rate-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .rp-card.rp-rate { padding: 12px 12px 10px; }
+  .rp-rate-emoji { width: 32px; height: 32px; font-size: 18px; }
+  .rp-rate-price { font-size: 21px; }
+  .rp-rate-range { flex-direction: column; gap: 2px; }
+}
+
+.rp-modal-en { font-size: 13px; color: var(--cb-ink-3); margin-top: 2px; }
+.rp-foot p + p { margin-top: 8px; }
+/* Public pages whose header also carries the language dropdown (rates,
+   schemes, equipment). On a phone the header keeps the dropdown and one
+   button; the quieter text link beside them (`.rp-nav-optional`) gives way
+   rather than wrap or run off the edge. */
+.rp-nav-lang { gap: 12px; }
+.rp-nav-lang .nav-signin { white-space: nowrap; }
+@media (max-width: 520px) {
+  .rp-nav-lang .rp-nav-links .rp-nav-optional { display: none; }
+}
+/* Letter spacing pulls Devanagari's joined letters apart, so the small
+   tracked labels sit flat when the page is in Hindi or Marathi. */
+html[lang="hi"] .rp :is(.cb-eyebrow, .cb-chip, .rp-source, .rp-src),
+html[lang="mr"] .rp :is(.cb-eyebrow, .cb-chip, .rp-source, .rp-src) { letter-spacing: 0; }
 
 .rp-detail-note {
   margin-top: 14px; padding: 14px 16px;
@@ -1709,7 +1773,7 @@ body * {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   flex-wrap: wrap; padding: 14px 16px; border-bottom: 1px solid var(--cb-line);
 }
-.rp-src { font-size: 10px; letter-spacing: 0.06em; color: var(--cb-ink-3); }
+.rp-src { font-size: 11.5px; color: var(--cb-ink-3); }
 .rp-excluded {
   margin: 0; padding: 10px 16px; font-size: 12.5px; color: var(--cb-ink-3);
   border-bottom: 1px solid var(--cb-line);
@@ -1739,12 +1803,55 @@ body * {
 .rp-modal .rp-table-wrap { margin-top: 16px; }
 .rp-modal .rp-table-scroll { max-height: min(58vh, 560px); max-height: min(58dvh, 560px); }
 .rp-modal .rp-detail-note { margin-top: 16px; }
-.rp-modal-head { display: flex; align-items: flex-start; gap: 14px; padding-right: 40px; }
-.rp-modal-head .rp-emoji { font-size: 34px; line-height: 1; }
-.rp-modal-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: var(--cb-ink); margin: 4px 0 2px; }
+/* The crop window reads in the card's order: name, typical price, then
+   three labelled facts, then tools to search and sort the mandi list. */
+.rp-modal-head { display: flex; align-items: center; gap: 12px; padding-right: 40px; }
+.rp-rate-emoji.rp-modal-emoji { width: 48px; height: 48px; font-size: 26px; }
+.rp-modal-names { min-width: 0; }
+.rp-modal-title { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; color: var(--cb-ink); margin: 0; line-height: 1.2; }
 .rp-modal-price {
-  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  font-size: 20px; font-weight: 700; color: var(--cb-ink);
+  margin-top: 16px; font-size: 32px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--cb-ink); line-height: 1.05; font-variant-numeric: tabular-nums;
+}
+.rp-facts {
+  margin: 14px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--cb-line); border-radius: 12px; background: var(--cb-bg);
+}
+.rp-facts > div { padding: 10px 14px; min-width: 0; }
+.rp-facts > div + div { border-left: 1px solid var(--cb-line); }
+.rp-facts dt { font-size: 11.5px; color: var(--cb-ink-3); }
+.rp-facts dd { margin: 4px 0 0; font-size: 15px; font-weight: 600; color: var(--cb-ink); font-variant-numeric: tabular-nums; }
+.rp-facts dd .rp-pill { margin-top: 0; }
+
+.rp-mtools { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.rp-mfind {
+  flex: 1 1 220px; font: inherit; font-size: 14px; color: var(--cb-ink);
+  background: var(--cb-paper); border: 1px solid var(--cb-line); border-radius: 10px; padding: 9px 12px;
+}
+.rp-msort { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rp-msort-label { font-size: 12px; color: var(--cb-ink-3); margin-right: 2px; }
+.rp-msort-btn {
+  font: inherit; font-size: 12.5px; cursor: pointer; color: var(--cb-ink-2);
+  background: var(--cb-paper); border: 1px solid var(--cb-line); border-radius: 999px; padding: 5px 11px;
+}
+.rp-msort-btn:hover { border-color: var(--cb-ink-3); }
+.rp-msort-btn.active { background: var(--cb-forest); border-color: var(--cb-forest); color: #fff; }
+.rp-table-count { font-size: 12.5px; font-weight: 600; color: var(--cb-ink-2); }
+.rp-vs { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.rp-vs.pos { color: #2f5a1e; }
+.rp-vs.neg { color: #a44a1c; }
+.rp-vs.flat { color: var(--cb-ink-3); font-weight: 400; }
+.rp-table th.rp-th-wrap { white-space: normal; max-width: 92px; line-height: 1.3; }
+.rp-modal .rp-table th, .rp-modal .rp-table td { padding-left: 9px; padding-right: 9px; }
+/* Phone: the three facts stack as label-and-value rows. After the base
+   rules above, so it wins. */
+@media (max-width: 720px) {
+  .rp-modal-price { font-size: 28px; }
+  .rp-facts { grid-template-columns: 1fr; }
+  .rp-facts > div { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; }
+  .rp-facts > div + div { border-left: none; border-top: 1px solid var(--cb-line); }
+  .rp-facts dd { margin: 0; text-align: right; }
+  .rp-mfind { flex-basis: 100%; }
 }
 /* Phone rows for the mandi list; hidden until the table is too wide. */
 .rp-mlist { display: none; list-style: none; margin: 0; padding: 0; }
@@ -1758,10 +1865,12 @@ body * {
 .rp-mlist-meta { font-size: 11.5px; color: var(--cb-ink-3); margin-top: 2px; }
 .rp-mlist-price { text-align: right; flex-shrink: 0; }
 .rp-mlist-modal { font-size: 14px; font-weight: 700; color: var(--cb-ink); font-variant-numeric: tabular-nums; }
-.rp-mlist-band { font-size: 10.5px; color: var(--cb-ink-3); margin-top: 1px; }
+.rp-mlist-band { font-size: 11px; color: var(--cb-ink-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.rp-mlist-price .rp-vs { display: block; margin-top: 2px; }
 
 @media (max-width: 720px) {
   .rp-nav-links a:not(.cb-btn):not(.nav-signin) { display: none; }
+  .rp-nav-links { gap: 10px; }
   .rp-head { align-items: stretch; }
   .rp-controls { flex-direction: column; align-items: stretch; width: 100%; }
   .rp-table { display: none; }
