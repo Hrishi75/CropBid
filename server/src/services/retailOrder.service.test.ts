@@ -566,27 +566,28 @@ describe('cancelling a shop order', () => {
         data: { remainingQuantity: { increment: qty } },
       });
     }
-    // A lot that sold out because of this order goes back on sale.
+    // A lot that sold out goes back on sale, with only the stock returned.
     expect(tx.listing.updateMany).toHaveBeenCalledWith({
-      where: { id: 'tomato', status: 'SOLD' },
+      where: { id: 'tomato', status: 'SOLD', isRequirementFill: false, remainingQuantity: { gt: 1e-9 } },
       data: { status: 'ACTIVE' },
     });
   });
 
-  // A lot marked SOLD because a wholesale deal took it is spoken for. Returning
-  // a few retail kilos to the shelf must not put the whole lot back on sale.
-  it('does not reopen a listing that a wholesale deal closed', async () => {
+  // A wholesale deal takes only its own quantity now (lotStock.ts), so a lot
+  // that also has one reopens with the returned kilos like any other. It used
+  // to stay SOLD, because an accept used to take the whole lot.
+  it('reopens the returned stock on a lot that also has a wholesale deal', async () => {
     tx.transaction.count.mockResolvedValue(1);
 
     await cancelRetailOrder('order-1', shopper);
 
-    // The stock still goes back...
     expect(tx.listing.update).toHaveBeenCalledWith({
       where: { id: 'tomato' },
       data: { remainingQuantity: { increment: 2 } },
     });
-    // ...but nothing is put back on sale.
-    expect(tx.listing.updateMany).not.toHaveBeenCalled();
+    expect(tx.listing.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: 'tomato', status: 'SOLD' }) }),
+    );
   });
 
   it('tells the shop, and does not call a refund due when nothing was paid', async () => {

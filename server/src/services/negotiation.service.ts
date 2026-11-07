@@ -27,6 +27,7 @@ import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/ApiError';
 import { getAgentDecision, checkAutoAccept } from './aiAgent';
 import { createTransaction } from './transaction.service';
+import { claimLotQuantity, rejectBidsOverStock } from './lotStock';
 import { alertNewOrder } from './orderAlert.service';
 import { notifyNegotiationResult } from './notification.helpers';
 import type { NegotiationContext } from '../utils/prompts';
@@ -279,7 +280,7 @@ async function runNegotiation(
     if (farmerUserId) notifyNegotiationResult(farmerUserId, ...args).catch(() => {});
   };
 
-  // If deal was reached, accept the bid and mark listing as sold
+  // If deal was reached, accept the bid and sell its quantity
   if (outcome === 'DEAL') {
     // Conditionally claim the listing (status must still be sellable AND enough
     // stock must remain) so a negotiated deal can't double-sell a listing that a
@@ -289,19 +290,21 @@ async function runNegotiation(
     // If the claim loses the race, void this deal rather than create a second sale.
     // ACTIVE only: a lot in a live auction is sold by the auction (bid.service
     // acceptBid says why), so a negotiation that closes mid-auction is voided.
+    //
+    // The bid is claimed first, and only while it is still PENDING. A lot now
+    // stays on sale after a partial accept, so the lot's status no longer
+    // stops a seller's manual accept of this same bid and this deal from both
+    // taking its quantity: the bid's own status has to. If the stock claim
+    // then misses, the throw rolls the bid claim back with it.
+    //
+    // The lot row is locked before the bid, the same order acceptBid takes
+    // them in (its stock claim, then its bid claim). Locking the bid first
+    // let the two wait on each other and Postgres abort one as a deadlock.
+    const LOST = Symbol('lost');
     const claimed = await prisma.$transaction(async (tx) => {
-      const claim = await tx.listing.updateMany({
-        where: {
-          id: bid.listingId,
-          status: 'ACTIVE',
-          remainingQuantity: { gte: bid.quantity },
-        },
-        data: { status: 'SOLD', remainingQuantity: 0 },
-      });
-      if (claim.count === 0) return false;
-
-      await tx.bid.update({
-        where: { id: bid.id },
+      await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id" = ${bid.listingId} FOR UPDATE`;
+      const claimedBid = await tx.bid.updateMany({
+        where: { id: bid.id, status: 'PENDING' },
         data: {
           status: 'ACCEPTED',
           bidPricePerUnit: currentPrice,
@@ -309,28 +312,29 @@ async function runNegotiation(
           isAgentBid: true,
         },
       });
-      // Reject competing bids
-      await tx.bid.updateMany({
-        where: {
-          listingId: bid.listingId,
-          id: { not: bid.id },
-          status: { in: ['PENDING', 'COUNTERED'] },
-        },
-        data: { status: 'REJECTED' },
-      });
+      if (claimedBid.count === 0) return false;
+
+      // Sells the bid's quantity only; the rest of the lot stays on sale.
+      const remaining = await claimLotQuantity(tx, bid.listingId, bid.quantity);
+      if (remaining === null) throw LOST;
+      // Turn down only the bids what is left cannot fill.
+      await rejectBidsOverStock(tx, bid.listingId, bid.id, remaining);
 
       // Spin up the escrow transaction for the agreed bid in the SAME tx, so a
-      // negotiated deal can never have a SOLD listing and ACCEPTED bid with
+      // negotiated deal can never have claimed stock and an ACCEPTED bid with
       // nothing for the buyer to pay. Mirrors bid.service.acceptBid.
       await createTransaction(bid.id, tx);
       return true;
+    }).catch((e) => {
+      if (e === LOST) return false;
+      throw e;
     });
 
     if (claimed) {
       notifyBoth('DEAL', currentPrice);
       void alertNewOrder(bid.id, 'AGENT_DEAL');
     } else {
-      // Lost the race — the listing was already sold elsewhere. Void this bid,
+      // Lost the race: the stock was already sold elsewhere. Void this bid,
       // but ONLY if it's still PENDING. If a concurrent acceptBid happened to
       // accept THIS very bid (and created its transaction), we must not clobber
       // that winning ACCEPTED state back to REJECTED.
@@ -356,7 +360,7 @@ async function runNegotiation(
     // No deal — reject the bid, but ONLY if it's still PENDING. A concurrent
     // acceptBid could have accepted this bid while the AI rounds were running;
     // an unconditional update would flip that winning bid back to REJECTED while
-    // the listing stays SOLD and its transaction exists.
+    // its stock stays claimed and its transaction exists.
     await prisma.bid.updateMany({
       where: { id: bid.id, status: 'PENDING' },
       data: { status: 'REJECTED' },
