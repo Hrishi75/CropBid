@@ -166,5 +166,8 @@
   "Nothing matches “{{q}}” today.": "आज “{{q}}” शी काहीही जुळले नाही.",
   "Wholesale ₹ as reported by each market committee. The price is the middle of what the mandis reported, and the range is where most of them sat. “vs usual” compares each state's price today with that state's own average over earlier days, up to the last 30, and shows once there is an earlier day to compare with: a signal, not a forecast.": "प्रत्येक बाजार समितीने कळवलेले घाऊक ₹ भाव. भाव म्हणजे मंड्यांनी कळवलेल्या भावांमधला मधला भाव, आणि श्रेणी म्हणजे बहुतांश मंड्यांचे भाव जिथे होते ती. “नेहमीपेक्षा” म्हणजे प्रत्येक राज्याच्या आजच्या भावाची त्याच राज्याच्या आधीच्या दिवसांच्या (जास्तीत जास्त 30) सरासरीशी तुलना, आणि तुलनेसाठी आधीचा एखादा दिवस असेल तेव्हाच दिसते: हा संकेत आहे, भाकीत नाही.",
   "{{n}} CROP": "{{n}} पीक",
-  "{{n}} CROPS": "{{n}} पिके"
+  "{{n}} CROPS": "{{n}} पिके",
+  "Hi CropBid, I have a question.": "नमस्कार CropBid, मला एक प्रश्न आहे.",
+  "Chat with CropBid on WhatsApp": "WhatsApp वर CropBid शी बोला",
+  "Chat on WhatsApp": "WhatsApp वर बोला"
 }
