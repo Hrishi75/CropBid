@@ -16,14 +16,21 @@
 // an enquiry does, because that's when we hand over a dealer's number.
 // Styling reuses the /schemes + /rates class shell (rp-*, sy-*, cb-*) rather
 // than inventing a parallel stylesheet.
+//
+// The page reads in English, Hindi or Marathi from the header's language
+// dropdown. What a dealer listed (a machine's name, specs and description)
+// is shown as entered; everything around it is translated.
 // =============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Link } from 'react-router-dom';
 import api from '../lib/axios';
 import { useAuth } from '../context/AuthContext';
 import { ArcMark, ArrowIcon, CBFooter, SearchIcon } from './landing/shared';
 import { SignInLink } from '../components/auth/SignInLink';
+import { LanguageSwitcher } from '../components/ui/LanguageSwitcher';
 
 // --- data shapes (mirror server/src/services/equipment.service.ts) ---
 
@@ -81,6 +88,33 @@ const CATEGORY_EMOJI: Record<string, string> = {
   TOOLS: '🔧',
 };
 
+// Dealers list machines in English, but the Hindi and Marathi search hints
+// suggest Hindi and Marathi words, so a search in either is also tried as the
+// English word a listing would use. Covers the words the hints and the
+// category names put in front of a reader.
+const SEARCH_ALIASES: Record<string, string> = {
+  'पंप': 'pump', 'पाइप': 'pipe', 'मोटर': 'motor', 'इंजन': 'engine', 'इंजिन': 'engine',
+  'ट्रैक्टर': 'tractor', 'ट्रॅक्टर': 'tractor', 'टिलर': 'tiller',
+  'रोटावेटर': 'rotavator', 'रोटाव्हेटर': 'rotavator',
+  'ड्रिप': 'drip', 'ठिबक': 'drip', 'स्प्रिंकलर': 'sprinkler', 'तुषार': 'sprinkler',
+  'स्प्रेयर': 'sprayer', 'फवारणी': 'sprayer', 'हार्वेस्टर': 'harvester', 'रीपर': 'reaper',
+  'थ्रेशर': 'thresher', 'मळणी': 'thresher', 'हल': 'plough', 'नांगर': 'plough',
+};
+
+/**
+ * The search, word by word: each word with the English word for it when it
+ * is (the start of) a Hindi or Marathi one. A listing must match every word,
+ * so "Kirloskar पंप" narrows to Kirloskar pumps rather than any pump.
+ */
+function searchWords(needle: string): string[][] {
+  return needle.split(/\s+/).filter(Boolean).map((word) => {
+    const english = Object.entries(SEARCH_ALIASES)
+      .filter(([alias]) => alias.startsWith(word))
+      .map(([, en]) => en);
+    return [word, ...new Set(english)];
+  });
+}
+
 function rupees(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`;
 }
@@ -89,17 +123,18 @@ function rupees(amount: number): string {
 // listing under the HIRE filter must lead with its day rate, not its sale
 // price, or the farmer reads "₹7,85,000" and bounces off a machine they could
 // have rented for ₹1,400.
-function priceLine(e: Equipment, intent: Intent): string {
+function priceLine(e: Equipment, intent: Intent, t: TFunction): string {
   if (intent === 'RENT') {
-    if (e.rentPricePerDay) return `${rupees(e.rentPricePerDay)}/day`;
-    if (e.rentPricePerHour) return `${rupees(e.rentPricePerHour)}/hour`;
-    return 'Ask dealer';
+    if (e.rentPricePerDay) return t('{{price}} a day', { price: rupees(e.rentPricePerDay) });
+    if (e.rentPricePerHour) return t('{{price}} an hour', { price: rupees(e.rentPricePerHour) });
+    return t('Ask the dealer');
   }
-  return e.salePrice ? rupees(e.salePrice) : 'Ask dealer';
+  return e.salePrice ? rupees(e.salePrice) : t('Ask the dealer');
 }
 
 export function EquipmentPage() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation();
 
   const [items, setItems] = useState<Equipment[] | null>(null);
   const [categories, setCategories] = useState<CategoryMeta[]>([]);
@@ -143,11 +178,18 @@ export function EquipmentPage() {
     if (!items) return [];
     const needle = q.trim().toLowerCase();
     if (!needle) return items;
-    return items.filter((e) =>
-      [e.title, e.brand, e.modelName, e.location, e.dealer.name]
-        .filter(Boolean).join(' ').toLowerCase().includes(needle)
-    );
-  }, [items, q]);
+    const words = searchWords(needle);
+    const labelOf = new Map(categories.map((c) => [c.id, c.label]));
+    return items.filter((e) => {
+      // The category name in all three languages, so a reader can search
+      // with the words the chips show them.
+      const label = labelOf.get(e.category) ?? '';
+      const text = [e.title, e.brand, e.modelName, e.location, e.dealer.name,
+        label, i18n.t(label, { lng: 'hi' }), i18n.t(label, { lng: 'mr' })]
+        .filter(Boolean).join(' ').toLowerCase();
+      return words.every((options) => options.some((option) => text.includes(option)));
+    });
+  }, [items, q, categories, i18n]);
 
   const detail = results.find((e) => e.id === selected) ?? null;
 
@@ -165,7 +207,7 @@ export function EquipmentPage() {
       setUnlocked((prev) => ({ ...prev, [e.id]: data.dealer }));
       setNote('');
     } catch (err: any) {
-      setEnquiryError(err?.response?.data?.message ?? 'Could not send the enquiry — please try again.');
+      setEnquiryError(err?.response?.data?.message ?? t('Could not send the enquiry. Please try again.'));
     } finally {
       setSending(false);
     }
@@ -174,18 +216,19 @@ export function EquipmentPage() {
   return (
     <div className="cb-landing rp">
       {/* slim header — same shell as /rates and /schemes */}
-      <header className="rp-nav">
+      <header className="rp-nav rp-nav-lang">
         <Link to="/" className="wordmark" aria-label="CropBid" style={{ color: 'var(--cb-ink)' }}>
           <ArcMark />
           <span className="wordmark-text">CropBid</span>
         </Link>
         <nav className="rp-nav-links" aria-label="Primary">
-          <Link to="/">Marketplace</Link>
-          <Link to="/rates">Live rates</Link>
-          <Link to="/inputs">Seeds &amp; fertiliser</Link>
-          <Link to="/schemes">Yojana</Link>
-          <Link to="/partner" className="nav-signin">Become a partner</Link>
-          <SignInLink className="cb-btn cb-btn-primary">
+          <LanguageSwitcher />
+          <Link to="/">{t('Marketplace')}</Link>
+          <Link to="/rates">{t('Live rates')}</Link>
+          <Link to="/inputs">{t('Seeds & fertiliser')}</Link>
+          <Link to="/schemes">{t('Yojana')}</Link>
+          <Link to="/partner" className="nav-signin rp-nav-optional">{t('Become a partner')}</Link>
+          <SignInLink className="cb-btn cb-btn-primary" label={t('Sign in')}>
             <ArrowIcon />
           </SignInLink>
         </nav>
@@ -195,19 +238,17 @@ export function EquipmentPage() {
         <div className="rp-head">
           <div>
             <span className="cb-chip cb-chip-sage" style={{ marginBottom: 14 }}>
-              🚜 Machines & equipment
+              🚜 {t('Machines & equipment')}
             </span>
-            <h1 className="cb-h1">Buy it, or just hire it for the season</h1>
+            <h1 className="cb-h1">{t('Buy it, or just hire it for the season')}</h1>
             <p className="cb-body rp-lede">
-              Tractors, rotavators, pumps, pipes and sprayers from verified dealers near you.
-              Most machines are available both ways — buy outright, or hire by the day when you
-              only need it at sowing and harvest.
+              {t('Tractors, rotavators, pumps, pipes and sprayers from dealers near you. Most machines come both ways: buy one outright, or hire it by the day when you only need it at sowing and harvest.')}
             </p>
           </div>
         </div>
 
         {/* buy vs hire — the first question a farmer has */}
-        <div className="sy-chips" role="group" aria-label="Buy or hire">
+        <div className="sy-chips" role="group" aria-label={t('Buy or hire')}>
           {(['SALE', 'RENT'] as const).map((id) => (
             <button
               key={id}
@@ -216,7 +257,7 @@ export function EquipmentPage() {
               onClick={() => setIntent(id)}
               aria-pressed={intent === id}
             >
-              {id === 'SALE' ? 'Buy' : 'Hire by the day'}
+              {t(id === 'SALE' ? 'Buy' : 'Hire by the day')}
             </button>
           ))}
         </div>
@@ -228,8 +269,8 @@ export function EquipmentPage() {
             type="search"
             value={q}
             onChange={(e) => { setQ(e.target.value); setSelected(null); }}
-            placeholder='Try "pump", "rotavator", "tractor", "drip"…'
-            aria-label="Search equipment"
+            placeholder={t('Try "pump", "rotavator", "tractor", "drip"…')}
+            aria-label={t('Search equipment')}
           />
         </div>
 
@@ -237,7 +278,7 @@ export function EquipmentPage() {
         {categories.length > 0 && (
           <div className="sy-chips">
             <button type="button" className={`st-chip${cat === '' ? ' active' : ''}`} onClick={() => setCat('')}>
-              All
+              {t('All')}
             </button>
             {categories.map((c) => (
               <button
@@ -246,19 +287,19 @@ export function EquipmentPage() {
                 className={`st-chip${cat === c.id ? ' active' : ''}`}
                 onClick={() => setCat(cat === c.id ? '' : c.id)}
               >
-                {c.label}
+                {t(c.label)}
               </button>
             ))}
           </div>
         )}
 
-        {failed && <div className="rp-detail-note">Could not load equipment — check your connection and refresh.</div>}
-        {!items && !failed && <div className="rp-detail-note">Loading equipment…</div>}
+        {failed && <div className="rp-detail-note">{t('Could not load machines. Check your connection and refresh the page.')}</div>}
+        {!items && !failed && <div className="rp-detail-note">{t('Loading machines…')}</div>}
         {items && results.length === 0 && (
           <div className="rp-detail-note">
-            {intent === 'RENT'
-              ? 'No machines on hire match that. Try "Buy", or a different category.'
-              : 'Nothing matches that. Try "Hire by the day", or a different category.'}
+            {t(intent === 'RENT'
+              ? 'No machine on hire matches that. Try “Buy”, or another category.'
+              : 'No machine for sale matches that. Try “Hire by the day”, or another category.')}
           </div>
         )}
 
@@ -274,7 +315,9 @@ export function EquipmentPage() {
               <div className="rp-card-top">
                 <span className="rp-emoji" aria-hidden="true">{CATEGORY_EMOJI[e.category] ?? '🚜'}</span>
                 <span className="cb-mono rp-source">
-                  {e.condition === 'USED' ? `USED${e.yearMade ? ` ${e.yearMade}` : ''}` : 'NEW'}
+                  {e.condition === 'USED'
+                    ? `${t('USED')}${e.yearMade ? ` ${e.yearMade}` : ''}`
+                    : t('NEW')}
                 </span>
               </div>
               <div className="rp-name">{e.title}</div>
@@ -282,23 +325,23 @@ export function EquipmentPage() {
                 {e.dealer.location}, {e.dealer.state}{e.powerHp ? ` · ${e.powerHp} HP` : ''}
               </div>
               <div className="sy-tagline" style={{ fontWeight: 600, color: 'var(--cb-forest, #1f2d18)' }}>
-                {priceLine(e, intent)}
+                {priceLine(e, intent, t)}
                 {/* A BOTH listing is worth flagging: a farmer browsing to buy
                     may not realise they could hire the same machine instead. */}
                 {e.mode === 'BOTH' && (
                   <span className="cb-mono" style={{ marginLeft: 8, fontSize: '0.7em', opacity: 0.7 }}>
-                    {intent === 'SALE' ? 'ALSO ON HIRE' : 'ALSO FOR SALE'}
+                    {t(intent === 'SALE' ? 'ALSO ON HIRE' : 'ALSO FOR SALE')}
                   </span>
                 )}
               </div>
               {(e.dealer.verified || e.dealer.smamEmpanelled) && (
                 <div className="cb-mono" style={{ fontSize: '0.68rem', marginTop: 6, opacity: 0.75 }}>
-                  {e.dealer.verified && '✓ VERIFIED DEALER'}
+                  {e.dealer.verified && `✓ ${t('VERIFIED DEALER')}`}
                   {e.dealer.verified && e.dealer.smamEmpanelled && ' · '}
-                  {e.dealer.smamEmpanelled && 'SMAM SUBSIDY'}
+                  {e.dealer.smamEmpanelled && t('SMAM SUBSIDY')}
                 </div>
               )}
-              <span className="rp-more">{selected === e.id ? 'hide details ↑' : 'specs & dealer ↓'}</span>
+              <span className="rp-more">{t(selected === e.id ? 'Hide details ↑' : 'Specs and dealer ↓')}</span>
             </button>
           ))}
         </div>
@@ -314,7 +357,7 @@ export function EquipmentPage() {
                   {detail.brand && <span className="sy-hindi"> · {detail.brand}</span>}
                 </h2>
                 <p className="sy-tagline" style={{ marginTop: 2 }}>
-                  {priceLine(detail, intent)} · {detail.dealer.location}, {detail.dealer.state}
+                  {priceLine(detail, intent, t)} · {detail.dealer.location}, {detail.dealer.state}
                 </p>
               </div>
             </div>
@@ -322,7 +365,7 @@ export function EquipmentPage() {
             <div className="sy-detail-grid">
               {detail.specs.length > 0 && (
                 <div className="sy-block">
-                  <span className="cb-eyebrow">Specifications</span>
+                  <span className="cb-eyebrow">{t('Specifications')}</span>
                   <p>{detail.specs.join(' · ')}</p>
                 </div>
               )}
@@ -331,29 +374,29 @@ export function EquipmentPage() {
                   often the real barrier, not the day rate. */}
               {(detail.mode === 'RENT' || detail.mode === 'BOTH') && intent === 'RENT' && (
                 <div className="sy-block">
-                  <span className="cb-eyebrow">Hire terms</span>
+                  <span className="cb-eyebrow">{t('Hire terms')}</span>
                   <p>
-                    {detail.rentPricePerDay ? `${rupees(detail.rentPricePerDay)} per day. ` : ''}
-                    {detail.rentPricePerHour ? `${rupees(detail.rentPricePerHour)} per hour. ` : ''}
-                    {detail.securityDeposit ? `${rupees(detail.securityDeposit)} refundable deposit. ` : ''}
-                    Availability is confirmed by the dealer — CropBid does not hold bookings.
+                    {detail.rentPricePerDay ? `${t('{{price}} a day.', { price: rupees(detail.rentPricePerDay) })} ` : ''}
+                    {detail.rentPricePerHour ? `${t('{{price}} an hour.', { price: rupees(detail.rentPricePerHour) })} ` : ''}
+                    {detail.securityDeposit ? `${t('{{price}} deposit, returned to you.', { price: rupees(detail.securityDeposit) })} ` : ''}
+                    {t('The dealer confirms when it is free. CropBid does not take bookings.')}
                   </p>
                 </div>
               )}
 
               <div className="sy-block">
-                <span className="cb-eyebrow">Dealer</span>
+                <span className="cb-eyebrow">{t('Dealer')}</span>
                 <p>
                   <strong>{detail.dealer.name}</strong> · ★ {detail.dealer.rating.toFixed(1)}
                   {detail.dealer.smamEmpanelled && (
-                    <> — empanelled under the SMAM scheme, so you may be able to claim 40–50% back on a purchase through them.</>
+                    <>. {t('Listed under the SMAM scheme, so you may be able to claim 40 to 50% back on a machine bought from them.')}</>
                   )}
                 </p>
               </div>
 
               {detail.description && (
                 <div className="sy-block">
-                  <span className="cb-eyebrow">About</span>
+                  <span className="cb-eyebrow">{t('About')}</span>
                   <p>{detail.description}</p>
                 </div>
               )}
@@ -364,28 +407,28 @@ export function EquipmentPage() {
                 dealer numbers. */}
             {unlocked[detail.id]?.contactPhone ? (
               <div className="sy-block" style={{ marginTop: 14 }}>
-                <span className="cb-eyebrow">Enquiry sent</span>
+                <span className="cb-eyebrow">{t('Enquiry sent')}</span>
                 <p>
-                  The dealer has your details and will call back. You can reach them directly on{' '}
+                  {t('The dealer has your details and will call you back. You can also call them on')}{' '}
                   <a href={`tel:${unlocked[detail.id]!.contactPhone}`}>
                     <strong>{unlocked[detail.id]!.contactPhone}</strong>
                   </a>
-                  {unlocked[detail.id]!.contactEmail && <> · {unlocked[detail.id]!.contactEmail}</>}.
+                  {unlocked[detail.id]!.contactEmail && <> · {unlocked[detail.id]!.contactEmail}</>}
                 </p>
               </div>
             ) : user ? (
               <div className="sy-block" style={{ marginTop: 14 }}>
                 <span className="cb-eyebrow">
-                  {intent === 'RENT' ? 'Enquire about hiring' : 'Get the dealer’s number'}
+                  {t(intent === 'RENT' ? 'Ask about hiring' : 'Get the dealer’s number')}
                 </span>
                 <textarea
                   value={note}
                   onChange={(ev) => setNote(ev.target.value)}
-                  placeholder={
+                  placeholder={t(
                     intent === 'RENT'
                       ? 'When do you need it, and for how many days? (optional)'
-                      : 'Anything you want to ask the dealer? (optional)'
-                  }
+                      : 'Anything you want to ask the dealer? (optional)',
+                  )}
                   rows={3}
                   style={{ width: '100%', marginTop: 8, padding: 10, borderRadius: 10, border: '1px solid var(--cb-line, #d8d4c8)', font: 'inherit' }}
                 />
@@ -397,19 +440,18 @@ export function EquipmentPage() {
                   disabled={sending}
                   onClick={() => enquire(detail)}
                 >
-                  {sending ? 'Sending…' : intent === 'RENT' ? 'Enquire & get dealer number' : 'Get dealer number'}
+                  {t(sending ? 'Sending…' : intent === 'RENT' ? 'Ask and get the dealer’s number' : 'Get the dealer’s number')}
                   {!sending && <ArrowIcon />}
                 </button>
               </div>
             ) : (
               <div className="sy-block" style={{ marginTop: 14 }}>
-                <span className="cb-eyebrow">Get the dealer&rsquo;s number</span>
+                <span className="cb-eyebrow">{t('Get the dealer’s number')}</span>
                 <p>
-                  Sign in to send an enquiry — it shares your name with the dealer so they can call
-                  you back, and unlocks their number here.
+                  {t('Sign in to send an enquiry. The dealer gets your name so they can call you back, and their number shows here.')}
                 </p>
                 <Link to="/login" className="cb-btn cb-btn-primary" style={{ marginTop: 10 }}>
-                  Sign in
+                  {t('Sign in')}
                   <ArrowIcon />
                 </Link>
               </div>
@@ -418,10 +460,7 @@ export function EquipmentPage() {
         )}
 
         <p className="cb-small rp-foot">
-          CropBid lists what dealers stock and passes on your enquiry — the sale or hire agreement is
-          directly between you and the dealer, and we take no payment for machinery. Prices and
-          availability change; confirm on the call. Never pay in advance to anyone claiming to
-          represent CropBid.
+          {t('CropBid lists what dealers stock and passes on your enquiry. The sale or hire is agreed directly between you and the dealer, and we take no payment for machines. Prices and availability change, so confirm them on the call. Never pay in advance to anyone who says they are from CropBid.')}
         </p>
       </main>
 
