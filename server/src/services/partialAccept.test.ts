@@ -8,6 +8,8 @@
 //   - accepting the last of the stock marks the lot SOLD
 //   - two accepts racing can never sell more than the lot holds, and two
 //     that fit together both go through
+//   - a seller accepting a bid by hand while the agents negotiate the same
+//     bid takes its stock once, not twice
 // =============================================================================
 
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
@@ -15,8 +17,22 @@ import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
 vi.mock('./notification.service', () => ({ createNotification: vi.fn(() => Promise.resolve({})), pushNotification: vi.fn() }));
 vi.mock('./orderAlert.service', () => ({ alertNewOrder: vi.fn(() => Promise.resolve()) }));
 
+// The farmer's agent decides only when the test lets it, so a manual accept
+// can land while the negotiation is in flight, every time.
+let releaseAgent: () => void = () => {};
+let agentAsked: () => void = () => {};
+vi.mock('./aiAgent', () => ({
+  checkAutoAccept: () => null,
+  getAgentDecision: () =>
+    new Promise((resolve) => {
+      releaseAgent = () => resolve({ action: 'accept', price: 2400, reasoning: 'test' });
+      agentAsked();
+    }),
+}));
+
 import { prisma } from '../lib/prisma';
 import { acceptBid } from './bid.service';
+import { startNegotiation } from './negotiation.service';
 
 const FARM = 'pa-farm';
 const BUYERS = ['pa-buyer-1', 'pa-buyer-2', 'pa-buyer-3'];
@@ -29,6 +45,8 @@ async function clean() {
   const lots = await prisma.listing.findMany({ where: { farmerId: PROFILE }, select: { id: true } });
   const lotIds = lots.map((l) => l.id);
   await prisma.transaction.deleteMany({ where: { listingId: { in: lotIds } } });
+  await prisma.negotiation.deleteMany({ where: { listingId: { in: lotIds } } });
+  await prisma.agentConfig.deleteMany({ where: { userId: { in: ALL } } });
   await prisma.bid.deleteMany({ where: { listingId: { in: lotIds } } });
   await prisma.listing.deleteMany({ where: { id: { in: lotIds } } });
   await prisma.notification.deleteMany({ where: { userId: { in: ALL } } });
@@ -176,5 +194,46 @@ describe('two accepts at once', () => {
       expect(await lotNow(id), `round ${round}`).toEqual({ status: 'SOLD', remainingQuantity: 0 });
       expect(await prisma.transaction.count({ where: { listingId: id } }), `round ${round}`).toBe(2);
     }
+  });
+});
+
+describe('a negotiation and a manual accept of the same bid', () => {
+  async function agents() {
+    await prisma.agentConfig.create({ data: { userId: FARM, agentType: 'FARMER_AGENT', minPrice: 2000 } });
+    await prisma.agentConfig.create({ data: { userId: BUYERS[0], agentType: 'BUYER_AGENT', maxPrice: 2600 } });
+  }
+
+  it('takes the stock once when the seller accepts while the agents talk', async () => {
+    await agents();
+    const b = await bid(BUYERS[0], 10);
+
+    const asked = new Promise<void>((r) => { agentAsked = r; });
+    const negotiating = startNegotiation(b.id, BUYERS[0]);
+    await asked;
+
+    await acceptBid(b.id, FARM);
+    releaseAgent();
+    await negotiating;
+
+    expect(await lotNow()).toEqual({ status: 'ACTIVE', remainingQuantity: 90 });
+    expect(await statusOf(b.id)).toBe('ACCEPTED');
+    expect(await prisma.transaction.count({ where: { listingId: lotId } })).toBe(1);
+  });
+
+  it('leaves the bid unaccepted when the stock went while the agents talked', async () => {
+    await agents();
+    const b = await bid(BUYERS[0], 60);
+
+    const asked = new Promise<void>((r) => { agentAsked = r; });
+    const negotiating = startNegotiation(b.id, BUYERS[0]);
+    await asked;
+
+    await prisma.listing.update({ where: { id: lotId }, data: { remainingQuantity: 30 } });
+    releaseAgent();
+    await negotiating;
+
+    expect(await lotNow()).toEqual({ status: 'ACTIVE', remainingQuantity: 30 });
+    expect(await statusOf(b.id)).toBe('REJECTED');
+    expect(await prisma.transaction.count({ where: { listingId: lotId } })).toBe(0);
   });
 });

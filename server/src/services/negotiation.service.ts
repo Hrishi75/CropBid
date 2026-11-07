@@ -290,13 +290,16 @@ async function runNegotiation(
     // If the claim loses the race, void this deal rather than create a second sale.
     // ACTIVE only: a lot in a live auction is sold by the auction (bid.service
     // acceptBid says why), so a negotiation that closes mid-auction is voided.
+    //
+    // The bid is claimed first, and only while it is still PENDING. A lot now
+    // stays on sale after a partial accept, so the lot's status no longer
+    // stops a seller's manual accept of this same bid and this deal from both
+    // taking its quantity: the bid's own status has to. If the stock claim
+    // then misses, the throw rolls the bid claim back with it.
+    const LOST = Symbol('lost');
     const claimed = await prisma.$transaction(async (tx) => {
-      // Sells the bid's quantity only; the rest of the lot stays on sale.
-      const remaining = await claimLotQuantity(tx, bid.listingId, bid.quantity);
-      if (remaining === null) return false;
-
-      await tx.bid.update({
-        where: { id: bid.id },
+      const claimedBid = await tx.bid.updateMany({
+        where: { id: bid.id, status: 'PENDING' },
         data: {
           status: 'ACCEPTED',
           bidPricePerUnit: currentPrice,
@@ -304,6 +307,11 @@ async function runNegotiation(
           isAgentBid: true,
         },
       });
+      if (claimedBid.count === 0) return false;
+
+      // Sells the bid's quantity only; the rest of the lot stays on sale.
+      const remaining = await claimLotQuantity(tx, bid.listingId, bid.quantity);
+      if (remaining === null) throw LOST;
       // Turn down only the bids what is left cannot fill.
       await rejectBidsOverStock(tx, bid.listingId, bid.id, remaining);
 
@@ -312,6 +320,9 @@ async function runNegotiation(
       // nothing for the buyer to pay. Mirrors bid.service.acceptBid.
       await createTransaction(bid.id, tx);
       return true;
+    }).catch((e) => {
+      if (e === LOST) return false;
+      throw e;
     });
 
     if (claimed) {
