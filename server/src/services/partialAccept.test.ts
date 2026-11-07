@@ -220,6 +220,32 @@ describe('a negotiation and a manual accept of the same bid', () => {
     expect(await prisma.transaction.count({ where: { listingId: lotId } })).toBe(1);
   });
 
+  // Released together, ten rounds: one sale, one deduction, and the loser is
+  // a 409, never another error. Both paths lock the lot before the bid
+  // (negotiation.service says why); this test does not reliably hit the
+  // deadlock the opposite order allowed, so that rests on the lock order.
+  it('settles a manual accept racing the deal, taking the stock once', async () => {
+    await agents();
+    for (let round = 0; round < 10; round++) {
+      const id = await newLot(100);
+      const b = await bid(BUYERS[0], 10, id);
+
+      const asked = new Promise<void>((r) => { agentAsked = r; });
+      const negotiating = startNegotiation(b.id, BUYERS[0]);
+      await asked;
+
+      const [manual, deal] = await Promise.allSettled([
+        acceptBid(b.id, FARM),
+        (releaseAgent(), negotiating),
+      ]);
+
+      expect(deal.status, `round ${round}: ${deal.status === 'rejected' ? deal.reason : ''}`).toBe('fulfilled');
+      if (manual.status === 'rejected') expect(manual.reason, `round ${round}`).toMatchObject({ statusCode: 409 });
+      expect(await lotNow(id), `round ${round}`).toEqual({ status: 'ACTIVE', remainingQuantity: 90 });
+      expect(await prisma.transaction.count({ where: { listingId: id } }), `round ${round}`).toBe(1);
+    }
+  });
+
   it('leaves the bid unaccepted when the stock went while the agents talked', async () => {
     await agents();
     const b = await bid(BUYERS[0], 60);

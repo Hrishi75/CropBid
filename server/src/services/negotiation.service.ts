@@ -296,8 +296,13 @@ async function runNegotiation(
     // stops a seller's manual accept of this same bid and this deal from both
     // taking its quantity: the bid's own status has to. If the stock claim
     // then misses, the throw rolls the bid claim back with it.
+    //
+    // The lot row is locked before the bid, the same order acceptBid takes
+    // them in (its stock claim, then its bid claim). Locking the bid first
+    // let the two wait on each other and Postgres abort one as a deadlock.
     const LOST = Symbol('lost');
     const claimed = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Listing" WHERE "id" = ${bid.listingId} FOR UPDATE`;
       const claimedBid = await tx.bid.updateMany({
         where: { id: bid.id, status: 'PENDING' },
         data: {
