@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { colors, design, font } from '../theme';
 import { verifyPayment } from '../api/endpoints';
+import { scriptJson } from '../lib/scriptJson';
 import { errorMessage } from '../api/client';
 import type { Transaction } from '../api/types';
 
@@ -79,7 +80,9 @@ interface Props<T> {
 const CHECKOUT_ORIGIN = 'https://cropbid.in';
 
 function buildHtml(order: CheckoutOrder, prefill: Prefill): string {
-  // All interpolated values go through JSON.stringify so they're safely quoted.
+  // Every interpolated value goes through scriptJson, not JSON.stringify: the
+  // prefill carries the shopper's own name, and JSON.stringify leaves a
+  // "</script>" in it intact, which ends this block and runs whatever follows.
   return `<!doctype html>
 <html>
 <head>
@@ -95,13 +98,13 @@ function buildHtml(order: CheckoutOrder, prefill: Prefill): string {
     }
     try {
       var rzp = new Razorpay({
-        key: ${JSON.stringify(order.keyId)},
-        order_id: ${JSON.stringify(order.orderId)},
-        amount: ${JSON.stringify(order.amount)},
-        currency: ${JSON.stringify(order.currency)},
+        key: ${scriptJson(order.keyId)},
+        order_id: ${scriptJson(order.orderId)},
+        amount: ${scriptJson(order.amount)},
+        currency: ${scriptJson(order.currency)},
         name: 'CropBid',
         description: 'Escrow payment',
-        prefill: ${JSON.stringify(prefill)},
+        prefill: ${scriptJson(prefill)},
         theme: { color: '#1f2d18' },
         handler: function (resp) {
           post({
