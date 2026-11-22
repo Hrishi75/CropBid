@@ -29,6 +29,8 @@ const createSchema = z.object({
   contactPhone: z.string().max(20).optional(),
   // The delivery fee the shopper was shown. A different answer is refused.
   deliveryFee: z.number().min(0).optional(),
+  // The handling fee the shopper was shown. Charged only when sent (see the service).
+  handlingFee: z.number().min(0).optional(),
 });
 
 const cancelSchema = z.object({
@@ -81,6 +83,7 @@ export async function create(req: Request, res: Response, next: NextFunction) {
         lines: parsed.data.lines.length,
         itemsTotal: order.itemsTotal,
         deliveryFee: order.deliveryFee,
+        handlingFee: order.handlingFee,
         totalAmount: order.totalAmount,
         // A replay hands back the order that already existed, so without this
         // the log would read as two orders where the shopper placed one.

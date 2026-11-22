@@ -203,6 +203,7 @@ export function Cart() {
               itemCount={bill.orderable.length}
               itemsTotal={bill.itemsTotal}
               deliveryFee={bill.deliveryFee}
+              handlingFee={bill.handlingFee}
               shopsPayingDelivery={bill.shopsPayingDelivery}
               toPay={bill.toPay}
               currency={bill.currency}

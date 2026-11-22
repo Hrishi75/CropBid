@@ -110,6 +110,10 @@ export default function CheckoutScreen() {
     const placedLots: string[] = [];
     const placedOrderIds: string[] = [];
     const failures: { name: string; message: string }[] = [];
+    // A 409 means something on the bill moved under the shopper: a price
+    // across ₹200, a fee, the stock. The bill is re-read afterwards so the next
+    // attempt is made on what the server now says, not on the cached rules.
+    let billStale = false;
 
     // Sequential, not Promise.all: each call decrements stock, and a seller
     // watching their listings should see orders arrive as orders, not as a
@@ -138,10 +142,12 @@ export default function CheckoutScreen() {
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           deliveryFee: shop.deliveryFee ?? undefined,
+          handlingFee: shop.handlingFee ?? undefined,
         });
         placedOrderIds.push(order.id);
         placedLots.push(...shop.orderable.map((line) => line.item.listingId));
       } catch (e) {
+        if ((e as { response?: { status?: number } })?.response?.status === 409) billStale = true;
         failures.push({
           name: shop.sellerName ?? 'One shop',
           message: errorMessage(e, 'Could not be ordered'),
@@ -151,6 +157,7 @@ export default function CheckoutScreen() {
 
     // Only what actually became an order leaves the basket.
     if (placedLots.length > 0) removeMany(placedLots);
+    if (billStale) bill.reload();
 
     if (placedOrderIds.length === 0) {
       setPlacing(false);
@@ -301,6 +308,7 @@ export default function CheckoutScreen() {
           itemsTotal={bill.itemsTotal}
           deliveryFee={bill.deliveryFee}
           shopsPayingDelivery={bill.shopsPayingDelivery}
+          handlingFee={bill.handlingFee}
           toPay={bill.toPay}
           currency={bill.currency}
           rules={bill.rules}

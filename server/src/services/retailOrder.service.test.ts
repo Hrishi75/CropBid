@@ -53,6 +53,7 @@ import {
   createDirectPurchase,
   createRetailOrder,
   deliveryFeeFor,
+  RETAIL_HANDLING_FEE,
   RETAIL_DELIVERY,
 } from './retailOrder.service';
 import { createTransaction } from './transaction.service';
@@ -256,6 +257,61 @@ describe('the delivery fee', () => {
         lines: [{ listingId: 'tomato', quantity: 1 }], ...contact, deliveryFee: 0,
       })).rejects.toThrow(/₹30/);
     });
+  });
+});
+
+// =============================================================================
+// The handling fee
+// =============================================================================
+describe('the handling fee', () => {
+  it('is ₹10', () => {
+    expect(RETAIL_HANDLING_FEE).toBe(10);
+  });
+
+  it('is added to a small order, on top of delivery', async () => {
+    await createRetailOrder(CONSUMER, {
+      lines: [{ listingId: 'tomato', quantity: 1 }], ...contact, deliveryFee: 30, handlingFee: 10,
+    });
+    expect(createdOrder()).toMatchObject({ itemsTotal: 100, deliveryFee: 30, handlingFee: 10, totalAmount: 140 });
+  });
+
+  // Unlike delivery, it does not fall away at ₹200.
+  it('is still charged once delivery is free', async () => {
+    await createRetailOrder(CONSUMER, {
+      lines: [{ listingId: 'tomato', quantity: 2 }], ...contact, deliveryFee: 0, handlingFee: 10,
+    });
+    expect(createdOrder()).toMatchObject({ itemsTotal: 200, deliveryFee: 0, handlingFee: 10, totalAmount: 210 });
+  });
+
+  it('is charged once per shop order, not per item', async () => {
+    listingFindMany.mockResolvedValue([lot('tomato', { retailPricePerUnit: 60 }), lot('onion', { retailPricePerUnit: 50 })]);
+    await createRetailOrder(CONSUMER, {
+      lines: [{ listingId: 'tomato', quantity: 2 }, { listingId: 'onion', quantity: 2 }],
+      ...contact, handlingFee: 10,
+    });
+    expect(createdOrder()).toMatchObject({ itemsTotal: 220, handlingFee: 10, totalAmount: 230 });
+  });
+
+  it('is kept out of every lot, so the seller is never paid it', async () => {
+    await createRetailOrder(CONSUMER, {
+      lines: [{ listingId: 'tomato', quantity: 2 }], ...contact, handlingFee: 10,
+    });
+    expect(tx.bid.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ totalAmount: 200 }) }),
+    );
+  });
+
+  // Clients from before the fee show a bill without it and cannot send it.
+  it('is not charged to a client that never showed it', async () => {
+    await createRetailOrder(CONSUMER, { lines: [{ listingId: 'tomato', quantity: 2 }], ...contact });
+    expect(createdOrder()).toMatchObject({ handlingFee: 0, totalAmount: 200 });
+  });
+
+  it('refuses, and claims nothing, when the fee shown differs', async () => {
+    await expect(createRetailOrder(CONSUMER, {
+      lines: [{ listingId: 'tomato', quantity: 1 }], ...contact, handlingFee: 5,
+    })).rejects.toMatchObject({ statusCode: 409 });
+    expect(tx.listing.updateMany).not.toHaveBeenCalled();
   });
 });
 

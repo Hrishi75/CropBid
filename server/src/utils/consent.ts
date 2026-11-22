@@ -20,14 +20,13 @@
 // (signInWithGoogle). Signing in to an existing account asks nothing.
 //
 // Change POLICY_VERSION whenever /terms or /privacy change in substance. It is
-// the later of the two pages' "Last updated" dates (both 2 November 2026: who
-// pays for wholesale delivery became a term of each deal, and the two sides of
-// a deal now see names only, with CropBid as the point of contact).
+// the later of the two pages' "Last updated" dates (the terms, 22 November
+// 2026: a ₹10 handling fee on every household shop order).
 // =============================================================================
 
 import { ApiError } from './ApiError';
 
-export const POLICY_VERSION = '2026-11-03';
+export const POLICY_VERSION = '2026-11-22';
 
 export const CONSENT_REQUIRED_MESSAGE =
   'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy';

@@ -49,7 +49,18 @@ export function useRetailRules(): { rules: RetailRules | null; failed: boolean; 
     return () => { on = false; };
   }, [attempt]);
 
-  return { rules, failed, retry: () => setAttempt((n) => n + 1) };
+  // retry forgets the cached answer and asks again. Not only after a failed
+  // fetch: a checkout the server refused over a fee (a 409) calls it too,
+  // because the cached rules may predate the fee the server now charges, and
+  // without a fresh read every further attempt would be refused the same way.
+  return {
+    rules,
+    failed,
+    retry: () => {
+      cached = null;
+      setAttempt((n) => n + 1);
+    },
+  };
 }
 
 /**
@@ -58,6 +69,14 @@ export function useRetailRules(): { rules: RetailRules | null; failed: boolean; 
  */
 export function deliveryFeeFor(itemsTotal: number, rules: RetailRules): number {
   return itemsTotal < rules.freeDeliveryFrom ? rules.deliveryFee : 0;
+}
+
+/**
+ * The handling fee one shop order pays: flat, whatever it comes to. 0 against
+ * a server that predates it, which neither sends nor charges one.
+ */
+export function handlingFeeFor(rules: RetailRules): number {
+  return rules.handlingFee ?? 0;
 }
 
 /** Rounded to paise, exactly as the server rounds a shop order's total. */

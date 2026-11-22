@@ -343,9 +343,14 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
           <Text style={styles.amount}>{money(amount, first.currency)}</Text>
           {shopOrder ? (
             <Text style={styles.feeNote}>
-              {shopOrder.deliveryFee > 0
-                ? `${t('incl.')} ${money(shopOrder.deliveryFee, shopOrder.currency)} ${t('delivery')}`
-                : t('Free delivery')}
+              {[
+                shopOrder.deliveryFee > 0
+                  ? `${t('incl.')} ${money(shopOrder.deliveryFee, shopOrder.currency)} ${t('delivery')}`
+                  : t('Free delivery'),
+                (shopOrder.handlingFee ?? 0) > 0
+                  ? `${money(shopOrder.handlingFee!, shopOrder.currency)} ${t('handling')}`
+                  : null,
+              ].filter(Boolean).join(' · ')}
             </Text>
           ) : null}
         </View>

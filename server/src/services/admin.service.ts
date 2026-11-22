@@ -357,7 +357,7 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
         // of that lot does not touch (§6). The fee is per order, so the row
         // needs the order's other lots too: it is owed back once, when every
         // lot in it is refunded, and only the order can say whether they are.
-        retailOrder: { select: { id: true, deliveryFee: true, transactions: { select: { paymentStatus: true } } } },
+        retailOrder: { select: { id: true, deliveryFee: true, handlingFee: true, transactions: { select: { paymentStatus: true } } } },
       },
     }),
     prisma.transaction.count({ where }),
@@ -368,7 +368,8 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
   // Refunds only change a column (§6), so whoever makes the bank transfer reads
   // the amount here: goods plus the buyer's share of delivery on a SPLIT or
   // BUYER deal (§2c). A shop order's own delivery fee is per order, not per
-  // lot, and is sent separately as retailOrder.deliveryFee.
+  // lot, and is sent separately as retailOrder.deliveryFee, with the handling
+  // fee beside it (retailOrder.handlingFee), owed back on the same terms.
   return {
     transactions: transactions.map(({ retailOrder, ...t }) => ({
       ...t,
@@ -376,6 +377,7 @@ export async function getAllTransactions(paymentStatus?: string, limit = 20, off
       retailOrder: retailOrder && {
         id: retailOrder.id,
         deliveryFee: retailOrder.deliveryFee,
+        handlingFee: retailOrder.handlingFee,
         lots: retailOrder.transactions.length,
         refundedLots: retailOrder.transactions.filter((l) => l.paymentStatus === 'REFUNDED').length,
       },

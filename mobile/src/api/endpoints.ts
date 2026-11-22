@@ -456,6 +456,8 @@ export async function placeRetailOrder(input: {
   deliveryAddress?: string;
   contactPhone?: string;
   deliveryFee?: number;
+  /** The handling fee the shopper was shown. The server charges it only when sent. */
+  handlingFee?: number;
 }): Promise<RetailOrder> {
   const { data } = await api.post<RetailOrder>('/retail-orders', input);
   return data;

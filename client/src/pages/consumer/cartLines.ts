@@ -38,7 +38,7 @@ import { formatWeight, fromKg, pricePerKg, toKg } from '../../utils/units';
 import { laneFor } from '../../utils/delivery';
 import type { DeliveryLane } from '../../utils/delivery';
 import { sellerDisplayName } from '../../utils/partner';
-import { deliveryFeeFor, toPaise, useRetailRules } from '../../utils/retailRules';
+import { deliveryFeeFor, handlingFeeFor, toPaise, useRetailRules } from '../../utils/retailRules';
 
 export interface CartLine {
   item: CartItem;
@@ -99,6 +99,8 @@ export interface ShopGroup {
   itemsTotal: number;
   /** What this shop order pays for delivery. Null while the rules are unknown. */
   deliveryFee: number | null;
+  /** This shop order's handling fee: flat per order. Null while the rules are unknown. */
+  handlingFee: number | null;
   /** How much more from this shop makes delivery free, in whole rupees. 0 when it already is. */
   toFreeDelivery: number;
 }
@@ -114,6 +116,8 @@ export interface CartTotals {
   deliveryFee: number | null;
   /** How many shops in this bill are paying for delivery. */
   shopsPayingDelivery: number;
+  /** Every shop order's handling fee together. Null while the rules are unknown. */
+  handlingFee: number | null;
   toPay: number | null;
   currency: string;
   /** One order per shop. See the note in Checkout. */
@@ -237,6 +241,7 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
   const orderable = lines.filter((l) => l.problem === null);
   const itemsTotal = shops.reduce((sum, g) => sum + g.itemsTotal, 0);
   const deliveryFee = rules ? shops.reduce((sum, g) => sum + (g.deliveryFee ?? 0), 0) : null;
+  const handlingFee = rules ? shops.reduce((sum, g) => sum + (g.handlingFee ?? 0), 0) : null;
 
   return {
     lines,
@@ -245,7 +250,8 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
     itemsTotal,
     deliveryFee,
     shopsPayingDelivery: shops.filter((g) => (g.deliveryFee ?? 0) > 0).length,
-    toPay: deliveryFee === null ? null : toPaise(itemsTotal + deliveryFee),
+    handlingFee,
+    toPay: deliveryFee === null || handlingFee === null ? null : toPaise(itemsTotal + deliveryFee + handlingFee),
     currency: items[0]?.currency ?? 'INR',
     orderCount: shops.filter((g) => g.orderable.length > 0).length,
     rules,
@@ -253,7 +259,8 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
     loading,
     reload: () => {
       setNonce((n) => n + 1);
-      if (rulesFailed) retryRules();
+      // Always: the fees may have changed under the bill (see useRetailRules).
+      retryRules();
     },
   };
 }
@@ -274,6 +281,7 @@ function groupByShop(lines: CartLine[], rules: RetailRules | null): ShopGroup[] 
     const orderable = shopLines.filter((l) => l.problem === null);
     const itemsTotal = toPaise(orderable.reduce((sum, l) => sum + l.price * l.orderQuantity, 0));
     const deliveryFee = rules && orderable.length > 0 ? deliveryFeeFor(itemsTotal, rules) : rules ? 0 : null;
+    const handlingFee = rules && orderable.length > 0 ? handlingFeeFor(rules) : rules ? 0 : null;
     return {
       sellerId,
       sellerName: shopLines.find((l) => l.sellerName)?.sellerName ?? null,
@@ -282,6 +290,7 @@ function groupByShop(lines: CartLine[], rules: RetailRules | null): ShopGroup[] 
       orderable,
       itemsTotal,
       deliveryFee,
+      handlingFee,
       toFreeDelivery: rules && deliveryFee ? Math.ceil(rules.freeDeliveryFrom - itemsTotal) : 0,
     };
   });

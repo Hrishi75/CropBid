@@ -268,8 +268,11 @@ export function OrderDetail() {
                       ? `This pays for all ${shopOrder._count.transactions} items from ${seller ?? 'this shop'}`
                       : 'This pays for this item'}
                     {shopOrder.deliveryFee > 0
-                      ? `, plus ${formatCurrency(shopOrder.deliveryFee, shopOrder.currency)} delivery. `
-                      : ', with free delivery. '}
+                      ? `, plus ${formatCurrency(shopOrder.deliveryFee, shopOrder.currency)} delivery`
+                      : ', with free delivery'}
+                    {(shopOrder.handlingFee ?? 0) > 0
+                      ? ` and a ${formatCurrency(shopOrder.handlingFee!, shopOrder.currency)} handling fee. `
+                      : '. '}
                   </>
                 )}
                 CropBid holds your money until you confirm the order arrived.
@@ -360,6 +363,12 @@ export function OrderDetail() {
                 label="Delivery"
                 value={<span className="cb-mono">{shopOrder.deliveryFee > 0 ? formatCurrency(shopOrder.deliveryFee, shopOrder.currency) : 'Free'}</span>}
               />
+              {(shopOrder.handlingFee ?? 0) > 0 && (
+                <Row
+                  label="Handling fee"
+                  value={<span className="cb-mono">{formatCurrency(shopOrder.handlingFee!, shopOrder.currency)}</span>}
+                />
+              )}
               <Row
                 label={totalLabel}
                 value={<span className="cb-mono" style={{ fontWeight: 600 }}>{formatCurrency(shopOrder.totalAmount, shopOrder.currency)}</span>}

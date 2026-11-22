@@ -8,7 +8,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import * as browseService from '../services/browse.service';
-import { RETAIL_DELIVERY } from '../services/retailOrder.service';
+import { RETAIL_DELIVERY, RETAIL_HANDLING_FEE } from '../services/retailOrder.service';
 
 // GET /api/browse — Browse listings with filters
 export async function browseListings(req: Request, res: Response, next: NextFunction) {
@@ -90,6 +90,8 @@ export async function getRetailRules(_req: Request, res: Response, next: NextFun
     res.json({
       freeDeliveryFrom: RETAIL_DELIVERY.freeFrom,
       deliveryFee: RETAIL_DELIVERY.fee,
+      // Per shop order, whatever it comes to. Absent from builds before 2026-11-22.
+      handlingFee: RETAIL_HANDLING_FEE,
       currency: 'INR',
       minOrderValue: 0,
     });

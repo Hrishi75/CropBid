@@ -78,6 +78,7 @@ const RETAIL_ORDER_SUMMARY_SELECT = {
   id: true,
   itemsTotal: true,
   deliveryFee: true,
+  handlingFee: true,
   totalAmount: true,
   currency: true,
   paidAt: true,
