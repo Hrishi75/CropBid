@@ -272,6 +272,7 @@ export default function CartScreen() {
           itemsTotal={bill.itemsTotal}
           deliveryFee={bill.deliveryFee}
           shopsPayingDelivery={bill.shopsPayingDelivery}
+          handlingFee={bill.handlingFee}
           toPay={bill.toPay}
           currency={bill.currency}
           rules={bill.rules}
@@ -300,7 +301,7 @@ export default function CartScreen() {
               <Mono style={styles.checkoutEyebrow}>TO PAY</Mono>
               <Text style={styles.checkoutTotal}>{money(bill.toPay!, bill.currency)}</Text>
               <Text style={styles.checkoutSub}>
-                {bill.orderCount} {bill.orderCount === 1 ? 'order' : 'orders'} · delivery included
+                {bill.orderCount} {bill.orderCount === 1 ? 'order' : 'orders'} · fees included
               </Text>
             </View>
             <Text style={styles.checkoutCta}>Checkout →</Text>

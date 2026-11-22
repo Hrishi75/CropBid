@@ -46,14 +46,14 @@ interface AdminTransaction {
   buyerPaid: number;
   // A household lot's shop order. Its delivery fee is per order, so the row
   // carries how many of the order's lots are refunded.
-  retailOrder: { id: string; deliveryFee: number; lots: number; refundedLots: number } | null;
+  retailOrder: { id: string; deliveryFee: number; handlingFee?: number; lots: number; refundedLots: number } | null;
   createdAt: string;
 }
 
 // Refunds only change a column (CLAUDE.md §6). The money goes back by hand,
 // so the row says how much, rather than "refunded" reading as done.
 //
-// A shop order's delivery fee is per order, not per lot, and is owed back once,
+// A shop order's delivery and handling fees are per order, not per lot, and are owed back once,
 // when every lot in it is refunded. So the lot's own line never includes it;
 // the order's line says how many of its lots are refunded and, only once all
 // are, that the fee goes back once for the whole order. Review caught the
@@ -64,12 +64,17 @@ function refundOwed(tx: AdminTransaction): string {
 
 function shopOrderFee(tx: AdminTransaction): string | null {
   const o = tx.retailOrder;
-  if (!o || o.deliveryFee <= 0) return null;
+  const handling = o?.handlingFee ?? 0;
+  if (!o || o.deliveryFee + handling <= 0) return null;
   const ref = `Shop order #O-${o.id.slice(-6).toUpperCase()}`;
-  const fee = formatCurrency(o.deliveryFee, tx.currency);
+  const fee = formatCurrency(o.deliveryFee + handling, tx.currency);
+  const what = o.deliveryFee > 0 && handling > 0
+    ? 'delivery and handling fees'
+    : handling > 0 ? 'handling fee' : 'delivery fee';
+  const plural = what.endsWith('fees');
   return o.refundedLots >= o.lots
-    ? `${ref}: all ${o.lots} ${o.lots === 1 ? 'lot' : 'lots'} refunded, so its ${fee} delivery fee goes back too, once for the whole order, not per lot.`
-    : `${ref}: ${o.refundedLots} of ${o.lots} lots refunded. Its ${fee} delivery fee is owed back only once every lot is.`;
+    ? `${ref}: all ${o.lots} ${o.lots === 1 ? 'lot' : 'lots'} refunded, so its ${fee} ${what} ${plural ? 'go' : 'goes'} back too, once for the whole order, not per lot.`
+    : `${ref}: ${o.refundedLots} of ${o.lots} lots refunded. Its ${fee} ${what} ${plural ? 'are' : 'is'} owed back only once every lot is.`;
 }
 
 // Counted by the server over every deal, not the page on screen. There is no
@@ -156,10 +161,10 @@ export function AdminTransactions() {
     if (all.length === 0) return 0;
     downloadCsv(`transactions-${statusFilter ? statusFilter.toLowerCase() : 'all'}`, toCsv(
       ['ID', 'Date', 'Crop', 'Seller', 'Buyer', 'Quantity', 'Unit', 'Price per unit', 'Goods total', 'Currency',
-        'Fee', 'Buyer paid', 'Payment', 'Delivery', 'Shipment', 'Shop order', 'Shop order delivery fee'],
+        'Fee', 'Buyer paid', 'Payment', 'Delivery', 'Shipment', 'Shop order', 'Shop order delivery fee', 'Shop order handling fee'],
       all.map((x) => [x.id, day(x.createdAt), x.listing.cropName, x.farmer.name, x.buyer.name, x.bid?.quantity, x.listing.unit,
         x.finalPricePerUnit, x.totalAmount, x.currency, x.platformFeeAmount, x.buyerPaid, x.paymentStatus,
-        x.deliveryStatus, x.shipment?.status, x.retailOrder?.id, x.retailOrder?.deliveryFee]),
+        x.deliveryStatus, x.shipment?.status, x.retailOrder?.id, x.retailOrder?.deliveryFee, x.retailOrder?.handlingFee]),
     ));
     return all.length;
   }

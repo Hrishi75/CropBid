@@ -960,7 +960,8 @@ model RetailOrder {
 
   itemsTotal  Float // Sum of the lots, rounded to paise
   deliveryFee Float    @default(0) // Kept by CropBid. 0 once itemsTotal reaches the free-delivery threshold
-  totalAmount Float // itemsTotal + deliveryFee: the one amount the shopper pays
+  handlingFee Float    @default(0) // Kept by CropBid. Flat per shop order; 0 on orders from clients that never showed it
+  totalAmount Float // itemsTotal + deliveryFee + handlingFee: the one amount the shopper pays
   currency    Currency @default(INR)
 
   // Set once, by whichever RetailPayment captured first. Its lots move into

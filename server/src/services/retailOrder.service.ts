@@ -49,6 +49,14 @@ export const RETAIL_DELIVERY = {
   fee: 30,
 } as const;
 
+/**
+ * A flat fee on every household shop order, in rupees, kept by CropBid
+ * (decided 2026-11-22). Unlike delivery it does not fall away at ₹200: it is
+ * charged on each shop order whatever the basket comes to. It never enters a
+ * lot's Transaction, so the 2% basis and what the shop is paid are untouched.
+ */
+export const RETAIL_HANDLING_FEE = 10;
+
 /** What one shop order pays for delivery, given its items total in rupees. */
 export function deliveryFeeFor(itemsTotal: number): number {
   return itemsTotal < RETAIL_DELIVERY.freeFrom ? RETAIL_DELIVERY.fee : 0;
@@ -93,6 +101,13 @@ export interface RetailOrderInput {
    * rather than charged an amount nobody saw.
    */
   deliveryFee?: number;
+  /**
+   * The handling fee the shopper was shown. Charged only when it is sent:
+   * clients from before the fee show a bill without it and cannot send it, and
+   * charging them would be a fee nobody displayed, the same argument as
+   * waiveDeliveryFee below. Sent and different from today's fee is a 409.
+   */
+  handlingFee?: number;
   /**
    * No delivery fee on this order, whatever it comes to. Set only by the
    * one-lot direct-purchase path, for clients that predate fees entirely:
@@ -254,6 +269,13 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
         : `This shop's items now come to ₹${RETAIL_DELIVERY.freeFrom} or more, so delivery is free. Check your basket and place the order again.`,
     );
   }
+  const handlingFee = input.handlingFee === undefined ? 0 : RETAIL_HANDLING_FEE;
+  if (input.handlingFee !== undefined && input.handlingFee !== handlingFee) {
+    throw new ApiError(
+      409,
+      `The handling fee is now ₹${handlingFee} per shop order. Check your basket and place the order again.`,
+    );
+  }
 
   const contact = await orderContactDefaults(buyerId, input);
   // A retail order the seller cannot deliver or follow up on is worthless:
@@ -272,7 +294,8 @@ export async function createRetailOrder(buyerId: string, input: RetailOrderInput
         sellerId: sellerId!,
         itemsTotal,
         deliveryFee,
-        totalAmount: toPaise(itemsTotal + deliveryFee),
+        handlingFee,
+        totalAmount: toPaise(itemsTotal + deliveryFee + handlingFee),
         currency,
       },
     });

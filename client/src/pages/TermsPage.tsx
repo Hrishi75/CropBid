@@ -39,7 +39,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '3 November 2026';
+const UPDATED = '22 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */
@@ -212,9 +212,10 @@ export function TermsPage() {
           <p>
             <strong>Household delivery.</strong> A household basket is ordered one shop at a
             time. Delivery is free when a shop's items in your order come to ₹200 or more, and
-            costs ₹30 for that shop's order below ₹200. The charge is shown in your basket
-            before you order, is paid with the order, and is kept by CropBid rather than passed
-            to the seller.
+            costs ₹30 for that shop's order below ₹200. Each shop's order also carries a
+            handling fee of ₹10, whatever it comes to. Both charges are shown in your basket
+            before you order, are paid with the order, and are kept by CropBid rather than
+            passed to the seller.
           </p>
           <p>
             Weights are as declared by the seller. Fresh produce loses a little weight in

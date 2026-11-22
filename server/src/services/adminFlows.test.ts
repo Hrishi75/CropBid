@@ -157,7 +157,7 @@ describe("a shop order's delivery fee", () => {
     };
 
     let rows = await read();
-    expect(rows.get(first.id)!.retailOrder).toEqual({ id: order.id, deliveryFee: 30, lots: 2, refundedLots: 1 });
+    expect(rows.get(first.id)!.retailOrder).toEqual({ id: order.id, deliveryFee: 30, handlingFee: 0, lots: 2, refundedLots: 1 });
     expect(rows.get(first.id)!.buyerPaid).toBe(5500);
 
     await prisma.transaction.update({ where: { id: second.id }, data: { paymentStatus: 'REFUNDED' } });

@@ -138,6 +138,7 @@ export default function CheckoutScreen() {
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           deliveryFee: shop.deliveryFee ?? undefined,
+          handlingFee: shop.handlingFee ?? undefined,
         });
         placedOrderIds.push(order.id);
         placedLots.push(...shop.orderable.map((line) => line.item.listingId));
@@ -301,6 +302,7 @@ export default function CheckoutScreen() {
           itemsTotal={bill.itemsTotal}
           deliveryFee={bill.deliveryFee}
           shopsPayingDelivery={bill.shopsPayingDelivery}
+          handlingFee={bill.handlingFee}
           toPay={bill.toPay}
           currency={bill.currency}
           rules={bill.rules}

@@ -60,6 +60,14 @@ export function deliveryFeeFor(itemsTotal: number, rules: RetailRules): number {
   return itemsTotal < rules.freeDeliveryFrom ? rules.deliveryFee : 0;
 }
 
+/**
+ * The handling fee one shop order pays: flat, whatever it comes to. 0 against
+ * a server that predates it, which neither sends nor charges one.
+ */
+export function handlingFeeFor(rules: RetailRules): number {
+  return rules.handlingFee ?? 0;
+}
+
 /** Rounded to paise, exactly as the server rounds a shop order's total. */
 export function toPaise(n: number): number {
   return Math.round(n * 100) / 100;

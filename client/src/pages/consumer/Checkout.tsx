@@ -124,6 +124,8 @@ export function Checkout() {
           deliveryAddress: address.trim(),
           contactPhone: phone.trim(),
           deliveryFee: shop.deliveryFee,
+          // Sent so the server charges it: it charges none to a client that does not.
+          handlingFee: shop.handlingFee,
         });
         placedOrders.push(order);
         placedLots.push(...shop.orderable.map((line) => line.item.listingId));
@@ -291,6 +293,7 @@ export function Checkout() {
               itemCount={bill.orderable.length}
               itemsTotal={bill.itemsTotal}
               deliveryFee={bill.deliveryFee}
+              handlingFee={bill.handlingFee}
               shopsPayingDelivery={bill.shopsPayingDelivery}
               toPay={bill.toPay}
               currency={bill.currency}

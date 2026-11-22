@@ -320,7 +320,9 @@ export interface RetailOrderSummary {
   itemsTotal: number;
   /** Charged once per shop order under the free-delivery threshold. Kept by CropBid. */
   deliveryFee: number;
-  /** itemsTotal + deliveryFee: the one amount the shopper pays. */
+  /** Flat, once per shop order. Kept by CropBid. Absent from servers before 2026-11-22. */
+  handlingFee?: number;
+  /** itemsTotal + deliveryFee + handlingFee: the one amount the shopper pays. */
   totalAmount: number;
   currency: string;
   paidAt: string | null;
@@ -339,6 +341,7 @@ export interface RetailOrder {
   id: string;
   itemsTotal: number;
   deliveryFee: number;
+  handlingFee?: number;
   totalAmount: number;
   currency: string;
   transactions: { id: string; bidId: string; listingId: string; totalAmount: number }[];
@@ -348,6 +351,8 @@ export interface RetailOrder {
 export interface RetailRules {
   freeDeliveryFrom: number;
   deliveryFee: number;
+  /** Per shop order, whatever it comes to. Absent from servers before 2026-11-22, which charge none. */
+  handlingFee?: number;
   currency: string;
 }
 

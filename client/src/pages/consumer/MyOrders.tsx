@@ -45,6 +45,16 @@ interface OrderGroup {
   items: Transaction[];
 }
 
+// What a shop order's total includes beyond its items: the delivery fee
+// (below ₹200) and the flat handling fee, each named.
+function feeNote(o: RetailOrderSummary): string {
+  const parts = [
+    o.deliveryFee > 0 ? `${formatCurrency(o.deliveryFee, o.currency)} delivery` : null,
+    (o.handlingFee ?? 0) > 0 ? `${formatCurrency(o.handlingFee!, o.currency)} handling` : null,
+  ].filter(Boolean);
+  return `incl. ${parts.join(' + ')}`;
+}
+
 // Folds the item rows into shop orders, keeping the list's newest-first order:
 // a shop order sits where its first item came back.
 function groupOrders(orders: Transaction[]): OrderGroup[] {
@@ -154,9 +164,9 @@ function SingleOrderCard({ order, shopOrder, viewerId }: {
         <div className="cb-mono" style={{ fontWeight: 600 }}>
           {formatCurrency(amount, order.currency)}
         </div>
-        {shopOrder && shopOrder.deliveryFee > 0 && (
+        {shopOrder && shopOrder.deliveryFee + (shopOrder.handlingFee ?? 0) > 0 && (
           <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-            incl. {formatCurrency(shopOrder.deliveryFee, shopOrder.currency)} delivery
+            {feeNote(shopOrder)}
           </div>
         )}
         {stage.action && (
@@ -215,9 +225,7 @@ function ShopOrderCard({ shopOrder, items, viewerId }: {
             {formatCurrency(shopOrder.totalAmount, shopOrder.currency)}
           </div>
           <div className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 2 }}>
-            {shopOrder.deliveryFee > 0
-              ? `incl. ${formatCurrency(shopOrder.deliveryFee, shopOrder.currency)} delivery`
-              : 'Free delivery'}
+            {shopOrder.deliveryFee + (shopOrder.handlingFee ?? 0) > 0 ? feeNote(shopOrder) : 'Free delivery'}
           </div>
           {awaitingPayment && (
             <div className="cb-tiny" style={{ color: 'var(--cb-ember)', marginTop: 4 }}>Pay now →</div>

@@ -9,9 +9,10 @@
 // shop's items, ₹30 below. The row is the sum across shops, and says how many
 // are paying so a ₹60 line on a two-shop basket is not a mystery.
 //
-// THE PLATFORM FEE IS WORDS, NOT A ZERO. CropBid's 2% comes out of the
-// seller's settlement rather than being added on top, so a "₹0" would read as a
-// placeholder for a fee that lands later. Saying who pays it is shorter and true.
+// HANDLING IS PER SHOP ORDER TOO, and flat: ₹10 on each, whatever it comes to
+// (2026-11-22), kept by CropBid. It replaced a "Platform fee: Paid by the
+// seller" row: the 2% still comes out of the seller's settlement, but the
+// shopper's bill shows only what the shopper pays.
 // =============================================================================
 
 import { formatCurrency } from '../../utils/currency';
@@ -24,6 +25,8 @@ interface BillDetailsProps {
   deliveryFee: number | null;
   /** How many shops in this bill pay for delivery. */
   shopsPayingDelivery: number;
+  /** Every shop order's handling fee together. Null when the rules could not be loaded. */
+  handlingFee: number | null;
   toPay: number | null;
   currency: string;
   rules: RetailRules | null;
@@ -49,6 +52,7 @@ export function BillDetails({
   itemsTotal,
   deliveryFee,
   shopsPayingDelivery,
+  handlingFee,
   toPay,
   currency,
   rules,
@@ -70,7 +74,12 @@ export function BillDetails({
           : deliveryFee > 0 ? formatCurrency(deliveryFee, currency) : 'Free'}
         muted={deliveryFee === 0}
       />
-      <Row label="Platform fee" value="Paid by the seller" muted />
+      {handlingFee !== 0 && (
+        <Row
+          label={orderCount != null && orderCount > 1 ? `Handling fee (${orderCount} orders)` : 'Handling fee'}
+          value={handlingFee === null ? 'Could not load' : formatCurrency(handlingFee, currency)}
+        />
+      )}
 
       <div
         style={{
@@ -95,6 +104,7 @@ export function BillDetails({
         <p className="cb-tiny" style={{ color: 'var(--cb-ink-3)', marginTop: 10 }}>
           Delivery is free on {formatCurrency(rules.freeDeliveryFrom, currency)} or more from a
           shop, and {formatCurrency(rules.deliveryFee, currency)} per shop below that.
+          {rules.handlingFee ? ` A ${formatCurrency(rules.handlingFee, currency)} handling fee applies to each shop order.` : ''}
         </p>
       )}
 

@@ -604,7 +604,8 @@ function BuyDirect() {
             ordered one shop at a time, because each shop makes its own delivery, and
             <strong> delivery is free on ₹200 or more from a shop, and ₹30 below that</strong>:
             a delivery run costs the same whether it carries ₹60 of coriander or ₹600 of
-            groceries. Signing up takes a name, a mobile number and a password (email is optional), and
+            groceries. Each shop's order also carries a <strong>₹10 handling fee</strong>,
+            whatever it comes to. Signing up takes a name, a mobile number and a password (email is optional), and
             you only need it at checkout.
           </p>
         </div>
@@ -717,8 +718,8 @@ function Pricing() {
           it, the two sides pay half each, or the buyer pays it. A buyer with a share pays
           it with the goods, once it is quoted. The 2% is never taken on it. Households
           pay ₹30 for delivery when a shop's items in their order come to less than ₹200,
-          and nothing from ₹200 up; that charge is CropBid's, not the seller's. Those two
-          are the only other numbers there are.
+          and nothing from ₹200 up, plus a ₹10 handling fee on every shop's order; both
+          are CropBid's, not the seller's. Those are the only other numbers there are.
         </p>
       </div>
     </section>
