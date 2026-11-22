@@ -259,7 +259,8 @@ export function useCartLines(items: CartItem[], city: string): CartTotals {
     loading,
     reload: () => {
       setNonce((n) => n + 1);
-      if (rulesFailed) retryRules();
+      // Always: the fees may have changed under the bill (see useRetailRules).
+      retryRules();
     },
   };
 }

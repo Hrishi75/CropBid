@@ -97,6 +97,10 @@ export function Checkout() {
     const placedLots: string[] = [];
     const placedOrders: RetailOrder[] = [];
     const failures: { name: string; message: string }[] = [];
+    // A 409 means something on the bill moved under the shopper: a price
+    // across ₹200, a fee, the stock. The bill is re-read afterwards so the next
+    // attempt is made on what the server now says, not on the cached rules.
+    let billStale = false;
 
     // Sequential, not Promise.all: each call decrements stock, and a seller
     // watching their listings should see orders arrive as orders, not as a
@@ -130,6 +134,7 @@ export function Checkout() {
         placedOrders.push(order);
         placedLots.push(...shop.orderable.map((line) => line.item.listingId));
       } catch (err: any) {
+        if (err.response?.status === 409) billStale = true;
         failures.push({
           name: shop.sellerName ?? 'One shop',
           message: err.response?.data?.message || 'Could not be ordered',
@@ -139,6 +144,7 @@ export function Checkout() {
 
     // Only what actually became an order leaves the basket.
     if (placedLots.length > 0) removeMany(placedLots);
+    if (billStale) bill.reload();
 
     if (placedOrders.length === 0) {
       toast.error(failures[0]?.message || 'Could not place your order');

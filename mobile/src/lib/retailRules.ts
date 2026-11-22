@@ -49,7 +49,18 @@ export function useRetailRules(): { rules: RetailRules | null; failed: boolean; 
     return () => { on = false; };
   }, [attempt]);
 
-  return { rules, failed, retry: () => setAttempt((n) => n + 1) };
+  // retry forgets the cached answer and asks again. Not only after a failed
+  // fetch: a checkout the server refused over a fee (a 409) calls it too,
+  // because the cached rules may predate the fee the server now charges, and
+  // without a fresh read every further attempt would be refused the same way.
+  return {
+    rules,
+    failed,
+    retry: () => {
+      cached = null;
+      setAttempt((n) => n + 1);
+    },
+  };
 }
 
 /**
