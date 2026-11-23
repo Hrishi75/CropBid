@@ -5,6 +5,7 @@
 // works the user lands straight in the app. signIn/signOut wrap the endpoints.
 // =============================================================================
 
+import axios from 'axios';
 import React, {
   createContext,
   useCallback,
@@ -13,10 +14,11 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import api, {
+import {
   getRefreshToken,
+  rotateSession,
   setAccessToken,
   setActAs,
   setOnLogout,
@@ -35,12 +37,13 @@ import {
   type SignupResult,
 } from '../api/endpoints';
 import type { User } from '../api/types';
-import { markSynced } from '../lib/idle';
 
 /** Which side a seller who is also approved to buy is working on. */
 export type AccountMode = 'SELL' | 'BUY';
 
 const MODE_KEY = 'cropbid.mode';
+// How often a launch that had no signal tries to restore the session.
+const RESTORE_RETRY_MS = 15 * 1000;
 
 // The device remembers which side the account was on, so reopening the app
 // lands where they left off. A preference, not a credential: plain storage.
@@ -99,6 +102,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [restorePending, setRestorePending] = useState(false);
   const [mode, setMode] = useState<AccountMode>('SELL');
 
   // The remembered side, read once at launch.
@@ -128,29 +132,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => setOnLogout(null);
   }, []);
 
-  // Silent refresh on launch from the persisted refresh token.
-  useEffect(() => {
-    (async () => {
-      try {
-        const refreshToken = await getRefreshToken();
-        if (!refreshToken) return;
-        const { data } = await api.post('/auth/refresh', { refreshToken });
-        // An account support has reset is not restored into the app either.
-        // Throwing lands in the catch below, which drops the stored token and
-        // leaves them at the sign-in screen, where the same check explains it.
-        refuseResetSession(data.user);
-        setAccessToken(data.accessToken);
-        if (data.refreshToken) await setRefreshToken(data.refreshToken);
-        markSynced(); // Launch refresh re-armed the server's idle window.
-        setUser(data.user);
-      } catch {
-        setAccessToken(null);
-        await setRefreshToken(null);
-      } finally {
-        setLoading(false);
-      }
-    })();
+  // Silent refresh from the persisted refresh token. 'retry' means the server
+  // never answered, so the session is still good and only the network is not.
+  const restoreSession = useCallback(async (): Promise<'done' | 'retry'> => {
+    if (!(await getRefreshToken())) return 'done';
+    let session;
+    try {
+      // The shared rotation: a guest screen's 401 may be refreshing right now.
+      // A refusal has already cleared the stored token inside it.
+      session = await rotateSession();
+    } catch (e) {
+      // Opening the app with no signal, or while the API is restarting, must
+      // not throw away the session.
+      return axios.isAxiosError(e) && ![401, 403].includes(e.response?.status ?? 0)
+        ? 'retry'
+        : 'done';
+    }
+    if (session.superseded) return 'done';
+    try {
+      // An account support has reset is not restored into the app either. It
+      // is left at the sign-in screen, where the same check explains it.
+      refuseResetSession(session.user);
+    } catch {
+      setAccessToken(null);
+      await setRefreshToken(null);
+      return 'done';
+    }
+    setUser(session.user);
+    return 'done';
   }, []);
+
+  useEffect(() => {
+    restoreSession()
+      .then((result) => setRestorePending(result === 'retry'))
+      .finally(() => setLoading(false));
+  }, [restoreSession]);
+
+  // After a launch with no signal, keep trying until the session comes back,
+  // on a timer and whenever the app returns to the foreground.
+  useEffect(() => {
+    if (!restorePending || user) return;
+    let busy = false;
+    let on = true;
+    const attempt = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const result = await restoreSession();
+        if (on && result === 'done') setRestorePending(false);
+      } catch {
+        // Secure storage failed to read; the next tick tries again.
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(attempt, RESTORE_RETRY_MS);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void attempt();
+    });
+    return () => {
+      on = false;
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [restorePending, user, restoreSession]);
 
   const signIn = useCallback(async (identifier: string, password: string) => {
     const u = await apiLogin(identifier, password);

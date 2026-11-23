@@ -1,6 +1,8 @@
 // =============================================================================
-// Idle session tracking (native)
+// Idle session tracking (native), for ADMIN accounts only
 // =============================================================================
+// Other accounts have no idle sign-out in the app (decided 2026-11-23).
+//
 // Mirrors client/src/lib/idle.ts. The server enforces the same window on its
 // own — the refresh token expires after 15 minutes and is rotated on every
 // /auth/refresh — so an app sitting in the background is already signed out by

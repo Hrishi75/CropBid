@@ -621,7 +621,7 @@ export async function login(input: LoginInput) {
 // ---------------------------------------------------------------------------
 // Refresh — Get new access token using refresh token
 // ---------------------------------------------------------------------------
-export async function refresh(refreshToken: string) {
+export async function refresh(refreshToken: string, options: { appSession?: boolean } = {}) {
   // 1. Verify the refresh token's signature and expiry
   let payload;
   try {
@@ -631,6 +631,9 @@ export async function refresh(refreshToken: string) {
     // genuine, the user just stopped using the app for longer than the window.
     // Say so, so the login screen can explain why they were signed out.
     if (isTokenExpiredError(err)) {
+      if (options.appSession) {
+        throw new ApiError(401, 'Your session has expired. Please sign in again.', 'SESSION_IDLE');
+      }
       const mins = config.auth.idleTimeoutMinutes;
       throw new ApiError(
         401,
@@ -679,7 +682,16 @@ export async function refresh(refreshToken: string) {
   // The password-change flag is read from the row and carried across. Minting
   // without it would make a refresh the way to launder a temporary password
   // into an ordinary session, which is the one thing it must not be.
-  const tokens = generateTokens(user.id, user.role, user.mustChangePassword, user.passwordResetAt);
+  //
+  // An admin keeps the short window even in the app: a phone left signed in
+  // for months should not carry refunds, password resets and payout reads.
+  const tokens = generateTokens(
+    user.id,
+    user.role,
+    user.mustChangePassword,
+    user.passwordResetAt,
+    options.appSession === true && user.role !== 'ADMIN',
+  );
 
   // Conditional on the stored token still being the one matched above. A
   // support reset clears it, and an unconditional write here would put a fresh

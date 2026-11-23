@@ -191,6 +191,25 @@ const REFRESH_COOKIE_OPTIONS = {
   path: '/api/auth',
 };
 
+// Starts the session a sign-in just earned, on the right terms for the client.
+// The website keeps its httpOnly cookie and 15-minute idle window. The phone app
+// has no idle sign-out (2026-11-23): its token is exchanged here for a long one,
+// through refresh() so every conditional credential write still guards it, and
+// no cookie is set because the app keeps the token in secure storage. One helper
+// so a sign-in path added later cannot hand the app a 15-minute session.
+async function startSession<T extends { accessToken: string; refreshToken: string }>(
+  req: Request,
+  res: Response,
+  session: T,
+): Promise<{ accessToken: string; refreshToken?: string }> {
+  if (!isMobileClient(req)) {
+    res.cookie('refreshToken', session.refreshToken, REFRESH_COOKIE_OPTIONS);
+    return { accessToken: session.accessToken };
+  }
+  const app = await authService.refresh(session.refreshToken, { appSession: true });
+  return { accessToken: app.accessToken, refreshToken: app.refreshToken };
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/auth/signup
 // ---------------------------------------------------------------------------
@@ -212,13 +231,13 @@ export async function signupHandler(req: Request, res: Response) {
   });
 
   // Set refresh token as httpOnly cookie
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, result);
 
   // Send access token in response body (client stores in memory)
   res.status(201).json({
     user: result.user,
-    accessToken: result.accessToken,
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    accessToken: session.accessToken,
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 
@@ -237,12 +256,12 @@ export async function verifySignupHandler(req: Request, res: Response) {
 
   // The account exists as of this call, so this is where the session starts —
   // same response shape as a farmer's 201 from /signup.
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, result);
 
   res.status(201).json({
     user: result.user,
-    accessToken: result.accessToken,
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    accessToken: session.accessToken,
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 
@@ -286,12 +305,12 @@ export async function loginHandler(req: Request, res: Response) {
 
   const result = await authService.login({ identifier, password });
 
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, result);
 
   res.json({
     user: result.user,
-    accessToken: result.accessToken,
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    accessToken: session.accessToken,
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 
@@ -306,24 +325,29 @@ export async function refreshHandler(req: Request, res: Response) {
   const explicitToken =
     (req.headers['x-refresh-token'] as string | undefined) || req.body?.refreshToken;
 
-  // Prefer the cookie when present. A token supplied EXPLICITLY (header/body)
-  // with no cookie marks a native client that has no cookie jar — only then do
-  // we echo the rotated token back in the body. We must NOT key this off the
+  // A token supplied EXPLICITLY (header/body) marks a native client, and wins
+  // over any cookie: iOS can keep a cookie from an older build, and reading that
+  // stale one would end a session whose real token is in secure storage. Only
+  // then is the rotated token echoed back. We must NOT key this off the
   // client-controlled `X-Client` header: a web XSS payload could spoof it on a
   // cookie-bearing /refresh and exfiltrate the rotated token, defeating the
-  // whole point of the httpOnly cookie.
-  const refreshToken = cookieToken || explicitToken;
-  const isNativeRefresh = !cookieToken && !!explicitToken;
+  // whole point of the httpOnly cookie. Sending the token itself is proof a
+  // script on the website cannot produce, because it cannot read the cookie.
+  const refreshToken = explicitToken || cookieToken;
+  const isNativeRefresh = !!explicitToken;
 
   if (!refreshToken) {
     res.status(401).json({ error: true, message: 'No refresh token' });
     return;
   }
 
-  const result = await authService.refresh(refreshToken);
+  // An installed app still holding a 15-minute token moves to a long one here.
+  const result = await authService.refresh(refreshToken, { appSession: isNativeRefresh });
 
-  // Set the NEW refresh token (token rotation)
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  // Set the NEW refresh token (token rotation). The website's only copy.
+  if (!isNativeRefresh) {
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  }
 
   res.json({
     user: result.user,
@@ -501,7 +525,7 @@ export async function changePasswordHandler(req: Request, res: Response) {
   // The service rotated the refresh token to evict any stolen session; hand
   // the new one back the same way login does so THIS session stays alive.
   // Trusting X-Client here is fine: the caller just proved the password.
-  res.cookie('refreshToken', tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, tokens);
 
   // The access token comes back to every client, not just the app. It is the
   // one the caller must use from here: the token they sent may carry
@@ -511,8 +535,8 @@ export async function changePasswordHandler(req: Request, res: Response) {
   res.json({
     message: 'Password changed successfully.',
     user: await authService.getCurrentUser(req.user!.userId),
-    accessToken: tokens.accessToken,
-    ...(isMobileClient(req) ? { refreshToken: tokens.refreshToken } : {}),
+    accessToken: session.accessToken,
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 
@@ -608,14 +632,14 @@ export async function verifyPhoneSignInHandler(req: Request, res: Response) {
   }
   const result = await authService.verifyPhoneSignIn(parsed.data);
 
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, result);
   res.status(result.created ? 201 : 200).json({
     user: result.user,
-    accessToken: result.accessToken,
+    accessToken: session.accessToken,
     created: result.created,
     // Native clients have no cookie jar — same contract as signup/login. Safe
     // here for the same reason: the caller just proved control of the number.
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 
@@ -640,13 +664,13 @@ export async function googleSignInHandler(req: Request, res: Response) {
   }
   const result = await authService.signInWithGoogle(parsed.data.credential, parsed.data.consent);
 
-  res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  const session = await startSession(req, res, result);
   res.status(result.created ? 201 : 200).json({
     user: result.user,
-    accessToken: result.accessToken,
+    accessToken: session.accessToken,
     created: result.created,
     passwordRemoved: Boolean('passwordRemoved' in result && result.passwordRemoved),
-    ...(isMobileClient(req) ? { refreshToken: result.refreshToken } : {}),
+    ...(session.refreshToken ? { refreshToken: session.refreshToken } : {}),
   });
 }
 

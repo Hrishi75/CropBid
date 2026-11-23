@@ -1,6 +1,10 @@
 // =============================================================================
-// IdleGuard — signs the user out after 15 minutes without a touch
+// IdleGuard — signs an ADMIN out after 15 minutes without a touch
 // =============================================================================
+// Everyone else stays signed in (decided 2026-11-23): for them this renders its
+// children and does nothing. An admin keeps the cutoff because the auction
+// screen polls, and each poll can renew a session nobody is attending.
+//
 // Wraps the app below AuthProvider. Two things end an idle session:
 //
 //   1. A touch anywhere re-arms the clock. We use the RESPONDER CAPTURE phase
@@ -30,13 +34,14 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   // Read inside callbacks without re-subscribing the listeners on every render.
   const signedIn = useRef(false);
-  signedIn.current = !!user;
+  const isAdmin = user?.role === 'ADMIN';
+  signedIn.current = isAdmin;
   // Lets the touch handler end an already-expired session — see the ordering
   // note on onStartShouldSetResponderCapture below.
   const endIfIdleRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (!user) return;
+    if (!isAdmin) return;
 
     // A fresh sign-in starts a fresh clock — otherwise a stamp left over from
     // the previous session could trip the check straight away.
@@ -65,7 +70,7 @@ export function IdleGuard({ children }: { children: React.ReactNode }) {
       sub.remove();
       endIfIdleRef.current = () => {};
     };
-  }, [user, signOut]);
+  }, [isAdmin, signOut]);
 
   return (
     <View

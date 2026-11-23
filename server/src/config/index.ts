@@ -54,6 +54,9 @@ export const config = {
   auth: {
     accessTokenMinutes: parseInt(process.env.ACCESS_TOKEN_MINUTES || '5', 10),
     idleTimeoutMinutes: parseInt(process.env.SESSION_IDLE_MINUTES || '15', 10),
+    // The phone app has no idle sign-out (decided 2026-11-23). Its refresh
+    // token still slides, so only an app unopened for this long signs in again.
+    appSessionDays: parseInt(process.env.APP_SESSION_DAYS || '90', 10),
   },
 
   // Google Gemini AI

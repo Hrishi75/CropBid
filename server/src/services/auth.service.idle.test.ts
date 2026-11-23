@@ -146,3 +146,47 @@ describe('refresh — inactivity timeout', () => {
     );
   });
 });
+
+// The phone app has no idle sign-out (decided 2026-11-23); the website keeps it.
+describe('refresh: an app session', () => {
+  const lifetime = (token: string) => {
+    const { iat, exp } = jwt.decode(token) as { iat: number; exp: number };
+    return exp - iat;
+  };
+  const APP_SECONDS = config.auth.appSessionDays * 24 * 60 * 60;
+
+  it('moves an installed app from a short token to a long one', async () => {
+    const { refreshToken } = generateTokens('user-1', 'FARMER');
+    mockFindUnique.mockResolvedValue(farmerRow(refreshToken) as any);
+    mockUpdateMany.mockResolvedValue({ count: 1 } as any);
+
+    const result = await refresh(refreshToken, { appSession: true });
+    expect(lifetime(result.refreshToken)).toBe(APP_SECONDS);
+  });
+
+  it('leaves a website refresh on the idle window', async () => {
+    const { refreshToken } = generateTokens('user-1', 'FARMER');
+    mockFindUnique.mockResolvedValue(farmerRow(refreshToken) as any);
+    mockUpdateMany.mockResolvedValue({ count: 1 } as any);
+
+    const result = await refresh(refreshToken);
+    expect(lifetime(result.refreshToken)).toBe(config.auth.idleTimeoutMinutes * 60);
+  });
+
+  it('never gives an admin the long session', async () => {
+    const { refreshToken } = generateTokens('user-1', 'ADMIN');
+    mockFindUnique.mockResolvedValue({ ...farmerRow(refreshToken), role: 'ADMIN' } as any);
+    mockUpdateMany.mockResolvedValue({ count: 1 } as any);
+
+    const result = await refresh(refreshToken, { appSession: true });
+    expect(lifetime(result.refreshToken)).toBe(config.auth.idleTimeoutMinutes * 60);
+  });
+
+  it('is still ended by a revocation', async () => {
+    const { refreshToken } = generateTokens('user-1', 'FARMER', false, null, true);
+    mockFindUnique.mockResolvedValue({ ...farmerRow(refreshToken), refreshToken: null } as any);
+
+    await expect(refresh(refreshToken, { appSession: true })).rejects.toMatchObject({ statusCode: 401 });
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+});

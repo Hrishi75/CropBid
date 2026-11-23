@@ -60,7 +60,17 @@ export async function getRefreshToken(): Promise<string | null> {
   }
   return SecureStore.getItemAsync(REFRESH_KEY);
 }
+// Counts sign-ins and sign-outs, but not the rotations of one session. A request
+// is only ever replayed inside the session it was sent in: replaying it after an
+// account switch would run A's order or profile change as B.
+let sessionEpoch = 0;
+
 export async function setRefreshToken(token: string | null): Promise<void> {
+  sessionEpoch += 1;
+  await writeRefreshToken(token);
+}
+
+async function writeRefreshToken(token: string | null): Promise<void> {
   if (Platform.OS === 'web') {
     try {
       if (token) globalThis.localStorage?.setItem(REFRESH_KEY, token);
@@ -79,20 +89,68 @@ const api = axios.create({ baseURL: API_URL });
 // --- Request interceptor: identify as mobile + attach access token ---
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   config.headers['X-Client'] = 'mobile';
+  (config as InternalAxiosRequestConfig & { _epoch?: number })._epoch ??= sessionEpoch;
   if (accessToken) config.headers['Authorization'] = `Bearer ${accessToken}`;
   if (actAs) config.headers['X-Act-As'] = actAs;
   return config;
 });
 
-// --- Response interceptor: silent refresh on 401 ---
-let isRefreshing = false;
-let queue: Array<{ resolve: (t: string) => void; reject: (e: unknown) => void }> = [];
+// ---------------------------------------------------------------------------
+// rotateSession — the one place the app calls /auth/refresh
+// ---------------------------------------------------------------------------
+// The server accepts only the newest refresh token, so two refreshes of the same
+// token cannot both win, and the loser's 401 would read as "signed out" and
+// delete the winner's new token. Every caller (a 401, the launch restore, its
+// retries, an admin's keepalive) therefore shares this one in-flight rotation.
+//
+// A sign-in or log-out landing while it is in flight changes the stored token.
+// The answer for the old one is then `superseded`: it neither replaces nor
+// deletes what is stored now.
+export interface RotatedSession {
+  accessToken: string | null;
+  user?: any;
+  superseded?: boolean;
+}
 
+let rotation: Promise<RotatedSession> | null = null;
+
+async function runRotation(): Promise<RotatedSession> {
+  const sent = await getRefreshToken();
+  const superseded = async () => (await getRefreshToken()) !== sent;
+  try {
+    if (!sent) throw new Error('No refresh token');
+    const { data } = await api.post('/auth/refresh', { refreshToken: sent });
+    if (await superseded()) return { accessToken, superseded: true };
+    setAccessToken(data.accessToken);
+    if (data.refreshToken) await writeRefreshToken(data.refreshToken);
+    markSynced(); // This rotation re-armed the server's window too.
+    return { accessToken: data.accessToken, user: data.user };
+  } catch (e: any) {
+    if (await superseded()) return { accessToken, superseded: true };
+    // Only a refusal ends the session: the server said this token is no good
+    // (401/403), or there was none to send. A dropped connection, a 429 or a
+    // 5xx says nothing about the session.
+    const status = e?.response?.status;
+    if (!e?.response ? e?.message === 'No refresh token' : status === 401 || status === 403) {
+      setAccessToken(null);
+      await setRefreshToken(null);
+      onLogout?.();
+    }
+    throw e;
+  }
+}
+
+export function rotateSession(): Promise<RotatedSession> {
+  if (!rotation) rotation = runRotation().finally(() => { rotation = null; });
+  return rotation;
+}
+
+// --- Response interceptor: silent refresh on 401 ---
 api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as
-      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | (InternalAxiosRequestConfig & { _retry?: boolean; _epoch?: number })
       | undefined;
 
     const recoverable =
@@ -103,107 +161,30 @@ api.interceptors.response.use(
       !original.url?.includes('/auth/login');
 
     if (!recoverable) return Promise.reject(error);
-
-    if (isRefreshing) {
-      return new Promise<string>((resolve, reject) => {
-        queue.push({ resolve, reject });
-      }).then((token) => {
-        original!.headers['Authorization'] = `Bearer ${token}`;
-        return api(original!);
-      });
-    }
+    // The account changed while this request was out. It is not the new one's.
+    if (original!._epoch !== sessionEpoch) return Promise.reject(error);
 
     original!._retry = true;
-    isRefreshing = true;
-
-    try {
-      const refreshToken = await getRefreshToken();
-      if (!refreshToken) throw new Error('No refresh token');
-
-      const { data } = await api.post('/auth/refresh', { refreshToken });
-      setAccessToken(data.accessToken);
-      if (data.refreshToken) await setRefreshToken(data.refreshToken);
-      markSynced(); // This rotation re-armed the server's window too.
-
-      queue.forEach((p) => p.resolve(data.accessToken));
-      queue = [];
-
-      original!.headers['Authorization'] = `Bearer ${data.accessToken}`;
-      return api(original!);
-    } catch (e: any) {
-      queue.forEach((p) => p.reject(e));
-      queue = [];
-      // Only a refusal ends the session: the server said this token is no
-      // good (401/403), or there was none to send. A dropped connection, a
-      // 429 or a 5xx says nothing about the session, and deleting the stored
-      // token on one signed people out for good on a bad signal.
-      const status = e?.response?.status;
-      if (!e?.response ? e?.message === 'No refresh token' : status === 401 || status === 403) {
-        setAccessToken(null);
-        await setRefreshToken(null);
-        onLogout?.();
-      }
-      return Promise.reject(e);
-    } finally {
-      isRefreshing = false;
-    }
+    const session = await rotateSession();
+    if (session.superseded || original!._epoch !== sessionEpoch) return Promise.reject(error);
+    if (session.accessToken) original!.headers['Authorization'] = `Bearer ${session.accessToken}`;
+    return api(original!);
   },
 );
 
 // ---------------------------------------------------------------------------
-// keepAliveSession — re-arm the server's idle window for an active user
+// keepAliveSession — re-arm the server's idle window for an active admin
 // ---------------------------------------------------------------------------
 // Touching the screen re-arms the LOCAL clock only; the server's window is the
-// refresh token, which rotates only here. IdleGuard calls this on interaction
-// so a screen the user works in without firing requests can't drift out of
-// sync and sign them out on submit. See src/lib/idle.ts.
-//
-// Skipped when a 401-driven refresh is already in flight: the server rejects
-// any refresh token that isn't the newest one it issued, so two overlapping
-// rotations would leave one holding a revoked token.
-//
-// Taking `isRefreshing` means this function inherits the interceptor's
-// contract: a request that 401s while we hold the lock parks itself on `queue`
-// and waits for whoever owns the rotation to settle it. Every exit path below
-// therefore drains the queue — returning without draining would hang those
-// requests for the life of the app.
+// refresh token. IdleGuard calls this on interaction so a screen worked in
+// without firing requests can't drift out of sync and sign an admin out on
+// submit. See src/lib/idle.ts. A dropped connection here is a background blip:
+// the next touch retries.
 export async function keepAliveSession(): Promise<void> {
-  if (isRefreshing || isIdle() || !needsKeepalive()) return;
-
-  isRefreshing = true;
+  if (rotation || isIdle() || !needsKeepalive()) return;
   // Claim the interval before awaiting, so a second call can't slip in behind.
   markSynced();
-  try {
-    const refreshToken = await getRefreshToken();
-    if (!refreshToken) throw new Error('No refresh token');
-
-    const { data } = await api.post('/auth/refresh', { refreshToken });
-    setAccessToken(data.accessToken);
-    if (data.refreshToken) await setRefreshToken(data.refreshToken);
-
-    queue.forEach((p) => p.resolve(data.accessToken));
-    queue = [];
-  } catch (e: any) {
-    // A refusal, not a dropped connection or a 429 (see the interceptor).
-    const refused = e?.response ? [401, 403].includes(e.response.status) : e?.message === 'No refresh token';
-    const stranded = queue.length > 0 && refused;
-    queue.forEach((p) => p.reject(e));
-    queue = [];
-
-    // Only tear the session down if a REAL request was waiting on us. That is
-    // the interceptor's own situation — a 401 followed by a failed refresh —
-    // and it means the session is genuinely gone. A keepalive failing on its
-    // own is just a background blip: the window has minutes left and the next
-    // touch retries, so signing out here would do the very thing this exists
-    // to prevent.
-    if (stranded) {
-      setAccessToken(null);
-      await setRefreshToken(null);
-      onLogout?.();
-    }
-  } finally {
-    isRefreshing = false;
-  }
+  await rotateSession().catch(() => {});
 }
 
 // Pull a human-readable message out of an axios error.
