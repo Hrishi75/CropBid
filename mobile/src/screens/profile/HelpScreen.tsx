@@ -1,6 +1,9 @@
 // =============================================================================
 // HelpScreen — how to reach a person
 // =============================================================================
+// WhatsApp sits beside the email once the build carries a number
+// (lib/whatsapp); the reply-time line below covers both.
+//
 // ONE EMAIL, AND IT IS THE REAL ONE. There is no support inbox in the product,
 // no ticketing, and nobody on a chat rota, so this does not pretend otherwise:
 // it gives the address, sets the expectation, and gets out of the way. A "we
@@ -28,6 +31,8 @@ import { Mono } from '../../components/buyerKit';
 import { PressScale } from '../../components/motion';
 import { IconArrow } from '../../components/icons';
 import { useAuth } from '../../context/AuthContext';
+import { WhatsAppGlyph, useOpenWhatsApp } from '../../components/WhatsAppButton';
+import { whatsAppDisplay } from '../../lib/whatsapp';
 import { colors, design, font, radius, spacing } from '../../theme';
 
 export const SUPPORT_EMAIL = 'info@cropbid.in';
@@ -47,6 +52,8 @@ export default function HelpScreen() {
   const nav = useNavigation<any>();
   const { t } = useTranslation();
   const { user } = useAuth();
+  const openWhatsApp = useOpenWhatsApp();
+  const waNumber = whatsAppDisplay();
 
   /**
    * Open the mail app with the subject and account already filled in.
@@ -93,6 +100,19 @@ export default function HelpScreen() {
             {t('Opens your mail app with your account reference filled in.')}
           </Text>
         </PressScale>
+
+        {/* Only once the build carries a number (lib/whatsapp). The same chat
+            the storefront's green button opens, reachable from every stack. */}
+        {waNumber ? (
+          <PressScale onPress={openWhatsApp} scaleTo={0.98} cardStyle={styles.waCard}>
+            <WhatsAppGlyph size={26} color="#25D366" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>{t('Chat on WhatsApp')}</Text>
+              <Text style={styles.rowHint}>{waNumber}</Text>
+            </View>
+            <IconArrow size={14} stroke={design.ink3} />
+          </PressScale>
+        ) : null}
 
         <Row
           label={t('Common questions')}
@@ -157,6 +177,13 @@ const styles = StyleSheet.create({
   emailAddr: { fontFamily: font.sansBold, fontSize: 20, color: colors.surface, marginTop: 4, letterSpacing: -0.3 },
   emailHint: { fontFamily: font.sans, fontSize: 12.5, lineHeight: 18, color: 'rgba(244,241,234,0.6)', marginTop: 6 },
 
+  waCard: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    backgroundColor: design.paper,
+    borderWidth: 1, borderColor: design.line, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: 13,
+    marginTop: spacing.md,
+  },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: design.paper,
