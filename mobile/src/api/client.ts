@@ -60,7 +60,17 @@ export async function getRefreshToken(): Promise<string | null> {
   }
   return SecureStore.getItemAsync(REFRESH_KEY);
 }
+// Counts sign-ins and sign-outs, but not the rotations of one session. A request
+// is only ever replayed inside the session it was sent in: replaying it after an
+// account switch would run A's order or profile change as B.
+let sessionEpoch = 0;
+
 export async function setRefreshToken(token: string | null): Promise<void> {
+  sessionEpoch += 1;
+  await writeRefreshToken(token);
+}
+
+async function writeRefreshToken(token: string | null): Promise<void> {
   if (Platform.OS === 'web') {
     try {
       if (token) globalThis.localStorage?.setItem(REFRESH_KEY, token);
@@ -79,6 +89,7 @@ const api = axios.create({ baseURL: API_URL });
 // --- Request interceptor: identify as mobile + attach access token ---
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   config.headers['X-Client'] = 'mobile';
+  (config as InternalAxiosRequestConfig & { _epoch?: number })._epoch ??= sessionEpoch;
   if (accessToken) config.headers['Authorization'] = `Bearer ${accessToken}`;
   if (actAs) config.headers['X-Act-As'] = actAs;
   return config;
@@ -111,7 +122,7 @@ async function runRotation(): Promise<RotatedSession> {
     const { data } = await api.post('/auth/refresh', { refreshToken: sent });
     if (await superseded()) return { accessToken, superseded: true };
     setAccessToken(data.accessToken);
-    if (data.refreshToken) await setRefreshToken(data.refreshToken);
+    if (data.refreshToken) await writeRefreshToken(data.refreshToken);
     markSynced(); // This rotation re-armed the server's window too.
     return { accessToken: data.accessToken, user: data.user };
   } catch (e: any) {
@@ -139,7 +150,7 @@ api.interceptors.response.use(
   (res) => res,
   async (error: AxiosError) => {
     const original = error.config as
-      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | (InternalAxiosRequestConfig & { _retry?: boolean; _epoch?: number })
       | undefined;
 
     const recoverable =
@@ -150,9 +161,12 @@ api.interceptors.response.use(
       !original.url?.includes('/auth/login');
 
     if (!recoverable) return Promise.reject(error);
+    // The account changed while this request was out. It is not the new one's.
+    if (original!._epoch !== sessionEpoch) return Promise.reject(error);
 
     original!._retry = true;
     const session = await rotateSession();
+    if (session.superseded || original!._epoch !== sessionEpoch) return Promise.reject(error);
     if (session.accessToken) original!.headers['Authorization'] = `Bearer ${session.accessToken}`;
     return api(original!);
   },
