@@ -16,14 +16,14 @@ import React, {
 } from 'react';
 import { AppState, Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import api, {
+import {
   getRefreshToken,
+  rotateSession,
   setAccessToken,
   setActAs,
   setOnLogout,
   setRefreshToken,
 } from '../api/client';
-import { markSynced } from '../lib/idle';
 import {
   fetchMe,
   login as apiLogin,
@@ -135,32 +135,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Silent refresh from the persisted refresh token. 'retry' means the server
   // never answered, so the session is still good and only the network is not.
   const restoreSession = useCallback(async (): Promise<'done' | 'retry'> => {
-    const refreshToken = await getRefreshToken();
-    if (!refreshToken) return 'done';
-    // The person may sign in by hand while this is in flight. Their new session
-    // is then the stored one, and this answer must neither replace nor delete it.
-    const superseded = async () => (await getRefreshToken()) !== refreshToken;
+    if (!(await getRefreshToken())) return 'done';
+    let session;
     try {
-      const { data } = await api.post('/auth/refresh', { refreshToken });
-      if (await superseded()) return 'done';
-      // An account support has reset is not restored into the app either.
-      // Throwing lands in the catch below, which drops the stored token and
-      // leaves them at the sign-in screen, where the same check explains it.
-      refuseResetSession(data.user);
-      setAccessToken(data.accessToken);
-      if (data.refreshToken) await setRefreshToken(data.refreshToken);
-      markSynced(); // This refresh re-armed the server's window.
-      setUser(data.user);
-      return 'done';
+      // The shared rotation: a guest screen's 401 may be refreshing right now.
+      // A refusal has already cleared the stored token inside it.
+      session = await rotateSession();
     } catch (e) {
-      if (await superseded()) return 'done';
+      // Opening the app with no signal, or while the API is restarting, must
+      // not throw away the session.
+      return axios.isAxiosError(e) && ![401, 403].includes(e.response?.status ?? 0)
+        ? 'retry'
+        : 'done';
+    }
+    if (session.superseded) return 'done';
+    try {
+      // An account support has reset is not restored into the app either. It
+      // is left at the sign-in screen, where the same check explains it.
+      refuseResetSession(session.user);
+    } catch {
       setAccessToken(null);
-      // Only a refusal ends the session. Opening the app with no signal, or
-      // while the API is restarting, must not throw away the stored token.
-      if (axios.isAxiosError(e) && ![401, 403].includes(e.response?.status ?? 0)) return 'retry';
       await setRefreshToken(null);
       return 'done';
     }
+    setUser(session.user);
+    return 'done';
   }, []);
 
   useEffect(() => {

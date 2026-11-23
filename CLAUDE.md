@@ -284,6 +284,7 @@ Farmers, local shops and wholesalers **apply and are reviewed by a human** befor
 - **A token sent explicitly now wins over a cookie** on `/auth/refresh`, because iOS can keep a cookie from an older build. A website script still cannot use this: it cannot read the httpOnly cookie to send it.
 - **Admins keep the 15 minutes even in the app**, on the server and in `IdleGuard`, because a phone left signed in for months should not carry refunds, password resets and payout reads. The server's window alone is not enough: the auction screen polls, and each poll can renew a session nobody is attending (review caught it).
 - **Opening the app with no signal no longer signs out.** The launch refresh deleted the stored token on any failure; now only a 401 or 403 does. Until the server answers the app shows the guest screens, and retries every 15 seconds and on returning to the foreground, then restores the session. A hand sign-in during a retry wins: a late answer for the old token neither replaces nor deletes the new one.
+- **Every app refresh goes through `rotateSession`** (`mobile/src/api/client.ts`), one shared in-flight call. The server accepts only the newest token, so two refreshes at once would have the loser's 401 delete the winner's saved session (review caught it).
 
 **Still true and unfixed:** signing in on a second device (the app, another browser) replaces the token and ends the first device's session at its next refresh. Fixing that needs a session per device, which touches every conditional credential write above.
 
