@@ -5,6 +5,7 @@
 // works the user lands straight in the app. signIn/signOut wrap the endpoints.
 // =============================================================================
 
+import axios from 'axios';
 import React, {
   createContext,
   useCallback,
@@ -35,7 +36,6 @@ import {
   type SignupResult,
 } from '../api/endpoints';
 import type { User } from '../api/types';
-import { markSynced } from '../lib/idle';
 
 /** Which side a seller who is also approved to buy is working on. */
 export type AccountMode = 'SELL' | 'BUY';
@@ -141,11 +141,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refuseResetSession(data.user);
         setAccessToken(data.accessToken);
         if (data.refreshToken) await setRefreshToken(data.refreshToken);
-        markSynced(); // Launch refresh re-armed the server's idle window.
         setUser(data.user);
-      } catch {
+      } catch (e) {
         setAccessToken(null);
-        await setRefreshToken(null);
+        // Only a refusal ends the session. Opening the app with no signal, or
+        // while the API is restarting, must not throw away the stored token,
+        // or a dropped connection would sign the person out for good.
+        const unanswered = axios.isAxiosError(e)
+          && ![401, 403].includes(e.response?.status ?? 0);
+        if (!unanswered) await setRefreshToken(null);
       } finally {
         setLoading(false);
       }

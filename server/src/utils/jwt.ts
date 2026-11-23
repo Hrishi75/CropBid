@@ -74,6 +74,9 @@ export function generateTokens(
   role: string,
   mustChangePassword = false,
   resetAt?: Date | null,
+  // A phone app's session: same rotation, but it lasts appSessionDays rather
+  // than the website's idle window.
+  appSession = false,
 ) {
   const accessToken = jwt.sign(
     // Omitted rather than false when it does not apply, so an ordinary token
@@ -92,7 +95,7 @@ export function generateTokens(
     config.jwtRefreshSecret,
     // Rotated on every refresh, so this is a SLIDING inactivity window, not a
     // fixed session length — see the header comment.
-    { expiresIn: `${config.auth.idleTimeoutMinutes}m` }
+    { expiresIn: appSession ? `${config.auth.appSessionDays}d` : `${config.auth.idleTimeoutMinutes}m` }
   );
 
   return { accessToken, refreshToken };
