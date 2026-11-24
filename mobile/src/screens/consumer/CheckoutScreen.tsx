@@ -41,6 +41,7 @@
 // =============================================================================
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -71,6 +72,7 @@ import { money, unitLabel } from '../../lib/format';
 import { colors, design, font } from '../../theme';
 
 export default function CheckoutScreen() {
+  const { t } = useTranslation();
   const nav = useNavigation<any>();
   const { user } = useAuth();
   const { items, removeMany } = useCart();
@@ -216,9 +218,9 @@ export default function CheckoutScreen() {
     >
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <View style={styles.card}>
-          <Mono style={styles.eyebrow}>WHERE SHOULD IT GO?</Mono>
+          <Mono style={styles.eyebrow}>{t('WHERE SHOULD IT GO?')}</Mono>
 
-          <Text style={styles.label}>Delivery address</Text>
+          <Text style={styles.label}>{t('Delivery address')}</Text>
           <TextInput
             style={[styles.input, styles.multiline]}
             value={address}
@@ -229,10 +231,10 @@ export default function CheckoutScreen() {
             placeholderTextColor={design.ink3}
           />
           {touched && !addressValid ? (
-            <Text style={styles.fieldError}>Enter a full delivery address</Text>
+            <Text style={styles.fieldError}>{t('Enter a full delivery address')}</Text>
           ) : null}
 
-          <Text style={styles.label}>Phone</Text>
+          <Text style={styles.label}>{t('Phone')}</Text>
           <TextInput
             style={styles.input}
             value={phone}
@@ -245,7 +247,7 @@ export default function CheckoutScreen() {
           <Text style={touched && !phoneValid ? styles.fieldError : styles.hint}>
             {touched && !phoneValid
               ? 'Enter a valid phone number'
-              : 'Every shop in this order uses this to arrange delivery.'}
+              : 'CropBid uses this to deliver your order. Shops never see it.'}
           </Text>
         </View>
 

@@ -190,7 +190,7 @@ export default function OrdersScreen() {
                 {owed.length === 1
                   ? t('1 order is waiting for payment.')
                   : `${owed.length} ${t('orders are waiting for payment, paid together in one go.')}`}{' '}
-                {t('The shop only gets your address and number once it is paid.')}
+                {t('CropBid delivers it. The shop only sees your name.')}
               </Text>
               <PressScale
                 onPress={opening ? undefined : payOwed}
@@ -420,8 +420,8 @@ function OrderCard({ group, onChanged }: { group: OrderGroup; onChanged: () => v
         <View style={styles.arrived}>
           <Text style={styles.arrivedTitle}>{t('Did it arrive?')}</Text>
           <Text style={styles.arrivedBody}>
-            {t('The seller has marked')} {delivered.map((o) => o.listing?.cropName ?? t('an item')).join(', ')}{' '}
-            {t('as delivered. Confirm only once you have it: this is what tells us the seller can be paid.')}
+            {t('CropBid has marked')} {delivered.map((o) => o.listing?.cropName ?? t('an item')).join(', ')}{' '}
+            {t('as delivered. Confirm only once you have it: this is what tells us the shop can be paid.')}
           </Text>
           <PressScale
             onPress={confirming ? undefined : confirmArrived}
@@ -456,8 +456,8 @@ function PartnerPitch({ onPress }: { onPress: () => void }) {
       <View style={styles.pitchIcon}>
         <IconSprout size={18} stroke={colors.sage2} />
       </View>
-      <Mono style={styles.pitchTag}>FREE TO JOIN</Mono>
-      <Text style={styles.pitchTitle}>Grow it or trade it? Sell it here.</Text>
+      <Mono style={styles.pitchTag}>{t('FREE TO JOIN')}</Mono>
+      <Text style={styles.pitchTitle}>{t('Grow it or trade it? Sell it here.')}</Text>
       <Text style={styles.pitchBody}>
         {t('Farmers, local shops and buyers onboard free. No joining fee, no listing fee, no monthly charge. We take 2% only when a deal actually settles.')}
       </Text>

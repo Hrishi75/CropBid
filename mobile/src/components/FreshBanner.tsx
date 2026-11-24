@@ -27,12 +27,14 @@
 // =============================================================================
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { deliveryMorning, formatDeliveryDay, remaining } from '../lib/freshWindow';
 import { colors, design, font, radius, spacing } from '../theme';
 
 export function FreshBanner() {
+  const { t } = useTranslation();
   const [now, setNow] = useState(() => new Date());
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -51,7 +53,7 @@ export function FreshBanner() {
     <View style={styles.bar}>
       <View style={styles.top}>
         <View style={styles.tag}>
-          <Mono style={styles.tagText}>FRESH</Mono>
+          <Mono style={styles.tagText}>{t('FRESH')}</Mono>
         </View>
         <Text style={styles.title} numberOfLines={1}>At your door {day} morning</Text>
       </View>
@@ -66,7 +68,7 @@ export function FreshBanner() {
         </View>
         <Text style={styles.cutoff}>
           left to order{'\n'}
-          <Text style={styles.cutoffStrong}>before 12 am</Text>
+          <Text style={styles.cutoffStrong}>{t('before 12 am')}</Text>
         </Text>
       </View>
     </View>

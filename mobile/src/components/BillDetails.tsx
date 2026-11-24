@@ -16,6 +16,7 @@
 // =============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { money } from '../lib/format';
@@ -53,9 +54,10 @@ export function BillDetails({
   itemCount, itemsTotal, deliveryFee, shopsPayingDelivery, handlingFee, toPay, currency, rules,
   excludedCount = 0, orderCount,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <View style={styles.card}>
-      <Mono style={styles.eyebrow}>BILL DETAILS</Mono>
+      <Mono style={styles.eyebrow}>{t('BILL DETAILS')}</Mono>
 
       <Row
         label={`Items total (${itemCount} ${itemCount === 1 ? 'lot' : 'lots'})`}
@@ -76,7 +78,7 @@ export function BillDetails({
       ) : null}
 
       <View style={styles.totalRow}>
-        <Mono style={styles.totalLabel}>TO PAY</Mono>
+        <Mono style={styles.totalLabel}>{t('TO PAY')}</Mono>
         <Text style={styles.totalValue}>{toPay === null ? '—' : money(toPay, currency)}</Text>
       </View>
 
@@ -97,7 +99,7 @@ export function BillDetails({
 
       {orderCount != null && orderCount > 1 ? (
         <Text style={styles.note}>
-          Each shop delivers separately, so this becomes {orderCount} orders, one per shop, paid for
+          CropBid collects from each shop separately, so this becomes {orderCount} orders, one per shop, paid for
           together in one payment and tracked on their own in Orders.
         </Text>
       ) : null}

@@ -38,11 +38,12 @@ import { Loading } from '../components/ui';
 import { PressScale } from '../components/motion';
 import { QuantityStepper } from '../components/QuantityStepper';
 import { CartBar } from '../components/CartBar';
+import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
 import { IconArrowLeft, IconClock, IconLeaf, IconShield } from '../components/icons';
 import { useCart, type CartPack } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { railFor, shopPack } from '../lib/catalog';
-import { money } from '../lib/format';
+import { money, unitLabel } from '../lib/format';
 import { listingImage } from '../utils/cropImages';
 import { colors, design, font, radius, spacing } from '../theme';
 
@@ -56,6 +57,14 @@ export default function ShopScreen() {
   const { count: cartCount } = useCart();
 
   const [data, setData] = useState<RetailShopDetail | null>(null);
+  // A signed-out visitor taps ADD and is asked to log in, as on the home
+  // screen, rather than meeting a shelf with nothing to press.
+  const [askItem, setAskItem] = useState<LoginSheetItem | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const askToLogIn = useCallback((item: LoginSheetItem) => {
+    setAskItem(item);
+    setAskOpen(true);
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -131,7 +140,7 @@ export default function ShopScreen() {
               <View style={styles.promiseIcon}>
                 <IconClock size={14} stroke={colors.forest} />
               </View>
-              <Text style={styles.promiseText}>{t('Arrives today from a shop near you')}</Text>
+              <Text style={styles.promiseText}>{t('Delivered today by CropBid')}</Text>
             </View>
 
             <View style={styles.shelfHead}>
@@ -147,16 +156,25 @@ export default function ShopScreen() {
             <Text style={styles.errBody}>{t('This shop has sold out for today.')}</Text>
           </View>
         }
-        renderItem={({ item }) => <ShelfCard listing={item} />}
+        renderItem={({ item }) => <ShelfCard listing={item} onGuestAdd={askToLogIn} />}
       />
 
       {/* Last child, so it floats over the shelf rather than scrolling with it. */}
       <CartBar />
+
+      <LoginSheet
+        item={askItem}
+        visible={askOpen}
+        onClose={() => setAskOpen(false)}
+        onForgot={() => nav.navigate('ForgotPassword')}
+        onSignup={() => nav.navigate('Signup')}
+      />
     </View>
   );
 }
 
-function ShelfCard({ listing }: { listing: Listing }) {
+function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (item: LoginSheetItem) => void }) {
+  const { t } = useTranslation();
   const { add, setQuantity, remove, quantityOf } = useCart();
   const { user } = useAuth();
   const inCart = quantityOf(listing.id);
@@ -185,6 +203,8 @@ function ShelfCard({ listing }: { listing: Listing }) {
     listing.remainingQuantity,
   );
   const canBuy = user?.role === 'CONSUMER' && listing.directSaleEnabled && first > 0;
+  // Signed out: the same ADD, which asks them to log in first.
+  const guest = !user && listing.directSaleEnabled && first > 0;
   const perKg = shelf ? shelf.perKg : listing.retailPricePerUnit;
   const perKgLabel = shelf ? shelf.perKgLabel : 'kg';
   const photo = listingImage(listing);
@@ -224,7 +244,22 @@ function ShelfCard({ listing }: { listing: Listing }) {
         {pack ? <Mono style={styles.packLabel}>{pack.label}</Mono> : null}
       </View>
 
-      {/* Only a signed-in shopper gets buttons; everyone else reads the shelf. */}
+      {/* A shopper gets buttons and a guest gets an ADD that asks them to log
+          in; a seller or buyer reads the shelf. */}
+      {guest ? (
+        <PressScale
+          onPress={() => onGuestAdd({
+            name: listing.cropName,
+            size: pack ? pack.label : `1 ${unitLabel(listing.unit)}`,
+            price: money(shelf ? shelf.price : listing.retailPricePerUnit!, listing.currency),
+            image: photo,
+          })}
+          scaleTo={0.95}
+          cardStyle={styles.addBtn}
+        >
+          <Text style={styles.addText}>{t('ADD')}</Text>
+        </PressScale>
+      ) : null}
       {canBuy ? (
         inCart > 0 ? (
           <View style={styles.stepper}>
@@ -241,7 +276,7 @@ function ShelfCard({ listing }: { listing: Listing }) {
           </View>
         ) : (
           <PressScale onPress={() => add(listing, first)} scaleTo={0.95} cardStyle={styles.addBtn}>
-            <Text style={styles.addText}>ADD</Text>
+            <Text style={styles.addText}>{t('ADD')}</Text>
           </PressScale>
         )
       ) : null}
@@ -259,10 +294,11 @@ function Badge({ label, icon }: { label: string; icon?: React.ReactNode }) {
 }
 
 function Back({ onPress, onDark }: { onPress: () => void; onDark: boolean }) {
+  const { t } = useTranslation();
   return (
     <Pressable onPress={onPress} hitSlop={12} style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
       <IconArrowLeft size={18} stroke={onDark ? colors.surface : design.ink} />
-      <Text style={[styles.backText, { color: onDark ? colors.surface : design.ink }]}>Shops</Text>
+      <Text style={[styles.backText, { color: onDark ? colors.surface : design.ink }]}>{t('Shops')}</Text>
     </Pressable>
   );
 }

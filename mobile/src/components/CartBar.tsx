@@ -22,6 +22,7 @@
 // =============================================================================
 
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -32,6 +33,7 @@ import { money } from '../lib/format';
 import { colors, design, font } from '../theme';
 
 export function CartBar({ overTabBar = false }: { overTabBar?: boolean }) {
+  const { t } = useTranslation();
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -84,7 +86,7 @@ export function CartBar({ overTabBar = false }: { overTabBar?: boolean }) {
           <Text style={styles.items}>{label}</Text>
           <Text style={styles.total}>{money(snapshotTotal, currency)}</Text>
         </View>
-        <Text style={styles.cta}>View cart →</Text>
+        <Text style={styles.cta}>{t('View cart →')}</Text>
       </PressScale>
     </Animated.View>
   );

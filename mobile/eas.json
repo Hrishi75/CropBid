@@ -20,7 +20,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://cropbid-api-oyfv.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://api.cropbid.in/api"
       }
     }
   },

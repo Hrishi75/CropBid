@@ -11,6 +11,7 @@
 // =============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { PressScale } from './motion';
@@ -37,6 +38,7 @@ export function shopTypeLabel(shopType: string | null, sellerType: string): stri
 }
 
 export function ShopCard({ shop, onPress }: { shop: RetailShop; onPress: () => void }) {
+  const { t } = useTranslation();
   // Rounded. The crop rails interpolate trustScore raw and render
   // "★ 84.2601595017465" on a card; this does not.
   const trust = Math.round(shop.trustScore);
@@ -82,7 +84,7 @@ export function ShopCard({ shop, onPress }: { shop: RetailShop; onPress: () => v
               {shop.organicCount > 0 ? (
                 <View style={[styles.pill, styles.pillOrganic]}>
                   <IconLeaf size={10} stroke={colors.sage} />
-                  <Mono style={[styles.pillText, { color: colors.sage }]}>ORGANIC</Mono>
+                  <Mono style={[styles.pillText, { color: colors.sage }]}>{t('ORGANIC')}</Mono>
                 </View>
               ) : null}
             </View>
