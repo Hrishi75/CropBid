@@ -54,8 +54,21 @@ import { assertPanMatchesGstin, parseId } from '../utils/businessIds';
 // must resolve to the SAME account: strip every separator, keep a leading "+".
 // Applied on both write (signup) and read (login) so the two always agree, and
 // backfilled over existing rows by the phone_primary_contact migration.
+// Indian keyboards type digits in their own script: Devanagari (Hindi,
+// Marathi) "९८७६५४३२१०" is a phone number like any other. Converted to 0-9
+// first, or the number would be stripped to nothing below. Bengali, Gujarati,
+// Gurmukhi, Kannada, Malayalam, Odia, Tamil and Telugu digits too.
+const INDIC_DIGIT_ZEROS = [0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+export function toAsciiDigits(value: string): string {
+  return value.replace(/[\u0966-\u096f\u09e6-\u09ef\u0a66-\u0a6f\u0ae6-\u0aef\u0b66-\u0b6f\u0be6-\u0bef\u0c66-\u0c6f\u0ce6-\u0cef\u0d66-\u0d6f]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    const zero = INDIC_DIGIT_ZEROS.find((z) => code >= z && code <= z + 9)!;
+    return String(code - zero);
+  });
+}
+
 export function normalizePhone(phone: string): string {
-  const trimmed = phone.trim();
+  const trimmed = toAsciiDigits(phone).trim();
   const digits = trimmed.replace(/[^0-9]/g, '');
   return trimmed.startsWith('+') ? `+${digits}` : digits;
 }

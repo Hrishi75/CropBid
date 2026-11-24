@@ -95,11 +95,23 @@ const PASSWORD_RULES: { label: string; test: (p: string) => boolean }[] = [
   { label: 'a number', test: (p) => /[0-9]/.test(p) },
 ];
 
+// A Hindi, Marathi or other Indian keyboard types digits in its own script
+// ("९८२२०११२२३"). Read as 0-9, like the server's toAsciiDigits, so the check
+// below passes a number the server will take.
+const INDIC_DIGIT_ZEROS = [0x0966, 0x09e6, 0x0a66, 0x0ae6, 0x0b66, 0x0be6, 0x0c66, 0x0ce6, 0x0d66];
+function toAsciiDigits(value: string): string {
+  return value.replace(/[\u0966-\u096f\u09e6-\u09ef\u0a66-\u0a6f\u0ae6-\u0aef\u0b66-\u0b6f\u0be6-\u0bef\u0c66-\u0c6f\u0ce6-\u0cef\u0d66-\u0d6f]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    const zero = INDIC_DIGIT_ZEROS.find((z) => code >= z && code <= z + 9)!;
+    return String(code - zero);
+  });
+}
+
 // A 10-digit Indian mobile, with or without +91 or a leading 0. The same rule
 // the server holds (indianMobile in auth.controller.ts), so the form never
 // sends something it will refuse.
 function isIndianMobile(raw: string): boolean {
-  const value = raw.trim();
+  const value = toAsciiDigits(raw).trim();
   return value.length <= 20
     && /^[0-9+\s\-()]+$/.test(value)
     && /^(\+?91|0)?[6-9]\d{9}$/.test(value.replace(/[\s\-()]/g, ''));
