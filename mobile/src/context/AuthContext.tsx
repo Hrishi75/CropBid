@@ -24,6 +24,7 @@ import {
   setOnLogout,
   setRefreshToken,
 } from '../api/client';
+import { forgetShopAdd } from '../lib/resumeAfterLogin';
 import {
   fetchMe,
   login as apiLogin,
@@ -128,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // A refresh that fails inside the interceptor must drop the session.
   useEffect(() => {
-    setOnLogout(() => setUser(null));
+    setOnLogout(() => { forgetShopAdd(); setUser(null); });
     return () => setOnLogout(null);
   }, []);
 
@@ -239,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // way (apiLogout does it in a finally), so drop local state regardless or
       // the app would sit on a signed-in UI with no credentials behind it.
     }
+    forgetShopAdd();
     setUser(null);
     switchMode('SELL');
   }, [switchMode]);
@@ -248,6 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const dropSession = useCallback(async () => {
     setAccessToken(null);
     await setRefreshToken(null);
+    forgetShopAdd();
     setUser(null);
     switchMode('SELL');
   }, [switchMode]);

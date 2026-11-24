@@ -55,7 +55,7 @@ export default function ShopScreen() {
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { count: cartCount, add, quantityOf } = useCart();
+  const { count: cartCount, add, quantityOf, hydrated } = useCart();
   const { user } = useAuth();
 
   const [data, setData] = useState<RetailShopDetail | null>(null);
@@ -90,14 +90,16 @@ export default function ShopScreen() {
   // opening amount the ADD button gives.
   const addedFromLogin = React.useRef(false);
   useEffect(() => {
-    if (!addListingId || addedFromLogin.current || !data || user?.role !== 'CONSUMER') return;
+    // Not before the saved basket is read back: until then quantityOf says 0
+    // for a lot already in it, and the opening amount would replace the saved one.
+    if (!addListingId || addedFromLogin.current || !data || !hydrated || user?.role !== 'CONSUMER') return;
     addedFromLogin.current = true;
     const listing = data.listings.find((l) => l.id === addListingId);
     if (!listing || !listing.directSaleEnabled || listing.retailPricePerUnit == null) return;
     if (quantityOf(listing.id) > 0) return;
     const amount = firstAmount(listing);
     if (amount > 0) add(listing, amount);
-  }, [addListingId, data, user, add, quantityOf]);
+  }, [addListingId, data, hydrated, user, add, quantityOf]);
 
   if (loading) return <Loading />;
 

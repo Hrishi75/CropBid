@@ -817,7 +817,7 @@ Orders (history), Delivery addresses and Notifications are **shopper-only**: a f
 
 **The app's builds point at `https://api.cropbid.in/api`** (`eas.json`, and the default in `mobile/src/api/client.ts`). They pointed at an old Render host that answers 404 on every route, so a store build could not load a single city.
 
-**A guest on a shop's page gets ADD**, which opens the login card as it does on home. It used to show the shelf with nothing to press. Logging in from it returns to that shop with the item added (`lib/resumeAfterLogin.ts`: in memory, ten minutes, dropped when the card is dismissed without logging in), because logging in swaps the navigator and used to land on Home with nothing in the basket.
+**A guest on a shop's page gets ADD**, which opens the login card as it does on home. It used to show the shelf with nothing to press. Logging in from it returns to that shop with the item added (`lib/resumeAfterLogin.ts`: in memory, ten minutes, dropped when the card is dismissed without logging in, on a login into a seller or buyer account and on every sign-out, and applied only once the saved basket has loaded, so it never replaces a saved quantity), because logging in swaps the navigator and used to land on Home with nothing in the basket.
 
 ### Also gone
 

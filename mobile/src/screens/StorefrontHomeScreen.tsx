@@ -60,7 +60,7 @@ import { DeliveryList } from '../components/DeliveryList';
 import { DemandTeaser } from '../components/DemandTeaser';
 import { NotificationBell } from '../components/NotificationBell';
 import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
-import { takeShopAdd } from '../lib/resumeAfterLogin';
+import { forgetShopAdd, takeShopAdd } from '../lib/resumeAfterLogin';
 import { cropEmojiFor, cropImageFor, listingImage } from '../utils/cropImages';
 import { Wordmark } from '../components/marks';
 import { Appear, FadeInImage, PressScale, Pulse, glide } from '../components/motion';
@@ -354,7 +354,11 @@ export default function StorefrontHomeScreen() {
   // that shop, which adds the item. Only into the city they now shop in: an
   // account saved in another city would be refused the order anyway.
   useEffect(() => {
-    if (!user || user.role !== 'CONSUMER' || !citiesLoaded || needsCity) return;
+    if (!user) return;
+    // A login into an account that cannot shop (a seller, a buyer) ends it: it
+    // belonged to the guest, and must not reach whoever logs in next.
+    if (user.role !== 'CONSUMER') { forgetShopAdd(); return; }
+    if (!citiesLoaded || needsCity) return;
     const pending = takeShopAdd();
     if (!pending || pending.city.toLowerCase() !== city.toLowerCase()) return;
     nav.navigate('Shop', { id: pending.shopId, city: pending.city, addListingId: pending.listingId });
