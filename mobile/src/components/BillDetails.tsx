@@ -16,6 +16,7 @@
 // =============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { money } from '../lib/format';
@@ -53,58 +54,62 @@ export function BillDetails({
   itemCount, itemsTotal, deliveryFee, shopsPayingDelivery, handlingFee, toPay, currency, rules,
   excludedCount = 0, orderCount,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <View style={styles.card}>
-      <Mono style={styles.eyebrow}>BILL DETAILS</Mono>
+      <Mono style={styles.eyebrow}>{t('BILL DETAILS')}</Mono>
 
       <Row
-        label={`Items total (${itemCount} ${itemCount === 1 ? 'lot' : 'lots'})`}
+        label={itemCount === 1 ? t('Items total (1 lot)') : t('Items total ({{count}} lots)', { count: itemCount })}
         value={money(itemsTotal, currency)}
       />
       <Row
-        label={shopsPayingDelivery > 1 ? `Delivery (${shopsPayingDelivery} shops)` : 'Delivery'}
+        label={shopsPayingDelivery > 1 ? t('Delivery ({{count}} shops)', { count: shopsPayingDelivery }) : t('Delivery')}
         value={deliveryFee === null
-          ? 'Could not load'
-          : deliveryFee > 0 ? money(deliveryFee, currency) : 'Free'}
+          ? t('Could not load')
+          : deliveryFee > 0 ? money(deliveryFee, currency) : t('Free')}
         muted={deliveryFee === 0}
       />
       {handlingFee !== 0 ? (
         <Row
-          label={orderCount != null && orderCount > 1 ? `Handling fee (${orderCount} orders)` : 'Handling fee'}
-          value={handlingFee === null ? 'Could not load' : money(handlingFee, currency)}
+          label={orderCount != null && orderCount > 1 ? t('Handling fee ({{count}} orders)', { count: orderCount }) : t('Handling fee')}
+          value={handlingFee === null ? t('Could not load') : money(handlingFee, currency)}
         />
       ) : null}
 
       <View style={styles.totalRow}>
-        <Mono style={styles.totalLabel}>TO PAY</Mono>
+        <Mono style={styles.totalLabel}>{t('TO PAY')}</Mono>
         <Text style={styles.totalValue}>{toPay === null ? '—' : money(toPay, currency)}</Text>
       </View>
 
       {excludedCount > 0 ? (
         <Text style={styles.warn}>
-          {excludedCount === 1 ? '1 lot in your cart is' : `${excludedCount} lots in your cart are`} not in
-          this bill — see the note on {excludedCount === 1 ? 'it' : 'them'} above.
+          {excludedCount === 1
+            ? t('1 lot in your cart is not in this bill. See the note on it above.')
+            : t('{{count}} lots in your cart are not in this bill. See the note on them above.', { count: excludedCount })}
         </Text>
       ) : null}
 
       {rules ? (
         <Text style={styles.note}>
-          Delivery is free on {money(rules.freeDeliveryFrom, currency)} or more from a shop, and{' '}
-          {money(rules.deliveryFee, currency)} per shop below that.
-          {rules.handlingFee ? ` A ${money(rules.handlingFee, currency)} handling fee applies to each shop order.` : ''}
+          {t('Delivery is free on {{free}} or more from a shop, and {{fee}} per shop below that.', {
+            free: money(rules.freeDeliveryFrom, currency),
+            fee: money(rules.deliveryFee, currency),
+          })}
+          {rules.handlingFee
+            ? ' ' + t('A {{fee}} handling fee applies to each shop order.', { fee: money(rules.handlingFee, currency) })
+            : ''}
         </Text>
       ) : null}
 
       {orderCount != null && orderCount > 1 ? (
         <Text style={styles.note}>
-          Each shop delivers separately, so this becomes {orderCount} orders, one per shop, paid for
-          together in one payment and tracked on their own in Orders.
+          {t('CropBid collects from each shop separately, so this becomes {{count}} orders, one per shop, paid for together in one payment and tracked on their own in Orders.', { count: orderCount })}
         </Text>
       ) : null}
 
       <Text style={styles.note}>
-        You pay as soon as the order is placed. Money is held by CropBid and released to the seller
-        only once you confirm the delivery arrived.
+        {t('You pay as soon as the order is placed. Money is held by CropBid and released to the seller only once you confirm the delivery arrived.')}
       </Text>
     </View>
   );

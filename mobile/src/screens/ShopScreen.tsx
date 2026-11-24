@@ -38,24 +38,38 @@ import { Loading } from '../components/ui';
 import { PressScale } from '../components/motion';
 import { QuantityStepper } from '../components/QuantityStepper';
 import { CartBar } from '../components/CartBar';
+import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
+import { forgetShopAdd, rememberShopAdd } from '../lib/resumeAfterLogin';
 import { IconArrowLeft, IconClock, IconLeaf, IconShield } from '../components/icons';
 import { useCart, type CartPack } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { railFor, shopPack } from '../lib/catalog';
-import { money } from '../lib/format';
+import { money, unitLabel } from '../lib/format';
 import { listingImage } from '../utils/cropImages';
 import { colors, design, font, radius, spacing } from '../theme';
 
-type ShopRoute = RouteProp<{ Shop: { id: string; city: string } }, 'Shop'>;
+type ShopRoute = RouteProp<{ Shop: { id: string; city: string; addListingId?: string } }, 'Shop'>;
 
 export default function ShopScreen() {
-  const { id, city } = useRoute<ShopRoute>().params;
+  const { id, city, addListingId } = useRoute<ShopRoute>().params;
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { count: cartCount } = useCart();
+  const { count: cartCount, add, quantityOf, hydrated } = useCart();
+  const { user } = useAuth();
 
   const [data, setData] = useState<RetailShopDetail | null>(null);
+  // A signed-out visitor taps ADD and is asked to log in, as on the home
+  // screen, rather than meeting a shelf with nothing to press.
+  const [askItem, setAskItem] = useState<LoginSheetItem | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const askToLogIn = useCallback((item: LoginSheetItem, listingId: string) => {
+    // Remembered so that logging in comes back here with the item added,
+    // rather than landing on Home with nothing in the basket.
+    rememberShopAdd({ shopId: id, city, listingId });
+    setAskItem(item);
+    setAskOpen(true);
+  }, [id, city]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +85,21 @@ export default function ShopScreen() {
   }, [id, city]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Back from logging in with an item a guest tapped: add it once, the same
+  // opening amount the ADD button gives.
+  const addedFromLogin = React.useRef(false);
+  useEffect(() => {
+    // Not before the saved basket is read back: until then quantityOf says 0
+    // for a lot already in it, and the opening amount would replace the saved one.
+    if (!addListingId || addedFromLogin.current || !data || !hydrated || user?.role !== 'CONSUMER') return;
+    addedFromLogin.current = true;
+    const listing = data.listings.find((l) => l.id === addListingId);
+    if (!listing || !listing.directSaleEnabled || listing.retailPricePerUnit == null) return;
+    if (quantityOf(listing.id) > 0) return;
+    const amount = firstAmount(listing);
+    if (amount > 0) add(listing, amount);
+  }, [addListingId, data, hydrated, user, add, quantityOf]);
 
   if (loading) return <Loading />;
 
@@ -131,7 +160,7 @@ export default function ShopScreen() {
               <View style={styles.promiseIcon}>
                 <IconClock size={14} stroke={colors.forest} />
               </View>
-              <Text style={styles.promiseText}>{t('Arrives today from a shop near you')}</Text>
+              <Text style={styles.promiseText}>{t('Delivered today by CropBid')}</Text>
             </View>
 
             <View style={styles.shelfHead}>
@@ -147,16 +176,26 @@ export default function ShopScreen() {
             <Text style={styles.errBody}>{t('This shop has sold out for today.')}</Text>
           </View>
         }
-        renderItem={({ item }) => <ShelfCard listing={item} />}
+        renderItem={({ item }) => <ShelfCard listing={item} onGuestAdd={askToLogIn} />}
       />
 
       {/* Last child, so it floats over the shelf rather than scrolling with it. */}
       <CartBar />
+
+      <LoginSheet
+        item={askItem}
+        visible={askOpen}
+        onClose={() => setAskOpen(false)}
+        onDismiss={forgetShopAdd}
+        onForgot={() => nav.navigate('ForgotPassword')}
+        onSignup={() => nav.navigate('Signup')}
+      />
     </View>
   );
 }
 
-function ShelfCard({ listing }: { listing: Listing }) {
+function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (item: LoginSheetItem, listingId: string) => void }) {
+  const { t } = useTranslation();
   const { add, setQuantity, remove, quantityOf } = useCart();
   const { user } = useAuth();
   const inCart = quantityOf(listing.id);
@@ -178,13 +217,10 @@ function ShelfCard({ listing }: { listing: Listing }) {
     ? { label: shelf.label, kg: shelf.kg, units: shelf.units }
     : null;
 
-  // The opening amount, matching the crop rails and the listing screen: one
-  // pack, or one kilo, or the smallest sensible slice of a bigger denomination.
-  const first = Math.min(
-    pack ? pack.units : listing.unit === 'KG' ? 1 : 0.5,
-    listing.remainingQuantity,
-  );
+  const first = firstAmount(listing);
   const canBuy = user?.role === 'CONSUMER' && listing.directSaleEnabled && first > 0;
+  // Signed out: the same ADD, which asks them to log in first.
+  const guest = !user && listing.directSaleEnabled && first > 0;
   const perKg = shelf ? shelf.perKg : listing.retailPricePerUnit;
   const perKgLabel = shelf ? shelf.perKgLabel : 'kg';
   const photo = listingImage(listing);
@@ -224,7 +260,22 @@ function ShelfCard({ listing }: { listing: Listing }) {
         {pack ? <Mono style={styles.packLabel}>{pack.label}</Mono> : null}
       </View>
 
-      {/* Only a signed-in shopper gets buttons; everyone else reads the shelf. */}
+      {/* A shopper gets buttons and a guest gets an ADD that asks them to log
+          in; a seller or buyer reads the shelf. */}
+      {guest ? (
+        <PressScale
+          onPress={() => onGuestAdd({
+            name: listing.cropName,
+            size: pack ? pack.label : `1 ${unitLabel(listing.unit)}`,
+            price: money(shelf ? shelf.price : listing.retailPricePerUnit!, listing.currency),
+            image: photo,
+          }, listing.id)}
+          scaleTo={0.95}
+          cardStyle={styles.addBtn}
+        >
+          <Text style={styles.addText}>{t('ADD')}</Text>
+        </PressScale>
+      ) : null}
       {canBuy ? (
         inCart > 0 ? (
           <View style={styles.stepper}>
@@ -241,7 +292,7 @@ function ShelfCard({ listing }: { listing: Listing }) {
           </View>
         ) : (
           <PressScale onPress={() => add(listing, first)} scaleTo={0.95} cardStyle={styles.addBtn}>
-            <Text style={styles.addText}>ADD</Text>
+            <Text style={styles.addText}>{t('ADD')}</Text>
           </PressScale>
         )
       ) : null}
@@ -259,10 +310,11 @@ function Badge({ label, icon }: { label: string; icon?: React.ReactNode }) {
 }
 
 function Back({ onPress, onDark }: { onPress: () => void; onDark: boolean }) {
+  const { t } = useTranslation();
   return (
     <Pressable onPress={onPress} hitSlop={12} style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
       <IconArrowLeft size={18} stroke={onDark ? colors.surface : design.ink} />
-      <Text style={[styles.backText, { color: onDark ? colors.surface : design.ink }]}>Shops</Text>
+      <Text style={[styles.backText, { color: onDark ? colors.surface : design.ink }]}>{t('Shops')}</Text>
     </Pressable>
   );
 }
@@ -343,3 +395,20 @@ const styles = StyleSheet.create({
   errBody: { fontFamily: font.sans, fontSize: 14, lineHeight: 21, color: design.ink3, marginTop: 4 },
   retry: { fontFamily: font.sansSemi, fontSize: 14, color: colors.forest, textDecorationLine: 'underline', marginTop: spacing.md },
 });
+
+// The opening amount, matching the crop rails and the listing screen: one
+// pack, or one kilo, or the smallest sensible slice of a bigger denomination.
+function firstAmount(listing: Listing): number {
+  const shelf = listing.retailPricePerUnit == null ? null : shopPack({
+    crop: listing.cropName,
+    cat: railFor(listing.cropName),
+    unit: listing.unit,
+    floor: listing.retailPricePerUnit,
+    ceiling: listing.retailPricePerUnit,
+    retail: listing.retailPricePerUnit,
+  });
+  return Math.min(
+    shelf ? shelf.units : listing.unit === 'KG' ? 1 : 0.5,
+    listing.remainingQuantity,
+  );
+}

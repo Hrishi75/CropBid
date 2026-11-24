@@ -10,7 +10,7 @@
 import http from 'node:http';
 import https from 'node:https';
 
-const TARGET = process.env.PROXY_TARGET ?? 'https://cropbid-api-oyfv.onrender.com';
+const TARGET = process.env.PROXY_TARGET ?? 'https://api.cropbid.in';
 const PORT = Number(process.env.PROXY_PORT ?? 8787);
 const target = new URL(TARGET);
 

@@ -26,6 +26,7 @@
 // =============================================================================
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Animated, Dimensions, Image, KeyboardAvoidingView, Modal, PanResponder, Platform,
   Pressable, StyleSheet, Text, TextInput, View,
@@ -51,15 +52,18 @@ export interface LoginSheetItem {
 const OFFSCREEN = Dimensions.get('window').height;
 
 export function LoginSheet({
-  item, visible, onClose, onForgot, onSignup,
+  item, visible, onClose, onDismiss, onForgot, onSignup,
 }: {
   /** Set: open on the "add this" step. Null: open straight on the form. */
   item: LoginSheetItem | null;
   visible: boolean;
   onClose: () => void;
+  /** Closed without logging in: swiped away, tapped outside or Not now. */
+  onDismiss?: () => void;
   onForgot: () => void;
   onSignup: () => void;
 }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { signIn } = useAuth();
   const y = useRef(new Animated.Value(OFFSCREEN)).current;
@@ -97,8 +101,11 @@ export function LoginSheet({
   }, [visible]);
 
   // The responder is made once, so it reads the latest onClose through a ref.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // Closing without logging in tells the caller, so it can drop anything it
+  // was holding for after the login (a shop page's pending ADD).
+  const dismiss = () => { onDismiss?.(); onClose(); };
+  const onCloseRef = useRef(dismiss);
+  onCloseRef.current = dismiss;
 
   // Drag down to dismiss. Upward drags are ignored rather than stretching the
   // card off its resting place; a short drag springs back.
@@ -138,9 +145,9 @@ export function LoginSheet({
   }
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={dismiss}>
       <Animated.View style={[styles.backdrop, { opacity: fade }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} accessibilityLabel="Close" />
       </Animated.View>
 
       {/* Padding, on iOS, lifts the card clear of the keyboard as the form's
@@ -179,28 +186,27 @@ export function LoginSheet({
 
           {step === 'ask' ? (
             <>
-              <Text style={styles.title}>Log in to add this to your basket</Text>
+              <Text style={styles.title}>{t('Log in to add this to your basket')}</Text>
               <Text style={styles.body}>
-                New here? Making an account takes a name, your phone number or
-                email, and a password. No code to wait for.
+                {t('New here? Making an account takes a name, your mobile number and a password. No code to wait for.')}
               </Text>
 
               <PressScale onPress={() => { glide(); setStep('form'); }} scaleTo={0.97} cardStyle={styles.primary}>
-                <Text style={styles.primaryText}>Log in</Text>
+                <Text style={styles.primaryText}>{t('Log in')}</Text>
               </PressScale>
               <PressScale onPress={() => go(onSignup)} scaleTo={0.97} cardStyle={styles.secondary}>
-                <Text style={styles.secondaryText}>Create an account</Text>
+                <Text style={styles.secondaryText}>{t('Create an account')}</Text>
               </PressScale>
-              <Pressable onPress={onClose} hitSlop={8} style={styles.later}>
-                <Text style={styles.laterText}>Not now</Text>
+              <Pressable onPress={dismiss} hitSlop={8} style={styles.later}>
+                <Text style={styles.laterText}>{t('Not now')}</Text>
               </Pressable>
             </>
           ) : (
             <>
-              <Text style={styles.title}>Log in to CropBid</Text>
-              <Text style={styles.bodyTight}>With the phone number or email you signed up with.</Text>
+              <Text style={styles.title}>{t('Log in to CropBid')}</Text>
+              <Text style={styles.bodyTight}>{t('With the phone number or email you signed up with.')}</Text>
 
-              <Text style={styles.label}>Email or phone number</Text>
+              <Text style={styles.label}>{t('Email or phone number')}</Text>
               <TextInput
                 style={styles.input}
                 value={identifier}
@@ -215,11 +221,11 @@ export function LoginSheet({
               />
 
               <View style={styles.labelRow}>
-                <Text style={styles.label}>Password</Text>
+                <Text style={styles.label}>{t('Password')}</Text>
                 {/* Beside the field, where somebody who has just failed to
                     remember it is already looking. */}
                 <Pressable onPress={() => go(onForgot)} hitSlop={8}>
-                  <Text style={styles.forgot}>Forgot password?</Text>
+                  <Text style={styles.forgot}>{t('Forgot password?')}</Text>
                 </Pressable>
               </View>
               <TextInput
@@ -247,7 +253,7 @@ export function LoginSheet({
 
               <Pressable onPress={() => go(onSignup)} hitSlop={8} style={styles.later}>
                 <Text style={styles.switchText}>
-                  New to CropBid? <Text style={styles.switchLink}>Create an account</Text>
+                  New to CropBid? <Text style={styles.switchLink}>{t('Create an account')}</Text>
                 </Text>
               </Pressable>
             </>

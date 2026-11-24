@@ -106,7 +106,7 @@ export function ShopperProfile({
             {contact ? <Text style={styles.contact} numberOfLines={1}>{contact}</Text> : null}
             <View style={styles.heroTags}>
               <View style={styles.tag}>
-                <Mono style={styles.tagText}>SHOPPER</Mono>
+                <Mono style={styles.tagText}>{t('SHOPPER')}</Mono>
               </View>
               {user.location ? (
                 <View style={[styles.tag, styles.tagCity]}>
@@ -225,7 +225,7 @@ export function ShopperProfile({
         <Pressable onPress={onDelete} hitSlop={8} style={styles.deleteWrap}>
           <Text style={styles.deleteText}>{t('Delete account')}</Text>
         </Pressable>
-        <Mono style={styles.footNote}>CROPBID · INDIA</Mono>
+        <Mono style={styles.footNote}>{t('CROPBID · INDIA')}</Mono>
       </View>
     </ScrollView>
   );

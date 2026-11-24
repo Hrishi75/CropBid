@@ -22,6 +22,7 @@
 // =============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
@@ -149,12 +150,13 @@ function LaneTag({ lane }: { lane: 'today' | 'tomorrow' }) {
 function DeliveryMeter({
   shop, rules, currency,
 }: { shop: ShopGroup; rules: RetailRules | null; currency: string }) {
+  const { t } = useTranslation();
   if (shop.orderable.length === 0 || shop.deliveryFee === null || !rules) return null;
   if (shop.deliveryFee === 0) {
     return (
       <View style={styles.meterFree}>
         <IconCheck size={13} stroke={colors.forest} />
-        <Text style={styles.meterFreeText}>Free delivery on this order</Text>
+        <Text style={styles.meterFreeText}>{t('Free delivery on this order')}</Text>
       </View>
     );
   }
@@ -178,6 +180,7 @@ function DeliveryMeter({
 }
 
 export default function CartScreen() {
+  const { t } = useTranslation();
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -193,7 +196,7 @@ export default function CartScreen() {
     return (
       <View style={styles.flex}>
         <View style={[styles.head, { paddingTop: insets.top + 12 }]}>
-          <Mono style={styles.eyebrow}>YOUR CART</Mono>
+          <Mono style={styles.eyebrow}>{t('YOUR CART')}</Mono>
         </View>
         <View style={styles.empty}>
           <Text style={styles.emptyEmoji}>🧺</Text>
@@ -205,7 +208,7 @@ export default function CartScreen() {
             comes from.
           </Text>
           <PressScale onPress={() => nav.navigate('Home')} cardStyle={styles.emptyBtn}>
-            <Text style={styles.emptyBtnText}>Start shopping</Text>
+            <Text style={styles.emptyBtnText}>{t('Start shopping')}</Text>
           </PressScale>
         </View>
       </View>
@@ -218,7 +221,7 @@ export default function CartScreen() {
     <View style={styles.flex}>
       <View style={[styles.head, { paddingTop: insets.top + 12 }]}>
         <View style={{ flex: 1 }}>
-          <Mono style={styles.eyebrow}>YOUR CART</Mono>
+          <Mono style={styles.eyebrow}>{t('YOUR CART')}</Mono>
           <Text style={styles.title}>
             {items.length} {items.length === 1 ? 'lot' : 'lots'} in your cart
           </Text>
@@ -233,7 +236,7 @@ export default function CartScreen() {
             ])
           }
         >
-          <Text style={styles.headAction}>Empty</Text>
+          <Text style={styles.headAction}>{t('Empty')}</Text>
         </Pressable>
       </View>
 
@@ -287,7 +290,7 @@ export default function CartScreen() {
       <View style={styles.foot}>
         {bill.rulesFailed ? (
           <PressScale onPress={bill.reload} scaleTo={0.98} cardStyle={[styles.checkoutCard, styles.checkoutCardDim]}>
-            <Text style={styles.checkoutWait}>Couldn't load delivery charges. Try again</Text>
+            <Text style={styles.checkoutWait}>{t("Couldn't load delivery charges. Try again")}</Text>
           </PressScale>
         ) : blockCheckout ? (
           <View style={[styles.checkoutCard, styles.checkoutCardDim]}>
@@ -298,13 +301,13 @@ export default function CartScreen() {
         ) : (
           <PressScale onPress={() => nav.navigate('Checkout')} scaleTo={0.98} cardStyle={styles.checkoutCard}>
             <View style={styles.checkoutLeft}>
-              <Mono style={styles.checkoutEyebrow}>TO PAY</Mono>
+              <Mono style={styles.checkoutEyebrow}>{t('TO PAY')}</Mono>
               <Text style={styles.checkoutTotal}>{money(bill.toPay!, bill.currency)}</Text>
               <Text style={styles.checkoutSub}>
                 {bill.orderCount} {bill.orderCount === 1 ? 'order' : 'orders'} · fees included
               </Text>
             </View>
-            <Text style={styles.checkoutCta}>Checkout →</Text>
+            <Text style={styles.checkoutCta}>{t('Checkout →')}</Text>
           </PressScale>
         )}
       </View>

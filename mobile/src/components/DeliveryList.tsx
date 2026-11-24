@@ -23,6 +23,7 @@
 // =============================================================================
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Mono } from './buyerKit';
 import { PressScale } from './motion';
@@ -111,6 +112,7 @@ function Row({
   onOpen: () => void;
   onGuestPick?: (variant: PackVariant) => void;
 }) {
+  const { t } = useTranslation();
   const photo = listingImage(listing);
   // `Unit` is KG | QUINTAL | TONNE; there is no LITRE on a listing, so a litre
   // branch here would be unreachable. Dairy is denominated in KG like the rest.
@@ -149,7 +151,7 @@ function Row({
       {cart ? (
         inCart > 0 ? (
           <View style={styles.inBasket}>
-            <Mono style={styles.inBasketLabel}>IN YOUR BASKET</Mono>
+            <Mono style={styles.inBasketLabel}>{t('IN YOUR BASKET')}</Mono>
             <QuantityStepper
               value={inCart}
               onChange={(q) => cart.setQuantity(listing.id, q)}

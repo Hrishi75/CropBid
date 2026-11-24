@@ -14,7 +14,7 @@ import * as SecureStore from 'expo-secure-store';
 import { isIdle, markSynced, needsKeepalive } from '../lib/idle';
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? 'https://cropbid-api-oyfv.onrender.com/api';
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://api.cropbid.in/api';
 
 // Uploaded images are served from the API origin (without the /api suffix).
 export const MEDIA_BASE = API_URL.replace(/\/api\/?$/, '');

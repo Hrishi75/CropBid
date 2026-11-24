@@ -60,6 +60,7 @@ import { DeliveryList } from '../components/DeliveryList';
 import { DemandTeaser } from '../components/DemandTeaser';
 import { NotificationBell } from '../components/NotificationBell';
 import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
+import { forgetShopAdd, takeShopAdd } from '../lib/resumeAfterLogin';
 import { cropEmojiFor, cropImageFor, listingImage } from '../utils/cropImages';
 import { Wordmark } from '../components/marks';
 import { Appear, FadeInImage, PressScale, Pulse, glide } from '../components/motion';
@@ -348,6 +349,20 @@ export default function StorefrontHomeScreen() {
   // when nothing is on sale anywhere, there is no list to judge the city by.
   const cityDropped = city !== '' && citiesLoaded && cities.length > 0 && !servedCity;
   const needsCity = shopping && (city === '' || changingCity || cityDropped);
+
+  // A guest who tapped ADD on a shop's page and then logged in goes back to
+  // that shop, which adds the item. Only into the city they now shop in: an
+  // account saved in another city would be refused the order anyway.
+  useEffect(() => {
+    if (!user) return;
+    // A login into an account that cannot shop (a seller, a buyer) ends it: it
+    // belonged to the guest, and must not reach whoever logs in next.
+    if (user.role !== 'CONSUMER') { forgetShopAdd(); return; }
+    if (!citiesLoaded || needsCity) return;
+    const pending = takeShopAdd();
+    if (!pending || pending.city.toLowerCase() !== city.toLowerCase()) return;
+    nav.navigate('Shop', { id: pending.shopId, city: pending.city, addListingId: pending.listingId });
+  }, [user, citiesLoaded, needsCity, city, nav]);
 
   // Which cities can be served at all — needed before any produce is fetched
   // for a shopper, and again whenever they want to change city.
@@ -716,7 +731,7 @@ export default function StorefrontHomeScreen() {
             {CHIPS.filter((c) => !isBuyer || c.target == null || items.some((v) => v.cat === c.target)).map((c) => (
               <Chip
                 key={c.label}
-                label={c.label}
+                label={t(c.label)}
                 selected={category === c.target}
                 onPress={() => pickCategory(c.target)}
               />
@@ -742,13 +757,13 @@ export default function StorefrontHomeScreen() {
               <IconPin size={17} stroke={colors.forest} />
             </View>
             <View style={styles.grow}>
-              <Mono style={styles.cityBarEyebrow}>DELIVERING TO</Mono>
+              <Mono style={styles.cityBarEyebrow}>{t('DELIVERING TO')}</Mono>
               <Text style={styles.cityBarText} numberOfLines={1}>
                 {city}
                 {cityState ? <Text style={styles.cityBarState}>, {cityState}</Text> : null}
               </Text>
             </View>
-            <Text style={styles.cityBarChange}>Change</Text>
+            <Text style={styles.cityBarChange}>{t('Change')}</Text>
             <IconChevR size={11} stroke={colors.forest} />
           </PressScale>
         ) : null}
@@ -795,8 +810,8 @@ export default function StorefrontHomeScreen() {
               <View style={styles.cityGateIcon}>
                 <IconPin size={22} stroke={colors.forest} />
               </View>
-              <Mono style={styles.cityGateEyebrow}>DELIVERY</Mono>
-              <Text style={styles.cityGateTitle}>Where should we deliver?</Text>
+              <Mono style={styles.cityGateEyebrow}>{t('DELIVERY')}</Mono>
+              <Text style={styles.cityGateTitle}>{t('Where should we deliver?')}</Text>
               {cityDropped ? (
                 <Text style={styles.cityGateDropped}>
                   We don't deliver to homes in {city} at the moment. Pick a city
@@ -811,9 +826,9 @@ export default function StorefrontHomeScreen() {
               </Text>
               {citiesFailed ? (
                 <View>
-                  <Text style={styles.cityGateNote}>Could not load the cities we deliver to.</Text>
+                  <Text style={styles.cityGateNote}>{t('Could not load the cities we deliver to.')}</Text>
                   <PressScale onPress={() => setCitiesTry((n) => n + 1)} scaleTo={0.96}>
-                    <Text style={styles.cityGateRetry}>Try again</Text>
+                    <Text style={styles.cityGateRetry}>{t('Try again')}</Text>
                   </PressScale>
                 </View>
               ) : !citiesLoaded ? (
@@ -988,7 +1003,7 @@ export default function StorefrontHomeScreen() {
                 <Text style={styles.sectionTitle}>{shopping ? t('Shop by category') : t('Browse by category')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tilesPad}>
                   {CATEGORY_TILES.map((c) => (
-                    <CategoryTile key={c.label} label={c.label} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
+                    <CategoryTile key={c.label} label={t(c.label)} emoji={c.emoji} onPress={() => pickCategory(c.target)} />
                   ))}
                 </ScrollView>
               </>
@@ -1016,7 +1031,7 @@ export default function StorefrontHomeScreen() {
                 </Text>
                 {isExporter && isFiltering(exportFilter) ? (
                   <PressScale onPress={() => setExportFilter({ gradeA: false, organic: false, minQuintals: 0 })} scaleTo={0.96} cardStyle={styles.clearBtn}>
-                    <Text style={styles.clearBtnText}>Show every lot</Text>
+                    <Text style={styles.clearBtnText}>{t('Show every lot')}</Text>
                   </PressScale>
                 ) : null}
                 {shopping && cities.length > 0 ? (
@@ -1042,12 +1057,12 @@ export default function StorefrontHomeScreen() {
                       <Mono style={styles.railEyebrow}>
                         {isBuyer
                           ? `${railItems.length} ${railItems.length === 1 ? 'CROP' : 'CROPS'} · ${railItems.reduce((n, v) => n + v.sellers, 0)} LOTS OPEN`
-                          : rail.eyebrow.toUpperCase()}
+                          : t(rail.eyebrow).toUpperCase()}
                       </Mono>
-                      <Text style={styles.railTitle}>{rail.title}</Text>
+                      <Text style={styles.railTitle}>{t(rail.title)}</Text>
                     </View>
                     <PressScale onPress={() => pickCategory(rail.id)} scaleTo={0.94}>
-                      <Text style={styles.seeAll}>see all →</Text>
+                      <Text style={styles.seeAll}>{t('see all →')}</Text>
                     </PressScale>
                   </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railPad}>
@@ -1067,8 +1082,8 @@ export default function StorefrontHomeScreen() {
               <>
                 <View style={styles.railHead}>
                   <View>
-                    <Mono style={styles.railEyebrow}>TOMORROW MORNING</Mono>
-                    <Text style={styles.railTitle}>Everything we deliver</Text>
+                    <Mono style={styles.railEyebrow}>{t('TOMORROW MORNING')}</Mono>
+                    <Text style={styles.railTitle}>{t('Everything we deliver')}</Text>
                   </View>
                   <Mono style={styles.deliverCount}>
                     {deliverable.length} {deliverable.length === 1 ? 'ITEM' : 'ITEMS'}
@@ -1095,7 +1110,7 @@ export default function StorefrontHomeScreen() {
                 steps are written for a household buying a pack. */}
             {!isFarmer && !isBuyer ? (
               <>
-                <Text style={styles.sectionTitle}>How CropBid works</Text>
+                <Text style={styles.sectionTitle}>{t('How CropBid works')}</Text>
                 <View style={styles.howWrap}>
                   {[
                     ['01', 'Farmers list from the field', 'Crop, grade, quantity, price — without leaving the farm.'],
@@ -1117,7 +1132,7 @@ export default function StorefrontHomeScreen() {
             {!isShop && !isWholesaler && !isBuyer ? (
               <View style={styles.sellCta}>
                 <Text style={styles.sellTitle}>
-                  Grow it? <Text style={styles.sellItalic}>Sell it here.</Text>
+                  Grow it? <Text style={styles.sellItalic}>{t('Sell it here.')}</Text>
                 </Text>
                 <Text style={styles.sellDesc}>
                   {isFarmer
@@ -1146,7 +1161,7 @@ export default function StorefrontHomeScreen() {
             ) : (
               <View style={styles.empty}>
                 <Text style={styles.emptyEmoji}>🌾</Text>
-                <Text style={styles.emptyText}>Nothing matches — try another crop.</Text>
+                <Text style={styles.emptyText}>{t('Nothing matches — try another crop.')}</Text>
               </View>
             )}
           </>
@@ -1164,7 +1179,7 @@ export default function StorefrontHomeScreen() {
           <FooterLink label="Privacy" onPress={() => nav.navigate('Policy', { kind: 'privacy' })} />
           <FooterLink label="Terms" onPress={() => nav.navigate('Policy', { kind: 'terms' })} />
         </View>
-        <Mono style={styles.footerNote}>CROPBID · INDIA</Mono>
+        <Mono style={styles.footerNote}>{t('CROPBID · INDIA')}</Mono>
         </View>
       </ScrollView>
 
@@ -1512,6 +1527,7 @@ function ProductCard({
   /** A signed-out visitor pressing ADD: asks them to log in. Guests only. */
   onGuestAdd?: () => void;
 }) {
+  const { t } = useTranslation();
   const pack = vm.pack;
   // Off the same pair of numbers the card prints below — a grouped card can
   // price its pack off one farmer's lot and its bulk line off another's, and a
@@ -1609,7 +1625,7 @@ function ProductCard({
               accessibilityLabel={`Add ${vm.name} to cart`}
               style={[styles.buyBtn, !cart.canAdd && styles.buyBtnOff]}
             >
-              <Text style={styles.buyBtnText}>ADD</Text>
+              <Text style={styles.buyBtnText}>{t('ADD')}</Text>
             </Pressable>
           ) : onGuestAdd ? (
             // A guest's ADD is a real button that asks them to log in, rather
@@ -1621,7 +1637,7 @@ function ProductCard({
               accessibilityLabel={`Add ${vm.name} to cart`}
               style={styles.buyBtn}
             >
-              <Text style={styles.buyBtnText}>ADD</Text>
+              <Text style={styles.buyBtnText}>{t('ADD')}</Text>
             </Pressable>
           ) : (
             <View style={styles.buyBtn}>
