@@ -39,6 +39,7 @@ import { PressScale } from '../components/motion';
 import { QuantityStepper } from '../components/QuantityStepper';
 import { CartBar } from '../components/CartBar';
 import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
+import { forgetShopAdd, rememberShopAdd } from '../lib/resumeAfterLogin';
 import { IconArrowLeft, IconClock, IconLeaf, IconShield } from '../components/icons';
 import { useCart, type CartPack } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -47,24 +48,28 @@ import { money, unitLabel } from '../lib/format';
 import { listingImage } from '../utils/cropImages';
 import { colors, design, font, radius, spacing } from '../theme';
 
-type ShopRoute = RouteProp<{ Shop: { id: string; city: string } }, 'Shop'>;
+type ShopRoute = RouteProp<{ Shop: { id: string; city: string; addListingId?: string } }, 'Shop'>;
 
 export default function ShopScreen() {
-  const { id, city } = useRoute<ShopRoute>().params;
+  const { id, city, addListingId } = useRoute<ShopRoute>().params;
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { count: cartCount } = useCart();
+  const { count: cartCount, add, quantityOf } = useCart();
+  const { user } = useAuth();
 
   const [data, setData] = useState<RetailShopDetail | null>(null);
   // A signed-out visitor taps ADD and is asked to log in, as on the home
   // screen, rather than meeting a shelf with nothing to press.
   const [askItem, setAskItem] = useState<LoginSheetItem | null>(null);
   const [askOpen, setAskOpen] = useState(false);
-  const askToLogIn = useCallback((item: LoginSheetItem) => {
+  const askToLogIn = useCallback((item: LoginSheetItem, listingId: string) => {
+    // Remembered so that logging in comes back here with the item added,
+    // rather than landing on Home with nothing in the basket.
+    rememberShopAdd({ shopId: id, city, listingId });
     setAskItem(item);
     setAskOpen(true);
-  }, []);
+  }, [id, city]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +85,19 @@ export default function ShopScreen() {
   }, [id, city]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Back from logging in with an item a guest tapped: add it once, the same
+  // opening amount the ADD button gives.
+  const addedFromLogin = React.useRef(false);
+  useEffect(() => {
+    if (!addListingId || addedFromLogin.current || !data || user?.role !== 'CONSUMER') return;
+    addedFromLogin.current = true;
+    const listing = data.listings.find((l) => l.id === addListingId);
+    if (!listing || !listing.directSaleEnabled || listing.retailPricePerUnit == null) return;
+    if (quantityOf(listing.id) > 0) return;
+    const amount = firstAmount(listing);
+    if (amount > 0) add(listing, amount);
+  }, [addListingId, data, user, add, quantityOf]);
 
   if (loading) return <Loading />;
 
@@ -166,6 +184,7 @@ export default function ShopScreen() {
         item={askItem}
         visible={askOpen}
         onClose={() => setAskOpen(false)}
+        onDismiss={forgetShopAdd}
         onForgot={() => nav.navigate('ForgotPassword')}
         onSignup={() => nav.navigate('Signup')}
       />
@@ -173,7 +192,7 @@ export default function ShopScreen() {
   );
 }
 
-function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (item: LoginSheetItem) => void }) {
+function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (item: LoginSheetItem, listingId: string) => void }) {
   const { t } = useTranslation();
   const { add, setQuantity, remove, quantityOf } = useCart();
   const { user } = useAuth();
@@ -196,12 +215,7 @@ function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (ite
     ? { label: shelf.label, kg: shelf.kg, units: shelf.units }
     : null;
 
-  // The opening amount, matching the crop rails and the listing screen: one
-  // pack, or one kilo, or the smallest sensible slice of a bigger denomination.
-  const first = Math.min(
-    pack ? pack.units : listing.unit === 'KG' ? 1 : 0.5,
-    listing.remainingQuantity,
-  );
+  const first = firstAmount(listing);
   const canBuy = user?.role === 'CONSUMER' && listing.directSaleEnabled && first > 0;
   // Signed out: the same ADD, which asks them to log in first.
   const guest = !user && listing.directSaleEnabled && first > 0;
@@ -253,7 +267,7 @@ function ShelfCard({ listing, onGuestAdd }: { listing: Listing; onGuestAdd: (ite
             size: pack ? pack.label : `1 ${unitLabel(listing.unit)}`,
             price: money(shelf ? shelf.price : listing.retailPricePerUnit!, listing.currency),
             image: photo,
-          })}
+          }, listing.id)}
           scaleTo={0.95}
           cardStyle={styles.addBtn}
         >
@@ -379,3 +393,20 @@ const styles = StyleSheet.create({
   errBody: { fontFamily: font.sans, fontSize: 14, lineHeight: 21, color: design.ink3, marginTop: 4 },
   retry: { fontFamily: font.sansSemi, fontSize: 14, color: colors.forest, textDecorationLine: 'underline', marginTop: spacing.md },
 });
+
+// The opening amount, matching the crop rails and the listing screen: one
+// pack, or one kilo, or the smallest sensible slice of a bigger denomination.
+function firstAmount(listing: Listing): number {
+  const shelf = listing.retailPricePerUnit == null ? null : shopPack({
+    crop: listing.cropName,
+    cat: railFor(listing.cropName),
+    unit: listing.unit,
+    floor: listing.retailPricePerUnit,
+    ceiling: listing.retailPricePerUnit,
+    retail: listing.retailPricePerUnit,
+  });
+  return Math.min(
+    shelf ? shelf.units : listing.unit === 'KG' ? 1 : 0.5,
+    listing.remainingQuantity,
+  );
+}

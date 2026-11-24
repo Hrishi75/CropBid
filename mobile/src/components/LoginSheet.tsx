@@ -52,12 +52,14 @@ export interface LoginSheetItem {
 const OFFSCREEN = Dimensions.get('window').height;
 
 export function LoginSheet({
-  item, visible, onClose, onForgot, onSignup,
+  item, visible, onClose, onDismiss, onForgot, onSignup,
 }: {
   /** Set: open on the "add this" step. Null: open straight on the form. */
   item: LoginSheetItem | null;
   visible: boolean;
   onClose: () => void;
+  /** Closed without logging in: swiped away, tapped outside or Not now. */
+  onDismiss?: () => void;
   onForgot: () => void;
   onSignup: () => void;
 }) {
@@ -99,8 +101,11 @@ export function LoginSheet({
   }, [visible]);
 
   // The responder is made once, so it reads the latest onClose through a ref.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  // Closing without logging in tells the caller, so it can drop anything it
+  // was holding for after the login (a shop page's pending ADD).
+  const dismiss = () => { onDismiss?.(); onClose(); };
+  const onCloseRef = useRef(dismiss);
+  onCloseRef.current = dismiss;
 
   // Drag down to dismiss. Upward drags are ignored rather than stretching the
   // card off its resting place; a short drag springs back.
@@ -140,9 +145,9 @@ export function LoginSheet({
   }
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={dismiss}>
       <Animated.View style={[styles.backdrop, { opacity: fade }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
+        <Pressable style={StyleSheet.absoluteFill} onPress={dismiss} accessibilityLabel="Close" />
       </Animated.View>
 
       {/* Padding, on iOS, lifts the card clear of the keyboard as the form's
@@ -192,7 +197,7 @@ export function LoginSheet({
               <PressScale onPress={() => go(onSignup)} scaleTo={0.97} cardStyle={styles.secondary}>
                 <Text style={styles.secondaryText}>{t('Create an account')}</Text>
               </PressScale>
-              <Pressable onPress={onClose} hitSlop={8} style={styles.later}>
+              <Pressable onPress={dismiss} hitSlop={8} style={styles.later}>
                 <Text style={styles.laterText}>{t('Not now')}</Text>
               </Pressable>
             </>

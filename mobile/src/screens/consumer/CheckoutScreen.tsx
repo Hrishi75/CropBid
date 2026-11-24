@@ -246,8 +246,8 @@ export default function CheckoutScreen() {
           />
           <Text style={touched && !phoneValid ? styles.fieldError : styles.hint}>
             {touched && !phoneValid
-              ? 'Enter a valid phone number'
-              : 'CropBid uses this to deliver your order. Shops never see it.'}
+              ? t('Enter a valid phone number')
+              : t('CropBid uses this to deliver your order. Shops never see it.')}
           </Text>
         </View>
 

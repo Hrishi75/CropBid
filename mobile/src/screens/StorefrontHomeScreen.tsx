@@ -60,6 +60,7 @@ import { DeliveryList } from '../components/DeliveryList';
 import { DemandTeaser } from '../components/DemandTeaser';
 import { NotificationBell } from '../components/NotificationBell';
 import { LoginSheet, type LoginSheetItem } from '../components/LoginSheet';
+import { takeShopAdd } from '../lib/resumeAfterLogin';
 import { cropEmojiFor, cropImageFor, listingImage } from '../utils/cropImages';
 import { Wordmark } from '../components/marks';
 import { Appear, FadeInImage, PressScale, Pulse, glide } from '../components/motion';
@@ -348,6 +349,16 @@ export default function StorefrontHomeScreen() {
   // when nothing is on sale anywhere, there is no list to judge the city by.
   const cityDropped = city !== '' && citiesLoaded && cities.length > 0 && !servedCity;
   const needsCity = shopping && (city === '' || changingCity || cityDropped);
+
+  // A guest who tapped ADD on a shop's page and then logged in goes back to
+  // that shop, which adds the item. Only into the city they now shop in: an
+  // account saved in another city would be refused the order anyway.
+  useEffect(() => {
+    if (!user || user.role !== 'CONSUMER' || !citiesLoaded || needsCity) return;
+    const pending = takeShopAdd();
+    if (!pending || pending.city.toLowerCase() !== city.toLowerCase()) return;
+    nav.navigate('Shop', { id: pending.shopId, city: pending.city, addListingId: pending.listingId });
+  }, [user, citiesLoaded, needsCity, city, nav]);
 
   // Which cities can be served at all — needed before any produce is fetched
   // for a shopper, and again whenever they want to change city.

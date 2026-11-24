@@ -510,5 +510,21 @@
   "In season now": "सध्या हंगामात",
   "MSP-anchored floors": "MSP शी जोडलेली किमान किंमत",
   "Straight from origin mandis": "थेट मूळ मंड्यांमधून",
-  "New here? Making an account takes a name, your mobile number and a password. No code to wait for.": "नवीन आहात? खाते तयार करण्यासाठी नाव, मोबाइल नंबर आणि पासवर्ड लागतो. कोणत्याही कोडची वाट पाहावी लागत नाही."
+  "New here? Making an account takes a name, your mobile number and a password. No code to wait for.": "नवीन आहात? खाते तयार करण्यासाठी नाव, मोबाइल नंबर आणि पासवर्ड लागतो. कोणत्याही कोडची वाट पाहावी लागत नाही.",
+  "Items total (1 lot)": "एकूण माल (1 लॉट)",
+  "Items total ({{count}} lots)": "एकूण माल ({{count}} लॉट)",
+  "Delivery ({{count}} shops)": "डिलिव्हरी ({{count}} दुकाने)",
+  "Delivery": "डिलिव्हरी",
+  "Could not load": "लोड झाले नाही",
+  "Free": "मोफत",
+  "Handling fee ({{count}} orders)": "हँडलिंग शुल्क ({{count}} ऑर्डर)",
+  "Handling fee": "हँडलिंग शुल्क",
+  "1 lot in your cart is not in this bill. See the note on it above.": "तुमच्या कार्टमधील 1 लॉट या बिलात नाही. वर त्याची नोंद पहा.",
+  "{{count}} lots in your cart are not in this bill. See the note on them above.": "तुमच्या कार्टमधील {{count}} लॉट या बिलात नाहीत. वर त्यांची नोंद पहा.",
+  "Delivery is free on {{free}} or more from a shop, and {{fee}} per shop below that.": "एका दुकानातून {{free}} किंवा त्याहून अधिक घेतल्यास डिलिव्हरी मोफत, आणि त्यापेक्षा कमी असल्यास प्रत्येक दुकानासाठी {{fee}}.",
+  "A {{fee}} handling fee applies to each shop order.": "प्रत्येक दुकानाच्या ऑर्डरवर {{fee}} हँडलिंग शुल्क लागते.",
+  "CropBid collects from each shop separately, so this becomes {{count}} orders, one per shop, paid for together in one payment and tracked on their own in Orders.": "CropBid प्रत्येक दुकानातून वेगळा माल घेते, म्हणून याच्या {{count}} ऑर्डर होतील, प्रत्येक दुकानाची एक, ज्यांचे पेमेंट एकत्र होईल आणि ऑर्डरमध्ये वेगवेगळ्या दिसतील.",
+  "You pay as soon as the order is placed. Money is held by CropBid and released to the seller only once you confirm the delivery arrived.": "ऑर्डर देताच तुम्ही पैसे भरता. पैसे CropBid कडे राहतात आणि डिलिव्हरी पोहोचल्याची तुम्ही पुष्टी केल्यावरच विक्रेत्याला मिळतात.",
+  "Enter a valid phone number": "योग्य फोन नंबर टाका",
+  "CropBid uses this to deliver your order. Shops never see it.": "CropBid तुमची ऑर्डर डिलिव्हर करण्यासाठी हे वापरते. दुकानांना हे कधीच दिसत नाही."
 }
