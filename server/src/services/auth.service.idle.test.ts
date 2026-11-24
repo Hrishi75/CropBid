@@ -190,3 +190,15 @@ describe('refresh: an app session', () => {
     expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 });
+
+describe('phone numbers typed in Indian scripts', () => {
+  it('reads Devanagari digits as 0-9', async () => {
+    const { normalizePhone } = await import('./auth.service');
+    expect(normalizePhone('+९१९१२३४५६७८९')).toBe('+919123456789');
+    expect(normalizePhone('९१२३४५६७८९')).toBe('9123456789');
+  });
+  it('reads Tamil and Bengali digits too', async () => {
+    const { toAsciiDigits } = await import('./auth.service');
+    expect(toAsciiDigits('௯௧௨৩')).toBe('9123');
+  });
+});
