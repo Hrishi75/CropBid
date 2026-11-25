@@ -36,10 +36,10 @@ export const SUPPORT_EMAIL = 'info@cropbid.in';
 // name. The website's copy is client/src/content/grievance.ts, which /privacy
 // and /terms read; change both together.
 const GRIEVANCE = {
-  name: 'Ayush Gaikwad',
-  email: 'ayush.gaikwad@cropbid.in',
-  phoneDisplay: '+91 86260 47528',
-  phoneHref: 'tel:+918626047528',
+  name: 'Hrishikesh Borkar',
+  email: 'hrishikesh.borkar@cropbid.in',
+  phoneDisplay: '+91 93070 98019',
+  phoneHref: 'tel:+919307098019',
 };
 
 export default function HelpScreen() {

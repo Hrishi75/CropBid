@@ -14,11 +14,11 @@
 // =============================================================================
 
 export const GRIEVANCE_OFFICER = {
-  name: 'Ayush Gaikwad',
+  name: 'Hrishikesh Borkar',
   designation: 'Grievance Officer',
-  email: 'ayush.gaikwad@cropbid.in',
-  phoneDisplay: '+91 86260 47528',
-  phoneHref: 'tel:+918626047528',
+  email: 'hrishikesh.borkar@cropbid.in',
+  phoneDisplay: '+91 93070 98019',
+  phoneHref: 'tel:+919307098019',
   acknowledgeWithin: '24 hours',
   resolveWithin: '15 days',
 } as const;
