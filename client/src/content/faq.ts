@@ -59,7 +59,7 @@ export const FAQ_GROUPS: FaqGroup[] = [
       },
       {
         q: 'Can I cancel an order?',
-        a: 'Yes, yourself, until the shop marks it as on the way. Open the order on the website or in the app and cancel it there. It calls off everything you bought from that shop in that order, because it comes as one delivery, and anything you have paid comes back to you, including the delivery and handling charges. We return it by bank transfer, so allow a few working days for it to reach you. After the shop has sent it you cannot cancel: the produce has been picked for you. A shop can also cancel before it sends an order if it cannot fulfil it, and has to tell you why.',
+        a: 'Yes, yourself, until the shop marks it as on the way. Open the order on the website or in the app and cancel it there. It calls off everything you bought from that shop in that order, because it comes as one delivery, and anything you have paid comes back to you, including the delivery and handling charges. We return it to the payment method you used, by hand rather than automatically, so allow a few working days for it to reach you. After the shop has sent it you cannot cancel: the produce has been picked for you. A shop can also cancel before it sends an order if it cannot fulfil it, and has to tell you why.',
       },
       {
         q: 'When do I pay, and what if the order never turns up?',
