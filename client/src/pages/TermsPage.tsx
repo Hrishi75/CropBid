@@ -39,7 +39,7 @@ import { isEmbedded } from '../utils/embedded';
 import { SignInLink } from '../components/auth/SignInLink';
 import { GrievanceOfficer } from '../components/GrievanceOfficer';
 
-const UPDATED = '22 November 2026';
+const UPDATED = '26 November 2026';
 const CONTACT = 'info@cropbid.in';
 
 /** Registered entity. Empty until incorporation completes — see the header note. */

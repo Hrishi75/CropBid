@@ -20,13 +20,13 @@
 // (signInWithGoogle). Signing in to an existing account asks nothing.
 //
 // Change POLICY_VERSION whenever /terms or /privacy change in substance. It is
-// the later of the two pages' "Last updated" dates (the terms, 22 November
-// 2026: a ₹10 handling fee on every household shop order).
+// the later of the two pages' "Last updated" dates (both, 26 November
+// 2026: a new Grievance Officer).
 // =============================================================================
 
 import { ApiError } from './ApiError';
 
-export const POLICY_VERSION = '2026-11-22';
+export const POLICY_VERSION = '2026-11-26';
 
 export const CONSENT_REQUIRED_MESSAGE =
   'Tick the box to confirm you are 18 or older and agree to the terms and privacy policy';
