@@ -14,7 +14,7 @@ import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import api from '../../lib/axios';
 import toast from 'react-hot-toast';
 import { ConfirmButton } from './ConfirmButton';
-import { CAREERS_EMAIL, JOB_TYPE_LABEL, type Job, type JobType } from '../../content/careers';
+import { CAREERS_EMAIL, JOB_TYPE_LABEL, isHttpsUrl, type Job, type JobType } from '../../content/careers';
 
 export function AdminCareers() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -137,7 +137,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const INPUT = { padding: '6px 10px', fontSize: 13 } as const;
 
-function JobForm({ job, onSave }: { job?: Job; onSave: (body: Record<string, unknown>) => void }) {
+function JobForm({ job, onSave }: { job?: Job; onSave: (body: Record<string, unknown>) => Promise<void> }) {
   const [title, setTitle] = useState(job?.title ?? '');
   const [team, setTeam] = useState(job?.team ?? '');
   const [location, setLocation] = useState(job?.location ?? '');
@@ -145,25 +145,38 @@ function JobForm({ job, onSave }: { job?: Job; onSave: (body: Record<string, unk
   const [description, setDescription] = useState(job?.description ?? '');
   const [applyUrl, setApplyUrl] = useState(job?.applyUrl ?? '');
   const [publish, setPublish] = useState(false);
+  // One save at a time: a double click on "Publish job" would otherwise post
+  // twice and create two jobs. The ref answers at once, the state redraws.
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
 
-  const badLink = applyUrl.trim() !== '' && !/^https:\/\/\S+$/i.test(applyUrl.trim());
+  const badLink = applyUrl.trim() !== '' && !isHttpsUrl(applyUrl.trim());
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    onSave({
-      title,
-      team: team.trim() || null,
-      location,
-      type,
-      description,
-      applyUrl: applyUrl.trim() || null,
-      // Editing leaves publishing to the row's own button.
-      ...(job ? {} : { published: publish }),
-    });
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await onSave({
+        title,
+        team: team.trim() || null,
+        location,
+        type,
+        description,
+        applyUrl: applyUrl.trim() || null,
+        // Editing leaves publishing to the row's own button.
+        ...(job ? {} : { published: publish }),
+      });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }
 
   return (
     <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+      <fieldset disabled={saving} style={{ display: 'contents' }}>
       <Field label="JOB TITLE">
         <input className="cb-input" style={INPUT} value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={150} placeholder="e.g. Field operations lead" />
       </Field>
@@ -201,11 +214,12 @@ function JobForm({ job, onSave }: { job?: Job; onSave: (body: Record<string, unk
         <button
           type="submit"
           className="cb-btn cb-btn-primary"
-          disabled={!title.trim() || !location.trim() || !description.trim() || badLink}
+          disabled={saving || !title.trim() || !location.trim() || !description.trim() || badLink}
         >
-          {job ? 'Save' : publish ? 'Publish job' : 'Save draft'}
+          {saving ? 'Saving…' : job ? 'Save' : publish ? 'Publish job' : 'Save draft'}
         </button>
       </div>
+      </fieldset>
     </form>
   );
 }

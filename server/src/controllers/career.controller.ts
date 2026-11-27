@@ -9,9 +9,21 @@ const optionalText = (max: number) =>
     .transform((v) => (v === undefined ? undefined : v ? v : null));
 
 // https only: a posting's apply link is something we put in front of a
-// visitor, so no javascript:, no plain http.
+// visitor, so no javascript:, no plain http. Parsed rather than matched on its
+// prefix, so an address no browser can open ("https://?",
+// "https://example.com:bad") is refused too. The client's isHttpsUrl in
+// content/careers.ts mirrors this.
+export function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.length > 0 && !/\s/.test(value);
+  } catch {
+    return false;
+  }
+}
+
 const applyUrl = z.union([
-  z.string().trim().max(500).refine((v) => v === '' || /^https:\/\/[^\s]+$/i.test(v), {
+  z.string().trim().max(500).refine((v) => v === '' || isHttpsUrl(v), {
     message: 'The apply link must start with https://',
   }),
   z.null(),

@@ -57,7 +57,7 @@ describe('careers', () => {
   }
 
   it('refuses an apply link that is not https', async () => {
-    for (const applyUrl of ['javascript:alert(1)', 'http://example.com', 'ftp://x']) {
+    for (const applyUrl of ['javascript:alert(1)', 'http://example.com', 'ftp://x', 'https://?', 'https://example.com:bad', 'https://', 'https://exa mple.com']) {
       expect((await post({ ...base, applyUrl })).statusCode).toBe(400);
     }
     const ok = await post({ ...base, applyUrl: 'https://forms.example.com/apply' });

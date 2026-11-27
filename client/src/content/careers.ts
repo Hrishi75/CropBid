@@ -31,6 +31,20 @@ export const JOB_TYPE_LABEL: Record<JobType, string> = {
 /** Where an application goes when a job has no link of its own. */
 export const CAREERS_EMAIL = 'info@cropbid.in';
 
+/**
+ * A link a browser can open over https: parsed, not pattern-matched, so
+ * "https://?" or "https://example.com:bad" is refused. Mirrors isHttpsUrl in
+ * the server's career.controller, which is the rule that binds.
+ */
+export function isHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname.length > 0 && !/\s/.test(value);
+  } catch {
+    return false;
+  }
+}
+
 /** The apply target: the job's own https link, else an email with the title as the subject. */
 export function applyHref(job: Pick<Job, 'title' | 'applyUrl'>): string {
   if (job.applyUrl) return job.applyUrl;
