@@ -8,6 +8,7 @@ import { requireRole } from '../middleware/roleGuard';
 import * as adminController from '../controllers/admin.controller';
 import * as creditController from '../controllers/credit.controller';
 import * as incidentController from '../controllers/incident.controller';
+import * as careerController from '../controllers/career.controller';
 
 const router = Router();
 
@@ -70,6 +71,15 @@ router.patch('/credit-applications/:id', creditController.adminReview);
 router.get('/incidents', incidentController.list);
 router.post('/incidents', incidentController.create);
 router.patch('/incidents/:id', incidentController.update);
+
+// GET    /api/admin/jobs      : every job, drafts included
+// POST   /api/admin/jobs      : add a job (a draft unless published is true)
+// PATCH  /api/admin/jobs/:id  : edit, publish or unpublish
+// DELETE /api/admin/jobs/:id  : remove it for good
+router.get('/jobs', careerController.listAll);
+router.post('/jobs', careerController.create);
+router.patch('/jobs/:id', careerController.update);
+router.delete('/jobs/:id', careerController.remove);
 
 // --- Seeds & fertiliser: the /inputs catalogue, including what the licence
 // gate hides from farmers, and adding to it. ---

@@ -441,6 +441,15 @@ Every step has a back arrow, and a resubmitting seller's existing type seeds the
 
 `FreeToJoin` in `LandingPage.tsx`, under the hero carousel: free to register, free to list and free mandi rates, with a line saying delivery is billed separately per deal (§2c). Shown to guests and shoppers with a button to `/partner`; hidden from approved sellers, buyers and admins, and while searching. The 2% deal fee is left off it on purpose (the user's call, 2026-11-03); it stays on `/how-it-works`, the FAQ and `/terms`. Every line must stay true of §2: if a signup or listing charge is ever added, or the fee changes, this strip changes in the same PR.
 
+### Careers page (2026-11-27)
+
+**`/careers`, linked from the footer's Company column, lists the jobs an admin publishes at `/admin/careers`** (`JobOpening`, `career.service.ts`). Public read is `GET /api/careers/jobs`, published only and without the creator's id; writing is `GET/POST/PATCH/DELETE /api/admin/jobs`, audited through `recordAudit`.
+
+- **A new job is a draft unless the admin ticks "Publish now"**, and a draft never leaves the admin routes. Each row has Publish/Unpublish, Edit and Delete (asks once; nothing hangs off a job, so a delete is safe).
+- **Nobody applies through the site.** "Apply" opens an email to `CAREERS_EMAIL` (`client/src/content/careers.ts`, currently `info@cropbid.in`) with the job title as the subject, or the job's own link, which the server takes as **https only**. So CropBid stores no CV or candidate details (§12). A form that collects applications would make CropBid hold that data and needs a privacy page change first.
+- **The page is prerendered as a shell** (in `ROUTES`, so in the sitemap); the jobs load in the browser, and a failed fetch says so rather than "no open roles". No `JobPosting` structured data: Google wants it on a page per job, which does not exist.
+- **Not built:** the app has no careers screen, and the page is English only (the footer label is translated).
+
 ### WhatsApp chat button (2026-10-09)
 
 **A round green button, bottom right on every website page, opening a WhatsApp chat with the company number** (`components/ui/WhatsAppButton.tsx`). A plain `wa.me` link with "Hi CropBid, I have a question." typed in: nothing passes through our servers.

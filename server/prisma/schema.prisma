@@ -1962,3 +1962,37 @@ model SecurityIncident {
 
   @@index([status, detectedAt])
 }
+
+// =============================================================================
+// Careers: the jobs listed on /careers
+// =============================================================================
+// Written by an admin at /admin/careers, read by anyone at /careers. Nothing
+// here collects an application: a candidate applies by email (or the link the
+// admin gives), so CropBid never stores a CV through the site (§12).
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  INTERNSHIP
+  CONTRACT
+}
+
+model JobOpening {
+  id          String  @id @default(uuid())
+  title       String
+  team        String? // e.g. "Operations", "Engineering"
+  location    String // e.g. "Nagpur", "Pune / remote"
+  type        JobType @default(FULL_TIME)
+  description String
+  /// Where to apply. Blank means email the careers address with the title as
+  /// the subject. https only, so a posting cannot link anywhere odd.
+  applyUrl    String?
+  /// A draft is seen by admins alone; only published jobs reach /careers.
+  published   Boolean @default(false)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([published, createdAt])
+}

@@ -314,6 +314,7 @@ const FOOTER_COLS: Array<{ title: string; items: Array<[label: string, href: str
     title: 'Company',
     items: [
       ['About',   '/how-it-works'],
+      ['Careers', '/careers'],
       // The address is its own label — a footer email you have to click to
       // discover is worse than one you can read. (Privacy stays in the bottom
       // bar with the © line, where legal links are expected.)
