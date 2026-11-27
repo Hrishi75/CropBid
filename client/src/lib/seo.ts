@@ -159,6 +159,14 @@ export const ROUTES: RouteMeta[] = [
     },
   },
   {
+    path: '/careers',
+    title: 'Careers at CropBid',
+    description:
+      'Open roles at CropBid, the crop exchange connecting Indian farmers, shops and businesses directly at live mandi rates. See the jobs and how to apply.',
+    priority: '0.5',
+    changefreq: 'weekly',
+  },
+  {
     path: '/terms',
     title: 'Terms and Conditions',
     description:

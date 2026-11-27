@@ -142,6 +142,7 @@ const AdminIncidents = lazyPage(() => import('../pages/admin/AdminIncidents'), '
 const AdminInputs = lazyPage(() => import('../pages/admin/AdminInputs'), 'AdminInputs');
 const AdminEquipment = lazyPage(() => import('../pages/admin/AdminEquipment'), 'AdminEquipment');
 const AdminAnalytics = lazyPage(() => import('../pages/admin/AdminAnalytics'), 'AdminAnalytics');
+const AdminCareers = lazyPage(() => import('../pages/admin/AdminCareers'), 'AdminCareers');
 const FarmerAnalytics = lazyPage(() => import('../pages/farmer/FarmerAnalytics'), 'FarmerAnalytics');
 const BuyerAnalytics = lazyPage(() => import('../pages/buyer/BuyerAnalytics'), 'BuyerAnalytics');
 
@@ -175,6 +176,7 @@ const PublicDemandPage = lazyPage(() => import('../pages/PublicDemandPage'), 'Pu
 const EquipmentPage = lazyPage(() => import('../pages/EquipmentPage'), 'EquipmentPage');
 const AgriInputsPage = lazyPage(() => import('../pages/AgriInputsPage'), 'AgriInputsPage');
 const FaqPage = lazyPage(() => import('../pages/FaqPage'), 'FaqPage');
+const CareersPage = lazyPage(() => import('../pages/CareersPage'), 'CareersPage');
 const TermsPage = lazyPage(() => import('../pages/TermsPage'), 'TermsPage');
 const PrivacyPolicyPage = lazyPage(() => import('../pages/PrivacyPolicyPage'), 'PrivacyPolicyPage');
 const AdminLogistics = lazyPage(() => import('../pages/admin/AdminLogistics'), 'AdminLogistics');
@@ -267,6 +269,7 @@ export function AppRoutes() {
       {/* Linked from the footer, and the URL given to Google Play's Data Safety
           form — it must stay publicly reachable without a login. */}
       <Route path="/faq" element={<FaqPage />} />
+      <Route path="/careers" element={<CareersPage />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
@@ -720,6 +723,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute allowedRoles={['ADMIN']}>
             <AdminAnalytics />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/careers"
+        element={
+          <ProtectedRoute allowedRoles={['ADMIN']}>
+            <AdminCareers />
           </ProtectedRoute>
         }
       />

@@ -45,6 +45,7 @@ export function getNavSections(role: Role | undefined, pendingCounts?: PendingCo
           { label: 'Logistics', path: '/admin/logistics' },
           { label: 'Analytics', path: '/admin/analytics' },
           { label: 'Incidents', path: '/admin/incidents' },
+          { label: 'Careers', path: '/admin/careers' },
         ],
       },
       {
