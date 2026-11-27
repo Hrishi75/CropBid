@@ -16,7 +16,9 @@ const optionalText = (max: number) =>
 export function isHttpsUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname.length > 0 && !/\s/.test(value);
+    // The "//" is required as typed, not only parsed: URL reads "https:x.com"
+    // as https, but a browser takes that href as a path on our own site.
+    return /^https:\/\//i.test(value) && url.protocol === 'https:' && url.hostname.length > 0 && !/\s/.test(value);
   } catch {
     return false;
   }
